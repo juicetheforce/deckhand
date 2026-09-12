@@ -1,0 +1,8 @@
+# Elgato Stream Deck — grant the logged-in user access to the HID device.
+# uaccess hands access to whoever owns the active seat, which is safer than
+# a blanket 0666 and survives reboots without a plugdev group.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+
+# /dev/uinput for the key-injection helper.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

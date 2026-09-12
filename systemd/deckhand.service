@@ -1,0 +1,19 @@
+[Unit]
+Description=deckhand Stream Deck daemon
+Documentation=file://%h/src/deckhand/README.md
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Edit this path to wherever you cloned the repo.
+WorkingDirectory=%h/src/deckhand
+ExecStart=/usr/bin/node %h/src/deckhand/dist/index.js
+Restart=on-failure
+RestartSec=3
+# Deck writes and image compositing are bursty; a little priority helps
+# keep presses feeling instant while a game is loading the CPU.
+Nice=-5
+
+[Install]
+WantedBy=graphical-session.target

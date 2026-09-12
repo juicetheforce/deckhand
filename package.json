@@ -1,0 +1,28 @@
+{
+  "name": "deckhand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal Stream Deck daemon for Linux",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:helper && npm run build:ts",
+    "build:ts": "tsc",
+    "build:helper": "make -C helper",
+    "start": "node dist/index.js",
+    "decks": "node dist/index.js --list",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@elgato-stream-deck/node": "^7.6.3",
+    "dbus-next": "^0.10.2",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "typescript": "^7.0.2"
+  }
+}
