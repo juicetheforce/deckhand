@@ -1,5 +1,5 @@
 import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
-import { CONFIG_PATH, loadConfig, watchConfig } from './config.js';
+import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
 import { DeckSession } from './deck.js';
 import { input, INPUT_BIN } from './input.js';
 import { clearRenderCache } from './render.js';
@@ -27,6 +27,70 @@ async function printDecks(): Promise<void> {
     console.log(`  model:  ${device.model}`);
     console.log(`  path:   ${device.path}\n`);
   }
+}
+
+/**
+ * The starter button's combo. Shift+D is chosen because it is harmless and
+ * visible: in a text editor it types "D". A lowercase "d" means the key landed
+ * but the modifier did not, which is a useful distinction on first bring-up.
+ */
+const STARTER_KEYS = 'shift+d';
+
+/**
+ * First run: no config.json exists. Write one keyed by the decks connected
+ * right now, with one hotkey button on key 0 of each, so the daemon starts
+ * lit rather than exiting. Returns false if there was nothing to write.
+ */
+async function bootstrapConfig(): Promise<boolean> {
+  const devices = await listStreamDecks();
+  if (devices.length === 0) {
+    console.error('[main] no config.json and no Stream Decks connected — nothing to bootstrap');
+    return false;
+  }
+
+  const starter: Config = { decks: {} };
+
+  for (const device of devices) {
+    // Read the serial the same way attach() does, so the config key matches.
+    let raw: Awaited<ReturnType<typeof openStreamDeck>>;
+    try {
+      raw = await openStreamDeck(device.path);
+    } catch (err) {
+      console.error(`[main] bootstrap: cannot open ${device.path}: ${(err as Error).message}`);
+      continue;
+    }
+    try {
+      const serial = (await raw.getSerialNumber()).trim();
+      starter.decks[serial] = {
+        name: raw.PRODUCT_NAME,
+        startPage: 'main',
+        pages: {
+          main: {
+            buttons: {
+              '0': {
+                label: STARTER_KEYS,
+                action: { type: 'hotkey', keys: STARTER_KEYS },
+              },
+            },
+          },
+        },
+      };
+      console.log(`[main] bootstrap: ${raw.PRODUCT_NAME} (${serial})`);
+    } catch (err) {
+      console.error(`[main] bootstrap: cannot read serial for ${device.path}: ${(err as Error).message}`);
+    } finally {
+      await raw.close().catch(() => undefined);
+    }
+  }
+
+  if (Object.keys(starter.decks).length === 0) {
+    console.error('[main] bootstrap: no deck could be read — nothing written');
+    return false;
+  }
+
+  await writeNewConfig(starter);
+  console.log(`[main] wrote starter config to ${CONFIG_PATH}`);
+  return true;
 }
 
 async function attach(devicePath: string): Promise<void> {
@@ -162,6 +226,15 @@ async function main(): Promise<void> {
   console.log(`[main] deckhand starting`);
   console.log(`[main] config: ${CONFIG_PATH}`);
   console.log(`[main] input helper: ${INPUT_BIN}`);
+
+  if (await configMissing()) {
+    try {
+      if (!(await bootstrapConfig())) process.exit(1);
+    } catch (err) {
+      console.error(`[main] bootstrap failed: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  }
 
   try {
     config = await loadConfig();

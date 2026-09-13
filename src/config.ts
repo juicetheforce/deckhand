@@ -77,6 +77,25 @@ export async function ensureConfigDir(): Promise<void> {
   await fs.mkdir(CONFIG_DIR, { recursive: true });
 }
 
+/** True only when config.json is absent — not when it exists but is broken. */
+export async function configMissing(): Promise<boolean> {
+  try {
+    await fs.access(CONFIG_PATH);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+}
+
+/**
+ * Write a first config. The 'wx' flag refuses to overwrite, so a config that
+ * appeared in the meantime is never clobbered.
+ */
+export async function writeNewConfig(config: Config): Promise<void> {
+  await ensureConfigDir();
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', { flag: 'wx' });
+}
+
 /**
  * Watch the config file and call back on change. Editors that write via
  * rename (most of them) can briefly remove the file, so this debounces and
