@@ -75,6 +75,8 @@ export interface DeckHandle {
   /** Return to the previously shown page. */
   goBack(): Promise<void>;
   setBrightness(value: number): Promise<void>;
+  /** The brightness this deck was last set to, 5-100. */
+  currentBrightness(): number;
   /** Force a re-render of every button on the current page. */
   invalidate(): void;
   currentPage(): string;

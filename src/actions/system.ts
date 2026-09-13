@@ -67,27 +67,26 @@ export const page: ActionHandler = {
  *
  *   { "type": "brightness", "value": 40 }
  *   { "type": "brightness", "delta": -10 }
+ *
+ * The current level lives on the deck the button belongs to, so each deck
+ * nudges from its own level. The deck clamps the value to 5-100.
  */
-let lastBrightness = 70;
-
 export const brightness: ActionHandler = {
   async execute(ctx, params: ActionDef) {
     let next: number;
     if (typeof params.value === 'number') {
       next = params.value;
     } else if (typeof params.delta === 'number') {
-      next = lastBrightness + params.delta;
+      next = ctx.deck.currentBrightness() + params.delta;
     } else {
       throw new Error('brightness action needs "value" or "delta"');
     }
-    next = Math.max(5, Math.min(100, Math.round(next)));
-    lastBrightness = next;
     await ctx.deck.setBrightness(next);
     ctx.invalidateByType(['brightness']);
   },
 
-  async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    return params.showLevel === false ? null : { label: `${lastBrightness}%` };
+  async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
+    return params.showLevel === false ? null : { label: `${ctx.deck.currentBrightness()}%` };
   },
 };
 

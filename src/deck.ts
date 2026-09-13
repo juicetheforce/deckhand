@@ -49,6 +49,11 @@ const MODEL_FALLBACK: Record<string, { keys: number; icon: number }> = {
 
 const TICK_MS = 500;
 
+/** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
+function clampBrightness(value: number): number {
+  return Math.max(5, Math.min(100, Math.round(value)));
+}
+
 export class DeckSession implements DeckHandle {
   readonly serial: string;
   readonly model: string;
@@ -65,6 +70,8 @@ export class DeckSession implements DeckHandle {
   private ticker: NodeJS.Timeout | null = null;
   private closed = false;
   private heldRelease = new Map<number, ActionDef>();
+  /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
+  private brightness: number;
 
   constructor(raw: RawDeck, serial: string, def: DeckDef, defaults: Defaults = {}) {
     this.raw = raw;
@@ -93,6 +100,7 @@ export class DeckSession implements DeckHandle {
     this.lastSent = new Array(this.keyCount).fill(null);
     this.lastRenderAt = new Array(this.keyCount).fill(0);
     this.page = def.startPage ?? Object.keys(def.pages)[0];
+    this.brightness = clampBrightness(def.brightness ?? this.defaults.brightness);
   }
 
   async start(): Promise<void> {
@@ -102,7 +110,7 @@ export class DeckSession implements DeckHandle {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
 
-    await this.raw.setBrightness(this.def.brightness ?? this.defaults.brightness);
+    await this.setBrightness(this.brightness);
     await this.raw.clearPanel();
     await this.renderPage(true);
 
@@ -270,7 +278,13 @@ export class DeckSession implements DeckHandle {
   }
 
   async setBrightness(value: number): Promise<void> {
-    await this.raw.setBrightness(Math.max(5, Math.min(100, Math.round(value))));
+    const level = clampBrightness(value);
+    await this.raw.setBrightness(level);
+    this.brightness = level;
+  }
+
+  currentBrightness(): number {
+    return this.brightness;
   }
 
   /** Apply an edited config without dropping the USB connection. */
@@ -281,7 +295,7 @@ export class DeckSession implements DeckHandle {
       this.page = def.startPage ?? Object.keys(def.pages)[0];
       this.history = [];
     }
-    await this.raw.setBrightness(def.brightness ?? this.defaults.brightness);
+    await this.setBrightness(def.brightness ?? this.defaults.brightness);
     this.lastSent.fill(null);
     await this.renderPage(true);
   }

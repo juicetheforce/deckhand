@@ -117,5 +117,36 @@ check('session still alive after hotkey attempt', session.currentPage() === 'gam
 
 await session.close();
 
+console.log('brightness is per deck');
+// Two decks with different configured brightness, each with a +10 key.
+// A shared brightness value would make one deck's nudge start from the
+// other deck's level, or from a hardcoded default.
+const nudgePage = (level) => ({
+  brightness: level,
+  startPage: 'main',
+  pages: { main: { buttons: { 0: { action: { type: 'brightness', delta: 10 } } } } },
+});
+const fakeA = new FakeDeck();
+const fakeB = new FakeDeck();
+const sessionA = new DeckSession(fakeA, 'FAKEA', nudgePage(55), {});
+const sessionB = new DeckSession(fakeB, 'FAKEB', nudgePage(30), {});
+await sessionA.start();
+await sessionB.start();
+
+fakeB.press(0);
+fakeB.release(0);
+await sleep(200);
+check('deck B nudges from its own configured level (30 -> 40)', fakeB.brightness === 40);
+check('deck A untouched by deck B (55)', fakeA.brightness === 55);
+
+fakeA.press(0);
+fakeA.release(0);
+await sleep(200);
+check('deck A nudges from its own configured level (55 -> 65)', fakeA.brightness === 65);
+check('deck B still at 40', fakeB.brightness === 40);
+
+await sessionA.close();
+await sessionB.close();
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
