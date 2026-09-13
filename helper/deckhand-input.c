@@ -42,12 +42,25 @@
 #define TAP_DELAY_US 12000
 #define CHAIN_DELAY_US 1500
 
-/* Timing for a combo (more than one code, e.g. ctrl+2). Games under Wine were
- * observed reading the modifier's state when they handle the key, rather than
- * the state recorded with the key event. With the short single-key timing,
- * ctrl was held for only ~15 ms — less than one frame — and FFXIV sometimes
- * saw a plain "2". So combos press each modifier well ahead of the key and
- * hold for several frames, much like a human press. */
+/* Timing for a combo (more than one code, e.g. ctrl+2).
+ *
+ * DO NOT LOWER THESE WITHOUT RE-TESTING IN A GAME.
+ *
+ * Games do not read input the way desktop toolkits do. A game typically runs
+ * its input handling once per frame: it samples which keys are down, or it
+ * handles the key events queued since the last frame and checks modifier
+ * state at that moment. A frame is 16.7 ms at 60 fps and longer when the game
+ * slows down. A tap shorter than a frame can therefore be missed, or seen with
+ * the key down but the modifier already released. This is a property of
+ * per-frame input handling in general, not of any one game.
+ *
+ * It was observed, not predicted: with the single-key timing, ctrl was held
+ * about 15 ms, the events were correct at the evdev layer, a terminal read
+ * every press as ctrl+2, and FFXIV under Wine still sometimes saw a plain "2".
+ * With these values every press registered.
+ *
+ * As emitted by the TAP loop below, a two-key combo holds the modifier about
+ * 140 ms and the key about 80 ms, and the command takes about 170 ms. */
 #define COMBO_GAP_US 30000
 #define COMBO_HOLD_US 50000
 
