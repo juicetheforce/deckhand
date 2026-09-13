@@ -60,7 +60,8 @@
  * With these values every press registered.
  *
  * As emitted by the TAP loop below, a two-key combo holds the modifier about
- * 140 ms and the key about 80 ms, and the command takes about 170 ms. */
+ * 140 ms and the key about 80 ms. Nothing waits after the final release —
+ * that wait held nothing down and only delayed the reply. */
 #define COMBO_GAP_US 30000
 #define COMBO_HOLD_US 50000
 
@@ -227,7 +228,8 @@ int main(void) {
             usleep(hold_us);
             for (i = count - 1; i >= 0; i--) {
                 release(codes[i]);
-                usleep(gap_us);
+                /* Wait between releases, but not after the last one. */
+                if (i > 0) usleep(gap_us);
             }
             printf("OK\n");
         } else if (strcmp(cmd, "DOWN") == 0) {
@@ -239,7 +241,8 @@ int main(void) {
         } else if (strcmp(cmd, "UP") == 0) {
             for (i = count - 1; i >= 0; i--) {
                 release(codes[i]);
-                usleep(gap_us);
+                /* Wait between releases, but not after the last one. */
+                if (i > 0) usleep(gap_us);
             }
             printf("OK\n");
         } else {
