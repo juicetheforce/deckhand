@@ -8,6 +8,7 @@
  * anything to find out you broke it.
  */
 import { DeckSession } from '../dist/deck.js';
+import { registry } from '../dist/actions/index.js';
 
 class FakeDeck {
   constructor() {
@@ -147,6 +148,39 @@ check('deck B still at 40', fakeB.brightness === 40);
 
 await sessionA.close();
 await sessionB.close();
+
+console.log('tick does not overlap itself');
+// A describe() slower than the 500 ms tick, like a hung pactl call. Without
+// a guard, the next tick starts while the last is still awaiting it, and the
+// same key is described twice at once.
+let activeDescribes = 0;
+let maxActiveDescribes = 0;
+registry['test.slow'] = {
+  async describe() {
+    activeDescribes++;
+    maxActiveDescribes = Math.max(maxActiveDescribes, activeDescribes);
+    await sleep(1300);
+    activeDescribes--;
+    return { label: 'slow' };
+  },
+};
+const fakeSlow = new FakeDeck();
+const sessionSlow = new DeckSession(
+  fakeSlow,
+  'FAKESLOW',
+  {
+    startPage: 'main',
+    pages: { main: { buttons: { 0: { refreshMs: 100, action: { type: 'test.slow' } } } } },
+  },
+  {},
+);
+await sessionSlow.start();
+maxActiveDescribes = 0; // ignore the initial full-page render; watch ticks only
+await sleep(3000);
+check(`at most one describe() in flight (saw ${maxActiveDescribes})`, maxActiveDescribes <= 1);
+await sessionSlow.close();
+await sleep(1400); // let any in-flight describe finish before exit
+delete registry['test.slow'];
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

@@ -68,6 +68,8 @@ export class DeckSession implements DeckHandle {
   private lastSent: Array<Buffer | null>;
   private lastRenderAt: number[];
   private ticker: NodeJS.Timeout | null = null;
+  /** True while tick() is running, so a slow render can't start a second pass. */
+  private ticking = false;
   private closed = false;
   private heldRelease = new Map<number, ActionDef>();
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
@@ -224,18 +226,29 @@ export class DeckSession implements DeckHandle {
     }
   }
 
+  /**
+   * Refresh dynamic buttons that are due. The interval fires every TICK_MS
+   * whether or not the previous pass finished, so a slow describe() (a hung
+   * pactl call, say) would otherwise stack passes on top of each other. If a
+   * pass is still running, this one is skipped; the next interval tries again.
+   */
   private async tick(): Promise<void> {
-    if (this.closed) return;
-    const now = Date.now();
-    const buttons = this.currentButtons();
+    if (this.closed || this.ticking) return;
+    this.ticking = true;
+    try {
+      const now = Date.now();
+      const buttons = this.currentButtons();
 
-    for (let i = 0; i < this.keyCount; i++) {
-      const button = buttons[String(i)];
-      if (!isDynamic(button?.action)) continue;
-      const interval = button?.refreshMs ?? this.defaults.refreshMs;
-      if (now - this.lastRenderAt[i] >= interval) {
-        await this.renderButtonAt(i);
+      for (let i = 0; i < this.keyCount; i++) {
+        const button = buttons[String(i)];
+        if (!isDynamic(button?.action)) continue;
+        const interval = button?.refreshMs ?? this.defaults.refreshMs;
+        if (now - this.lastRenderAt[i] >= interval) {
+          await this.renderButtonAt(i);
+        }
       }
+    } finally {
+      this.ticking = false;
     }
   }
 
