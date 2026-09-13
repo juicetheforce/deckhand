@@ -8,10 +8,10 @@
     "build": "npm run build:helper && npm run build:ts",
     "build:ts": "tsc",
     "build:helper": "make -C helper",
-    "start": "node dist/index.js",
-    "decks": "node dist/index.js --list",
+    "start": "npm run build:ts && node dist/index.js",
+    "decks": "npm run build:ts && node dist/index.js --list",
     "typecheck": "tsc --noEmit",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "npm run build:ts && node scripts/smoke.mjs"
   },
   "engines": {
     "node": ">=20"
