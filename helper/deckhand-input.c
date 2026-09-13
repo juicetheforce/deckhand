@@ -36,10 +36,20 @@
 #define MAX_CODES 16
 #define LINE_MAX_LEN 512
 
-/* Delay between press and release of a tap, and between chained events.
- * Some applications drop keystrokes that arrive in the same event batch. */
+/* Timing for a single key: hold between press and release. Kept short so the
+ * `text` action types quickly. Some applications drop keystrokes that arrive
+ * in the same event batch, so even a single key is not released instantly. */
 #define TAP_DELAY_US 12000
 #define CHAIN_DELAY_US 1500
+
+/* Timing for a combo (more than one code, e.g. ctrl+2). Games under Wine were
+ * observed reading the modifier's state when they handle the key, rather than
+ * the state recorded with the key event. With the short single-key timing,
+ * ctrl was held for only ~15 ms — less than one frame — and FFXIV sometimes
+ * saw a plain "2". So combos press each modifier well ahead of the key and
+ * hold for several frames, much like a human press. */
+#define COMBO_GAP_US 30000
+#define COMBO_HOLD_US 50000
 
 static int uinput_fd = -1;
 
@@ -165,6 +175,7 @@ int main(void) {
     while (fgets(line, sizeof(line), stdin) != NULL) {
         int codes[MAX_CODES];
         int count, i;
+        useconds_t gap_us, hold_us;
         char *rest;
         char *cmd = strtok(line, " \t\r\n");
 
@@ -190,27 +201,32 @@ int main(void) {
             continue;
         }
 
+        /* A combo gets the slower timing described at the top of the file;
+         * a single key keeps the fast timing. */
+        gap_us = (count > 1) ? COMBO_GAP_US : CHAIN_DELAY_US;
+        hold_us = (count > 1) ? COMBO_HOLD_US : TAP_DELAY_US;
+
         if (strcmp(cmd, "TAP") == 0) {
             for (i = 0; i < count; i++) {
                 press(codes[i]);
-                usleep(CHAIN_DELAY_US);
+                usleep(gap_us);
             }
-            usleep(TAP_DELAY_US);
+            usleep(hold_us);
             for (i = count - 1; i >= 0; i--) {
                 release(codes[i]);
-                usleep(CHAIN_DELAY_US);
+                usleep(gap_us);
             }
             printf("OK\n");
         } else if (strcmp(cmd, "DOWN") == 0) {
             for (i = 0; i < count; i++) {
                 press(codes[i]);
-                usleep(CHAIN_DELAY_US);
+                usleep(gap_us);
             }
             printf("OK\n");
         } else if (strcmp(cmd, "UP") == 0) {
             for (i = count - 1; i >= 0; i--) {
                 release(codes[i]);
-                usleep(CHAIN_DELAY_US);
+                usleep(gap_us);
             }
             printf("OK\n");
         } else {
