@@ -4,10 +4,17 @@ import { DeckSession } from './deck.js';
 import { input, INPUT_BIN } from './input.js';
 import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
+import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
 import type { Config } from './types.js';
 
-const SCAN_INTERVAL_MS = 3000;
+/**
+ * Decks are found by udev hotplug events (services/hotplug.ts). This poll is
+ * only the safety net for a missed event or a missing udevadm. It used to run
+ * every 3 s, and measured at ~0.65% of one core at rest (docs/code-state.md,
+ * "Idle CPU"), about 20 ms of CPU per scan.
+ */
+const SAFETY_SCAN_INTERVAL_MS = 60000;
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
@@ -149,9 +156,10 @@ async function attach(devicePath: string): Promise<void> {
 }
 
 /**
- * Poll for devices. node-hid has no portable hotplug event, and a 3 second
- * scan is cheap — it means unplugging a deck mid-game and plugging it back
- * in just works instead of needing a daemon restart.
+ * Reconcile open sessions with connected decks: close sessions for decks that
+ * are gone, attach decks that are new. Called on a hotplug event, on config
+ * reload, at startup, and by the safety-net poll — always through
+ * requestScan(), never directly.
  */
 async function scan(): Promise<void> {
   if (shuttingDown) return;
@@ -180,6 +188,31 @@ async function scan(): Promise<void> {
   }
 }
 
+let scanRunning = false;
+let scanQueued = false;
+
+/**
+ * Run scan(), never two at once. Scans now start from several places (a
+ * hotplug event can land during the safety-net poll or a reload), and two
+ * overlapping scans could both open the same new deck before either records
+ * its session. A request that arrives mid-scan runs one more scan afterwards.
+ */
+async function requestScan(): Promise<void> {
+  if (scanRunning) {
+    scanQueued = true;
+    return;
+  }
+  scanRunning = true;
+  try {
+    do {
+      scanQueued = false;
+      await scan();
+    } while (scanQueued);
+  } finally {
+    scanRunning = false;
+  }
+}
+
 async function reload(): Promise<void> {
   try {
     const next = await loadConfig();
@@ -198,7 +231,7 @@ async function reload(): Promise<void> {
       await session.reconfigure(deckDef, next.defaults ?? {});
     }
     // Picks up decks that were connected but previously unconfigured.
-    await scan();
+    await requestScan();
   } catch (err) {
     // Keep running on the last good config — a typo while editing should
     // not take your deck down mid-game.
@@ -257,12 +290,18 @@ async function main(): Promise<void> {
     sessions.forEach((s) => s.invalidateByType(['media.control', 'media.info'])),
   );
 
-  await scan();
-  const scanner = setInterval(() => void scan(), SCAN_INTERVAL_MS);
+  const stopHotplug = watchHotplug((action, devpath) => {
+    console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);
+    void requestScan();
+  });
+
+  await requestScan();
+  const scanner = setInterval(() => void requestScan(), SAFETY_SCAN_INTERVAL_MS);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       clearInterval(scanner);
+      stopHotplug();
       stopWatching();
       stopAudio();
       stopMpris();
