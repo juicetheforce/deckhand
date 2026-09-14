@@ -147,9 +147,14 @@ build_and_stage() {
     npm ci                    # dev dependencies too: TypeScript is needed to build
     npm run build:ts
     make -C helper
-    # Keep production dependencies only. They were installed on this machine,
+    # Keep production dependencies only. They are installed on this machine,
     # so the native modules (node-hid, sharp) match this machine's Node.
-    npm prune --omit=dev
+    # A fresh `npm ci --omit=dev` rather than `npm prune --omit=dev`: in npm
+    # 11.16, prune ignores package.json's allowScripts and prints an
+    # "install scripts not yet covered" notice for packages already reviewed
+    # there; ci honours it and prints nothing.
+    rm -rf node_modules
+    npm ci --omit=dev
     rm -rf src tsconfig.json helper/deckhand-input.c helper/Makefile
   )
 }
