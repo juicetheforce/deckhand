@@ -24,19 +24,16 @@ export const sink: ActionHandler = {
     ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
   },
 
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const match = String(params.match ?? '');
-    if (!match) return null;
-    try {
-      const current = await audio.getDefaultSink();
-      const found = await audio.findSink(match);
-      if (found && found.name === current) {
-        return { background: String(params.activeBackground ?? '#1d4d2b') };
-      }
-      return { background: String(params.inactiveBackground ?? '#101014') };
-    } catch {
-      return null;
+    const state = audio.cachedState();
+    if (!match || !state) return null;
+    const found = audio.findSinkIn(state.sinks, match);
+    if (found && found.name === state.defaultSink) {
+      return { background: String(params.activeBackground ?? '#1d4d2b') };
     }
+    return { background: String(params.inactiveBackground ?? '#101014') };
   },
 };
 
@@ -63,18 +60,15 @@ export const cycle: ActionHandler = {
     ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
   },
 
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     if (params.showCurrent === false) return null;
-    try {
-      const current = await audio.getDefaultSink();
-      const sinks = await audio.listSinks();
-      const active = sinks.find((s) => s.name === current);
-      if (!active) return null;
-      // First word of the description is usually the recognisable part.
-      return { label: String(params.label ?? active.description.split(' ')[0]) };
-    } catch {
-      return null;
-    }
+    const state = audio.cachedState();
+    if (!state) return null;
+    const active = state.sinks.find((s) => s.name === state.defaultSink);
+    if (!active) return null;
+    // First word of the description is usually the recognisable part.
+    return { label: String(params.label ?? active.description.split(' ')[0]) };
   },
 };
 
@@ -90,23 +84,21 @@ export const micMute: ActionHandler = {
     ctx.invalidateByType(['audio.micMute']);
   },
 
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    try {
-      const muted = await audio.getMicMuted();
-      const patch: DisplayPatch = {};
-      if (muted) {
-        if (params.iconMuted) patch.icon = String(params.iconMuted);
-        if (params.labelMuted) patch.label = String(params.labelMuted);
-        patch.background = String(params.mutedBackground ?? '#5a1d1d');
-      } else {
-        if (params.iconUnmuted) patch.icon = String(params.iconUnmuted);
-        if (params.labelUnmuted) patch.label = String(params.labelUnmuted);
-        patch.background = String(params.unmutedBackground ?? '#101014');
-      }
-      return patch;
-    } catch {
-      return null;
+    const state = audio.cachedState();
+    if (!state) return null;
+    const patch: DisplayPatch = {};
+    if (state.defaultSourceMuted) {
+      if (params.iconMuted) patch.icon = String(params.iconMuted);
+      if (params.labelMuted) patch.label = String(params.labelMuted);
+      patch.background = String(params.mutedBackground ?? '#5a1d1d');
+    } else {
+      if (params.iconUnmuted) patch.icon = String(params.iconUnmuted);
+      if (params.labelUnmuted) patch.label = String(params.labelUnmuted);
+      patch.background = String(params.unmutedBackground ?? '#101014');
     }
+    return patch;
   },
 };
 
@@ -122,9 +114,10 @@ export const volume: ActionHandler = {
     ctx.invalidateByType(['audio.volume']);
   },
 
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     if (params.showLevel === false) return null;
-    const level = await audio.getVolume();
+    const level = audio.cachedState()?.defaultSinkVolume ?? null;
     return level === null ? null : { label: `${level}%` };
   },
 };
