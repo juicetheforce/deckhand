@@ -24,5 +24,16 @@
   "devDependencies": {
     "@types/node": "^26.3.0",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "dbus-next": {
+      "xml2js": "^0.6.2",
+      "usocket": "^1.1.0"
+    }
+  },
+  "allowScripts": {
+    "@julusian/jpeg-turbo@3.0.1": true,
+    "node-hid@3.4.0": true,
+    "usocket": false
   }
 }
