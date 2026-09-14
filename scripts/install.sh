@@ -130,41 +130,88 @@ legacy_unit_present() {
 
 # --- install / update --------------------------------------------------------
 
-build_in_checkout() {
-  say "Building in $REPO_DIR"
-  # tsc never deletes output for source files that no longer exist, so start
-  # from an empty dist/ to keep stale files out of the install.
-  (cd "$REPO_DIR" && rm -rf dist && npm ci && npm run build:ts && make -C helper)
-}
-
-stage_app() {
-  say "Staging into $STAGE_DIR"
+build_and_stage() {
+  # Build in the staging directory, never in the checkout. The checkout may be
+  # what the running service uses (the old unit ran straight from its dist/),
+  # so building there would overwrite the very files a rollback relies on.
+  say "Building into $STAGE_DIR"
   rm -rf "$STAGE_DIR"
   mkdir -p "$STAGE_DIR/helper"
-  cp -r "$REPO_DIR/dist" "$STAGE_DIR/dist"
-  cp "$REPO_DIR/helper/deckhand-input" "$STAGE_DIR/helper/deckhand-input"
-  cp "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" "$REPO_DIR/README.md" "$STAGE_DIR/"
-  # Production dependencies only, installed here so the native modules
-  # (node-hid, sharp) match this machine's Node.
-  (cd "$STAGE_DIR" && npm ci --omit=dev)
+  cp -r "$REPO_DIR/src" "$STAGE_DIR/src"
+  cp "$REPO_DIR/tsconfig.json" "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" \
+     "$REPO_DIR/README.md" "$STAGE_DIR/"
+  cp "$REPO_DIR/helper/deckhand-input.c" "$REPO_DIR/helper/Makefile" "$STAGE_DIR/helper/"
+
+  (
+    cd "$STAGE_DIR"
+    npm ci                    # dev dependencies too: TypeScript is needed to build
+    npm run build:ts
+    make -C helper
+    # Keep production dependencies only. They were installed on this machine,
+    # so the native modules (node-hid, sharp) match this machine's Node.
+    npm prune --omit=dev
+    rm -rf src tsconfig.json helper/deckhand-input.c helper/Makefile
+  )
+}
+
+elgato_hidraw_nodes() {
+  # Prints /dev/hidrawN for every connected Elgato device (USB vendor 0fd9).
+  local dev
+  for dev in /sys/class/hidraw/hidraw*; do
+    [ -e "$dev" ] || continue
+    if grep -qi '^HID_ID=0003:00000FD9:' "$dev/device/uevent" 2>/dev/null; then
+      echo "/dev/$(basename "$dev")"
+    fi
+  done
+}
+
+retrigger_udev() {
+  # Re-apply rules to devices that are already present, so a rule change takes
+  # effect now rather than at the next replug or reboot. Reports failure
+  # instead of hiding it.
+  local targets=(/sys/class/misc/uinput) node output
+  for node in $(elgato_hidraw_nodes); do targets+=("/sys/class/hidraw/${node#/dev/}"); done
+  if output="$(sudo udevadm trigger --action=change --settle "${targets[@]}" 2>&1)"; then
+    say "udev re-applied to: ${targets[*]}"
+  else
+    warn "udevadm trigger failed — the rule may not apply until the devices are replugged:"
+    printf '%s\n' "$output" >&2
+  fi
+}
+
+report_device_access() {
+  # What actually matters: can this user open the devices? Other packages'
+  # rules can grant the same access, so this checks the result, not which rule
+  # produced it.
+  local node
+  if [ -w /dev/uinput ]; then say "access ok: /dev/uinput"; else warn "NO ACCESS: /dev/uinput — keystrokes cannot be injected"; fi
+  local found=no
+  for node in $(elgato_hidraw_nodes); do
+    found=yes
+    if [ -w "$node" ]; then say "access ok: $node (Stream Deck)"; else warn "NO ACCESS: $node (Stream Deck)"; fi
+  done
+  [ "$found" = yes ] || say "no Stream Deck connected, so deck access was not checked"
 }
 
 install_udev_rule() {
   if cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
     say "udev rule already up to date"
-    return
+  else
+    say "Installing udev rule to $UDEV_RULE_DST (needs sudo)"
+    sudo install -m 644 "$UDEV_RULE_SRC" "$UDEV_RULE_DST"
+    sudo udevadm control --reload
+    retrigger_udev
   fi
-  say "Installing udev rule to $UDEV_RULE_DST (needs sudo)"
-  sudo install -m 644 "$UDEV_RULE_SRC" "$UDEV_RULE_DST"
-  sudo udevadm control --reload
-  # Re-apply rules to devices that are already present.
-  sudo udevadm trigger --action=change /sys/class/misc/uinput /sys/class/hidraw/hidraw* 2>/dev/null || true
+  report_device_access
 }
 
 service_is_up() {
-  # Active, and has not restarted since it was started.
+  # $1 is the service's main PID right after it was started. Up means active,
+  # and still the same process: a crash plus automatic restart always gives a
+  # new PID. (NRestarts is not used — whether it survives a stop differs
+  # between systemd versions and unit states.)
   [ "$(systemctl --user is-active deckhand 2>/dev/null)" = active ] \
-    && [ "$(systemctl --user show deckhand -p NRestarts --value)" = 0 ]
+    && [ "$(systemctl --user show deckhand -p MainPID --value)" = "$1" ]
 }
 
 rollback() {
@@ -207,10 +254,9 @@ cmd_install() {
   local migrating_legacy=no
   if legacy_unit_present; then migrating_legacy=yes; fi
 
-  # Nothing below the build touches the running daemon until the swap, so a
-  # failed build or npm ci leaves everything as it was.
-  build_in_checkout
-  stage_app
+  # Nothing below touches the running daemon until the swap, so a failed build
+  # or npm ci leaves everything as it was.
+  build_and_stage
   install_udev_rule
 
   say "Stopping the running service"
@@ -230,13 +276,16 @@ cmd_install() {
   install -m 644 "$REPO_DIR/systemd/deckhand.service" "$UNIT_FILE"
 
   say "Starting the service"
-  local started_at
+  local started_at main_pid
   started_at="$(date +%s)"
   systemctl --user daemon-reload
+  systemctl --user reset-failed deckhand >/dev/null 2>&1 || true
   systemctl --user enable --now deckhand >/dev/null 2>&1 || rollback "$started_at"
+  main_pid="$(systemctl --user show deckhand -p MainPID --value)"
+  [ "$main_pid" != 0 ] || rollback "$started_at"
 
   sleep "$START_SETTLE_SECONDS"
-  service_is_up || rollback "$started_at"
+  service_is_up "$main_pid" || rollback "$started_at"
 
   rm -rf "$PREVIOUS_DIR" "$LEGACY_BACKUP"
   say "Installed. Service is running from $APP_DIR"
@@ -252,7 +301,12 @@ remove_udev_rule() {
   if sudo rm -f "$UDEV_RULE_DST" && sudo udevadm control --reload; then
     # Re-apply rules so the access this rule granted is withdrawn now, not
     # at the next reboot or replug.
-    sudo udevadm trigger --action=change /sys/class/misc/uinput /sys/class/hidraw/hidraw* 2>/dev/null || true
+    retrigger_udev
+    if [ -w /dev/uinput ]; then
+      warn "/dev/uinput is still writable by you after removing Deckhand's rule — another package's rule grants it (not Deckhand's to remove)."
+    else
+      say "/dev/uinput access withdrawn"
+    fi
   else
     warn "COULD NOT REMOVE THE UDEV RULE. It still grants uinput access to your user's processes."
     warn "Remove it with:  sudo rm $UDEV_RULE_DST && sudo udevadm control --reload"
