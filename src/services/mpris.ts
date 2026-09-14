@@ -36,6 +36,37 @@ function getBus(): dbus.MessageBus {
   return bus;
 }
 
+/**
+ * Proxy objects, kept between calls. dbus-next's getProxyObject() introspects
+ * the object over D-Bus and parses the reply XML every time it is called, and
+ * a now-playing key calls it three times per refresh. Measured 2026-09-14
+ * against a real player: 13.5–16.5 ms CPU per getTrackInfo() as-is, ~6 ms
+ * with proxies reused.
+ *
+ * A proxy talks to the bus *name*, so it keeps working if the same player
+ * restarts. An entry is forgotten when its name leaves the bus (see
+ * listPlayers) or when a call through it fails.
+ */
+const proxies = new Map<string, Promise<dbus.ProxyObject>>();
+
+function proxyFor(name: string, objectPath: string): Promise<dbus.ProxyObject> {
+  const key = `${name} ${objectPath}`;
+  let proxy = proxies.get(key);
+  if (!proxy) {
+    proxy = getBus().getProxyObject(name, objectPath);
+    // A failed introspection must not be cached.
+    proxy.catch(() => proxies.delete(key));
+    proxies.set(key, proxy);
+  }
+  return proxy;
+}
+
+function forgetProxies(name: string): void {
+  for (const key of proxies.keys()) {
+    if (key.startsWith(`${name} `)) proxies.delete(key);
+  }
+}
+
 /** dbus-next wraps everything in Variants; peel them off. */
 function unwrap(value: unknown): unknown {
   if (value && typeof value === 'object' && 'value' in (value as Record<string, unknown>)) {
@@ -45,22 +76,30 @@ function unwrap(value: unknown): unknown {
 }
 
 export async function listPlayers(): Promise<string[]> {
-  const obj = await getBus().getProxyObject('org.freedesktop.DBus', '/org/freedesktop/DBus');
+  const obj = await proxyFor('org.freedesktop.DBus', '/org/freedesktop/DBus');
   const iface = obj.getInterface('org.freedesktop.DBus') as unknown as {
     ListNames(): Promise<string[]>;
   };
   const names = await iface.ListNames();
-  return names.filter((n) => n.startsWith(MPRIS_PREFIX));
+  const players = names.filter((n) => n.startsWith(MPRIS_PREFIX));
+
+  // Drop proxies for players that have left the bus.
+  for (const key of proxies.keys()) {
+    const name = key.split(' ')[0];
+    if (name.startsWith(MPRIS_PREFIX) && !players.includes(name)) forgetProxies(name);
+  }
+  return players;
 }
 
 async function getStatus(name: string): Promise<string> {
   try {
-    const obj = await getBus().getProxyObject(name, OBJECT_PATH);
+    const obj = await proxyFor(name, OBJECT_PATH);
     const props = obj.getInterface(PROPS_IFACE) as unknown as {
       Get(iface: string, prop: string): Promise<unknown>;
     };
     return String(unwrap(await props.Get(PLAYER_IFACE, 'PlaybackStatus')));
   } catch {
+    forgetProxies(name);
     return 'Stopped';
   }
 }
@@ -125,7 +164,7 @@ export async function getTrackInfo(hint?: string): Promise<TrackInfo | null> {
   if (!name) return null;
 
   try {
-    const obj = await getBus().getProxyObject(name, OBJECT_PATH);
+    const obj = await proxyFor(name, OBJECT_PATH);
     const props = obj.getInterface(PROPS_IFACE) as unknown as {
       Get(iface: string, prop: string): Promise<unknown>;
     };
@@ -152,6 +191,7 @@ export async function getTrackInfo(hint?: string): Promise<TrackInfo | null> {
       artPath: artUrl ? await cacheArt(String(artUrl)) : undefined,
     };
   } catch (err) {
+    forgetProxies(name);
     console.error(`[mpris] failed to read ${name}: ${(err as Error).message}`);
     return null;
   }
@@ -163,15 +203,20 @@ export async function call(method: MediaMethod, hint?: string): Promise<void> {
   const name = await pickPlayer(hint);
   if (!name) throw new Error('no MPRIS player is running');
 
-  const obj = await getBus().getProxyObject(name, OBJECT_PATH);
-  const player = obj.getInterface(PLAYER_IFACE) as unknown as Record<
-    string,
-    () => Promise<void>
-  >;
-  const fn = player[method];
-  if (typeof fn !== 'function') throw new Error(`player does not support ${method}`);
-  await fn.call(player);
-  lastActive = name;
+  try {
+    const obj = await proxyFor(name, OBJECT_PATH);
+    const player = obj.getInterface(PLAYER_IFACE) as unknown as Record<
+      string,
+      () => Promise<void>
+    >;
+    const fn = player[method];
+    if (typeof fn !== 'function') throw new Error(`player does not support ${method}`);
+    await fn.call(player);
+    lastActive = name;
+  } catch (err) {
+    forgetProxies(name);
+    throw err;
+  }
 }
 
 /**
@@ -231,4 +276,6 @@ export function disconnect(): void {
     // ignore
   }
   bus = null;
+  // Proxies belong to the old connection.
+  proxies.clear();
 }
