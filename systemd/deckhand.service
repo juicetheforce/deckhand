@@ -1,14 +1,16 @@
 [Unit]
 Description=deckhand Stream Deck daemon
-Documentation=file://%h/src/deckhand/README.md
+Documentation=file://%D/deckhand/README.md
 After=graphical-session.target pipewire.service
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-# Edit this path to wherever you cloned the repo.
-WorkingDirectory=%h/src/deckhand
-ExecStart=/usr/bin/node %h/src/deckhand/dist/index.js
+# Installed layout: the install script puts the app in $XDG_DATA_HOME/deckhand
+# (~/.local/share/deckhand by default) and this file in
+# $XDG_DATA_HOME/systemd/user. %D is $XDG_DATA_HOME for user units, so nothing
+# here names a home directory or a checkout.
+ExecStart=/usr/bin/node %D/deckhand/dist/index.js
 Restart=on-failure
 RestartSec=3
 

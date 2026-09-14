@@ -2,6 +2,28 @@ import * as audio from '../services/audio.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 /**
+ * Check that a switch actually took. The audio server can refuse to make a
+ * sink the default without reporting an error — observed with a headphone
+ * jack whose port was "not available" because nothing was plugged in. Without
+ * this check the action logged "audio output -> Headphones" while the speaker
+ * stayed default: a button that appears to work while doing nothing.
+ *
+ * setDefaultSink() re-reads the cache before returning, so the cache holds the
+ * default as the server has it now. On a mismatch this throws, and runAction
+ * logs it as a failure. The key face needs nothing extra: it reads the same
+ * cache, so it already shows the real default.
+ */
+function confirmDefaultIs(requested: audio.Sink): void {
+  const state = audio.cachedState();
+  if (state && state.defaultSink === requested.name) return;
+  const actual = state?.sinks.find((s) => s.name === state.defaultSink);
+  const actualName = actual?.description ?? state?.defaultSink ?? 'unknown';
+  throw new Error(
+    `switch to "${requested.description}" did not take effect; default output is still "${actualName}"`,
+  );
+}
+
+/**
  * audio.sink — switch the default output to the first sink matching a
  * substring, and drag playing streams along with it.
  *
@@ -20,6 +42,7 @@ export const sink: ActionHandler = {
     if (!found) throw new Error(`no audio output matching "${match}"`);
 
     await audio.setDefaultSink(found.name, params.moveStreams !== false);
+    confirmDefaultIs(found);
     ctx.log(`audio output -> ${found.description}`);
     ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
   },
@@ -56,6 +79,7 @@ export const cycle: ActionHandler = {
     const next = available[(idx + 1) % available.length];
 
     await audio.setDefaultSink(next.name, params.moveStreams !== false);
+    confirmDefaultIs(next);
     ctx.log(`audio output -> ${next.description}`);
     ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
   },
