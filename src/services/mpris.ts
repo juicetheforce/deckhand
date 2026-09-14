@@ -148,13 +148,20 @@ async function cacheArt(url: string): Promise<string | undefined> {
   } catch {
     // not cached yet
   }
+  // Write to a temporary file, then rename it into place. Rename is atomic, so
+  // anyone reading `dest` sees no file or the whole image, never a partly
+  // written one. (Writing `dest` directly let a concurrent fetch or render read
+  // an empty file: "Input Buffer is empty".)
+  const temp = `${dest}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     await fs.mkdir(ART_CACHE_DIR, { recursive: true });
     const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return undefined;
-    await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
+    await fs.writeFile(temp, Buffer.from(await res.arrayBuffer()));
+    await fs.rename(temp, dest);
     return dest;
   } catch {
+    await fs.rm(temp, { force: true }).catch(() => undefined);
     return undefined;
   }
 }
