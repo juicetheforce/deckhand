@@ -1,9 +1,16 @@
 /** The scheme main serves icon files on (src/main/icon-protocol.ts). Import-free: the renderer uses it. */
 export const ICON_SCHEME = 'deckhand-icon';
 
-/** The URL the renderer uses to show an icon path from the config. */
-export function iconUrl(configPath: string): string {
-  return `${ICON_SCHEME}://icon/?path=${encodeURIComponent(configPath)}`;
+/**
+  * The URL the renderer uses to show an icon path from the config.
+  *
+  * `stamp` (src/main/icon-files.ts: modification time and size, or "missing")
+  * makes a changed file a different URL. Without it Chromium keeps showing
+  * the image it loaded first, however the file changes on disk.
+  */
+export function iconUrl(configPath: string, stamp?: string): string {
+  const version = stamp === undefined ? '' : `&v=${encodeURIComponent(stamp)}`;
+  return `${ICON_SCHEME}://icon/?path=${encodeURIComponent(configPath)}${version}`;
 }
 
 /**

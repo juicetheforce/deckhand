@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
 import { isShownIcon } from '../shared/icons.js';
 import { toConfigPath } from './config-document.js';
+import { stamp } from './icon-files.js';
 
 /**
  * The file side of the icon picker (docs/scope.md §10): list a folder, search
@@ -55,7 +56,7 @@ export async function listFolder(folder: string, homeDir: string): Promise<IconF
       }
     }
     if (isDirectory) folders.push(entry(folder, d.name, homeDir));
-    else if (isFile && isShownIcon(d.name)) images.push(entry(folder, d.name, homeDir));
+    else if (isFile && isShownIcon(d.name)) images.push({ ...entry(folder, d.name, homeDir), stamp: await stamp(path.join(folder, d.name)) });
   }
   folders.sort((a, b) => compareNames(a.name, b.name));
   images.sort((a, b) => compareNames(a.name, b.name));

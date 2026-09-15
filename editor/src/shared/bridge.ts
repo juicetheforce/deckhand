@@ -60,6 +60,8 @@ export interface IconFolderEntry {
   path: string;
   /** As the config would store it: ~/... under the home directory. */
   configPath: string;
+  /** Images only: the file's stamp, for the icon URL (src/main/icon-files.ts). */
+  stamp?: string;
 }
 
 export interface IconFolderListing {
@@ -111,6 +113,14 @@ export interface DeckhandBridge {
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
+
+  /**
+   * Watch exactly these icon paths (as the config stores them) and return
+   * their stamps now; onIconStamps reports later changes. The renderer puts a
+   * stamp in the icon URL so a file changed on disk is fetched again.
+   */
+  watchIconFiles(configPaths: string[]): Promise<Record<string, string>>;
+  onIconStamps(callback: (stamps: Record<string, string>) => void): () => void;
 
   /** The icon picker's opening folder: the current icon's folder, a recent one, Pictures, or home. */
   iconStartFolder(currentIcon: string | null): Promise<string>;

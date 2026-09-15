@@ -22,7 +22,8 @@ import {
   searchFolder,
   startFolder,
 } from '../src/main/icon-browser.js';
-import { ICON_CONTENT_TYPES, isShownIcon } from '../src/shared/icons.js';
+import { IconFiles, stamp } from '../src/main/icon-files.js';
+import { ICON_CONTENT_TYPES, iconUrl, isShownIcon } from '../src/shared/icons.js';
 import { folderCrumbs, moveCursor, parentFolder } from '../src/renderer/picker-model.js';
 
 let failures = 0;
@@ -213,6 +214,61 @@ await check('watcher: a burst of changes in the open folder is reported once; an
   await fs.writeFile(path.join(job10, 'y.png'), 'x');
   await sleep(400);
   assert.deepEqual(seen, [job2, job10], 'closed: nothing more');
+});
+
+await check('icon stamps: a file, a missing file, and ~ expanded', async () => {
+  const file = path.join(icons, 'fishing.png');
+  const first = await stamp(file);
+  assert.match(first, /^\d+-\d+$/);
+  assert.equal(await stamp(path.join(icons, 'no-such.png')), 'missing');
+  await fs.writeFile(file, 'changed, so bigger');
+  assert.notEqual(await stamp(file), first);
+  const realHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    assert.equal(await stamp('~/Pictures/icons/fishing.png'), await stamp(file));
+  } finally {
+    if (realHome === undefined) delete process.env.HOME;
+    else process.env.HOME = realHome;
+  }
+  assert.equal(iconUrl('~/a b.png', '12-34'), 'deckhand-icon://icon/?path=~%2Fa%20b.png&v=12-34');
+  assert.equal(iconUrl('~/a b.png'), 'deckhand-icon://icon/?path=~%2Fa%20b.png');
+});
+
+await check('icon files: a watched icon renamed away, put back, or replaced is reported; unrelated writes are not', async () => {
+  const reports: Array<Record<string, string>> = [];
+  const files = new IconFiles((stamps) => reports.push(stamps));
+  const watched = path.join(icons, 'Job 2', 'two.png');
+  const other = path.join(icons, 'Job 10', 'ten.png');
+  const initial = await files.watchFiles([watched, other]);
+  assert.equal(Object.keys(initial).length, 2);
+  assert.match(initial[watched], /^\d+-\d+$/);
+
+  await fs.rename(watched, watched + '.away');
+  await sleep(500);
+  assert.equal(reports.at(-1)?.[watched], 'missing', 'renaming it away was not reported');
+  assert.equal(reports.at(-1)?.[other], initial[other], 'the untouched icon kept its stamp');
+
+  await fs.rename(watched + '.away', watched);
+  await sleep(500);
+  assert.match(String(reports.at(-1)?.[watched]), /^\d+-\d+$/, 'putting it back was not reported');
+
+  const before = reports.length;
+  await fs.writeFile(path.join(icons, 'Job 2', 'not-an-icon-of-ours.png'), 'x');
+  await sleep(500);
+  assert.equal(reports.length, before, 'a write to a file no key uses must not be reported');
+
+  // Watching a different set drops the old folder.
+  await files.watchFiles([other]);
+  const afterSwitch = reports.length;
+  await fs.writeFile(watched, 'changed again');
+  await sleep(500);
+  assert.equal(reports.length, afterSwitch, 'the folder of an icon no longer shown is no longer watched');
+
+  files.close();
+  await fs.writeFile(other, 'changed');
+  await sleep(400);
+  assert.equal(reports.length, afterSwitch, 'closed: nothing more');
 });
 
 await check('names sort case-insensitively with numbers in order', () => {

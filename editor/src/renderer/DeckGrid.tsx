@@ -9,6 +9,8 @@ interface Props {
   config: Config;
   geometry: DeckGeometryWithSerial;
   page: PageDef;
+  /** Icon path → its file's stamp (src/main/icon-files.ts), so a changed file is fetched again. */
+  iconStamps: Record<string, string>;
   selectedKey: number | null;
   onSelectKey: (index: number) => void;
 }
@@ -18,7 +20,7 @@ interface Props {
  * and column the deck reports, never an assumed row-major order (scope §7,
  * "decks"). Key faces are a CSS approximation; the deck is the truth (§10).
  */
-export function DeckGrid({ config, geometry, page, selectedKey, onSelectKey }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, selectedKey, onSelectKey }: Props) {
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -38,6 +40,7 @@ export function DeckGrid({ config, geometry, page, selectedKey, onSelectKey }: P
           hasScreen={k.feedback === 'lcd'}
           iconSize={geometry.iconSize}
           button={page.buttons[String(k.index)]}
+          iconStamps={iconStamps}
           selected={selectedKey === k.index}
           onSelect={() => onSelectKey(k.index)}
         />
@@ -54,16 +57,20 @@ interface KeyProps {
   hasScreen: boolean;
   iconSize: number | null;
   button: ButtonDef | undefined;
+  iconStamps: Record<string, string>;
   selected: boolean;
   onSelect: () => void;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, selected, onSelect }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onSelect }: KeyProps) {
   const kind = keyKind(button);
   const face = keyFace(config, button, iconSize);
-  // Which icon path failed to load, so a changed path is tried again.
+  const stamp = face.icon === null ? undefined : iconStamps[face.icon];
+  // Which icon failed to load, by path and stamp, so a changed path — or the
+  // same path whose file changed — is tried again.
   const [missingIcon, setMissingIcon] = useState<string | null>(null);
-  const iconMissing = face.icon !== null && missingIcon === face.icon;
+  const iconId = face.icon === null ? null : `${face.icon}|${stamp ?? ''}`;
+  const iconMissing = iconId !== null && missingIcon === iconId;
   const classes = ['key', `key-${kind}`, selected ? 'key-selected' : '', hasScreen ? '' : 'key-no-screen'].filter(Boolean).join(' ');
   const title = kind === 'empty' ? `Key ${index + 1}: empty` : `Key ${index + 1}: ${describeAction(button)}`;
 
@@ -79,11 +86,11 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, selected
       {face.icon && !iconMissing && (
         <img
           className="key-icon"
-          src={iconUrl(face.icon)}
+          src={iconUrl(face.icon, stamp)}
           alt=""
           style={{ objectFit: face.iconFit }}
           draggable={false}
-          onError={() => setMissingIcon(face.icon)}
+          onError={() => setMissingIcon(iconId)}
         />
       )}
       {iconMissing && (

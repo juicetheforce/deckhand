@@ -111,6 +111,23 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   const page = layout?.pages[selection.page];
   const geometry = geometryFor(daemon, selection.serial);
 
+  // Icon files on this page are watched while it is shown, so a file renamed
+  // away or put back reaches the grid (the maintainer, 2026-09-15). The stamp goes in
+  // the icon URL; without it Chromium keeps the image it loaded first.
+  const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
+  const pageIcons = page ? [...new Set(Object.values(page.buttons).map((b) => b.icon).filter((i): i is string => typeof i === 'string'))] : [];
+  const iconsKey = pageIcons.join('\u0000');
+  useEffect(() => {
+    let alive = true;
+    void window.deckhand.watchIconFiles(pageIcons).then((stamps) => alive && setIconStamps(stamps));
+    const stop = window.deckhand.onIconStamps((stamps) => alive && setIconStamps(stamps));
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [iconsKey]);
+
+
   const addPage = async (name: string): Promise<AddPageResult> => {
     const result = await window.deckhand.apply({ kind: 'addPage', profile: selection.profile, serial: selection.serial, name });
     return result.ok ? { ok: true, page: result.result.pageId! } : { ok: false, error: result.error };
@@ -142,6 +159,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
                 config={config}
                 geometry={geometry}
                 page={page}
+                iconStamps={iconStamps}
                 selectedKey={selection.key}
                 onSelectKey={(key) => setSelection((s) => ({ ...s, key }))}
               />

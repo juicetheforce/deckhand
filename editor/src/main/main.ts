@@ -16,6 +16,7 @@ import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { existingFolders, FolderWatcher, listFolder, RecentFolders, searchFolder, startFolder } from './icon-browser.js';
+import { IconFiles } from './icon-files.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
 
@@ -119,6 +120,7 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
 
 const recentFolders = new RecentFolders(path.join(app.getPath('userData'), 'icon-picker.json'));
 const folderWatcher = new FolderWatcher((folder) => window?.webContents.send('iconFolderChanged', folder));
+const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps', stamps));
 /** Bumped by every search; a walk still running for an older number stops. */
 let searchGeneration = 0;
 
@@ -205,6 +207,10 @@ function registerIpc(): void {
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
+  ipcMain.handle('watchIconFiles', (event, configPaths: unknown) => {
+    if (!fromOurWindow(event) || !Array.isArray(configPaths) || configPaths.some((p) => typeof p !== 'string')) return {};
+    return iconFiles.watchFiles(configPaths as string[]);
+  });
   ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown) => {
     if (!fromOurWindow(event)) return os.homedir();
     const icon = typeof currentIcon === 'string' && currentIcon !== '' ? expandPath(currentIcon) : null;

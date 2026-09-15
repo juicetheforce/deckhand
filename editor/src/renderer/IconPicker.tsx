@@ -279,7 +279,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
               ) : (
                 <img
                   className="picker-thumb"
-                  src={broken.has(entry.path) ? missingIconUrl : iconUrl(entry.path)}
+                  src={broken.has(entry.path) ? missingIconUrl : iconUrl(entry.path, entry.stamp)}
                   alt=""
                   loading="lazy"
                   decoding="async"

@@ -556,7 +556,26 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((b) => b.textContent === 'Main')!.click();
   await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
 
-  // 16. Remove icon removes only the icon.
+  // 16. A key's icon file renamed away, then back, reaches the grid with no
+  // navigation at all (the maintainer saw the stale icon on the real decks). The script
+  // renames when it sees a preview on key 30 (away) and key 29 (back).
+  const keyIcon = () => document.querySelectorAll('.key')[1]?.querySelector<HTMLImageElement>('img');
+  const iconIsMissing = () => keyIcon()?.src.includes('missing') === true && keyIcon()?.classList.contains('key-icon-missing') === true;
+  await selectKey(1);
+  if (!document.querySelector('.picker')) await click('Icon');
+  await until(() => button('Remove icon')?.disabled === false);
+  await clickItem('back ground.png');
+  await click('Use this icon');
+  await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
+  out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
+  await api.previewSet(serial, 30, { label: 'RENAME-AWAY' });
+  out.renameAwayShowsMissing = await until(() => iconIsMissing(), 10_000);
+  await api.previewClear(serial, 30);
+  await api.previewSet(serial, 29, { label: 'RENAME-BACK' });
+  out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
+  await api.previewClear(serial, 29);
+
+  // 17. Remove icon removes only the icon.
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
   await click('Remove icon');

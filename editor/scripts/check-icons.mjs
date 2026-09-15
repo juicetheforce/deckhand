@@ -111,6 +111,21 @@ session.setPreview = (index, button) => {
   return setPreview(index, button);
 };
 
+// Handshakes: a preview on key 30 renames the key's icon away, on key 29 puts it back.
+const AWAY = path.join(icons, 'back ground.png');
+let renamedAway = false;
+let renamedBack = false;
+const renameTimer = setInterval(async () => {
+  const previews = daemon.sessions.get(SERIAL)?.previewKeys() ?? [];
+  if (!renamedAway && previews.includes(30)) {
+    renamedAway = true;
+    await fs.rename(AWAY, AWAY + '.moved');
+  } else if (renamedAway && !renamedBack && previews.includes(29)) {
+    renamedBack = true;
+    await fs.rename(AWAY + '.moved', AWAY);
+  }
+}, 50);
+
 // The watcher handshake: a preview on key 31 means "add a file to the open folder now".
 let wroteNewFile = false;
 const signalTimer = setInterval(async () => {
@@ -121,6 +136,7 @@ const signalTimer = setInterval(async () => {
 
 const output = await runElectronCheck('icons', { configDir, stateDir, socket: daemon.socket }, 120_000, { HOME: home });
 clearInterval(signalTimer);
+clearInterval(renameTimer);
 // The editor may quit as soon as the daemon has announced the last reload,
 // before the harness has applied it to the deck (as src/index.ts orders it).
 // Let the reload of the final saved file finish before looking at the deck.
@@ -174,6 +190,10 @@ if (r && !r.error) {
     assert.ok(previewRequests.includes(0), 'no preview on key 0 ever reached the daemon, so its clearing proves nothing');
     assert.equal(r.keyTabShowsPath, '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png');
   });
+  check("a key's icon file renamed away, and put back, reaches the grid with no navigation", () => {
+    assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
+    assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
+  });
   check('Remove icon removes only the icon', () => assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]));
   check('with the deck connected there is no "not connected" note', () => assert.equal(r.notConnectedNoteShown, false));
 }
@@ -189,7 +209,7 @@ const recentFile = path.join(stateDir, 'editor', 'icon-picker.json');
 const recent = JSON.parse(await fs.readFile(recentFile, 'utf8').catch(() => '{}'));
 const configEntries = (await fs.readdir(configDir)).sort();
 check('recent folders are kept in the editor state directory, newest first', () => {
-  assert.deepEqual(recent.recentFolders, [path.join(icons, 'FFXIV/WOLF'), path.join(icons, 'FFXIV/BEAR')]);
+  assert.deepEqual(recent.recentFolders, [icons, path.join(icons, 'FFXIV/WOLF'), path.join(icons, 'FFXIV/BEAR')]);
 });
 check('nothing but config.json in the config directory', () => assert.deepEqual(configEntries, ['config.json']));
 check('no preview is left on the deck, and key 1 shows no icon, like key 0', () => {
