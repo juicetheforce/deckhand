@@ -7,7 +7,7 @@
  */
 import type { DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config } from '../../../src/types.js';
-import type { ApplyResult, Edit } from './edits.js';
+import type { ApplyResult, ButtonLocation, Edit } from './edits.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 export interface Conflict {
@@ -53,6 +53,36 @@ export interface SystemShortcut {
   componentId: string;
 }
 
+/** A folder or image in the icon picker (src/main/icon-browser.ts). */
+export interface IconFolderEntry {
+  name: string;
+  /** Absolute path. */
+  path: string;
+  /** As the config would store it: ~/... under the home directory. */
+  configPath: string;
+}
+
+export interface IconFolderListing {
+  path: string;
+  configPath: string;
+  /** null at the file system root. */
+  parent: string | null;
+  folders: IconFolderEntry[];
+  images: IconFolderEntry[];
+}
+
+export interface IconSearchMatch extends IconFolderEntry {
+  /** Where the match lives, relative to the searched folder; "" for the folder itself. */
+  folder: string;
+}
+
+export type IconFolderResult = { ok: true; listing: IconFolderListing } | { ok: false; error: string };
+export type IconSearchResult =
+  | { ok: true; matches: IconSearchMatch[]; truncated: boolean }
+  | { ok: false; error: string }
+  /** A newer search replaced this one before it finished. */
+  | { ok: false; superseded: true };
+
 export interface EditorSnapshot {
   store: StoreView;
   daemon: DaemonView;
@@ -81,6 +111,25 @@ export interface DeckhandBridge {
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
+
+  /** The icon picker's opening folder: the current icon's folder, a recent one, Pictures, or home. */
+  iconStartFolder(currentIcon: string | null): Promise<string>;
+  /** List a folder, and watch it: onIconFolderChanged reports changes until another folder is listed or stopIconWatch. */
+  listIconFolder(folder: string): Promise<IconFolderResult>;
+  stopIconWatch(): Promise<void>;
+  /** Images below a folder whose name contains the query. A newer call supersedes an unfinished one. */
+  searchIcons(folder: string, query: string): Promise<IconSearchResult>;
+  /** The system folder dialog; null if cancelled. */
+  chooseIconFolder(current: string | null): Promise<string | null>;
+  /** Folders icons were recently chosen from, newest first, that still exist. */
+  recentIconFolders(): Promise<IconFolderEntry[]>;
+  /**
+   * Set (or with null remove) a key's icon, save, and once the daemon has
+   * reloaded, clear the preview on that key — so the key shows the saved icon
+   * and responds to presses again. Remembers the icon's folder as recent.
+   */
+  commitIcon(at: ButtonLocation, icon: string | null, preview: { serial: string; key: number } | null): Promise<ApplyResult>;
+  onIconFolderChanged(callback: (folder: string) => void): () => void;
   /** Called on every store change; returns a function that stops the calls. */
   onStore(callback: (view: StoreView) => void): () => void;
   /** Called on every daemon view change; returns a function that stops the calls. */

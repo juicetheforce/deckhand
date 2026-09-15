@@ -11,7 +11,7 @@
     "start": "npm run build:ts && node dist/index.js",
     "decks": "npm run build:ts && node dist/index.js --list",
     "typecheck": "tsc --noEmit",
-    "smoke": "npm run build:ts && node scripts/smoke.mjs && node scripts/smoke-socket.mjs && node scripts/smoke-backups.mjs"
+    "smoke": "npm run build:ts && node scripts/smoke.mjs && node scripts/smoke-socket.mjs && node scripts/smoke-backups.mjs && node scripts/smoke-icons.mjs"
   },
   "engines": {
     "node": ">=20"

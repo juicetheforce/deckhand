@@ -12,5 +12,8 @@ export default defineConfig({
   build: {
     outDir: path.join(import.meta.dirname, 'dist/renderer'),
     emptyOutDir: true,
+    // Imported assets (the built-in icons in ../assets/icons) as files, never
+    // inlined as data: URLs, which the page's CSP (img-src 'self') refuses.
+    assetsInlineLimit: 0,
   },
 });

@@ -15,6 +15,7 @@
     "check:bridge": "npm run build && node scripts/check-bridge.mjs",
     "check:live": "npm run build && node scripts/check-live.mjs",
     "check:hotkey": "npm run build && node scripts/check-hotkey.mjs",
+    "check:icons": "npm run build && node scripts/check-icons.mjs",
     "test": "node scripts/run-tests.mjs"
   },
   "engines": {

@@ -1,19 +1,21 @@
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
 // The daemon's own modules, imported rather than copied (docs/scope.md §7, M4
 // phase A proof 0a). Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
 import { STATE_DIR } from '../../../src/backups.js';
-import { CONFIG_PATH, loadConfig } from '../../../src/config.js';
+import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, EditorSnapshot, StoreView } from '../shared/bridge.js';
-import type { Edit } from '../shared/edits.js';
+import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
+import type { ApplyResult, ButtonLocation, Edit } from '../shared/edits.js';
 import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
+import { existingFolders, FolderWatcher, listFolder, RecentFolders, searchFolder, startFolder } from './icon-browser.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
 
@@ -113,6 +115,60 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
   }
 }
 
+// --- Icon picker (scope §10) -------------------------------------------------
+
+const recentFolders = new RecentFolders(path.join(app.getPath('userData'), 'icon-picker.json'));
+const folderWatcher = new FolderWatcher((folder) => window?.webContents.send('iconFolderChanged', folder));
+/** Bumped by every search; a walk still running for an older number stops. */
+let searchGeneration = 0;
+
+async function listIconFolder(folder: string): Promise<IconFolderResult> {
+  try {
+    const listing = await listFolder(folder, os.homedir());
+    folderWatcher.watch(folder);
+    return { ok: true, listing };
+  } catch (err) {
+    folderWatcher.close();
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function searchIcons(folder: string, query: string): Promise<IconSearchResult> {
+  const mine = ++searchGeneration;
+  try {
+    const outcome = await searchFolder(folder, query, os.homedir(), () => mine === searchGeneration);
+    if (outcome.cancelled || mine !== searchGeneration) return { ok: false, superseded: true };
+    return { ok: true, matches: outcome.matches, truncated: outcome.truncated };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Choosing (or removing) an icon. The preview on the key is cleared only
+ * after the daemon has reloaded the saved file, so the key goes straight from
+ * the preview to the saved icon — and presses work again, since a previewed
+ * key is inert (scope §7, M3 decision 3). `[inference]` The daemon reports a
+ * reload in the same turn it gives the first deck its new layout; a key on a
+ * second deck can show its old icon for a moment, until that deck repaints.
+ */
+async function commitIcon(at: ButtonLocation, icon: string | null, preview: { serial: string; key: number } | null): Promise<ApplyResult> {
+  if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
+  const result = store.apply({ kind: 'setIcon', at, icon });
+  if (!result.ok) return result;
+  const before = daemon.lastReloadAt();
+  const wrote = await store.flush();
+  if (wrote && daemon.view().connected) await daemon.waitForReloadAfter(before, 5000);
+  if (preview) await daemonCall(() => daemon.previewClear(preview.serial, preview.key));
+  if (icon) await recentFolders.remember(path.dirname(expandPath(icon))).catch(() => undefined);
+  return result;
+}
+
+function isLocation(value: unknown): value is ButtonLocation {
+  const v = value as ButtonLocation;
+  return typeof v === 'object' && v !== null && typeof v.profile === 'string' && typeof v.serial === 'string' && typeof v.page === 'string' && Number.isInteger(v.index);
+}
+
 /** Only this window's own page may call in. */
 function fromOurWindow(event: IpcMainInvokeEvent): boolean {
   return window !== null && event.sender === window.webContents;
@@ -149,6 +205,38 @@ function registerIpc(): void {
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
+  ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown) => {
+    if (!fromOurWindow(event)) return os.homedir();
+    const icon = typeof currentIcon === 'string' && currentIcon !== '' ? expandPath(currentIcon) : null;
+    return startFolder(icon, await recentFolders.list(), [app.getPath('pictures'), os.homedir()]);
+  });
+  ipcMain.handle('listIconFolder', (event, folder: unknown) =>
+    fromOurWindow(event) && typeof folder === 'string' ? listIconFolder(folder) : { ok: false, error: 'not allowed' },
+  );
+  ipcMain.handle('stopIconWatch', (event) => {
+    if (fromOurWindow(event)) folderWatcher.close();
+  });
+  ipcMain.handle('searchIcons', (event, folder: unknown, query: unknown) =>
+    fromOurWindow(event) && typeof folder === 'string' && typeof query === 'string' && query.length < 200
+      ? searchIcons(folder, query)
+      : { ok: false, error: 'not allowed' },
+  );
+  ipcMain.handle('chooseIconFolder', async (event, current: unknown) => {
+    if (!fromOurWindow(event) || !window) return null;
+    const picked = await dialog.showOpenDialog(window, {
+      title: 'Choose an icon folder',
+      properties: ['openDirectory'],
+      defaultPath: typeof current === 'string' ? current : undefined,
+    });
+    return picked.canceled ? null : (picked.filePaths[0] ?? null);
+  });
+  ipcMain.handle('recentIconFolders', async (event) => (fromOurWindow(event) ? existingFolders(await recentFolders.list(), os.homedir()) : []));
+  ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown) => {
+    if (!fromOurWindow(event) || !isLocation(at) || !(icon === null || typeof icon === 'string')) return { ok: false, error: 'not allowed' };
+    const p = preview as { serial?: unknown; key?: unknown } | null;
+    const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
+    return commitIcon(at, icon, target);
+  });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;
     finishCheck(report).catch((err) => {
@@ -232,6 +320,7 @@ function createWindow(): void {
   if (CHECK) query.check = CHECK;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_KEY) query.selectKey = process.env.DECKHAND_EDITOR_SELECT_KEY;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_DECK) query.selectDeck = process.env.DECKHAND_EDITOR_SELECT_DECK;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_TAB) query.selectTab = process.env.DECKHAND_EDITOR_SELECT_TAB;
   void window.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query });
 }
 

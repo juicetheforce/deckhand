@@ -12,11 +12,14 @@ const editorRoot = path.join(import.meta.dirname, '..', '..');
 /**
  * @param {string} check  "shared" or "bridge"
  * @param {{ configDir: string, stateDir: string, socket: string }} paths
+ * @param {number} [timeoutMs]
+ * @param {Record<string, string>} [extraEnv]  more environment for Electron (check-icons sets HOME)
  * @returns {Promise<{ code: number | null, stdout: string, stderr: string, report: any }>}
  */
-export async function runElectronCheck(check, { configDir, stateDir, socket }, timeoutMs = 30_000) {
+export async function runElectronCheck(check, { configDir, stateDir, socket }, timeoutMs = 30_000, extraEnv = {}) {
   const env = {
     ...process.env,
+    ...extraEnv,
     DECKHAND_EDITOR_CHECK: check,
     DECKHAND_CONFIG_DIR: configDir,
     DECKHAND_STATE_DIR: stateDir,

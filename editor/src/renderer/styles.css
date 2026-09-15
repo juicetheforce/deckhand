@@ -208,7 +208,8 @@ button:disabled {
 
 .panes {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr) 300px;
+  /* The inspector is wider than the library: the icon picker's thumbnails live there. */
+  grid-template-columns: 230px minmax(0, 1fr) 340px;
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -405,10 +406,9 @@ button:disabled {
   font-weight: 700;
 }
 
-/* After .key-mark, so it wins at equal specificity. */
-.key-mark-missing {
-  background: rgba(232, 90, 110, 0.92);
-  color: #fff;
+/* The built-in missing icon, as the deck draws it: fitted, never cropped. */
+.key-icon-missing {
+  object-fit: contain;
 }
 
 /* Inspector */
@@ -633,4 +633,174 @@ button:disabled {
 .cannot-open h1 {
   margin-top: 0;
   font-size: 18px;
+}
+
+/* Inspector tabs */
+
+.inspector-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.inspector-tab {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.inspector-tab-selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Icon picker (scope §10) */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.picker-recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11.5px;
+}
+
+.chip-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.picker-crumb {
+  background: transparent;
+  border: 0;
+  padding: 2px 3px;
+  border-radius: 5px;
+  color: var(--text);
+}
+
+.picker-crumb:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.picker-crumb:disabled {
+  font-weight: 600;
+  opacity: 1;
+}
+
+.picker-change {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+}
+
+.picker-status {
+  margin: 0;
+}
+
+/* Stays in view while a long folder scrolls the inspector. */
+.picker-actions {
+  margin-top: 0;
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  padding: 8px 0;
+  background: #14152a;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+  outline: none;
+}
+
+.picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.picker-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.picker-item-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The key's saved icon. */
+.picker-item-current {
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+
+.picker-item-refused {
+  opacity: 0.45;
+}
+
+.picker-thumb,
+.picker-folder-glyph {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #101014;
+}
+
+.picker-folder-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+  font-size: 22px;
+  background: rgba(232, 180, 90, 0.08);
+}
+
+.picker-name,
+.picker-where {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+}
+
+.picker-where {
+  color: var(--text-muted);
+  text-decoration: underline dotted;
+  cursor: pointer;
 }

@@ -129,6 +129,13 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   }
   const selectIndex = new URLSearchParams(window.location.search).get('selectKey');
   if (selectIndex !== null) (document.querySelectorAll<HTMLButtonElement>('.key')[Number(selectIndex)])?.click();
+  if (new URLSearchParams(window.location.search).get('selectTab') === 'icon') {
+    await new Promise((r) => setTimeout(r, 200));
+    [...document.querySelectorAll<HTMLButtonElement>('.inspector-tab')].find((b) => b.textContent === 'Icon')?.click();
+    const opened = Date.now();
+    while (document.querySelectorAll('.picker-item').length === 0 && Date.now() - opened < 5000) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 500));
+  }
   const images = [...document.querySelectorAll<HTMLImageElement>('img')];
   const settled = (img: HTMLImageElement) =>
     new Promise<void>((resolve) => {
@@ -136,7 +143,15 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
       img.addEventListener('load', () => resolve(), { once: true });
       img.addEventListener('error', () => resolve(), { once: true });
     });
-  await Promise.all(images.map(settled));
+  // Lazy-loaded thumbnails below the fold never load, so waiting for every image would hang (seen with the icon picker); wait at most 5 s.
+  // Only images inside the window are waited for: lazy thumbnails below the fold never load.
+  const inView = images.filter((img) => {
+    const rect = img.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+  });
+  const settleStarted = performance.now();
+  await Promise.race([Promise.all(inView.map(settled)), new Promise((r) => setTimeout(r, 5000))]);
+  const settleMs = Math.round(performance.now() - settleStarted);
   await new Promise((r) => setTimeout(r, 300));
   return {
     selectKeyParam: selectIndex,
@@ -145,6 +160,11 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     keys: document.querySelectorAll('.key').length,
     kinds: Object.fromEntries(['empty', 'unbound', 'hotkey', 'other'].map((k) => [k, document.querySelectorAll(`.key-${k}`).length])),
     images: images.length,
+    unsettledImages: images.filter((img) => !img.complete).length,
+    /** Time for the images inside the window to finish loading, capped at 5 s. */
+    settleMs,
+    imagesInView: inView.length,
+    loadedImages: images.filter((img) => img.complete && img.naturalWidth > 0).length,
     brokenImages: images.filter((img) => img.naturalWidth === 0).map((img) => decodeURIComponent(img.src.split('path=')[1] ?? img.src)),
     notices: [...document.querySelectorAll('.notice')].map((n) => n.textContent?.slice(0, 80)),
     tabs: [...document.querySelectorAll('.tab')].map((t) => t.textContent),
@@ -376,6 +396,179 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Step 5: the icon picker, through the real UI. scripts/check-icons.mjs runs
+ * the harness daemon with HOME pointed at a scratch icon tree, writes a file
+ * into the open folder when this check signals for it (a preview on key 31),
+ * and checks the saved config, the recent-folders file and the deck afterwards.
+ */
+async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 5000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
+  const button = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
+  const click = async (text: string) => {
+    if (!(await until(() => button(text) !== undefined && !button(text)!.disabled))) throw new Error(`no enabled button "${text}"`);
+    button(text)!.click();
+  };
+  const selectKey = async (index: number) => {
+    await until(() => document.querySelectorAll('.key').length > index);
+    document.querySelectorAll<HTMLButtonElement>('.key')[index].click();
+    await until(() => document.querySelector('.inspector-title')?.textContent === `Key ${index + 1}`);
+  };
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const snap = await api.snapshot();
+  const serial = snap.daemon.decks?.[0]?.serial ?? '';
+  const saved = async () => {
+    const s = (await api.snapshot()).store;
+    if (!s.open || s.state.dirty) return null;
+    return Object.values(Object.values(s.state.config.profiles)[0].layouts)[0].pages.main.buttons;
+  };
+  const previews = async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.previews ?? [];
+  const names = () => [...document.querySelectorAll('.picker-item .picker-name')].map((n) => n.textContent);
+  const item = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.picker-item')].find((i) => i.querySelector('.picker-name')?.textContent === name);
+  const clickItem = async (name: string) => {
+    if (!(await until(() => item(name) !== undefined))) throw new Error(`no picker item "${name}"; have ${JSON.stringify(names())}`);
+    item(name)!.click();
+  };
+  const crumbs = () => [...document.querySelectorAll('.picker-crumb')].map((c) => c.textContent).join('/');
+  const selectedName = () => document.querySelector('.picker-item-selected .picker-name')?.textContent ?? null;
+  const gridKey = (key: string) => document.querySelector('.picker-grid')!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  const iconOf = async (key: string) => (await saved())?.[key]?.icon;
+
+  await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected && (v.decks?.length ?? 0) > 0);
+  await until(() => document.querySelector('.grid') !== null);
+
+  // 1. With no icon and no recent folder, the picker would open on Pictures.
+  out.startWithNothing = await api.iconStartFolder(null);
+
+  // 2. The grid draws a key whose icon cannot be read with the built-in missing icon, loaded under the page's CSP.
+  out.missingInGrid = await until(() => {
+    const img = document.querySelectorAll('.key')[2]?.querySelector<HTMLImageElement>('.key-icon-missing');
+    return img !== null && img !== undefined && img.src.includes('missing') && img.complete && img.naturalWidth > 0;
+  });
+  out.goodIconNotMissing = document.querySelectorAll('.key')[1]?.querySelector('.key-icon-missing') === null;
+
+  // 3. The Icon tab opens on the folder of the key's icon, marks it, lists subfolders first.
+  await selectKey(1);
+  await click('Icon');
+  await until(() => crumbs().endsWith('BEAR') && names().length >= 3);
+  out.openedOn = crumbs();
+  out.blmItems = names();
+  out.currentMarked = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
+
+  // 4. Selecting an image previews it on the deck and saves nothing.
+  await clickItem('Flame_IV.png');
+  out.previewShown = await until(async () => (await previews()).includes(1));
+  out.previewNotSaved = (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Bolt_III.png';
+
+  // 5. Arrow keys move the selection (and the preview).
+  gridKey('ArrowLeft');
+  out.arrowLeft = await until(() => selectedName() === 'Bolt_III.png');
+  gridKey('ArrowRight');
+  out.arrowRight = await until(() => selectedName() === 'Flame_IV.png');
+
+  // 6. Use this icon saves the path as ~/..., clears the preview after the reload, and remembers the folder.
+  await click('Use this icon');
+  out.usedSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
+  out.previewClearedOnUse = await until(async () => !(await previews()).includes(1));
+  out.recentChip = await until(() => [...document.querySelectorAll('.chip')].some((c) => c.textContent === 'BEAR'));
+  out.useDisabledOnCurrent = await until(() => button('Use this icon')?.disabled === true);
+
+  // 7. Double-click chooses.
+  await until(() => item('Bolt_III.png') !== undefined);
+  item('Bolt_III.png')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  out.doubleClickSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Bolt_III.png');
+
+  // 8. The open folder is watched: ask the script to add a file (signal: a preview on key 31), and it appears.
+  out.newFileAbsentBefore = !names().includes('Frost.png');
+  await api.previewSet(serial, 31, { label: 'WRITE-FILE' });
+  out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
+  await api.previewClear(serial, 31);
+
+  // 9. The breadcrumb goes up; files the editor does not show are left out.
+  await click('icons');
+  await until(() => crumbs().endsWith('icons') && names().includes('FFXIV'));
+  out.rootItems = names();
+
+  // 10. The filter searches below the open folder and says where each match lives; clicking that opens it.
+  typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'aura');
+  out.filterFound = await until(() => names().join() === 'Aura.png');
+  out.filterWhere = document.querySelector('.picker-where')?.textContent;
+  (document.querySelector<HTMLElement>('.picker-where'))?.click();
+  out.whereOpens = await until(() => crumbs().endsWith('Shared_Actions') && document.querySelector<HTMLInputElement>('.picker-filter')!.value === '');
+
+  // 11. Enter chooses; a path with spaces and parentheses is stored as it is.
+  await click('icons');
+  await until(() => crumbs().endsWith('icons'));
+  typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'halo');
+  await clickItem('Halo (Area).png');
+  await until(async () => (await previews()).includes(1));
+  gridKey('Enter');
+  out.enterSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png');
+  typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
+  await until(() => names().includes('corrupt.png'));
+
+  // 12. A file the deck cannot draw: refused by the daemon, marked, cannot be chosen; its thumbnail is the missing icon.
+  // Wait for the picker to be idle first: while the previous choice is still
+  // settling every button is disabled, which would pass this check for the
+  // wrong reason (a deliberate break found that).
+  await until(() => button('Remove icon')?.disabled === false);
+  await clickItem('corrupt.png');
+  out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
+  out.useDisabledForRefused = button('Use this icon')?.disabled === true && button('Remove icon')?.disabled === false;
+  out.corruptThumbMissing = await until(() => item('corrupt.png')?.querySelector('img')?.src.includes('missing') === true);
+
+  // 13. Leaving the tab ends the preview.
+  await clickItem('back ground.png');
+  await until(async () => (await previews()).includes(1));
+  await click('Key');
+  out.tabClears = await until(async () => !(await previews()).includes(1));
+  out.keyTabShowsPath = document.querySelector('.inspector .path')?.textContent;
+
+  // 14. Selecting another key ends the preview; the picker stays in the same folder.
+  await click('Icon');
+  await clickItem('fishing.png');
+  await until(async () => (await previews()).includes(1));
+  await selectKey(0);
+  out.keyChangeClears = await until(async () => !(await previews()).includes(1));
+  out.placeKept = await until(() => crumbs().endsWith('icons') && names().includes('fishing.png'));
+
+  // 15. A page change ends the preview — even one still in flight: the thumbnail
+  // and the page tab are clicked in the same tick, so the picker is gone before
+  // the preview's reply arrives (this ordering was a real bug, seen once by luck).
+  await until(() => item('fishing.png') !== undefined);
+  item('fishing.png')!.click();
+  [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((b) => b.textContent === 'Second')!.click();
+  await sleep(500);
+  out.pageChangeClears = await until(async () => !(await previews()).includes(0));
+  [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((b) => b.textContent === 'Main')!.click();
+  await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
+
+  // 16. Remove icon removes only the icon.
+  await selectKey(1);
+  if (!document.querySelector('.picker')) await click('Icon');
+  await click('Remove icon');
+  out.removeKeepsAction = await until(async () => {
+    const b = (await saved())?.['1'];
+    return b !== undefined && b.icon === undefined && b.action?.keys === 'ctrl+2';
+  });
+  out.removeButtonGone = await until(() => button('Remove icon') === undefined);
+  out.notConnectedNoteShown = document.body.textContent?.includes('not connected, so icons are not shown') ?? false;
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
@@ -383,6 +576,7 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'screenshot') api.reportCheck(name, await screenshot(api));
     else if (name === 'live') api.reportCheck(name, await live(api));
     else if (name === 'hotkey') api.reportCheck(name, await hotkey(api));
+    else if (name === 'icons') api.reportCheck(name, await icons(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

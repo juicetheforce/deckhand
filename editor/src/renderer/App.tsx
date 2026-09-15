@@ -153,6 +153,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
           editingBlocked={editingBlocked}
           listenToken={listenToken}
+          canPreview={canSwitchDeck(daemon, selection.serial)}
           apply={async (edit) => {
             const result = await window.deckhand.apply(edit);
             return result.ok ? null : result.error;

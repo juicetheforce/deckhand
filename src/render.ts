@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
+import { builtinIconPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
 import type { Display } from './types.js';
 
@@ -78,13 +79,49 @@ async function iconStamp(iconPath: string): Promise<string> {
   }
 }
 
+/** An icon resized to the key. Throws if the file cannot be read or is not an image sharp can decode. */
+async function iconLayer(filePath: string, size: number, fit: 'cover' | 'contain'): Promise<Buffer> {
+  return sharp(await fs.readFile(filePath))
+    .resize(size, size, {
+      fit,
+      position: 'centre',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+}
+
+/** Built-in icons resized per key size, kept for the life of the process: they change only when the app is updated, which restarts it. */
+const builtinLayers = new Map<string, Buffer>();
+const warnedBuiltin = new Set<string>();
+
+/** A built-in icon resized to the key, or null (logged once) if the file cannot be drawn — an incomplete install. */
+async function builtinLayer(name: BuiltinIcon, size: number): Promise<Buffer | null> {
+  const filePath = builtinIconPath(name);
+  const key = `${filePath}|${size}`;
+  const hit = builtinLayers.get(key);
+  if (hit) return hit;
+  try {
+    const layer = await iconLayer(filePath, size, 'contain');
+    builtinLayers.set(key, layer);
+    return layer;
+  } catch (err) {
+    if (!warnedBuiltin.has(filePath)) {
+      warnedBuiltin.add(filePath);
+      console.error(`[render] cannot read built-in icon ${filePath}: ${(err as Error).message} — is the install complete?`);
+    }
+    return null;
+  }
+}
+
 /**
  * Render a button to a raw RGBA buffer of `size` x `size`.
  *
- * An icon that cannot be read is normally drawn as no icon, with one log
- * line — a key should still show its label. With `strictIcon` it throws
- * instead, and skips the cache (which may hold an earlier icon-less render):
- * the control socket's preview uses this to tell the editor the file is bad.
+ * An icon that is set but cannot be drawn — the file is gone, unreadable, or
+ * not an image — is normally drawn as the built-in 'missing' icon, with one
+ * log line (docs/scope.md §3). With `strictIcon` it throws instead, and skips
+ * the cache (which may hold an earlier placeholder render): the control
+ * socket's preview uses this to tell the editor the file is bad.
  */
 export async function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
   const iconPath = display.icon ? expandPath(display.icon) : undefined;
@@ -108,21 +145,16 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 
   if (iconPath) {
     try {
-      const icon = await sharp(await fs.readFile(iconPath))
-        .resize(size, size, {
-          fit: display.iconFit === 'contain' ? 'contain' : 'cover',
-          position: 'centre',
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
-        .png()
-        .toBuffer();
+      const icon = await iconLayer(iconPath, size, display.iconFit === 'contain' ? 'contain' : 'cover');
       layers.push({ input: icon, top: 0, left: 0 });
     } catch (err) {
       if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
       if (!warnedMissing.has(iconPath)) {
         warnedMissing.add(iconPath);
-        console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message}`);
+        console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message} — showing the missing-icon placeholder`);
       }
+      const missing = await builtinLayer('missing', size);
+      if (missing) layers.push({ input: missing, top: 0, left: 0 });
     }
   }
 
@@ -144,4 +176,6 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 export function clearRenderCache(): void {
   cache.clear();
   warnedMissing.clear();
+  builtinLayers.clear();
+  warnedBuiltin.clear();
 }

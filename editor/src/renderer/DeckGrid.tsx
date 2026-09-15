@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
@@ -86,10 +87,8 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, selected
         />
       )}
       {iconMissing && (
-        // The deck draws no icon and logs the failure; say why the key looks bare.
-        <span className="key-mark key-mark-missing" title={`Cannot read ${face.icon}`}>
-          icon missing
-        </span>
+        // The same built-in the deck draws for an icon it cannot read (scope §3).
+        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} draggable={false} />
       )}
       {face.label && (
         <span
@@ -100,7 +99,7 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, selected
           {face.label}
         </span>
       )}
-      {(!face.icon || iconMissing) && !face.label && button?.action && (
+      {!face.icon && !face.label && button?.action && (
         // A live face (now playing, clock) is not drawn here; name the action so the key is not blank.
         <span className="key-caption">{actionName(button.action.type)}</span>
       )}

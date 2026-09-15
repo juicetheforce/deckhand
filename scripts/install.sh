@@ -9,7 +9,8 @@
 # Layout (docs/scope.md §0), per user, nothing under /usr except the udev rule:
 #
 #   $XDG_DATA_HOME/deckhand/                  the app: dist/, node_modules/,
-#                                             helper/deckhand-input, ...
+#                                             helper/deckhand-input,
+#                                             assets/icons/ (built-in icons), ...
 #   $XDG_DATA_HOME/systemd/user/deckhand.service
 #   ~/.local/bin/deckhand                     the CLI: a small wrapper that runs
 #                                             dist/cli.js from the app directory
@@ -159,6 +160,12 @@ build_and_stage() {
   cp "$REPO_DIR/tsconfig.json" "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" \
      "$REPO_DIR/README.md" "$STAGE_DIR/"
   cp "$REPO_DIR/helper/deckhand-input.c" "$REPO_DIR/helper/Makefile" "$STAGE_DIR/helper/"
+  # Built-in icons (docs/scope.md §3): the daemon finds them beside dist/ and
+  # draws them only as fallbacks; config.json never points here, since this
+  # directory is replaced on every update.
+  mkdir -p "$STAGE_DIR/assets"
+  cp -r "$REPO_DIR/assets/icons" "$STAGE_DIR/assets/icons"
+  [ -f "$STAGE_DIR/assets/icons/missing.svg" ] || die "assets/icons/missing.svg did not copy into $STAGE_DIR"
 
   (
     cd "$STAGE_DIR"

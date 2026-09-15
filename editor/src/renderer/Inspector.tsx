@@ -4,6 +4,7 @@ import type { SystemShortcut } from '../shared/bridge.js';
 import type { ButtonLocation, Edit } from '../shared/edits.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
 import { actionName } from './catalogue.js';
+import { IconPicker, type PickerPlace } from './IconPicker.js';
 import { describeAction, hotkeyEditable, keyKind } from './model.js';
 
 interface Props {
@@ -12,8 +13,12 @@ interface Props {
   editingBlocked: boolean;
   /** Changes when the library's Hotkey entry is clicked: start listening. */
   listenToken: number;
+  /** The daemon is connected and the deck attached, so the icon picker can preview on it. */
+  canPreview: boolean;
   apply: (edit: Edit) => Promise<string | null>;
 }
+
+type Tab = 'key' | 'icon';
 
 type Mode =
   | { kind: 'view' }
@@ -27,7 +32,17 @@ type Mode =
  * label. Other action types are shown read-only in phase A, label still
  * editable.
  */
-export function Inspector({ at, button, editingBlocked, listenToken, apply }: Props) {
+export function Inspector({ at, button, editingBlocked, listenToken, canPreview, apply }: Props) {
+  // Kept here, outside the per-key component, so the tab and the picker's
+  // folder stay put while moving from key to key in a setup burst.
+  const [tab, setTab] = useState<Tab>('key');
+  const [place, setPlace] = useState<PickerPlace>({ folder: null, query: '' });
+  // The library's Hotkey entry means the Key tab.
+  const firstToken = useRef(listenToken);
+  useEffect(() => {
+    if (listenToken !== firstToken.current) setTab('key');
+  }, [listenToken]);
+
   if (at === null) {
     return (
       <aside className="inspector glass">
@@ -36,10 +51,32 @@ export function Inspector({ at, button, editingBlocked, listenToken, apply }: Pr
     );
   }
   // Keyed by location so every piece of state resets when another key is selected.
-  return <KeyInspector key={`${at.profile}/${at.serial}/${at.page}/${at.index}`} at={at} button={button} editingBlocked={editingBlocked} listenToken={listenToken} apply={apply} />;
+  return (
+    <KeyInspector
+      key={`${at.profile}/${at.serial}/${at.page}/${at.index}`}
+      at={at}
+      button={button}
+      editingBlocked={editingBlocked}
+      listenToken={listenToken}
+      canPreview={canPreview}
+      apply={apply}
+      tab={tab}
+      onTab={setTab}
+      place={place}
+      onPlace={setPlace}
+    />
+  );
 }
 
-function KeyInspector({ at, button, editingBlocked, listenToken, apply }: Props & { at: ButtonLocation }) {
+interface KeyInspectorProps extends Props {
+  at: ButtonLocation;
+  tab: Tab;
+  onTab: (tab: Tab) => void;
+  place: PickerPlace;
+  onPlace: (place: PickerPlace) => void;
+}
+
+function KeyInspector({ at, button, editingBlocked, listenToken, canPreview, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [mode, setMode] = useState<Mode>({ kind: 'view' });
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
@@ -51,6 +88,11 @@ function KeyInspector({ at, button, editingBlocked, listenToken, apply }: Props 
   useEffect(() => {
     if (listenToken !== firstToken.current && editable && !editingBlocked) setMode({ kind: 'listening', held: [], message: null });
   }, [listenToken, editable, editingBlocked]);
+
+  // Listening swallows every key; it must never carry on out of sight on another tab.
+  useEffect(() => {
+    if (tab !== 'key') setMode({ kind: 'view' });
+  }, [tab]);
 
   // Is the saved combo a KDE shortcut? Checked whenever it changes.
   const [savedShortcut, setSavedShortcut] = useState<SystemShortcut | null>(null);
@@ -132,8 +174,20 @@ function KeyInspector({ at, button, editingBlocked, listenToken, apply }: Props 
   return (
     <aside className="inspector glass" aria-label="Inspector">
       <h2 className="inspector-title">Key {at.index + 1}</h2>
+      <div className="inspector-tabs" role="tablist">
+        <button role="tab" className={`inspector-tab ${tab === 'key' ? 'inspector-tab-selected' : ''}`} aria-selected={tab === 'key'} onClick={() => onTab('key')}>
+          Key
+        </button>
+        <button role="tab" className={`inspector-tab ${tab === 'icon' ? 'inspector-tab-selected' : ''}`} aria-selected={tab === 'icon'} onClick={() => onTab('icon')}>
+          Icon
+        </button>
+      </div>
 
-      {editable ? (
+      {tab === 'icon' && (
+        <IconPicker at={at} button={button} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
+      )}
+
+      {tab === 'key' && (editable ? (
         <section className="inspector-section">
           <h3 className="section-heading">Hotkey</h3>
 
@@ -230,14 +284,16 @@ function KeyInspector({ at, button, editingBlocked, listenToken, apply }: Props 
           <p className="muted">Not configurable in the editor yet. As saved:</p>
           <pre className="json">{JSON.stringify({ action: button?.action, onRelease: button?.onRelease }, null, 2)}</pre>
         </section>
+      ))}
+
+      {tab === 'key' && (
+        <section className="inspector-section">
+          <h3 className="section-heading">Label</h3>
+          <LabelField label={button?.label ?? ''} disabled={editingBlocked} onSave={(label) => void run({ kind: 'setLabel', at, label })} />
+        </section>
       )}
 
-      <section className="inspector-section">
-        <h3 className="section-heading">Label</h3>
-        <LabelField label={button?.label ?? ''} disabled={editingBlocked} onSave={(label) => void run({ kind: 'setLabel', at, label })} />
-      </section>
-
-      {button?.icon !== undefined && (
+      {tab === 'key' && button?.icon !== undefined && (
         <section className="inspector-section">
           <h3 className="section-heading">Icon</h3>
           <p className="path">{button.icon}</p>
@@ -246,7 +302,7 @@ function KeyInspector({ at, button, editingBlocked, listenToken, apply }: Props 
 
       {error && <p className="field-error">{error}</p>}
 
-      {kind !== 'empty' && (
+      {tab === 'key' && kind !== 'empty' && (
         <div className="button-row danger-row">
           <button className="danger" disabled={editingBlocked} onClick={() => void run({ kind: 'clearButton', at })}>
             Clear button

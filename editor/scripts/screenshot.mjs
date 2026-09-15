@@ -3,7 +3,10 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>] [--tab icon]
+//
+// --tab icon opens the inspector's Icon tab, which lists real folders under
+// your home directory (read-only) for any ~/ icon path in the config.
 //
 // Each deck the config has a layout for is attached as a fake deck. Its
 // geometry is a test choice, not device knowledge: a serial whose layouts use
@@ -63,10 +66,11 @@ const { values } = parseArgs({
     select: { type: 'string' },
     deck: { type: 'string' },
     disconnected: { type: 'string' },
+    tab: { type: 'string' },
   },
 });
 if (!values.out) {
-  console.error('usage: node scripts/screenshot.mjs --out shot.png [--config config.json] [--select <key index>] [--deck <serial>]');
+  console.error('usage: node scripts/screenshot.mjs --out shot.png [--config config.json] [--select <key index>] [--deck <serial>] [--tab icon]');
   process.exit(2);
 }
 
@@ -93,6 +97,7 @@ for (const serial of serials) {
 
 if (values.select !== undefined) process.env.DECKHAND_EDITOR_SELECT_KEY = values.select;
 if (values.deck !== undefined) process.env.DECKHAND_EDITOR_SELECT_DECK = values.deck;
+if (values.tab !== undefined) process.env.DECKHAND_EDITOR_SELECT_TAB = values.tab;
 process.env.DECKHAND_EDITOR_SCREENSHOT = path.resolve(values.out);
 const output = await runElectronCheck('screenshot', {
   configDir,
