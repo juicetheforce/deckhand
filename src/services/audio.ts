@@ -23,6 +23,28 @@ export interface Sink {
   description: string;
 }
 
+/**
+ * A sink or source as the control socket needs it to offer a device list
+ * (docs/scope.md §7, audio.sinks / audio.sources). Everything is from
+ * `pactl -f json`; nothing is interpreted beyond what the fields say.
+ */
+export interface AudioDevice {
+  /** node.name, e.g. alsa_output.usb-…-00.analog-stereo. */
+  name: string;
+  /** As pactl reports it. pactl's JSON gives "(null)" for any non-ASCII description (a known defect). */
+  description: string;
+  flags: string[];
+  /**
+   * pactl's monitor_source field, whose meaning depends on the list:
+   *   - on a source: the sink it monitors, or "" for a real input;
+   *   - on a sink: the name of that sink's own monitor source, never "".
+   * Confirmed against pactl 17.0 on the laptop, 2026-09-14.
+   */
+  monitorSource: string;
+  /** The active port's availability: "available", "not available", "availability unknown", or null with no ports. */
+  portAvailability: string | null;
+}
+
 /** Everything the audio key faces display, read in one refresh. */
 export interface AudioState {
   sinks: Sink[];
@@ -30,6 +52,24 @@ export interface AudioState {
   /** First channel's volume of the default sink, in percent. */
   defaultSinkVolume: number | null;
   defaultSourceMuted: boolean;
+  /** Every sink and source, for the control socket's device lists. */
+  sinkDevices: AudioDevice[];
+  sourceDevices: AudioDevice[];
+  defaultSource: string;
+}
+
+function parseDevices(json: Array<Record<string, unknown>>): AudioDevice[] {
+  return json.map((d) => {
+    const ports = Array.isArray(d.ports) ? (d.ports as Array<Record<string, unknown>>) : [];
+    const active = ports.find((p) => p.name === d.active_port);
+    return {
+      name: String(d.name),
+      description: String(d.description ?? d.name),
+      flags: Array.isArray(d.flags) ? (d.flags as unknown[]).map(String) : [],
+      monitorSource: typeof d.monitor_source === 'string' ? d.monitor_source : '',
+      portAvailability: active && typeof active.availability === 'string' ? active.availability : null,
+    };
+  });
 }
 
 async function pactl(args: string[]): Promise<string> {
@@ -110,7 +150,37 @@ async function readState(): Promise<AudioState> {
     defaultSink,
     defaultSinkVolume: defaultSinkJson ? firstChannelPercent(defaultSinkJson.volume) : null,
     defaultSourceMuted: defaultSourceJson?.mute === true,
+    sinkDevices: parseDevices(sinksJson),
+    sourceDevices: parseDevices(sourcesJson),
+    defaultSource,
   };
+}
+
+/** One entry in the control socket's device list. */
+export interface PickableDevice {
+  node: string;
+  label: string;
+  available: 'yes' | 'no' | 'unknown';
+}
+
+/**
+ * The device list the control socket offers (docs/scope.md §3 and §7):
+ *   - devices flagged NETWORK are left out (§3: not a desktop-audio target);
+ *   - monitor sources are left out of the source list (decision 2: a monitor
+ *     of a sink is not an input) — a source is a monitor when its
+ *     monitor_source names a sink;
+ *   - nothing else is filtered — an unplugged jack is listed as available: "no".
+ * The label falls back to the node name where pactl's JSON gave "(null)".
+ */
+export function pickableDevices(devices: AudioDevice[], kind: 'sink' | 'source'): PickableDevice[] {
+  return devices
+    .filter((d) => !d.flags.includes('NETWORK'))
+    .filter((d) => kind === 'sink' || d.monitorSource === '')
+    .map((d) => ({
+      node: d.name,
+      label: d.description === '(null)' || d.description === '' ? d.name : d.description,
+      available: d.portAvailability === 'available' ? 'yes' : d.portAvailability === 'not available' ? 'no' : 'unknown',
+    }));
 }
 
 /** Re-read audio state into the cache. On failure, the previous state is kept. */

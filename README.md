@@ -138,6 +138,35 @@ systemctl --user restart deckhand
 journalctl --user -u deckhand -f      # follow the log
 ```
 
+## The deckhand command
+
+The install script also puts a `deckhand` command in `~/.local/bin`. It talks
+to the running daemon over its control socket (`$XDG_RUNTIME_DIR/deckhand.sock`,
+readable only by you); it never touches the decks or the config file itself.
+
+```bash
+deckhand status                     # active profile, decks, whether the last config reload was accepted
+deckhand decks                      # connected decks, key counts and layout
+deckhand profile FFXIV              # switch every deck to a profile, by ID or name
+deckhand repaint                    # repaint all decks (or: deckhand repaint <serial>)
+deckhand run --deck <serial> '{"type":"hotkey","keys":"ctrl+1"}'   # run an action without saving it
+deckhand sinks                      # audio outputs you can pick (* = current default)
+deckhand sources                    # audio inputs you can pick
+deckhand watch                      # print changes as they happen, until Ctrl+C
+```
+
+Add `--json` to any of them for the daemon's raw reply. `deckhand profile …`
+is what a game launch script or a KDE keyboard shortcut should call to switch
+profiles. Exit codes: 0 success, 1 the daemon refused the request, 2 wrong
+usage, 3 the daemon isn't running or didn't answer.
+
+`deckhand run` sends real keystrokes to whatever window has focus. Anything it
+holds down is released when the action finishes, and only one such action runs
+at a time, so a script flooding it can't hold up a key press on the deck.
+
+The socket protocol (newline-delimited JSON) is documented in
+`docs/scope.md` §7, "M3 protocol design".
+
 ## Developing
 
 Work in the checkout. To run the daemon in the foreground from it, stop the
@@ -281,9 +310,18 @@ written to the device, so a 1 Hz refresh costs almost nothing on the wire.
 npm run smoke
 ```
 
-Runs the render pipeline, page navigation, action dispatch, config
-validation and profile switching against fake 32-key devices. Handy after
-touching `render.ts`, `deck.ts`, `config.ts` or `profiles.ts`.
+Two parts, about 30 seconds together:
+
+- `scripts/smoke.mjs` — the render pipeline, page navigation, action dispatch,
+  config validation and profile switching, against fake 32-key devices.
+- `scripts/smoke-socket.mjs` — the control socket over a real socket, with a
+  fake input helper and a fake `pactl`, including two proofs: a client flooding
+  the socket can't delay a deck key press by more than one keystroke, and no
+  client can leave a key held down. The flood proof measures timing, so a
+  heavily loaded machine can fail it spuriously.
+
+Handy after touching `render.ts`, `deck.ts`, `config.ts`, `profiles.ts`,
+`input.ts` or anything in `src/control/`.
 
 ## Troubleshooting
 
@@ -303,10 +341,16 @@ check that your `match` substring actually appears in a description.
 **Media buttons do nothing.** `busctl --user list | grep mpris` — if nothing
 is listed, your player isn't exposing MPRIS.
 
+**`deckhand` says the daemon isn't running.** `systemctl --user status
+deckhand`. If the service is up, look for `[control] listening on …` in its log;
+if the socket could not be created the log says why, and the decks keep working
+without it.
+
 ## Known gaps
 
 - Dials, the touch strip on a Plus, and the Neo's extra buttons are ignored;
   the code skips non-button controls rather than mishandling them.
+  `deckhand decks` lists them as unsupported.
 - No editor UI yet. The daemon's config format is deliberately hand-editable
   in the meantime.
 - Text typing assumes a US layout.

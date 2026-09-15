@@ -2,6 +2,13 @@ import { resolveProfile, startProfileOf } from './config.js';
 import type { DeckSession } from './deck.js';
 import type { Config, LayoutDef } from './types.js';
 
+/** Thrown by switchTo() for a profile that does not exist, so callers can tell it from other failures. */
+export class ProfileNotFoundError extends Error {
+  constructor(ref: string) {
+    super(`no profile with ID or name "${ref}"`);
+  }
+}
+
 /**
  * Which profile is active, and which profile's layout each deck is showing.
  *
@@ -21,15 +28,41 @@ export class Profiles {
    * only: a restart starts again from startProfile.
    */
   private shown = new Map<string, string>();
+  /** Called when the active profile, or the profile any deck shows, changes. */
+  private onChange: () => void = () => undefined;
 
   constructor(config: Config) {
     this.config = config;
     this.active = startProfileOf(config);
   }
 
+  /** For the control socket's "state" event. */
+  setChangeListener(listener: () => void): void {
+    this.onChange = listener;
+  }
+
   /** The active profile's ID. */
   activeProfile(): string {
     return this.active;
+  }
+
+  /** A profile's display name, or null when it has none. */
+  profileName(id: string): string | null {
+    return this.config.profiles[id]?.name ?? null;
+  }
+
+  /** The profile whose layout a deck last showed this run, if any. */
+  shownProfileFor(serial: string): string | undefined {
+    return this.shown.get(serial);
+  }
+
+  /** Every deck serial some profile has a layout for. */
+  configuredSerials(): Set<string> {
+    const serials = new Set<string>();
+    for (const profile of Object.values(this.config.profiles)) {
+      for (const serial of Object.keys(profile.layouts)) serials.add(serial);
+    }
+    return serials;
   }
 
   /** "name (id)", or just the ID when the profile has no name. For logs. */
@@ -75,18 +108,20 @@ export class Profiles {
   /**
    * Make a profile active, by ID or name. Every connected deck it has a layout
    * for goes to that layout's start page; the others are left alone.
-   * Switching to the profile that is already active does nothing.
+   * Switching to the profile that is already active does nothing. Returns
+   * whether the active profile changed.
    */
-  async switchTo(ref: string, sessions: Map<string, DeckSession>): Promise<void> {
+  async switchTo(ref: string, sessions: Map<string, DeckSession>): Promise<boolean> {
     const id = resolveProfile(this.config, ref);
-    if (id === null) throw new Error(`no profile with ID or name "${ref}"`);
-    if (id === this.active) return;
+    if (id === null) throw new ProfileNotFoundError(ref);
+    if (id === this.active) return false;
 
     // Held here, not re-read inside the loop, so a config reload that lands
     // during one of the awaits below cannot pull the profile out from under it.
     const profile = this.config.profiles[id];
     // Set before any await, so a deck that attaches mid-switch gets the new profile.
     this.active = id;
+    this.onChange();
     console.log(`[profiles] switched to ${this.describe(id)}`);
 
     for (const [serial, session] of sessions) {
@@ -95,6 +130,7 @@ export class Profiles {
       this.shown.set(serial, id);
       await session.setLayout(layout);
     }
+    return true;
   }
 
   /**
@@ -106,6 +142,7 @@ export class Profiles {
    */
   async applyReload(next: Config, sessions: Map<string, DeckSession>): Promise<void> {
     this.config = next;
+    this.onChange();
 
     if (!next.profiles[this.active]) {
       const fallback = startProfileOf(next);
@@ -121,6 +158,7 @@ export class Profiles {
         console.log(`[main] deck ${serial} removed from config, detaching`);
         await session.close();
         sessions.delete(serial);
+        this.onChange();
         continue;
       }
       const keepPage = this.shown.get(serial) === id;

@@ -78,13 +78,21 @@ async function iconStamp(iconPath: string): Promise<string> {
   }
 }
 
-/** Render a button to a raw RGBA buffer of `size` x `size`. */
-export async function renderButton(display: Display, size: number): Promise<Buffer> {
+/**
+ * Render a button to a raw RGBA buffer of `size` x `size`.
+ *
+ * An icon that cannot be read is normally drawn as no icon, with one log
+ * line — a key should still show its label. With `strictIcon` it throws
+ * instead, and skips the cache (which may hold an earlier icon-less render):
+ * the control socket's preview uses this to tell the editor the file is bad.
+ */
+export async function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
   const iconPath = display.icon ? expandPath(display.icon) : undefined;
   const stamp = iconPath ? await iconStamp(iconPath) : 'none';
   const cacheKey = `${size}|${stamp}|${JSON.stringify(display)}`;
 
-  const hit = cache.get(cacheKey);
+  if (strictIcon && stamp === 'missing') throw new Error(`cannot read icon ${iconPath}: file not found`);
+  const hit = strictIcon ? undefined : cache.get(cacheKey);
   if (hit) return hit;
 
   let base = sharp({
@@ -110,6 +118,7 @@ export async function renderButton(display: Display, size: number): Promise<Buff
         .toBuffer();
       layers.push({ input: icon, top: 0, left: 0 });
     } catch (err) {
+      if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
       if (!warnedMissing.has(iconPath)) {
         warnedMissing.add(iconPath);
         console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message}`);

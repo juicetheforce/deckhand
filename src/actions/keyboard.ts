@@ -53,10 +53,10 @@ export const text: ActionHandler = {
  *   { "type": "keyHold", "keys": "f14", "state": "down" }
  */
 export const keyHold: ActionHandler = {
-  async execute(_ctx, params: ActionDef) {
+  async execute(ctx, params: ActionDef) {
     const combo = String(params.keys ?? '');
     if (!combo) throw new Error('keyHold action needs a "keys" value');
-    if (params.state === 'up') await input.up(combo);
-    else await input.down(combo);
+    if (params.state === 'up') await input.up(combo, ctx.source);
+    else await input.down(combo, ctx.source);
   },
 };

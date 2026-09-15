@@ -113,6 +113,8 @@ export interface DeckHandle {
 export interface ActionContext {
   deck: DeckHandle;
   buttonIndex: number;
+  /** A deck key press, or an action run over the control socket. Keys held are tracked per source. */
+  source: 'deck' | 'socket';
   /** Switch the active profile on every connected deck, by ID or name. */
   switchProfile(profile: string): Promise<void>;
   /** Re-render buttons whose action type is in the given list. */

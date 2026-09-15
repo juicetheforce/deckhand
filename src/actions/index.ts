@@ -82,6 +82,17 @@ export async function runAction(ctx: ActionContext, action: ActionDef): Promise<
   }
 }
 
+/**
+ * Execute an action and let its failure propagate. For the control socket,
+ * which reports failures to the client; deck presses use runAction(), which
+ * logs and swallows them.
+ */
+export async function runActionOrThrow(ctx: ActionContext, action: ActionDef): Promise<void> {
+  const handler = registry[action.type];
+  if (!handler) throw new Error(`unknown action type "${action.type}"`);
+  if (handler.execute) await handler.execute(ctx, action);
+}
+
 /** Ask an action what the button should currently look like. */
 export async function describeAction(
   ctx: ActionContext,

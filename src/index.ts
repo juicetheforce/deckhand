@@ -1,6 +1,9 @@
 import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
 import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
+import { createHandlers, eventNotifiers, type ControlDeps, type ReloadResult } from './control/commands.js';
+import { ControlServer, socketPath } from './control/server.js';
 import { DeckSession } from './deck.js';
+import { geometryOf, type DeckGeometry } from './geometry.js';
 import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
@@ -22,6 +25,19 @@ let config: Config | null = null;
 /** Created with the first config; updated on every reload. */
 let profiles: Profiles | null = null;
 let shuttingDown = false;
+/** Reported by the control socket's "status" and "config" event. */
+let lastReload: ReloadResult = { ok: true, at: new Date().toISOString() };
+/**
+ * Connected decks with no layout in any profile, and their geometry. attach()
+ * opens such a deck, finds nothing to show, and closes it again — reading its
+ * controls on the way, so the control socket can describe a deck the config
+ * has never mentioned without holding it open.
+ */
+const unattached = new Map<string, DeckGeometry>();
+let control: ControlServer | null = null;
+/** Event notifications for the control socket; null until it exists, so calls before then do nothing. */
+let events: ReturnType<typeof eventNotifiers> | null = null;
+const notifyState = () => events?.state();
 
 /** `npm run decks` — print serials so you can paste them into config.json. */
 async function printDecks(): Promise<void> {
@@ -140,6 +156,8 @@ async function attach(devicePath: string): Promise<void> {
       `[main] deck ${serial} (${raw.MODEL}) is connected but not in config — ` +
         `no profile has a layout for it; add one under a profile's "layouts" to use it`,
     );
+    unattached.set(serial, geometryOf(raw as unknown as Parameters<typeof geometryOf>[0]));
+    notifyState();
     await raw.close().catch(() => undefined);
     return;
   }
@@ -154,7 +172,10 @@ async function attach(devicePath: string): Promise<void> {
     hardware,
     layout: profileState.layoutFor(profileId, serial),
     defaults: config.defaults ?? {},
-    switchProfile: (ref) => profileState.switchTo(ref, sessions),
+    switchProfile: async (ref) => {
+      await profileState.switchTo(ref, sessions);
+    },
+    onStateChange: notifyState,
   });
 
   try {
@@ -166,7 +187,9 @@ async function attach(devicePath: string): Promise<void> {
   }
 
   sessions.set(serial, session);
+  unattached.delete(serial);
   profileState.markShown(serial, profileId);
+  notifyState();
   console.log(
     `[main] attached ${hardware.name ?? session.model} (${serial}) — ` +
       `${session.keyCount} keys @ ${session.iconSize}px, profile "${profileId}"`,
@@ -189,13 +212,21 @@ async function scan(): Promise<void> {
     return;
   }
 
-  const seen = new Set(devices.map((d) => d.serialNumber).filter(Boolean) as string[]);
+  const seen = new Set(devices.map((d) => d.serialNumber?.trim()).filter(Boolean) as string[]);
+
+  for (const serial of unattached.keys()) {
+    if (!seen.has(serial)) {
+      unattached.delete(serial);
+      notifyState();
+    }
+  }
 
   for (const [serial, session] of sessions) {
     if (!seen.has(serial)) {
       console.log(`[main] deck ${serial} disconnected`);
       await session.close();
       sessions.delete(serial);
+      notifyState();
     }
   }
 
@@ -235,6 +266,8 @@ async function reload(): Promise<void> {
   try {
     const next = await loadConfig();
     config = next;
+    lastReload = { ok: true, at: new Date().toISOString() };
+    events?.config();
     clearRenderCache();
     console.log('[main] config reloaded');
 
@@ -244,6 +277,8 @@ async function reload(): Promise<void> {
   } catch (err) {
     // Keep running on the last good config — a typo while editing should
     // not take your deck down mid-game.
+    lastReload = { ok: false, at: new Date().toISOString(), error: (err as Error).message };
+    events?.config();
     console.error(`[main] config reload failed, keeping previous: ${(err as Error).message}`);
   }
 }
@@ -252,6 +287,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[main] ${signal}, shutting down`);
+  await control?.stop();
   for (const session of sessions.values()) await session.close();
   sessions.clear();
   input.stop();
@@ -285,6 +321,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   profiles = new Profiles(config);
+  profiles.setChangeListener(notifyState);
   console.log(`[main] starting on profile "${profiles.activeProfile()}"`);
 
   input.start();
@@ -294,9 +331,10 @@ async function main(): Promise<void> {
   const invalidateAll = () => {
     for (const session of sessions.values()) session.invalidate();
   };
-  const stopAudio = audioService.subscribe(() =>
-    sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.micMute', 'audio.volume'])),
-  );
+  const stopAudio = audioService.subscribe(() => {
+    sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.micMute', 'audio.volume']));
+    events?.audio();
+  });
   const stopMpris = mprisService.subscribe(() =>
     sessions.forEach((s) => s.invalidateByType(['media.control', 'media.info'])),
   );
@@ -308,6 +346,26 @@ async function main(): Promise<void> {
 
   await requestScan();
   const scanner = setInterval(() => void requestScan(), SAFETY_SCAN_INTERVAL_MS);
+
+  // After the decks, and not awaited by anything they need: the socket must
+  // never be able to hold up or take down the decks.
+  const controlPath = socketPath();
+  if (controlPath === null) {
+    console.error('[control] XDG_RUNTIME_DIR is not set; no control socket');
+  } else {
+    const deps: ControlDeps = {
+      sessions,
+      profiles: () => profiles,
+      configPath: CONFIG_PATH,
+      lastReload: () => lastReload,
+      unattachedDecks: () => unattached,
+      releaseSocketKeys: () => input.releaseAllHeldBy('socket'),
+      audioState: () => audioService.cachedState(),
+    };
+    control = new ControlServer(createHandlers(deps));
+    events = eventNotifiers(control, deps);
+    void control.start(controlPath);
+  }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {

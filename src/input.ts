@@ -16,6 +16,14 @@ interface Pending {
 }
 
 /**
+ * Who asked for a key to be held: a deck key press, or an action run over the
+ * control socket. Tracked so that everything a socket action holds down can
+ * be released when it finishes, without releasing a key a physical deck
+ * press is holding (docs/scope.md §7, action.run).
+ */
+export type InputSource = 'deck' | 'socket';
+
+/**
  * Owns the lifetime of the C helper process. Commands are serialized: one
  * outstanding at a time, which keeps modifier state coherent and costs
  * nothing at human press rates.
@@ -27,6 +35,8 @@ class InputBridge {
   private queue: Pending[] = [];
   private restartTimer: NodeJS.Timeout | null = null;
   private stopped = false;
+  /** Keycodes currently held with down(), per source. TAP and hold() release their own. */
+  private held: Record<InputSource, Set<number>> = { deck: new Set(), socket: new Set() };
 
   start(): void {
     if (this.proc || this.stopped) return;
@@ -56,6 +66,9 @@ class InputBridge {
       console.error(`[input] helper exited (code=${code} signal=${signal})`);
       this.ready = false;
       this.proc = null;
+      // The virtual keyboard went with the helper, so nothing is held any more.
+      this.held.deck.clear();
+      this.held.socket.clear();
       this.failAllPending(new Error('input helper exited'));
       this.scheduleRestart();
     });
@@ -119,13 +132,37 @@ class InputBridge {
   }
 
   /** Press a combo and leave it held. Caller is responsible for up(). */
-  async down(combo: string): Promise<void> {
-    await this.send(`DOWN ${parseCombo(combo).join(' ')}`);
+  async down(combo: string, source: InputSource = 'deck'): Promise<void> {
+    const codes = parseCombo(combo);
+    // Recorded before sending: if the send fails part-way, some codes may be
+    // down, and releasing a code that is not down does no harm.
+    for (const code of codes) this.held[source].add(code);
+    await this.send(`DOWN ${codes.join(' ')}`);
   }
 
   /** Release a combo previously pressed with down(). */
-  async up(combo: string): Promise<void> {
-    await this.send(`UP ${parseCombo(combo).join(' ')}`);
+  async up(combo: string, source: InputSource = 'deck'): Promise<void> {
+    const codes = parseCombo(combo);
+    for (const code of codes) this.held[source].delete(code);
+    await this.send(`UP ${codes.join(' ')}`);
+  }
+
+  /**
+   * Release every key `source` still holds, except any key another source is
+   * also holding (a physical push-to-talk must not be cut off by a socket
+   * action finishing). Returns the keycodes released.
+   */
+  async releaseAllHeldBy(source: InputSource): Promise<number[]> {
+    const other: InputSource = source === 'socket' ? 'deck' : 'socket';
+    const codes = [...this.held[source]].filter((code) => !this.held[other].has(code));
+    this.held[source].clear();
+    if (codes.length > 0) await this.send(`UP ${codes.join(' ')}`);
+    return codes;
+  }
+
+  /** Keycodes `source` currently holds. For the control socket's tests and logs. */
+  heldBy(source: InputSource): number[] {
+    return [...this.held[source]];
   }
 
   /** Press and hold a combo for `ms`, then release. */

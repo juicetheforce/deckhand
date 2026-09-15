@@ -1,5 +1,6 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { describeAction, isDynamic, runAction } from './actions/index.js';
+import { describeAction, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
+import { geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
 import { renderButton } from './render.js';
 import type {
   ActionContext,
@@ -12,12 +13,6 @@ import type {
   LayoutDef,
 } from './types.js';
 
-interface ControlDef {
-  type: string;
-  index?: number;
-  pixelSize?: { width: number; height: number };
-}
-
 /**
  * Minimal surface we need from the streamdeck library. Deliberately narrow:
  * v7 describes geometry through CONTROLS, older versions through NUM_KEYS /
@@ -26,7 +21,7 @@ interface ControlDef {
 interface RawDeck {
   MODEL?: string;
   PRODUCT_NAME?: string;
-  CONTROLS?: ReadonlyArray<ControlDef>;
+  CONTROLS?: ReadonlyArray<RawControl>;
   NUM_KEYS?: number;
   ICON_SIZE?: number;
   on(event: string, cb: (...args: unknown[]) => void): void;
@@ -59,6 +54,8 @@ export interface DeckSessionOptions {
   defaults: Defaults;
   /** Called by the profile action. Switches every deck, not just this one. */
   switchProfile: (profile: string) => Promise<void>;
+  /** Called when what the control socket's "status" shows for this deck changes: page, brightness, previews. */
+  onStateChange?: () => void;
 }
 
 /** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
@@ -71,12 +68,15 @@ export class DeckSession implements DeckHandle {
   readonly model: string;
   readonly keyCount: number;
   readonly iconSize: number;
+  /** Controls and their positions, as the control socket reports them. */
+  readonly geometry: DeckGeometry;
 
   private raw: RawDeck;
   private hardware: DeckDef;
   private layout: LayoutDef;
   private defaults: Required<Defaults>;
   private switchProfile: (profile: string) => Promise<void>;
+  private onStateChange: () => void;
   /** ID of the page shown. */
   private page: string;
   /** Page IDs, for "back". */
@@ -98,11 +98,13 @@ export class DeckSession implements DeckHandle {
     this.layout = options.layout;
     this.defaults = { ...DEFAULTS, ...options.defaults };
     this.switchProfile = options.switchProfile;
+    this.onStateChange = options.onStateChange ?? (() => undefined);
 
     const modelKey = String(raw.MODEL ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const fallback = MODEL_FALLBACK[modelKey] ?? { keys: 15, icon: 72 };
 
     this.model = raw.PRODUCT_NAME ?? (raw.MODEL ? String(raw.MODEL) : 'unknown');
+    this.geometry = geometryOf(raw);
 
     const buttons = (raw.CONTROLS ?? []).filter(
       (c) => c.type === 'button' && typeof c.index === 'number',
@@ -163,6 +165,11 @@ export class DeckSession implements DeckHandle {
     const button = this.currentButtons()[String(index)];
 
     if (edge === 'down') {
+      // A previewed key does nothing when pressed: it shows something unsaved,
+      // so neither its saved action nor the previewed one should run.
+      // (A release for a press that began before the preview still runs below,
+      // so a held key cannot get stuck.)
+      if (this.previews.has(index)) return;
       if (button?.onRelease) this.heldRelease.set(index, button.onRelease);
       if (button?.action) void this.dispatch(index, button.action);
       return;
@@ -175,6 +182,16 @@ export class DeckSession implements DeckHandle {
     }
   }
 
+  /**
+   * Run an action sent over the control socket, on this deck. Unlike a key
+   * press, a failure propagates to the caller, and any key it holds down is
+   * recorded as held by the socket. It belongs to no key, so no key repaints.
+   */
+  async runFromSocket(action: ActionDef): Promise<void> {
+    if (this.closed) throw new Error('the deck has disconnected');
+    await runActionOrThrow(this.context(-1, 'socket'), action);
+  }
+
   private async dispatch(index: number, action: ActionDef): Promise<void> {
     await runAction(this.context(index), action);
     // Most actions change something visible; a cheap targeted repaint beats
@@ -182,10 +199,11 @@ export class DeckSession implements DeckHandle {
     void this.renderButtonAt(index, true);
   }
 
-  private context(index: number): ActionContext {
+  private context(index: number, source: ActionContext['source'] = 'deck'): ActionContext {
     return {
       deck: this,
       buttonIndex: index,
+      source,
       switchProfile: (profile) => this.switchProfile(profile),
       invalidateByType: (types) => this.invalidateByType(types),
       log: (message) => console.log(`[${this.label()}] ${message}`),
@@ -194,6 +212,11 @@ export class DeckSession implements DeckHandle {
 
   private currentButtons(): Record<string, ButtonDef> {
     return this.layout.pages[this.page]?.buttons ?? {};
+  }
+
+  /** What a key shows: its preview if it has one, otherwise the current page's button. */
+  private buttonAt(index: number): ButtonDef | undefined {
+    return this.previews.get(index) ?? this.currentButtons()[String(index)];
   }
 
   private baseDisplay(button: ButtonDef | undefined): Display {
@@ -209,20 +232,27 @@ export class DeckSession implements DeckHandle {
   }
 
   private async renderButtonAt(index: number, force = false): Promise<void> {
+    try {
+      await this.drawKey(index, force, false);
+    } catch (err) {
+      console.error(`[${this.label()}] render of key ${index} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Render one key and write it to the deck. A render failure throws (the
+   * caller decides whether to log it or report it); a USB write failure is
+   * logged here, as before. strictIcon: see renderButton().
+   */
+  private async drawKey(index: number, force: boolean, strictIcon: boolean): Promise<void> {
     if (this.closed) return;
-    const button = this.currentButtons()[String(index)];
+    const button = this.buttonAt(index);
     const display = this.baseDisplay(button);
 
     const patch = await describeAction(this.context(index), button?.action);
     if (patch) Object.assign(display, patch);
 
-    let buffer: Buffer;
-    try {
-      buffer = await renderButton(display, this.iconSize);
-    } catch (err) {
-      console.error(`[${this.label()}] render of key ${index} failed: ${(err as Error).message}`);
-      return;
-    }
+    const buffer = await renderButton(display, this.iconSize, strictIcon);
 
     this.lastRenderAt[index] = Date.now();
 
@@ -256,10 +286,9 @@ export class DeckSession implements DeckHandle {
     this.ticking = true;
     try {
       const now = Date.now();
-      const buttons = this.currentButtons();
 
       for (let i = 0; i < this.keyCount; i++) {
-        const button = buttons[String(i)];
+        const button = this.buttonAt(i);
         if (!isDynamic(button?.action)) continue;
         const interval = button?.refreshMs ?? this.defaults.refreshMs;
         if (now - this.lastRenderAt[i] >= interval) {
@@ -272,16 +301,113 @@ export class DeckSession implements DeckHandle {
   }
 
   invalidateByType(types: string[]): void {
-    const buttons = this.currentButtons();
     for (let i = 0; i < this.keyCount; i++) {
-      const type = buttons[String(i)]?.action?.type;
+      const type = this.buttonAt(i)?.action?.type;
       if (type && types.includes(type)) this.lastRenderAt[i] = 0;
     }
   }
 
   invalidate(): void {
-    this.lastRenderAt.fill(0);
-    void this.renderPage(true);
+    void this.repaint();
+  }
+
+  // -------------------------------------------------------------------------
+  // Previews: an unsaved button shown on a key (docs/scope.md §7, preview.set)
+  // -------------------------------------------------------------------------
+
+  /** Keys showing a preview, by index. Survives page changes, profile switches and reloads. */
+  private previews = new Map<number, ButtonDef>();
+  /** One preview render per key at a time, plus at most one follow-up. */
+  private previewRenders = new Map<number, { running: Promise<void>; followUp: Promise<void> | null }>();
+
+  /** True if `index` is one of this deck's keys. */
+  hasKey(index: number): boolean {
+    return this.geometry.keys.some((key) => key.index === index);
+  }
+
+  previewKeys(): number[] {
+    return [...this.previews.keys()].sort((a, b) => a - b);
+  }
+
+  /**
+   * Show `button` on a key without saving it. Resolves once it is drawn;
+   * rejects if it cannot be drawn (e.g. an unreadable icon), in which case the
+   * preview is removed again and the key goes back to what it showed.
+   */
+  async setPreview(index: number, button: ButtonDef): Promise<void> {
+    this.previews.set(index, button);
+    this.onStateChange();
+    try {
+      await this.renderPreviewKey(index);
+    } catch (err) {
+      // Only undo this request's own preview: a newer one may have replaced it.
+      if (this.previews.get(index) === button) {
+        this.previews.delete(index);
+        this.onStateChange();
+        await this.renderButtonAt(index, true);
+      }
+      throw err;
+    }
+  }
+
+  /** Remove previews — one key, or all — and redraw those keys. Returns the keys cleared. */
+  async clearPreview(index?: number): Promise<number[]> {
+    const cleared = index === undefined ? this.previewKeys() : this.previews.has(index) ? [index] : [];
+    for (const key of cleared) this.previews.delete(key);
+    if (cleared.length > 0) this.onStateChange();
+    await Promise.all(cleared.map((key) => this.renderButtonAt(key, true)));
+    return cleared;
+  }
+
+  /**
+   * Draw a previewed key strictly (errors surface). A burst of previews on one
+   * key renders only the latest: requests that arrive while a render runs
+   * share one follow-up render of whatever the key holds by then.
+   */
+  private renderPreviewKey(index: number): Promise<void> {
+    const ignore = () => undefined;
+    const current = this.previewRenders.get(index);
+    if (current) {
+      current.followUp ??= current.running.then(ignore, ignore).then(() => {
+        this.previewRenders.delete(index);
+        return this.renderPreviewKey(index);
+      });
+      return current.followUp;
+    }
+    const entry = { running: this.drawKey(index, true, true), followUp: null as Promise<void> | null };
+    this.previewRenders.set(index, entry);
+    void entry.running.then(ignore, ignore).then(() => {
+      if (this.previewRenders.get(index) === entry && entry.followUp === null) this.previewRenders.delete(index);
+    });
+    return entry.running;
+  }
+
+  private repaintRunning: Promise<void> | null = null;
+  private repaintFollowUp: Promise<void> | null = null;
+
+  /**
+   * Repaint every key, resolving when done. Requests that arrive while a
+   * repaint is running share one follow-up repaint, however many there are,
+   * so a burst of requests cannot pile renders and USB writes up.
+   */
+  repaint(): Promise<void> {
+    if (this.repaintFollowUp) return this.repaintFollowUp;
+    if (this.repaintRunning) {
+      this.repaintFollowUp = this.repaintRunning.then(() => {
+        this.repaintFollowUp = null;
+        return this.repaint();
+      });
+      return this.repaintFollowUp;
+    }
+    this.repaintRunning = (async () => {
+      try {
+        this.lastRenderAt.fill(0);
+        await this.renderPage(true);
+      } finally {
+        this.repaintRunning = null;
+      }
+    })();
+    return this.repaintRunning;
   }
 
   currentPage(): string {
@@ -300,6 +426,7 @@ export class DeckSession implements DeckHandle {
     if (this.history.length > 32) this.history.shift();
     this.page = id;
     this.heldRelease.clear();
+    this.onStateChange();
     await this.renderPage(true);
   }
 
@@ -308,6 +435,7 @@ export class DeckSession implements DeckHandle {
     if (!previous || !this.layout.pages[previous]) return;
     this.page = previous;
     this.heldRelease.clear();
+    this.onStateChange();
     await this.renderPage(true);
   }
 
@@ -315,6 +443,7 @@ export class DeckSession implements DeckHandle {
     const level = clampBrightness(value);
     await this.raw.setBrightness(level);
     this.brightness = level;
+    this.onStateChange();
   }
 
   currentBrightness(): number {
@@ -330,6 +459,7 @@ export class DeckSession implements DeckHandle {
     this.page = startPageOf(layout);
     this.history = [];
     this.heldRelease.clear();
+    this.onStateChange();
     await this.renderPage(true);
   }
 
@@ -354,6 +484,7 @@ export class DeckSession implements DeckHandle {
       this.page = startPageOf(layout);
       this.history = [];
       this.heldRelease.clear();
+      this.onStateChange();
     }
     await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
     this.lastSent.fill(null);

@@ -11,6 +11,8 @@
 #   $XDG_DATA_HOME/deckhand/                  the app: dist/, node_modules/,
 #                                             helper/deckhand-input, ...
 #   $XDG_DATA_HOME/systemd/user/deckhand.service
+#   ~/.local/bin/deckhand                     the CLI: a small wrapper that runs
+#                                             dist/cli.js from the app directory
 #   /etc/udev/rules.d/60-deckhand.rules       the only file needing sudo
 #   $XDG_CONFIG_HOME/deckhand/                your config — never touched by
 #                                             install; uninstall asks
@@ -31,6 +33,14 @@ LEGACY_EXEC_LINE='ExecStart=/usr/bin/node %h/src/deckhand/dist/index.js'
 
 # How long the service must stay up, without restarting, to count as started.
 START_SETTLE_SECONDS=8
+
+# The CLI wrapper. ~/.local/bin is the XDG location for a user's executables
+# and has no environment variable of its own. The marker line is how install
+# and uninstall recognise a wrapper they wrote, so an unrelated "deckhand"
+# command is never overwritten or deleted.
+CLI_DIR="$HOME/.local/bin"
+CLI_FILE="$CLI_DIR/deckhand"
+CLI_MARKER='# deckhand-cli-wrapper'
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -294,8 +304,59 @@ cmd_install() {
 
   rm -rf "$PREVIOUS_DIR" "$LEGACY_BACKUP"
   say "Installed. Service is running from $APP_DIR"
+  # Only after a successful start: a rollback restores an older app that may
+  # have no CLI, and the wrapper must not point at one that is not there.
+  install_cli
   journalctl --user -u deckhand --since "@$started_at" --no-pager -o cat | grep -E 'attached|not in config' || \
     warn "no Stream Deck attached yet — is one plugged in?"
+}
+
+# --- CLI wrapper -------------------------------------------------------------
+
+cli_is_ours() {
+  [ -f "$CLI_FILE" ] && grep -qxF "$CLI_MARKER" "$CLI_FILE"
+}
+
+# Writes ~/.local/bin/deckhand. The app path is written in as resolved here —
+# from the systemd user manager's XDG_DATA_HOME, the same place the unit's %D
+# points — rather than read from the environment when the wrapper runs, which
+# for a KDE shortcut or a game launcher may not match.
+install_cli() {
+  case "$APP_DIR" in
+    *"'"*)
+      warn "the app directory contains a single quote; not writing the CLI wrapper. Run: node '$APP_DIR/dist/cli.js'"
+      return
+      ;;
+  esac
+  if [ -e "$CLI_FILE" ] && ! cli_is_ours; then
+    warn "$CLI_FILE exists and was not written by Deckhand; leaving it alone."
+    warn "The CLI can be run as: /usr/bin/node $APP_DIR/dist/cli.js"
+    return
+  fi
+  mkdir -p "$CLI_DIR"
+  local tmp="$CLI_FILE.new.$$"
+  cat > "$tmp" <<EOF
+#!/bin/sh
+$CLI_MARKER
+# Written by Deckhand's scripts/install.sh; "scripts/install.sh uninstall" removes it.
+exec /usr/bin/node '$APP_DIR/dist/cli.js' "\$@"
+EOF
+  chmod 755 "$tmp"
+  mv "$tmp" "$CLI_FILE"
+  say "CLI installed: $CLI_FILE"
+  case ":$PATH:" in
+    *":$CLI_DIR:"*) ;;
+    *) warn "$CLI_DIR is not on PATH in this shell; run $CLI_FILE by its full path, or add $CLI_DIR to PATH." ;;
+  esac
+}
+
+remove_cli() {
+  if cli_is_ours; then
+    rm -f "$CLI_FILE"
+    say "Removed $CLI_FILE"
+  elif [ -e "$CLI_FILE" ]; then
+    warn "$CLI_FILE was not written by Deckhand; leaving it alone."
+  fi
 }
 
 # --- uninstall ---------------------------------------------------------------
@@ -338,6 +399,8 @@ cmd_uninstall() {
     rm -f "$LEGACY_UNIT"
   fi
   systemctl --user daemon-reload
+
+  remove_cli
 
   say "Removing $APP_DIR"
   rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR" "$LEGACY_BACKUP"
