@@ -19,6 +19,7 @@ const bridge: DeckhandBridge = {
   reopenConfig: () => ipcRenderer.invoke('reopenConfig'),
   switchProfile: (to) => ipcRenderer.invoke('switchProfile', to),
   showPage: (serial, page) => ipcRenderer.invoke('showPage', serial, page),
+  findSystemShortcut: (combo) => ipcRenderer.invoke('findSystemShortcut', combo),
   previewSet: (serial, key, button) => ipcRenderer.invoke('previewSet', serial, key, button),
   previewClear: (serial, key) => ipcRenderer.invoke('previewClear', serial, key),
   onStore: (callback) => subscribe<StoreView>('store', callback),

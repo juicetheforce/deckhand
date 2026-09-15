@@ -22,10 +22,13 @@ const run = promisify(execFile);
 const TITLE = 'Deckhand key probe';
 const SETTLE_MS = 400;
 
-const batchNumber = Number(process.argv[process.argv.indexOf('--batch') + 1]);
-const batch = BATCHES[batchNumber];
-if (!batch) {
-  console.error('usage: electron scripts/key-probe/main.mjs --batch 1|2|3|4');
+// --manual: inject nothing; record whatever is pressed on the physical
+// keyboard until Done is clicked (M4 phase A step 4, the Meta-flag check).
+const MANUAL = process.argv.includes('--manual');
+const batchNumber = MANUAL ? 'manual' : Number(process.argv[process.argv.indexOf('--batch') + 1]);
+const batch = MANUAL ? null : BATCHES[batchNumber];
+if (!MANUAL && !batch) {
+  console.error('usage: electron scripts/key-probe/main.mjs --batch 1|2|3|4   or   --manual');
   process.exit(2);
 }
 const outFile = process.env.DECKHAND_PROBE_OUT ?? path.resolve('key-probe-results.jsonl');
@@ -146,7 +149,10 @@ async function injectAll() {
   setTimeout(() => app.quit(), 3000);
 }
 
-ipcMain.on('probe-key', (_event, e) => events.push({ layer: 'page', ...e }));
+ipcMain.on('probe-key', (_event, e) => {
+  events.push({ layer: 'page', ...e });
+  if (MANUAL) record({ kind: 'key', layer: 'page', ...e });
+});
 ipcMain.on('probe-click', () => {
   const resolve = clickResolve;
   clickResolve = null;
@@ -165,10 +171,12 @@ app.whenReady().then(() => {
     },
   });
   window.webContents.on('before-input-event', (_event, input) => {
-    events.push({
+    const entry = {
       layer: 'main', type: input.type, code: input.code, key: input.key,
       ctrl: input.control, shift: input.shift, alt: input.alt, meta: input.meta,
-    });
+    };
+    events.push(entry);
+    if (MANUAL) record({ kind: 'key', ...entry });
   });
   window.webContents.on('did-start-loading', () => reloads++);
   window.on('closed', () => {
@@ -178,6 +186,20 @@ app.whenReady().then(() => {
   window.loadFile(path.join(import.meta.dirname, 'probe.html'));
   window.webContents.once('did-finish-load', () => {
     reloads = 0;
+    if (MANUAL) {
+      record({ kind: 'start', title: 'manual', displayServer: displayServer(), electron: process.versions.electron });
+      void (async () => {
+        await waitForClick(
+          'Manual check — nothing is injected.\n\nClick Start, then with this window focused press on your keyboard:\n  1. Meta+J\n  2. Meta+K\n  3. Meta+Shift+J\nThen click Done.',
+        );
+        show({ message: 'Recording. Press Meta+J, Meta+K, Meta+Shift+J, then click Done.', button: true, buttonLabel: 'Done' });
+        await new Promise((resolve) => (clickResolve = resolve));
+        record({ kind: 'end' });
+        show({ message: `Done. Results in ${outFile}. Closing in 2 s.` });
+        setTimeout(() => app.quit(), 2000);
+      })();
+      return;
+    }
     injectAll().catch((err) => {
       record({ kind: 'error', error: err.stack });
       console.error(err);

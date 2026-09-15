@@ -47,6 +47,12 @@ export interface DaemonView {
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
+/** A KDE global shortcut a combo is bound to (scope §10). `component` is the display name ("KWin"). */
+export interface SystemShortcut {
+  component: string;
+  componentId: string;
+}
+
 export interface EditorSnapshot {
   store: StoreView;
   daemon: DaemonView;
@@ -71,6 +77,8 @@ export interface DeckhandBridge {
   switchProfile(to: string): Promise<DaemonResult>;
   /** Show a page on a deck, saving any unsaved edits first so a new page exists for the daemon. */
   showPage(serial: string, page: string): Promise<DaemonResult>;
+  /** The KDE global shortcut a combo is bound to, or null — including when KDE's service is not there (scope §10). */
+  findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
   /** Called on every store change; returns a function that stops the calls. */

@@ -237,12 +237,152 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Step 4: the hotkey inspector, through the real UI, with synthetic key
+ * events (capture reads event.code and the modifier flags, which synthetic
+ * events carry). scripts/check-hotkey.mjs puts a fake busctl on PATH that
+ * reports ctrl+f1 as a KWin shortcut, and checks the saved file afterwards.
+ */
+async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 5000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === text);
+  const click = async (text: string) => {
+    if (!(await until(() => button(text) !== undefined && !button(text)!.disabled))) throw new Error(`no enabled button "${text}"`);
+    button(text)!.click();
+  };
+  const selectKey = async (index: number) => {
+    await until(() => document.querySelectorAll('.key').length > index);
+    document.querySelectorAll<HTMLButtonElement>('.key')[index].click();
+    await until(() => document.querySelector('.inspector-title')?.textContent === `Key ${index + 1}`);
+  };
+  /** Dispatch a key event; returns true if it was swallowed (preventDefault). */
+  const press = (code: string, mods: Partial<Record<'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey', boolean>> = {}, type = 'keydown') =>
+    !window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true, ...mods }));
+  const typeInto = (input: HTMLInputElement, value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const saved = async () => {
+    const s = (await api.snapshot()).store;
+    if (!s.open || s.state.dirty) return null;
+    const c = s.state.config;
+    const p = Object.values(c.profiles)[0];
+    return Object.values(p.layouts)[0].pages.main.buttons;
+  };
+  const listening = () => document.querySelector('.listening') !== null;
+  const text = () => document.querySelector('.inspector')?.textContent ?? '';
+
+  await until(() => document.querySelector('.grid') !== null);
+
+  // 1. Record ctrl+1 on an empty key; the key events are swallowed.
+  await selectKey(3);
+  await click('Record hotkey');
+  out.listeningShown = await until(listening);
+  const swallowCtrl = press('ControlLeft', { ctrlKey: true });
+  out.heldShown = await until(() => [...document.querySelectorAll('.listening kbd')].some((k) => k.textContent === 'Ctrl'));
+  const swallowOne = press('Digit1', { ctrlKey: true });
+  out.swallowed = swallowCtrl && swallowOne;
+  out.recorded = await until(async () => (await saved())?.['3']?.action?.keys === 'ctrl+1');
+
+  // 2. Cancel stops listening and changes nothing; Esc is recorded like any other key.
+  await click('Re-record');
+  await until(listening);
+  await click('Cancel');
+  out.cancelChangesNothing = (await until(() => !listening())) && (await saved())?.['3']?.action?.keys === 'ctrl+1';
+  await click('Re-record');
+  await until(listening);
+  out.escSwallowed = press('Escape');
+  out.escRecorded = await until(async () => (await saved())?.['3']?.action?.keys === 'esc');
+
+  // 3. A KDE shortcut asks first. "Choose another" saves nothing; "Use it anyway" saves.
+  await click('Re-record');
+  await until(listening);
+  press('F1', { ctrlKey: true });
+  out.confirmShown = await until(() => document.querySelector('.confirm') !== null);
+  out.confirmText = document.querySelector('.confirm p')?.textContent;
+  await click('Choose another');
+  await until(listening);
+  await click('Cancel');
+  await sleep(600);
+  out.chooseAnotherSavedNothing = (await saved())?.['3']?.action?.keys === 'esc';
+  await click('Re-record');
+  await until(listening);
+  press('F1', { ctrlKey: true });
+  await until(() => document.querySelector('.confirm') !== null);
+  await click('Use it anyway');
+  out.useAnywaySaved = await until(async () => (await saved())?.['3']?.action?.keys === 'ctrl+f1');
+  out.savedWarningShown = await until(() => text().includes('Ctrl+F1 is a system shortcut (KWin).'));
+
+  // 4. Type manually: the daemon-misread "ctrl++" is refused; "Control + F13" is saved as ctrl+f13, with the layout note.
+  await click('Type manually');
+  await until(() => document.querySelector('.typing input') !== null);
+  typeInto(document.querySelector<HTMLInputElement>('.typing input')!, 'ctrl++');
+  await click('Save');
+  out.typedRefusal = (await until(() => document.querySelector('.typing .field-error') !== null)) ? document.querySelector('.typing .field-error')!.textContent : null;
+  typeInto(document.querySelector<HTMLInputElement>('.typing input')!, 'Control + F13');
+  await click('Save');
+  out.typedSaved = await until(async () => (await saved())?.['3']?.action?.keys === 'ctrl+f13');
+  out.remapNoteShown = await until(() => text().includes('F13 may not reach the game'));
+
+  // 5. A key with no name says so, and saves nothing.
+  await click('Re-record');
+  await until(listening);
+  press('IntlBackslash');
+  out.unknownKeyMessage = await until(() => text().includes('has no name Deckhand can send'));
+  await click('Cancel');
+  await until(() => !listening());
+
+  // 6. Label, then "Clear hotkey" keeps it.
+  typeInto(document.querySelector<HTMLInputElement>('.label-input')!, 'Bolt');
+  out.labelSaved = await until(async () => (await saved())?.['3']?.label === 'Bolt');
+  await click('Clear hotkey');
+  out.clearHotkeyKeepsLabel = await until(async () => {
+    const b = (await saved())?.['3'];
+    return b !== undefined && b.action === undefined && b.label === 'Bolt';
+  });
+
+  // 7. The library's Hotkey entry starts listening on the selected key.
+  await selectKey(4);
+  [...document.querySelectorAll<HTMLButtonElement>('.library-entry')].find((b) => b.textContent?.startsWith('Hotkey'))!.click();
+  out.libraryStartsListening = await until(listening);
+  await click('Cancel');
+  await until(() => !listening());
+
+  // 8. Keys whose action is read-only: no recording; the label still edits.
+  await selectKey(0);
+  out.mediaReadOnly = button('Record hotkey') === undefined && button('Re-record') === undefined;
+  typeInto(document.querySelector<HTMLInputElement>('.label-input')!, 'Next track');
+  out.mediaLabelSaved = await until(async () => (await saved())?.['0']?.label === 'Next track');
+  await selectKey(1);
+  out.sequenceReadOnly = button('Record hotkey') === undefined && button('Re-record') === undefined;
+
+  // 9. "Clear button" removes the whole key.
+  await selectKey(2);
+  await click('Clear button');
+  out.clearButtonRemoves = await until(async () => {
+    const b = await saved();
+    return b !== null && b['2'] === undefined;
+  });
+
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
     else if (name === 'bridge') api.reportCheck(name, await bridge(api));
     else if (name === 'screenshot') api.reportCheck(name, await screenshot(api));
     else if (name === 'live') api.reportCheck(name, await live(api));
+    else if (name === 'hotkey') api.reportCheck(name, await hotkey(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

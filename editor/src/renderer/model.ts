@@ -170,6 +170,19 @@ export function keyFace(config: Config, button: ButtonDef | undefined, iconSize:
   };
 }
 
+/**
+ * Whether the phase A hotkey inspector may edit this key's action: a key with
+ * no action at all, or a plain single-combo hotkey. A hotkey with a sequence,
+ * holdMs or repeat, or anything with onRelease, is shown read-only so
+ * recording over it cannot silently drop those settings.
+ */
+export function hotkeyEditable(button: ButtonDef | undefined): boolean {
+  if (button?.onRelease) return false;
+  const action = button?.action;
+  if (!action) return true;
+  return action.type === 'hotkey' && typeof action.keys === 'string' && Object.keys(action).every((k) => k === 'type' || k === 'keys');
+}
+
 /** One line describing what a key does, for its tooltip and the inspector. */
 export function describeAction(button: ButtonDef | undefined): string {
   const action = button?.action;

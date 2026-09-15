@@ -34,6 +34,8 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   // would otherwise pull it back for a moment.
   const [inFlight, setInFlight] = useState(0);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  /** Bumped when the library's Hotkey entry is clicked, to start listening in the inspector. */
+  const [listenToken, setListenToken] = useState(0);
 
   // Follow the decks (scope §10): any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
@@ -125,7 +127,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
         onAddPage={addPage}
       />
       <div className="panes">
-        <Library />
+        <Library onPick={(type) => type === 'hotkey' && selection.key !== null && setListenToken((n) => n + 1)} />
         <main className="stage glass">
           <Notices store={store} daemon={daemon} switchError={switchError} />
           <div className="well">
@@ -146,7 +148,16 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
             )}
           </div>
         </main>
-        <Inspector index={selection.key} button={selection.key === null ? undefined : page?.buttons[String(selection.key)]} />
+        <Inspector
+          at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
+          button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
+          editingBlocked={editingBlocked}
+          listenToken={listenToken}
+          apply={async (edit) => {
+            const result = await window.deckhand.apply(edit);
+            return result.ok ? null : result.error;
+          }}
+        />
       </div>
     </div>
   );

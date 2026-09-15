@@ -263,9 +263,21 @@ button:disabled {
 .library-entry {
   display: flex;
   flex-direction: column;
+  width: 100%;
   padding: 6px 9px;
+  border: 0;
   border-radius: 9px;
   border-left: 3px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.library-entry:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.library-entry:disabled {
+  cursor: default;
 }
 
 .library-entry.tone-accent {
@@ -404,6 +416,128 @@ button:disabled {
 .inspector-title {
   margin: 0 0 10px;
   font-size: 15px;
+}
+
+.inspector-section {
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.section-heading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 11.5px;
+}
+
+.warning-text {
+  color: var(--amber);
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.button-row button,
+.inspector input {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 6px 11px;
+}
+
+.inspector input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.button-row button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.button-row button.danger {
+  border-color: rgba(232, 90, 110, 0.45);
+  color: #f2a0ac;
+  background: transparent;
+}
+
+.danger-row {
+  margin-top: 16px;
+}
+
+.keycaps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.keycaps kbd {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom-width: 3px;
+}
+
+.listening {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--accent);
+  background: rgba(91, 110, 232, 0.08);
+}
+
+.listening p,
+.typing p,
+.confirm p {
+  margin: 0 0 8px;
+}
+
+.listening-dot {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.listening-dot::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.confirm {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(232, 180, 90, 0.5);
+  background: rgba(232, 180, 90, 0.08);
+}
+
+.label-input {
+  width: 100%;
 }
 
 .facts {

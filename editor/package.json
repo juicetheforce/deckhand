@@ -14,6 +14,7 @@
     "check:shared": "npm run build && node scripts/check-shared-imports.mjs",
     "check:bridge": "npm run build && node scripts/check-bridge.mjs",
     "check:live": "npm run build && node scripts/check-live.mjs",
+    "check:hotkey": "npm run build && node scripts/check-hotkey.mjs",
     "test": "node scripts/run-tests.mjs"
   },
   "engines": {

@@ -15,6 +15,7 @@ import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
+import { findSystemShortcut } from './system-shortcuts.js';
 
 // Electron's state (cache, local storage, lock files) goes in the state
 // directory, never the default ~/.config/<app name>: that would sit next to
@@ -138,6 +139,9 @@ function registerIpc(): void {
   );
   ipcMain.handle('previewClear', (event, serial: string, key?: number) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewClear(serial, key)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+  );
+  ipcMain.handle('findSystemShortcut', (event, combo: unknown) =>
+    fromOurWindow(event) && typeof combo === 'string' && combo.length < 200 ? findSystemShortcut(combo) : null,
   );
   ipcMain.handle('switchProfile', (event, to: string) =>
     fromOurWindow(event) ? daemonCall(() => daemon.switchProfile(to).then(() => undefined)) : { ok: false, code: 'not_allowed', error: 'not allowed' },

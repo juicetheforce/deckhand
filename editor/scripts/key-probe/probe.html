@@ -40,7 +40,7 @@
         message.className = state.warning ? 'warning' : '';
         if (state.button !== undefined) {
           go.hidden = !state.button;
-          go.textContent = clicks === 0 ? 'Start' : 'Next';
+          go.textContent = state.buttonLabel ?? (clicks === 0 ? 'Start' : 'Next');
         }
       });
       go.addEventListener('click', () => {
