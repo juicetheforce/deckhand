@@ -226,15 +226,26 @@ export async function call(method: MediaMethod, hint?: string): Promise<void> {
   }
 }
 
+type SignalSource = {
+  on(event: string, cb: (...args: unknown[]) => void): void;
+  removeListener(event: string, cb: (...args: unknown[]) => void): void;
+};
+
 /**
- * Fire `onChange` when any player's state changes. Watching every player
- * rather than one avoids the classic bug where the button goes stale
- * because you restarted the music app.
+ * Fire `onChange` when any player's state changes, or when a player appears
+ * or disappears. Watching every player rather than one avoids the classic bug
+ * where the button goes stale because you restarted the music app.
+ *
+ * Players are discovered once at start with ListNames, then from the bus's
+ * NameOwnerChanged signal — no timer. (This replaced a 10 s rescan, which
+ * broke "no timers at rest"; see docs/scope.md §3.)
  */
 export function subscribe(onChange: () => void): () => void {
   let stopped = false;
-  const attached = new Set<string>();
+  /** Player bus name -> the PropertiesChanged listener attached to it. */
+  const attached = new Map<string, { props: SignalSource; handler: () => void }>();
   let debounce: NodeJS.Timeout | null = null;
+  let busSignals: { source: SignalSource; handler: (...args: unknown[]) => void } | null = null;
 
   const fire = () => {
     if (debounce) clearTimeout(debounce);
@@ -245,34 +256,60 @@ export function subscribe(onChange: () => void): () => void {
     if (attached.has(name) || stopped) return;
     try {
       const obj = await getBus().getProxyObject(name, OBJECT_PATH);
-      const props = obj.getInterface(PROPS_IFACE) as unknown as {
-        on(event: string, cb: (...args: unknown[]) => void): void;
-      };
-      props.on('PropertiesChanged', () => fire());
-      attached.add(name);
+      const props = obj.getInterface(PROPS_IFACE) as unknown as SignalSource;
+      const handler = () => fire();
+      props.on('PropertiesChanged', handler);
+      attached.set(name, { props, handler });
     } catch {
-      // player vanished between listing and attaching; harmless
+      // player vanished between being announced and attaching; harmless
     }
   };
 
-  const rescan = async () => {
-    if (stopped) return;
+  // Remove the listener rather than leave it: a player that restarts gets a
+  // fresh listener on reappearing, so nothing is ever attached twice.
+  const detach = (name: string) => {
+    const entry = attached.get(name);
+    if (entry) {
+      entry.props.removeListener('PropertiesChanged', entry.handler);
+      attached.delete(name);
+    }
+    forgetProxies(name);
+    if (lastActive === name) lastActive = null;
+  };
+
+  const onNameOwnerChanged = (...args: unknown[]) => {
+    const [name, , newOwner] = args as [string, string, string];
+    if (stopped || !name.startsWith(MPRIS_PREFIX)) return;
+    if (newOwner) {
+      console.log(`[mpris] player appeared: ${name.slice(MPRIS_PREFIX.length)}`);
+      void attach(name).then(fire);
+    } else {
+      console.log(`[mpris] player disappeared: ${name.slice(MPRIS_PREFIX.length)}`);
+      detach(name);
+      fire();
+    }
+  };
+
+  const start = async () => {
     try {
+      // Listen before listing, so a player that appears in between is not missed.
+      const dbusObj = await proxyFor('org.freedesktop.DBus', '/org/freedesktop/DBus');
+      const source = dbusObj.getInterface('org.freedesktop.DBus') as unknown as SignalSource;
+      source.on('NameOwnerChanged', onNameOwnerChanged);
+      busSignals = { source, handler: onNameOwnerChanged };
       for (const name of await listPlayers()) await attach(name);
     } catch (err) {
-      console.error(`[mpris] rescan failed: ${(err as Error).message}`);
+      console.error(`[mpris] cannot watch for players: ${(err as Error).message}`);
     }
   };
 
-  void rescan();
-  // Players come and go; a slow poll catches new ones without needing to
-  // parse NameOwnerChanged for the whole bus.
-  const timer = setInterval(() => void rescan(), 10000);
+  void start();
 
   return () => {
     stopped = true;
-    clearInterval(timer);
     if (debounce) clearTimeout(debounce);
+    busSignals?.source.removeListener('NameOwnerChanged', busSignals.handler);
+    for (const name of [...attached.keys()]) detach(name);
   };
 }
 
