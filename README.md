@@ -76,6 +76,12 @@ The config file is watched. Save it and the decks repaint immediately — no
 restart. If you save a syntax error, the daemon logs it and keeps running on
 the last good config rather than going dark mid-game.
 
+Every accepted change also keeps the config it replaced, as a backup in
+`~/.local/state/deckhand/backups/` (`$XDG_STATE_HOME`), named by the time it
+was saved. At most one is taken every 5 minutes, so a burst of edits leaves
+one backup from before the burst; the newest 20 are kept. `deckhand status`
+prints where they are. To go back, copy one over `config.json`.
+
 Config is keyed by serial, never by USB path, so plugging the decks into
 different ports doesn't shuffle your layouts. To see the serials of connected
 decks (safe while the service is running):
@@ -128,7 +134,9 @@ scripts/install.sh uninstall --purge # removes your config without asking
 Uninstall stops and removes the service, the installed copy, and Deckhand's
 udev rule — the rule is always removed, because it gives every program you run
 access to `/dev/uinput`. It reports whether that access is actually gone;
-another package's own udev rule can still grant it.
+another package's own udev rule can still grant it. It also removes
+`~/.local/state/deckhand/`, including the config backups, without asking:
+that is the app's state, not your config.
 
 Day to day:
 
@@ -145,7 +153,7 @@ to the running daemon over its control socket (`$XDG_RUNTIME_DIR/deckhand.sock`,
 readable only by you); it never touches the decks or the config file itself.
 
 ```bash
-deckhand status                     # active profile, decks, whether the last config reload was accepted
+deckhand status                     # active profile, decks, whether the last config reload was accepted, where backups are
 deckhand decks                      # connected decks, key counts and layout
 deckhand profile FFXIV              # switch every deck to a profile, by ID or name
 deckhand repaint                    # repaint all decks (or: deckhand repaint <serial>)
@@ -310,7 +318,7 @@ written to the device, so a 1 Hz refresh costs almost nothing on the wire.
 npm run smoke
 ```
 
-Two parts, about 30 seconds together:
+Three parts, about 40 seconds together:
 
 - `scripts/smoke.mjs` — the render pipeline, page navigation, action dispatch,
   config validation and profile switching, against fake 32-key devices.
@@ -319,9 +327,13 @@ Two parts, about 30 seconds together:
   the socket can't delay a deck key press by more than one keystroke, and no
   client can leave a key held down. The flood proof measures timing, so a
   heavily loaded machine can fail it spuriously.
+- `scripts/smoke-backups.mjs` — rolling config backups with a fake clock: a
+  burst of saves leaves one backup and pushes none out, pruning never touches
+  files Deckhand didn't name, and writing backups never triggers a config
+  reload.
 
 Handy after touching `render.ts`, `deck.ts`, `config.ts`, `profiles.ts`,
-`input.ts` or anything in `src/control/`.
+`input.ts`, `backups.ts` or anything in `src/control/`.
 
 ## Troubleshooting
 

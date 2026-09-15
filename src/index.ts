@@ -1,4 +1,5 @@
 import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
+import { ConfigBackups } from './backups.js';
 import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
 import { createHandlers, eventNotifiers, type ControlDeps, type ReloadResult } from './control/commands.js';
 import { ControlServer, socketPath } from './control/server.js';
@@ -22,6 +23,9 @@ const SAFETY_SCAN_INTERVAL_MS = 60000;
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
+/** The file text of the running config: what a rolling backup saves when a reload replaces it. */
+let configText = '';
+const backups = new ConfigBackups();
 /** Created with the first config; updated on every reload. */
 let profiles: Profiles | null = null;
 let shuttingDown = false;
@@ -264,8 +268,12 @@ async function requestScan(): Promise<void> {
 
 async function reload(): Promise<void> {
   try {
-    const next = await loadConfig();
+    const { config: next, text } = await loadConfig();
+    // Not awaited: saving a backup must not delay the decks picking up the
+    // new config. Backups queue among themselves and never throw.
+    void backups.afterGoodReload(configText, text);
     config = next;
+    configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     events?.config();
     clearRenderCache();
@@ -315,11 +323,13 @@ async function main(): Promise<void> {
   }
 
   try {
-    config = await loadConfig();
+    ({ config, text: configText } = await loadConfig());
   } catch (err) {
     console.error(`[main] cannot load config: ${(err as Error).message}`);
     process.exit(1);
   }
+  console.log(`[main] config backups: ${backups.dir}`);
+  void backups.init();
   profiles = new Profiles(config);
   profiles.setChangeListener(notifyState);
   console.log(`[main] starting on profile "${profiles.activeProfile()}"`);
@@ -358,6 +368,7 @@ async function main(): Promise<void> {
       profiles: () => profiles,
       configPath: CONFIG_PATH,
       lastReload: () => lastReload,
+      backups: () => backups.status(),
       unattachedDecks: () => unattached,
       releaseSocketKeys: () => input.releaseAllHeldBy('socket'),
       audioState: () => audioService.cachedState(),

@@ -16,6 +16,10 @@
 #   /etc/udev/rules.d/60-deckhand.rules       the only file needing sudo
 #   $XDG_CONFIG_HOME/deckhand/                your config — never touched by
 #                                             install; uninstall asks
+#   $XDG_STATE_HOME/deckhand/                 the app's state: rolling config
+#                                             backups. Uninstall removes it
+#                                             without asking (it goes with the
+#                                             app, not with your config)
 #
 # Run it from a git checkout of Deckhand, as your normal user (not root).
 # It checks for prerequisites but does not install them.
@@ -67,6 +71,9 @@ resolve_locations() {
   DATA_HOME="${DATA_HOME:-$HOME/.local/share}"
   CONFIG_HOME="$(manager_env XDG_CONFIG_HOME)"
   CONFIG_HOME="${CONFIG_HOME:-$HOME/.config}"
+  # The daemon reads XDG_STATE_HOME from the same user manager environment.
+  STATE_HOME="$(manager_env XDG_STATE_HOME)"
+  STATE_HOME="${STATE_HOME:-$HOME/.local/state}"
 
   APP_DIR="$DATA_HOME/deckhand"
   STAGE_DIR="$DATA_HOME/deckhand.new"
@@ -76,6 +83,7 @@ resolve_locations() {
   LEGACY_UNIT="$CONFIG_HOME/systemd/user/deckhand.service"
   LEGACY_BACKUP="$DATA_HOME/deckhand.legacy-unit.bak"
   CONFIG_DIR="$CONFIG_HOME/deckhand"
+  STATE_DIR="$STATE_HOME/deckhand"
 }
 
 # --- Checks ------------------------------------------------------------------
@@ -405,6 +413,15 @@ cmd_uninstall() {
   say "Removing $APP_DIR"
   rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR" "$LEGACY_BACKUP"
   rm -rf "${TMPDIR:-/tmp}/deckhand-art"
+
+  # App state, not the user's config: removed with the app, never asked about
+  # (docs/scope.md §0). Said out loud, because it holds the config backups.
+  if [ -d "$STATE_DIR" ]; then
+    local backup_count
+    backup_count="$(find "$STATE_DIR/backups" -maxdepth 1 -name 'config-*.json' 2>/dev/null | wc -l)"
+    rm -rf "$STATE_DIR"
+    say "Removed $STATE_DIR (app state, including $backup_count config backup(s))"
+  fi
 
   remove_udev_rule
 

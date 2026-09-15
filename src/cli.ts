@@ -1,9 +1,15 @@
 import net from 'node:net';
+import type { BackupStatus } from './backups.js';
 import type { AudioList, ReloadResult, StateSnapshot } from './control/commands.js';
 import { socketPath } from './control/server.js';
 import type { DeckGeometry } from './geometry.js';
 
-type StatusResult = StateSnapshot & { protocol: number; pid: number; config: { path: string; lastReload: ReloadResult } };
+type StatusResult = StateSnapshot & {
+  protocol: number;
+  pid: number;
+  // backups is absent when talking to a daemon from before rolling backups.
+  config: { path: string; lastReload: ReloadResult; backups?: BackupStatus };
+};
 type DecksResult = Array<{ serial: string } & DeckGeometry>;
 type SwitchResult = { active: { id: string; name: string | null }; changed: boolean };
 
@@ -192,8 +198,14 @@ async function main(argv: string[]): Promise<void> {
             `active profile: ${s.activeProfile ? `${s.activeProfile.name ?? s.activeProfile.id} (${s.activeProfile.id})` : 'none'}`,
             `config: ${s.config.path}`,
             `last reload: ${s.config.lastReload.ok ? 'ok' : `REFUSED — ${s.config.lastReload.error}`} at ${s.config.lastReload.at}`,
-            'decks:',
           ];
+          const b = s.config.backups;
+          if (b) {
+            const summary = b.count === 0 ? 'none yet' : `${b.count} kept, newest ${b.newest}`;
+            lines.push(`backups: ${b.dir} (${summary})`);
+            if (b.error) lines.push(`backups: LAST ATTEMPT FAILED — ${b.error}`);
+          }
+          lines.push('decks:');
           for (const d of s.decks) {
             const where = d.page !== undefined ? `profile ${d.profile}, page ${d.page}, brightness ${d.brightness}` : '';
             const flags = [d.connected ? 'connected' : 'not connected', d.configured ? '' : 'no layout'].filter(Boolean).join(', ');

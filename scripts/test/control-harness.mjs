@@ -79,6 +79,7 @@ export async function startDaemon(directory, config, extraDeps = {}) {
     profiles: () => profiles,
     configPath: '/test/config.json',
     lastReload: () => state.lastReload,
+    backups: () => ({ dir: '/test/backups', count: 0, newest: null }),
     unattachedDecks: () => unattached,
     releaseSocketKeys: async () => [],
     audioState: () => null,

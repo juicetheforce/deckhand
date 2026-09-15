@@ -1,4 +1,5 @@
 import { isKnownAction } from '../actions/index.js';
+import type { BackupStatus } from '../backups.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
@@ -34,6 +35,8 @@ export interface ControlDeps {
   profiles: () => Profiles | null;
   configPath: string;
   lastReload: () => ReloadResult;
+  /** Where rolling config backups are kept, and how many; from memory, never the disk. */
+  backups: () => BackupStatus;
   /**
    * Connected decks that have no session because no profile has a layout for
    * them, with the geometry read when they were last opened. The daemon opens
@@ -167,7 +170,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       return {
         protocol: PROTOCOL_VERSION,
         pid: process.pid,
-        config: { path: deps.configPath, lastReload: deps.lastReload() },
+        config: { path: deps.configPath, lastReload: deps.lastReload(), backups: deps.backups() },
         ...stateSnapshot(deps),
       };
     },

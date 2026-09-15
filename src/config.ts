@@ -180,15 +180,19 @@ export function validateConfig(config: unknown): Config {
   return config as unknown as Config;
 }
 
-export async function loadConfig(): Promise<Config> {
-  const raw = await fs.readFile(CONFIG_PATH, 'utf8');
+/**
+ * Load and validate config.json. The file text comes back too, because a
+ * rolling backup (src/backups.ts) saves the config exactly as it was written.
+ */
+export async function loadConfig(): Promise<{ config: Config; text: string }> {
+  const text = await fs.readFile(CONFIG_PATH, 'utf8');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(text);
   } catch (err) {
     throw new Error(`config.json is not valid JSON: ${(err as Error).message}`);
   }
-  return validateConfig(parsed);
+  return { config: validateConfig(parsed), text };
 }
 
 export async function ensureConfigDir(): Promise<void> {
