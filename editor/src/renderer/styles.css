@@ -1,0 +1,468 @@
+/*
+ * Visual reference: mockups 2a–2c (docs/scope.md §10). One glass surface per
+ * functional region, gradients only in the background layer, a darker
+ * non-glass well behind the grid. Accent #5b6ee8; amber navigation; green
+ * media; red destructive.
+ */
+
+:root {
+  color-scheme: dark;
+  --accent: #5b6ee8;
+  --accent-soft: rgba(91, 110, 232, 0.25);
+  --amber: #e8b45a;
+  --green: #5bc28a;
+  --red: #e85a6e;
+  --text: #e8eaf6;
+  --text-muted: rgba(232, 234, 246, 0.55);
+  --glass: rgba(255, 255, 255, 0.045);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --radius: 16px;
+  font-family: 'Noto Sans', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(900px 520px at 18% -8%, rgba(91, 110, 232, 0.28), transparent 70%),
+    linear-gradient(160deg, #0d0e18 0%, #090a11 100%);
+  overflow: hidden;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(18px);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 12px;
+}
+
+.app-loading {
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+/* Toolbar and breadcrumb */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.crumb-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.crumb select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 8px;
+}
+
+.crumb select option {
+  background: #16172a;
+}
+
+.crumb-sep {
+  color: var(--text-muted);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 5px 12px;
+  color: var(--text-muted);
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.tab-selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tab-selected:hover {
+  background: var(--accent);
+}
+
+.tab-add {
+  border: 1px dashed var(--glass-border);
+}
+
+.add-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-page input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 5px 8px;
+  width: 170px;
+}
+
+.field-error {
+  color: var(--red);
+  font-size: 12px;
+}
+
+/* Panes */
+
+.panes {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 300px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.library,
+.inspector {
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-height: 0;
+}
+
+.well {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.32);
+  border-radius: 12px;
+  padding: 24px;
+  overflow: auto;
+}
+
+/* Library */
+
+.library-group + .library-group {
+  margin-top: 14px;
+}
+
+.library-heading {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.library ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.library-entry {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 9px;
+  border-radius: 9px;
+  border-left: 3px solid transparent;
+}
+
+.library-entry.tone-accent {
+  border-left-color: var(--accent);
+}
+.library-entry.tone-navigation {
+  border-left-color: var(--amber);
+}
+.library-entry.tone-media {
+  border-left-color: var(--green);
+}
+.library-entry.tone-neutral {
+  border-left-color: rgba(255, 255, 255, 0.18);
+}
+
+.library-entry-later {
+  opacity: 0.45;
+}
+
+.library-name {
+  font-weight: 600;
+}
+
+.library-description {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Grid */
+
+.grid {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.key {
+  position: relative;
+  aspect-ratio: 1;
+  container-type: inline-size;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.055);
+  padding: 0;
+  overflow: hidden;
+}
+
+.key-empty {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.key:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.key-selected,
+.key-selected:hover {
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.key-no-screen {
+  opacity: 0.6;
+}
+
+.key-icon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.key-label {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.key-label-top {
+  top: 5%;
+}
+.key-label-bottom {
+  bottom: 5%;
+}
+.key-label-center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.key-caption {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6%;
+  text-align: center;
+  font-size: max(9px, 11cqw);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* An inert key that looks placed (scope §10). Editor only. */
+.key-unbound {
+  border: 1px dashed var(--amber);
+}
+
+.key-mark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(232, 180, 90, 0.92);
+  color: #1b1405;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* After .key-mark, so it wins at equal specificity. */
+.key-mark-missing {
+  background: rgba(232, 90, 110, 0.92);
+  color: #fff;
+}
+
+/* Inspector */
+
+.inspector-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+}
+
+.facts dt {
+  color: var(--text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.path,
+.json {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+}
+
+.json {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 9px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+/* Notices */
+
+.notices:empty {
+  display: none;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice {
+  border-radius: 10px;
+  padding: 8px 12px;
+  border: 1px solid;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice p + p {
+  margin-top: 4px;
+}
+
+.notice-info {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.notice-warning {
+  border-color: rgba(232, 180, 90, 0.5);
+  background: rgba(232, 180, 90, 0.08);
+}
+
+.notice-error {
+  border-color: rgba(232, 90, 110, 0.55);
+  background: rgba(232, 90, 110, 0.09);
+}
+
+.notice-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notice-actions button,
+.cannot-open button {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 12px;
+}
+
+.cannot-open {
+  max-width: 560px;
+  margin: 80px auto;
+  padding: 24px;
+}
+
+.cannot-open h1 {
+  margin-top: 0;
+  font-size: 18px;
+}

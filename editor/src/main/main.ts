@@ -1,5 +1,6 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
 // The daemon's own modules, imported rather than copied (docs/scope.md §7, M4
 // phase A proof 0a). Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
@@ -10,8 +11,10 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, StoreView } from '../shared/bridge.js';
 import type { Edit } from '../shared/edits.js';
+import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
+import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 
 // Electron's state (cache, local storage, lock files) goes in the state
 // directory, never the default ~/.config/<app name>: that would sit next to
@@ -19,12 +22,17 @@ import { DaemonClient, DaemonError } from './daemon-client.js';
 // the state directory. Must be set before the app is ready. (docs/scope.md §0)
 app.setPath('userData', path.join(STATE_DIR, 'editor'));
 
+registerIconScheme(); // before the app is ready
+
 /**
- * Check modes, used only by scripts/check-*.mjs: "shared" (proof 0a) and
- * "bridge" (step 2). The renderer runs the check and reports with
- * reportCheck(); main prints one line and quits.
+ * Check modes, used only by scripts/check-*.mjs and scripts/screenshot.mjs:
+ * "shared" (proof 0a), "bridge" (step 2), "screenshot" (step 3). The renderer
+ * runs the check and reports with reportCheck(); main prints one line and
+ * quits.
  */
 const CHECK = process.env.DECKHAND_EDITOR_CHECK ?? null;
+// Offscreen frames came back 0×0 with GPU rendering (2026-09-15).
+if (CHECK === 'screenshot') app.disableHardwareAcceleration();
 
 // No application menu: Electron's default one binds Ctrl+W, Ctrl+R, Ctrl+Q
 // and more, which would fire while the hotkey inspector is listening. With
@@ -32,6 +40,8 @@ const CHECK = process.env.DECKHAND_EDITOR_CHECK ?? null;
 Menu.setApplicationMenu(null);
 
 let window: BrowserWindow | null = null;
+/** Screenshot check only: the most recent offscreen frame. */
+let lastFrame: Electron.NativeImage | null = null;
 let store: ConfigStore | null = null;
 let storeError: string | null = null;
 
@@ -98,7 +108,11 @@ function registerIpc(): void {
   );
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;
-    void finishCheck(report);
+    finishCheck(report).catch((err) => {
+      // A check that cannot finish must fail, not hang until the script's timeout.
+      console.error(`DECKHAND_EDITOR_CHECK failed in main: ${(err as Error).stack ?? err}`);
+      app.exit(1);
+    });
   });
 }
 
@@ -119,6 +133,36 @@ async function finishCheck(rendererReport: unknown): Promise<void> {
     }
     report.mainParseCombo = parseCombo('ctrl+1');
   }
+  if (CHECK === 'bridge' && store) {
+    // The protocol's refusals, seen as HTTP statuses: an <img> fails the same
+    // way whether a text file is refused or served, so the page alone cannot tell.
+    const icon = Object.values(store.state().config.profiles)
+      .flatMap((p) => Object.values(p.layouts))
+      .flatMap((l) => Object.values(l.pages))
+      .map((page) => page.buttons['0']?.icon)
+      .find((p) => p !== undefined);
+    if (icon) {
+      const status = async (p: string) => (await net.fetch(iconUrl(p))).status;
+      report.iconStatuses = {
+        image: await status(icon),
+        textFile: await status(icon.replace(/dot\.png$/, 'secret.txt')),
+        missing: await status(icon.replace(/dot\.png$/, 'absent.png')),
+      };
+    }
+  }
+  if (CHECK === 'screenshot' && window && process.env.DECKHAND_EDITOR_SCREENSHOT) {
+    // A single paint is not reliable: the first run captured a frame from before
+    // the check's click, the next the blank first paint after invalidate(). So
+    // repaint a few times, let frames settle, and keep the latest.
+    for (let i = 0; i < 3; i++) {
+      window.webContents.invalidate();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    const image = lastFrame;
+    if (!image) throw new Error('no frame was painted');
+    await fs.writeFile(process.env.DECKHAND_EDITOR_SCREENSHOT, image.toPNG());
+    report.screenshot = { path: process.env.DECKHAND_EDITOR_SCREENSHOT, ...image.getSize() };
+  }
   console.log(`DECKHAND_EDITOR_CHECK ${JSON.stringify(report)}`);
   app.quit(); // goes through before-quit, so unsaved edits are flushed
 }
@@ -133,10 +177,19 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // capturePage() fails here with "UnknownVizError", shown or offscreen
+      // (seen 2026-09-15); offscreen rendering hands over frames through the
+      // 'paint' event instead, which the screenshot check keeps.
+      offscreen: CHECK === 'screenshot',
     },
   });
+  if (CHECK === 'screenshot') window.webContents.on('paint', (_e, _dirty, image) => (lastFrame = image));
   window.on('closed', () => (window = null));
-  void window.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), CHECK ? { query: { check: CHECK } } : undefined);
+  const query: Record<string, string> = {};
+  if (CHECK) query.check = CHECK;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_KEY) query.selectKey = process.env.DECKHAND_EDITOR_SELECT_KEY;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_DECK) query.selectDeck = process.env.DECKHAND_EDITOR_SELECT_DECK;
+  void window.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query });
 }
 
 // Write unsaved edits before quitting. Autosave waits 400 ms after the last
@@ -155,6 +208,7 @@ app.on('before-quit', (event) => {
 });
 
 app.whenReady().then(async () => {
+  handleIconScheme();
   registerIpc();
   await openStore();
   daemon.start();

@@ -1,16 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { DeckhandBridge } from '../shared/bridge.js';
+import { App } from './App.js';
 import { runCheck } from './checks.js';
+import './styles.css';
 
 declare global {
   interface Window {
     deckhand: DeckhandBridge;
   }
-}
-
-function App() {
-  return <p>Deckhand editor — nothing here yet.</p>;
 }
 
 createRoot(document.getElementById('root')!).render(

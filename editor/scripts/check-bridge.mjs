@@ -32,12 +32,26 @@ function check(name, fn) {
   }
 }
 
+const scratch = await scratchDir(); // short, for the socket path
+
+// For the icon protocol: a real 1×1 PNG, and a text file beside it.
+const iconDir = path.join(scratch, 'icons');
+await fs.mkdir(iconDir);
+await fs.writeFile(
+  path.join(iconDir, 'dot.png'),
+  Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAMAASsJTYQAAAAASUVORK5CYII=', 'base64'),
+);
+await fs.writeFile(path.join(iconDir, 'secret.txt'), 'not an image\n');
+
 const SERIAL = 'BRIDGE-XL';
 const CONFIG = {
-  profiles: { default: { name: 'Default', layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: { '0': { label: 'kept' } } } } } } } },
+  profiles: {
+    default: {
+      name: 'Default',
+      layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: { '0': { label: 'kept', icon: path.join(iconDir, 'dot.png') } } } } } },
+    },
+  },
 };
-
-const scratch = await scratchDir(); // short, for the socket path
 const configDir = path.join(scratch, 'config');
 const stateDir = path.join(scratch, 'state');
 await fs.mkdir(configDir);
@@ -89,6 +103,15 @@ if (r && !r.error) {
   check('previewSet on a key the deck does not have: the daemon error code comes through', () => {
     assert.equal(r.previewBadKey.ok, false);
     assert.equal(r.previewBadKey.code, 'not_found');
+  });
+  check('icon protocol, in the page: the PNG draws; fetch() from page script is refused', () => {
+    assert.equal(r.iconImageWidth, 1, 'the PNG did not load');
+    assert.equal(r.iconTextFile, -1);
+    assert.equal(r.iconMissing, -1);
+    assert.match(String(r.iconFetch), /^refused/, 'page script could read the icon bytes');
+  });
+  check('icon protocol, by status: image 200, a .txt beside it 404, a missing image 404', () => {
+    assert.deepEqual(output.report.iconStatuses, { image: 200, textFile: 404, missing: 404 });
   });
   check('the preview reached the fake deck', () => {
     assert.ok((deck.writes.get(3) ?? 0) > writesBefore, 'key 3 was not written');

@@ -5,6 +5,7 @@
 import { parseCombo } from '../../../src/keymap.js';
 import type { StateSnapshot } from '../../../src/control/protocol.js';
 import type { DaemonView, DeckhandBridge, SharedImportReport, StoreView } from '../shared/bridge.js';
+import { iconUrl } from '../shared/icons.js';
 
 /** Proof 0a: the daemon's keymap runs in the renderer, and a protocol type compiles here. */
 function sharedImports(): SharedImportReport {
@@ -81,15 +82,80 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   );
   out.storeEventPushed = await eventually(() => storeEvents.some((v) => v.open && !v.state.dirty));
 
+  // The icon protocol (step 3): an image loads; a non-image file in the same
+  // folder and a missing image do not; page script cannot read icons as bytes.
+  const icon = snap.store.state.config.profiles[profile].layouts[serial].pages.main?.buttons['0']?.icon;
+  const loads = (url: string) =>
+    new Promise<number>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.naturalWidth);
+      img.onerror = () => resolve(-1);
+      img.src = url;
+    });
+  if (icon) {
+    out.iconImageWidth = await loads(iconUrl(icon));
+    out.iconTextFile = await loads(iconUrl(icon.replace(/dot\.png$/, 'secret.txt')));
+    out.iconMissing = await loads(iconUrl(icon.replace(/dot\.png$/, 'absent.png')));
+    try {
+      await fetch(iconUrl(icon));
+      out.iconFetch = 'allowed';
+    } catch (err) {
+      out.iconFetch = `refused: ${(err as Error).message}`;
+    }
+  }
+
   // Left for the quit: an edit made just before quitting must still be written.
   out.lastEdit = await api.apply({ kind: 'setLabel', at: { profile, serial, page, index: 2 }, label: 'written on quit' });
   return out;
+}
+
+/**
+ * Step 3: let the shell render against the test daemon, optionally select a
+ * key, wait for icons to load, and report what is on screen; main then
+ * captures the window (scripts/screenshot.mjs).
+ */
+async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const snap = await api.snapshot();
+  await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected && (v.decks?.length ?? 0) > 0);
+  const started = Date.now();
+  while (!document.querySelector('.grid') && Date.now() - started < 5000) await new Promise((r) => setTimeout(r, 50));
+  const deck = new URLSearchParams(window.location.search).get('selectDeck');
+  if (deck !== null) {
+    // Choose the device the way a user does: change the Device dropdown.
+    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1];
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, deck);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  const selectIndex = new URLSearchParams(window.location.search).get('selectKey');
+  if (selectIndex !== null) (document.querySelectorAll<HTMLButtonElement>('.key')[Number(selectIndex)])?.click();
+  const images = [...document.querySelectorAll<HTMLImageElement>('img')];
+  const settled = (img: HTMLImageElement) =>
+    new Promise<void>((resolve) => {
+      if (img.complete) return resolve();
+      img.addEventListener('load', () => resolve(), { once: true });
+      img.addEventListener('error', () => resolve(), { once: true });
+    });
+  await Promise.all(images.map(settled));
+  await new Promise((r) => setTimeout(r, 300));
+  return {
+    selectKeyParam: selectIndex,
+    selected: [...document.querySelectorAll('.key-selected')].map((k) => k.getAttribute('aria-label')),
+    inspectorTitle: document.querySelector('.inspector-title')?.textContent ?? null,
+    keys: document.querySelectorAll('.key').length,
+    kinds: Object.fromEntries(['empty', 'unbound', 'hotkey', 'other'].map((k) => [k, document.querySelectorAll(`.key-${k}`).length])),
+    images: images.length,
+    brokenImages: images.filter((img) => img.naturalWidth === 0).map((img) => decodeURIComponent(img.src.split('path=')[1] ?? img.src)),
+    notices: [...document.querySelectorAll('.notice')].map((n) => n.textContent?.slice(0, 80)),
+    tabs: [...document.querySelectorAll('.tab')].map((t) => t.textContent),
+  };
 }
 
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
     else if (name === 'bridge') api.reportCheck(name, await bridge(api));
+    else if (name === 'screenshot') api.reportCheck(name, await screenshot(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });
