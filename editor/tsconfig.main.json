@@ -1,0 +1,17 @@
+{
+  // The Electron main process and preload. Same module rules as the daemon
+  // (NodeNext), because this is the code that imports the daemon's own
+  // src/config.ts, src/keymap.ts and src/types.ts directly — shared, not copied.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts"]
+}

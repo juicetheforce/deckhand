@@ -1,17 +1,6 @@
 import net from 'node:net';
-import type { BackupStatus } from './backups.js';
-import type { AudioList, ReloadResult, StateSnapshot } from './control/commands.js';
+import type { AudioList, DecksResult, StatusResult, SwitchResult } from './control/protocol.js';
 import { socketPath } from './control/server.js';
-import type { DeckGeometry } from './geometry.js';
-
-type StatusResult = StateSnapshot & {
-  protocol: number;
-  pid: number;
-  // backups is absent when talking to a daemon from before rolling backups.
-  config: { path: string; lastReload: ReloadResult; backups?: BackupStatus };
-};
-type DecksResult = Array<{ serial: string } & DeckGeometry>;
-type SwitchResult = { active: { id: string; name: string | null }; changed: boolean };
 
 /**
  * deckhand — command-line client for the daemon's control socket

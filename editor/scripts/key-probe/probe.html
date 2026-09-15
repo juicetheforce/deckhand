@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Deckhand key probe</title>
+    <style>
+      body { background: #111218; color: #e8e9f2; font: 16px system-ui, sans-serif; margin: 0; padding: 32px; }
+      #message { white-space: pre-wrap; font-size: 22px; line-height: 1.4; min-height: 5em; }
+      #message.warning { color: #f2b35a; }
+      button { font-size: 20px; padding: 12px 28px; border-radius: 10px; border: 0; background: #5b6ee8; color: white; }
+      #log { margin-top: 24px; font: 13px ui-monospace, monospace; color: #9aa0b8; white-space: pre; height: 300px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="message">Loading…</div>
+    <button id="go" hidden>Start</button>
+    <div id="log"></div>
+    <script>
+      const message = document.getElementById('message');
+      const go = document.getElementById('go');
+      const log = document.getElementById('log');
+      let clicks = 0;
+
+      // What the hotkey inspector's listening state will do: read the
+      // physical key (code) and swallow the event.
+      function onKey(event) {
+        event.preventDefault();
+        window.probe.key({
+          type: event.type === 'keydown' ? 'keyDown' : 'keyUp',
+          code: event.code, key: event.key, repeat: event.repeat,
+          ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey,
+        });
+        if (event.type === 'keydown') log.textContent = `${event.code} (key "${event.key}")\n` + log.textContent;
+      }
+      window.addEventListener('keydown', onKey, true);
+      window.addEventListener('keyup', onKey, true);
+
+      window.probe.onState((state) => {
+        message.textContent = state.message;
+        message.className = state.warning ? 'warning' : '';
+        if (state.button !== undefined) {
+          go.hidden = !state.button;
+          go.textContent = clicks === 0 ? 'Start' : 'Next';
+        }
+      });
+      go.addEventListener('click', () => {
+        clicks++;
+        go.hidden = true;
+        window.probe.click();
+      });
+    </script>
+  </body>
+</html>

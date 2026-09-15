@@ -1,7 +1,8 @@
 import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
 import { ConfigBackups } from './backups.js';
 import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
-import { createHandlers, eventNotifiers, type ControlDeps, type ReloadResult } from './control/commands.js';
+import { createHandlers, eventNotifiers, type ControlDeps } from './control/commands.js';
+import type { ReloadResult } from './control/protocol.js';
 import { ControlServer, socketPath } from './control/server.js';
 import { DeckSession } from './deck.js';
 import { geometryOf, type DeckGeometry } from './geometry.js';

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { BackupStatus } from './control/protocol.js';
 
 /**
  * Rolling config backups (docs/scope.md §5).
@@ -43,16 +44,6 @@ function timeOf(name: string): number | null {
   const [date, time] = match[1].split('T');
   const parsed = Date.parse(`${date}T${time.replace(/-/g, ':')}`);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-/** What "deckhand status" reports. Read from memory, so the socket never touches the disk for it. */
-export interface BackupStatus {
-  dir: string;
-  count: number;
-  /** ISO time of the newest backup, or null if there is none. */
-  newest: string | null;
-  /** The most recent failure, if the last attempt failed. */
-  error?: string;
 }
 
 export type BackupOutcome = 'saved' | 'unchanged' | 'too-recent' | 'duplicate' | 'failed';

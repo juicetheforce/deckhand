@@ -1,10 +1,10 @@
 import { isKnownAction } from '../actions/index.js';
-import type { BackupStatus } from '../backups.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
-import { pickableDevices, type AudioState, type PickableDevice } from '../services/audio.js';
+import { pickableDevices, type AudioState } from '../services/audio.js';
 import type { ActionDef, ButtonDef } from '../types.js';
+import type { AudioList, BackupStatus, DeckStatus, ReloadResult, StateSnapshot } from './protocol.js';
 import {
   ControlError,
   EVENT_NAMES,
@@ -20,14 +20,6 @@ import {
  * Everything the handlers need from the daemon comes in through ControlDeps,
  * so the smoke test can run them against fake decks.
  */
-
-/** The result of the most recent config load or reload. */
-export interface ReloadResult {
-  ok: boolean;
-  /** ISO 8601 time. */
-  at: string;
-  error?: string;
-}
 
 export interface ControlDeps {
   sessions: Map<string, DeckSession>;
@@ -51,11 +43,6 @@ export interface ControlDeps {
   releaseSocketKeys: () => Promise<number[]>;
   /** The audio cache (services/audio.ts cachedState), or null before its first refresh. */
   audioState: () => AudioState | null;
-}
-
-export interface AudioList {
-  default: string;
-  devices: PickableDevice[];
 }
 
 /**
@@ -91,22 +78,6 @@ export function audioLists(state: AudioState | null): { sinks: AudioList; source
 /** action.run's hold between "action" and "onRelease". */
 export const DEFAULT_HOLD_MS = 100;
 export const MAX_HOLD_MS = 10_000;
-
-export interface DeckStatus {
-  serial: string;
-  connected: boolean;
-  configured: boolean;
-  profile?: string;
-  page?: string;
-  brightness?: number;
-  /** Keys showing a preview. */
-  previews?: number[];
-}
-
-export interface StateSnapshot {
-  activeProfile: { id: string; name: string | null } | null;
-  decks: DeckStatus[];
-}
 
 /** The part of "status" that the "state" event also carries. */
 export function stateSnapshot(deps: ControlDeps): StateSnapshot {

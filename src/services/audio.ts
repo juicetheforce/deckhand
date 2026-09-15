@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { promisify } from 'node:util';
+import type { PickableDevice } from '../control/protocol.js';
 
 const run = promisify(execFile);
 
@@ -154,13 +155,6 @@ async function readState(): Promise<AudioState> {
     sourceDevices: parseDevices(sourcesJson),
     defaultSource,
   };
-}
-
-/** One entry in the control socket's device list. */
-export interface PickableDevice {
-  node: string;
-  label: string;
-  available: 'yes' | 'no' | 'unknown';
 }
 
 /**
