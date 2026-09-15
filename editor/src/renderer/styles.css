@@ -118,6 +118,40 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.toolbar-spacer {
+  flex: 1;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pill-connected {
+  color: var(--green);
+  background: rgba(91, 194, 138, 0.1);
+  border-color: rgba(91, 194, 138, 0.35);
+}
+
+.pill-disconnected {
+  color: var(--red);
+  background: rgba(232, 90, 110, 0.1);
+  border-color: rgba(232, 90, 110, 0.4);
+}
+
 .tabs {
   display: flex;
   align-items: center;

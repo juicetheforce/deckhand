@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import type { StoreState, DaemonView } from '../shared/bridge.js';
+import { useEffect, useRef, useState } from 'react';
+import { startPageOf } from '../../../src/config-common.js';
+import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
 import { Inspector } from './Inspector.js';
 import { Library } from './Library.js';
-import { geometryFor, layoutFor, reconcileSelection, type Selection } from './model.js';
+import { canSwitchDeck, deckForProfile, followDeck, geometryFor, layoutFor, reconcileSelection, type Selection } from './model.js';
 import { Notices } from './Notices.js';
 import { Toolbar, type AddPageResult } from './Toolbar.js';
 import { useEditor } from './useEditor.js';
@@ -27,15 +28,81 @@ function CannotOpen({ error }: { error: string }) {
 
 function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   const config = store.config;
-  const [selection, setSelection] = useState<Selection>(() => reconcileSelection(config, daemon, null));
+  const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null)));
+  // Switches sent to the daemon and not yet answered. While one is in flight
+  // the breadcrumb shows what was chosen; state events from before the switch
+  // would otherwise pull it back for a moment.
+  const [inFlight, setInFlight] = useState(0);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
-  // A reload, a page added, a deck plugged in: keep the selection if it still exists.
+  // Follow the decks (scope §10): any change to the config or to what the
+  // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
   useEffect(() => {
-    setSelection((current) => reconcileSelection(config, daemon, current));
-  }, [config, daemon]);
+    if (inFlight > 0) return;
+    setSelection((current) => followDeck(config, daemon, current));
+  }, [config, daemon, inFlight]);
 
-  const select = (change: Partial<Selection>) =>
-    setSelection((current) => reconcileSelection(config, daemon, { ...current, key: null, ...change }));
+  // The latest daemon view, for code waiting inside a switch.
+  const daemonRef = useRef(daemon);
+  daemonRef.current = daemon;
+
+  /**
+   * Send a switch and hold the breadcrumb on the choice until the daemon's
+   * state shows it. The daemon replies to a switch before its merged `state`
+   * event arrives, so resuming on the reply let the breadcrumb jump back for a
+   * moment (caught by scripts/check-live.mjs). At most a second, then follow
+   * whatever the deck reports.
+   */
+  const sendSwitch = async (call: () => Promise<DaemonResult>, shows: (view: DaemonView) => boolean) => {
+    setInFlight((n) => n + 1);
+    try {
+      const result = await call();
+      setSwitchError(result.ok ? null : `Could not switch the deck: ${result.error}`);
+      if (result.ok) {
+        const started = Date.now();
+        while (!shows(daemonRef.current) && Date.now() - started < 1000) await new Promise((r) => setTimeout(r, 20));
+      }
+    } finally {
+      // Back to following: if the switch failed, the breadcrumb returns to what the deck really shows.
+      setInFlight((n) => n - 1);
+    }
+  };
+  const deckShows = (serial: string, check: (deck: { profile?: string; page?: string }) => boolean) => (view: DaemonView) =>
+    view.status?.decks.some((d) => d.serial === serial && check(d)) ?? false;
+
+  const select = (change: Partial<Selection>) => {
+    if (change.profile !== undefined && change.profile !== selection.profile) {
+      // Live switching: choosing a profile makes it active on the decks.
+      const profile = change.profile;
+      const serial = deckForProfile(config, daemon, profile, selection.serial);
+      const layout = layoutFor(config, profile, serial);
+      setSelection(reconcileSelection(config, daemon, { profile, serial, page: layout ? startPageOf(layout) : '', key: null }));
+      if (daemon.connected) {
+        void sendSwitch(
+          () => window.deckhand.switchProfile(profile),
+          (view) => view.status?.activeProfile?.id === profile,
+        );
+      }
+      return;
+    }
+    if (change.serial !== undefined && change.serial !== selection.serial) {
+      // Choosing a device opens whatever that deck is showing; nothing is sent.
+      setSelection(followDeck(config, daemon, { ...selection, serial: change.serial, key: null }));
+      return;
+    }
+    if (change.page !== undefined && change.page !== selection.page) {
+      // Live switching: choosing a page shows it on the deck being edited.
+      const page = change.page;
+      const serial = selection.serial;
+      setSelection(reconcileSelection(config, daemon, { ...selection, page, key: null }));
+      if (canSwitchDeck(daemon, serial)) {
+        void sendSwitch(
+          () => window.deckhand.showPage(serial, page),
+          deckShows(serial, (d) => d.page === page),
+        );
+      }
+    }
+  };
 
   const editingBlocked = store.conflict !== null || store.fileError !== null;
   const layout = layoutFor(config, selection.profile, selection.serial);
@@ -60,7 +127,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
       <div className="panes">
         <Library />
         <main className="stage glass">
-          <Notices store={store} daemon={daemon} />
+          <Notices store={store} daemon={daemon} switchError={switchError} />
           <div className="well">
             {!layout && <p className="muted">This profile has no layout for this deck.</p>}
             {layout && !geometry && (

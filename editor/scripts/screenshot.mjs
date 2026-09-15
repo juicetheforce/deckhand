@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>]
 //
 // Each deck the config has a layout for is attached as a fake deck. Its
 // geometry is a test choice, not device knowledge: a serial whose layouts use
@@ -62,6 +62,7 @@ const { values } = parseArgs({
     config: { type: 'string', default: path.join(repoRoot, 'config.example.json') },
     select: { type: 'string' },
     deck: { type: 'string' },
+    disconnected: { type: 'string' },
   },
 });
 if (!values.out) {
@@ -79,6 +80,7 @@ await fs.writeFile(path.join(configDir, 'config.json'), text);
 const daemon = await startDaemon(scratch, config);
 const serials = new Set(Object.values(config.profiles).flatMap((p) => Object.keys(p.layouts)));
 for (const serial of serials) {
+  if (serial === values.disconnected) continue; // left unattached, to show a disconnected deck
   const highest = Math.max(
     -1,
     ...Object.values(config.profiles)

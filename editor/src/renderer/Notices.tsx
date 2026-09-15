@@ -3,13 +3,15 @@ import type { DaemonView, StoreState } from '../shared/bridge.js';
 interface Props {
   store: StoreState;
   daemon: DaemonView;
+  /** The last live switch that failed; cleared by the next one that works. */
+  switchError: string | null;
 }
 
 /**
  * Transient notices only — no permanent status chrome (scope §10). Each one
  * is shown only while its condition holds.
  */
-export function Notices({ store, daemon }: Props) {
+export function Notices({ store, daemon, switchError }: Props) {
   const api = window.deckhand;
   const lastReload = daemon.status?.config.lastReload;
 
@@ -51,6 +53,11 @@ export function Notices({ store, daemon }: Props) {
           <p>
             <strong>Could not save:</strong> {store.saveError}
           </p>
+        </div>
+      )}
+      {switchError && daemon.connected && (
+        <div className="notice notice-error">
+          <p>{switchError}</p>
         </div>
       )}
       {!daemon.connected && (

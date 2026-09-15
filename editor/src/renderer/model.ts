@@ -91,6 +91,39 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
   return { profile, serial, page, key: samePage ? current!.key : null };
 }
 
+/**
+ * The breadcrumb follows the deck (scope §10, live switching): when the
+ * selected deck is showing a page, the selection moves to that profile and
+ * page, unconditionally. The selected key is kept only if the page did not
+ * change. A deck with nothing to report (disconnected, no session, daemon
+ * not connected) leaves the selection as it is.
+ */
+export function followDeck(config: Config, daemon: DaemonView, current: Selection): Selection {
+  const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === current.serial) : undefined;
+  if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
+    const moved = deck.profile !== current.profile || deck.page !== current.page;
+    return reconcileSelection(config, daemon, { ...current, profile: deck.profile, page: deck.page, key: moved ? null : current.key });
+  }
+  return reconcileSelection(config, daemon, current);
+}
+
+/**
+ * The deck to edit after choosing a profile: the current one if the profile
+ * has a layout for it, otherwise the first connected deck it covers, otherwise
+ * the first deck it has a layout for. Keeps the breadcrumb on a deck the new
+ * profile actually shows, so following does not bounce it back.
+ */
+export function deckForProfile(config: Config, daemon: DaemonView, profile: string, preferred: string): string {
+  if (layoutFor(config, profile, preferred)) return preferred;
+  const choices = deckChoices(config, profile, daemon);
+  return (choices.find((d) => d.connected && d.hasLayout) ?? choices.find((d) => d.hasLayout))?.id ?? preferred;
+}
+
+/** Whether a selection change can be shown on the deck right now. */
+export function canSwitchDeck(daemon: DaemonView, serial: string): boolean {
+  return daemon.connected && (daemon.status?.decks.some((d) => d.serial === serial && d.connected && d.page !== undefined) ?? false);
+}
+
 export type KeyKind = 'empty' | 'unbound' | 'hotkey' | 'other';
 
 /**

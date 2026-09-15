@@ -67,6 +67,10 @@ export interface DeckhandBridge {
   resolveConflict(choice: 'file' | 'mine'): Promise<void>;
   /** Try opening config.json again after it could not be opened. */
   reopenConfig(): Promise<StoreView>;
+  /** Make a profile active on the decks (live switching, scope §10). */
+  switchProfile(to: string): Promise<DaemonResult>;
+  /** Show a page on a deck, saving any unsaved edits first so a new page exists for the daemon. */
+  showPage(serial: string, page: string): Promise<DaemonResult>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
   /** Called on every store change; returns a function that stops the calls. */

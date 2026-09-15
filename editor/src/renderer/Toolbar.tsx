@@ -15,13 +15,15 @@ interface Props {
 export type AddPageResult = { ok: true; page: string } | { ok: false; error: string };
 
 /**
- * Breadcrumb — profile → device → page (scope §10). It chooses what is
- * edited; it does not change what the decks show.
+ * Breadcrumb — profile → device → page (scope §10). Choosing a profile or a
+ * page shows it on the decks, and the breadcrumb follows the decks when they
+ * change from elsewhere (live switching, 2026-09-15). The selected profile is
+ * the one showing, so the dropdown needs no marker for it.
  */
 export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
+  const selectedDeck = decks.find((d) => d.id === selection.serial);
   const layout = layoutFor(config, selection.profile, selection.serial);
-  const activeProfile = daemon.status?.activeProfile?.id;
 
   return (
     <header className="toolbar glass">
@@ -31,7 +33,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           {profileChoices(config).map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
-              {p.id === activeProfile ? ' — showing on the decks' : ''}
             </option>
           ))}
         </select>
@@ -63,6 +64,14 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           ))}
         {layout && <AddPage disabled={editingBlocked} onAdd={onAddPage} onAdded={(page) => onSelect({ page })} />}
       </nav>
+      <span className="toolbar-spacer" />
+      {/* The selected deck's connection state (scope §10, changed 2026-09-15). */}
+      {selectedDeck && (
+        <span className={selectedDeck.connected ? 'pill pill-connected' : 'pill pill-disconnected'} role="status">
+          <span className="pill-dot" aria-hidden="true" />
+          {selectedDeck.connected ? 'Connected' : 'Not connected'}
+        </span>
+      )}
     </header>
   );
 }

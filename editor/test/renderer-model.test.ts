@@ -10,7 +10,7 @@ import type { Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { CATALOGUE } from '../src/renderer/catalogue.js';
-import { deckChoices, describeAction, keyFace, keyKind, reconcileSelection } from '../src/renderer/model.js';
+import { canSwitchDeck, deckChoices, deckForProfile, describeAction, followDeck, keyFace, keyKind, reconcileSelection } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
 process.env.DECKHAND_INPUT_BIN = path.join(REPO, 'scripts/test/fake-input-helper.mjs');
@@ -165,6 +165,64 @@ await check('a new page added by the editor can be selected immediately', () => 
   edited.profiles.default.layouts[XL].pages.pg_beef = { name: 'Combat', buttons: {} };
   const s = reconcileSelection(edited, daemonView([XL]), { profile: 'default', serial: XL, page: 'pg_beef', key: null });
   assert.equal(s.page, 'pg_beef');
+});
+
+console.log('live switching: following the decks');
+
+/** A daemon view where each listed deck shows the given profile and page. */
+function showing(decks: Array<{ serial: string; profile: string; page: string }>): DaemonView {
+  const view = daemonView(decks.map((d) => d.serial));
+  view.status!.decks = decks.map((d) => ({ serial: d.serial, connected: true, configured: true, profile: d.profile, page: d.page }));
+  return view;
+}
+
+await check('the breadcrumb follows a page change on the deck, and drops the key it no longer points at', () => {
+  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), { profile: 'default', serial: XL, page: 'main', key: 5 });
+  assert.deepEqual(s, { profile: 'default', serial: XL, page: 'games', key: null });
+});
+
+await check('the breadcrumb follows a profile change on the deck', () => {
+  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }]), { profile: 'default', serial: XL, page: 'main', key: null });
+  assert.deepEqual([s.profile, s.page], ['prof_game', 'pg_hotbar']);
+});
+
+await check('when the deck has not moved, the selected key stays (mid-edit)', () => {
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3 };
+  assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), current), current);
+});
+
+await check('nothing to follow — disconnected deck, daemon not connected — leaves the selection alone', () => {
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3 };
+  assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: V2, profile: 'default', page: 'main' }]), current), current, 'another deck moving');
+  const down = showing([{ serial: XL, profile: 'default', page: 'main' }]);
+  down.connected = false;
+  assert.deepEqual(followDeck(EXAMPLE, down, current), current, 'daemon not connected: stale state is not followed');
+});
+
+await check('a deck showing a profile the editor does not have (outside edit not reloaded yet) is not followed into nowhere', () => {
+  // Not the start page, and a key selected: a follow that fell back would show as a change.
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3 };
+  assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: XL, profile: 'not-in-config', page: 'x' }]), current), current);
+});
+
+await check('choosing a profile keeps the deck if the profile covers it, otherwise moves to a connected deck it covers', () => {
+  const both = showing([
+    { serial: XL, profile: 'default', page: 'main' },
+    { serial: V2, profile: 'default', page: 'main' },
+  ]);
+  assert.equal(deckForProfile(EXAMPLE, both, 'default', V2), V2);
+  assert.equal(deckForProfile(EXAMPLE, both, 'prof_game', V2), XL, 'prof_game has no V2 layout');
+});
+
+await check('a switch is sent only for a connected deck with a session, with the daemon connected', () => {
+  const view = showing([{ serial: XL, profile: 'default', page: 'main' }]);
+  // V2 connected but with no session (no profile covers it): listed, with no page.
+  view.status!.decks.push({ serial: V2, connected: true, configured: false });
+  assert.equal(canSwitchDeck(view, XL), true);
+  assert.equal(canSwitchDeck(view, V2), false, 'a connected deck with no session');
+  assert.equal(canSwitchDeck(view, 'NOT-LISTED'), false);
+  view.connected = false;
+  assert.equal(canSwitchDeck(view, XL), false);
 });
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

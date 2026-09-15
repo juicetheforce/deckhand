@@ -79,6 +79,39 @@ async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
   }
 }
 
+/**
+ * Show a page on a deck (scope §10, live switching). The page may exist only
+ * in edits not yet saved — a page just added — so save first, and if that
+ * wrote the file, wait for the daemon to report the reload.
+ *
+ * Success is read from the deck's state, not from the reply: a page action
+ * for a page the deck does not have yet logs and returns without an error
+ * (`DeckSession.goToPage`), so action.run answers ok while nothing moved.
+ * That happens after a save, because the daemon reports a reload before it
+ * has applied it to the decks (src/index.ts reload()); so after a save, a
+ * page that has not appeared is asked for again, for about a second.
+ */
+async function showPage(serial: string, page: string): Promise<DaemonResult> {
+  const before = daemon.lastReloadAt();
+  const wrote = (await store?.flush()) ?? false;
+  if (wrote) {
+    const reload = await daemon.waitForReloadAfter(before, 5000);
+    if (reload === null) return { ok: false, code: 'timeout', error: 'the daemon did not pick up the saved config within 5 s' };
+    if (!reload.ok) return { ok: false, code: 'config_refused', error: `the daemon refused the saved config: ${reload.error}` };
+  }
+  const shows = () => daemon.view().status?.decks.some((d) => d.serial === serial && d.page === page) ?? false;
+  const ATTEMPTS = wrote ? 10 : 1;
+  for (let attempt = 1; ; attempt++) {
+    const result = await daemonCall(() => daemon.showPage(serial, page));
+    if (!result.ok) return result;
+    const started = Date.now();
+    while (!shows() && Date.now() - started < 500) await new Promise((resolve) => setTimeout(resolve, 20));
+    if (shows()) return result;
+    if (attempt >= ATTEMPTS) return { ok: false, code: 'not_shown', error: `the deck did not switch to page "${page}"` };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 /** Only this window's own page may call in. */
 function fromOurWindow(event: IpcMainInvokeEvent): boolean {
   return window !== null && event.sender === window.webContents;
@@ -105,6 +138,12 @@ function registerIpc(): void {
   );
   ipcMain.handle('previewClear', (event, serial: string, key?: number) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewClear(serial, key)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+  );
+  ipcMain.handle('switchProfile', (event, to: string) =>
+    fromOurWindow(event) ? daemonCall(() => daemon.switchProfile(to).then(() => undefined)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+  );
+  ipcMain.handle('showPage', (event, serial: string, page: string) =>
+    fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;

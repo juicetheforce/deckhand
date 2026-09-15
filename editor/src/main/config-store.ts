@@ -55,7 +55,7 @@ export class ConfigStore {
   private externalTimer: NodeJS.Timeout | null = null;
   private watcher: FSWatcher | null = null;
   /** Writes and external reads run one at a time, in order. */
-  private queue: Promise<void> = Promise.resolve();
+  private queue: Promise<unknown> = Promise.resolve();
   private tempCounter = 0;
 
   private readonly configPath: string;
@@ -155,8 +155,12 @@ export class ConfigStore {
     });
   }
 
-  /** Write unsaved edits now. Called before the editor quits. */
-  flush(): Promise<void> {
+  /**
+   * Write unsaved edits now. Called before the editor quits, and before it asks
+   * the daemon to show a page that may exist only in unsaved edits. Resolves
+   * true if a write happened.
+   */
+  flush(): Promise<boolean> {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     return this.enqueue(() => this.writeNow());
@@ -174,9 +178,10 @@ export class ConfigStore {
     this.onChange(this.state());
   }
 
-  private enqueue(task: () => Promise<void>): Promise<void> {
-    this.queue = this.queue.then(task, task);
-    return this.queue;
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task, task);
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 
   private scheduleSave(): void {
@@ -191,8 +196,9 @@ export class ConfigStore {
     return fs.readFile(this.configPath, 'utf8');
   }
 
-  private async writeNow(): Promise<void> {
-    if (!this.dirty || this.conflict || this.fileError || this.reformatPending) return;
+  /** Resolves true if config.json was written. */
+  private async writeNow(): Promise<boolean> {
+    if (!this.dirty || this.conflict || this.fileError || this.reformatPending) return false;
 
     // Last check before overwriting: the file must still be what the editor
     // last saw. The watcher usually reports a change first, but a write can
@@ -203,11 +209,11 @@ export class ConfigStore {
     } catch (err) {
       this.saveError = `cannot read config.json before saving: ${(err as Error).message}`;
       this.emit();
-      return;
+      return false;
     }
     if (onDisk !== this.baseText) {
       this.enterConflict(onDisk);
-      return;
+      return false;
     }
 
     const text = serializeConfig(this.config);
@@ -227,12 +233,13 @@ export class ConfigStore {
       await fs.rm(temp, { force: true });
       this.saveError = `could not save config.json: ${(err as Error).message}`;
       this.emit();
-      return;
+      return false;
     }
     this.baseText = text;
     this.dirty = false;
     this.saveError = null;
     this.emit();
+    return true;
   }
 
   private startWatching(): void {

@@ -151,11 +151,98 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   };
 }
 
+/**
+ * Live switching (scope §10), driven through the real UI: clicks, the
+ * profile dropdown, "+ Page". scripts/check-live.mjs runs the harness daemon,
+ * moves the deck itself once (standing in for a deck press) and checks the
+ * deck afterwards.
+ */
+async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 8000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const selectedTab = () => document.querySelector('.tab-selected')?.textContent ?? null;
+  const tab = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((t) => t.textContent === label);
+  const deck = async () => (await api.snapshot()).daemon.status?.decks[0];
+  const chooseProfile = (id: string) => {
+    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, id);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  // Record every tab the breadcrumb shows, to catch it jumping back mid-switch.
+  const tabHistory: string[] = [];
+  const observer = new MutationObserver(() => {
+    const t = selectedTab();
+    if (t !== null && tabHistory[tabHistory.length - 1] !== t) tabHistory.push(t);
+  });
+
+  await until(() => document.querySelector('.grid') !== null);
+  out.opensOn = { tab: selectedTab(), deck: await deck() };
+  observer.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
+
+  // 1. A page tab shows that page on the deck.
+  tabHistory.length = 0;
+  tab('Second')!.click();
+  out.tabShowsPage = await until(async () => (await deck())?.page === 'second');
+  await sleep(300);
+  out.tabHistoryDuringSwitch = [...tabHistory];
+
+  // 2. The profile dropdown switches the decks; the breadcrumb lands on the new start page.
+  tabHistory.length = 0;
+  chooseProfile('other');
+  out.profileSwitches = await until(async () => {
+    const d = await deck();
+    return d?.profile === 'other' && d.page === 'hotbar' && selectedTab() === 'Hotbar';
+  });
+  await sleep(300);
+  out.tabHistoryDuringProfileSwitch = [...tabHistory];
+  chooseProfile('default');
+  out.profileSwitchesBack = await until(async () => {
+    const d = await deck();
+    return d?.profile === 'default' && d.page === 'main' && selectedTab() === 'Main';
+  });
+
+  // 3. A page added through "+ Page" is selected and shown on the deck (save, reload, then show).
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-add')][0].click();
+  await until(() => document.querySelector('.add-page input') !== null);
+  const input = document.querySelector<HTMLInputElement>('.add-page input')!;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Live page');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  out.addedPageShown = await until(async () => {
+    const d = await deck();
+    return selectedTab() === 'Live page' && d?.page !== undefined && d.page.startsWith('pg_');
+  }, 10_000);
+  out.addedPageId = (await deck())?.page;
+
+  // 4. Signal the check script (a preview on key 0, which it can see) to move
+  //    the deck to Main by itself; the breadcrumb must follow.
+  const serial = (await deck())!.serial;
+  out.tabBeforePress = selectedTab();
+  await api.previewSet(serial, 0, { label: 'press now' });
+  out.followsDeck = await until(() => selectedTab() === 'Main', 10_000);
+  await api.previewClear(serial, 0);
+
+  // 5. Leave the deck on Second, then quit: closing must not change it.
+  tab('Second')!.click();
+  out.leftOnSecond = await until(async () => (await deck())?.page === 'second');
+  observer.disconnect();
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
     else if (name === 'bridge') api.reportCheck(name, await bridge(api));
     else if (name === 'screenshot') api.reportCheck(name, await screenshot(api));
+    else if (name === 'live') api.reportCheck(name, await live(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

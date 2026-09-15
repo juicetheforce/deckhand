@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { DecksResult, ReloadResult, StateSnapshot, StatusResult } from '../../../src/control/protocol.js';
+import type { DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 
@@ -60,6 +60,7 @@ export class DaemonClient {
   private stopped = false;
   /** The reason from the latest socket error, reported by the 'close' that follows it. */
   private lastError: string | null = null;
+  private reloadWaiters = new Set<{ since: string | null; resolve: (result: ReloadResult | null) => void; timer: NodeJS.Timeout }>();
   private current: DaemonView = { connected: false, problem: 'connecting…', status: null, decks: null };
 
   private readonly socketPath: string | null;
@@ -106,8 +107,54 @@ export class DaemonClient {
     await this.request('preview.clear', key === undefined ? { serial } : { serial, key });
   }
 
+  /** Make a profile active on the decks (scope §10, live switching). */
+  async switchProfile(to: string): Promise<SwitchResult> {
+    return (await this.request('profile.switch', { to })) as SwitchResult;
+  }
+
+  /**
+   * Show a page on one deck, by page ID. Uses action.run with a page action —
+   * the M3 socket has no page command, and this needs none (confirmed against
+   * the harness, docs/scope.md §10). Like every socket action it gets "busy"
+   * while another socket action runs.
+   */
+  async showPage(serial: string, page: string): Promise<void> {
+    await this.request('action.run', { serial, action: { type: 'page', to: page } });
+  }
+
+  /** When the daemon last loaded config.json, or null if not known. */
+  lastReloadAt(): string | null {
+    return this.current.status?.config.lastReload.at ?? null;
+  }
+
+  /**
+   * Resolve with the first config load reported after `since` (a lastReload
+   * time read earlier), or null after `timeoutMs`. Read `since` before writing
+   * the file, so a fast reload cannot be missed.
+   */
+  waitForReloadAfter(since: string | null, timeoutMs: number): Promise<ReloadResult | null> {
+    const now = this.current.status?.config.lastReload;
+    if (now && now.at !== since) return Promise.resolve(now);
+    return new Promise((resolve) => {
+      const waiter = {
+        since,
+        resolve: (result: ReloadResult | null) => {
+          clearTimeout(waiter.timer);
+          this.reloadWaiters.delete(waiter);
+          resolve(result);
+        },
+        timer: setTimeout(() => waiter.resolve(null), timeoutMs),
+      };
+      this.reloadWaiters.add(waiter);
+    });
+  }
+
   private update(change: Partial<DaemonView>): void {
     this.current = { ...this.current, ...change };
+    const reload = this.current.status?.config.lastReload;
+    if (reload) {
+      for (const waiter of [...this.reloadWaiters]) if (reload.at !== waiter.since) waiter.resolve(reload);
+    }
     this.onChange(this.current);
   }
 
