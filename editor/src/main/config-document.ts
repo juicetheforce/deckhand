@@ -1,9 +1,12 @@
 import path from 'node:path';
-import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef } from '../../../src/types.js';
+import type { ButtonDef, Config, LayoutDef, PageDef } from '../../../src/types.js';
+import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
+
+export type { ButtonLocation, Edit, EditResult };
 
 /**
- * The edits the editor can make to a config, as plain data, and the pure
- * functions that apply them (docs/scope.md §10). The renderer sends an Edit;
+ * The pure functions that apply the editor's edits (their types are in
+ * src/shared/edits.ts) to a config (docs/scope.md §10). The renderer sends an Edit;
  * the main process applies it to a copy of the config, validates the result
  * with the daemon's own validateConfig, and autosaves (config-store.ts).
  *
@@ -11,29 +14,6 @@ import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef } from '../../../
  * or fills in defaults, because the config diff after an editing session must
  * show only what was changed (M4 phase A exit).
  */
-
-export interface ButtonLocation {
-  profile: string;
-  serial: string;
-  page: string;
-  index: number;
-}
-
-export type Edit =
-  /** Set the key's press action, keeping icon, label and anything else on it. */
-  | { kind: 'setAction'; at: ButtonLocation; action: ActionDef }
-  /** "Clear hotkey": remove the press action, keeping icon and label. */
-  | { kind: 'removeAction'; at: ButtonLocation }
-  /** Set or (null) remove the icon. Absolute paths under $HOME are stored as ~/... */
-  | { kind: 'setIcon'; at: ButtonLocation; icon: string | null }
-  /** Set or (null or "") remove the label. */
-  | { kind: 'setLabel'; at: ButtonLocation; label: string | null }
-  /** "Clear button": remove the whole key — an empty, dark slot. */
-  | { kind: 'clearButton'; at: ButtonLocation }
-  /** Bare "add page" (scope §7, phase A): a new, empty, named page in one layout. */
-  | { kind: 'addPage'; profile: string; serial: string; name: string };
-
-export type EditResult = { pageId?: string };
 
 /** An edit that cannot apply: a location that does not exist, a clashing name. */
 export class EditError extends Error {}

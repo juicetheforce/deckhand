@@ -4,7 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { validateConfig } from '../../../src/config.js';
 import type { Config } from '../../../src/types.js';
-import { applyEdit, EditError, serializeConfig, type Edit, type EditEnvironment, type EditResult } from './config-document.js';
+import type { Conflict, StoreState } from '../shared/bridge.js';
+import type { ApplyResult, Edit, EditResult } from '../shared/edits.js';
+import { applyEdit, serializeConfig, type EditEnvironment } from './config-document.js';
+
+export type { Conflict, StoreState };
 
 /**
  * The editor's copy of config.json, and the only code that writes it
@@ -26,27 +30,6 @@ import { applyEdit, EditError, serializeConfig, type Edit, type EditEnvironment,
  *   reformatted entirely by the first save, so the store does not save until
  *   the reformat is acknowledged.
  */
-
-export interface Conflict {
-  /** The file's text now. */
-  fileText: string;
-  /** Why that text cannot be used, if it is not a valid config. */
-  fileError?: string;
-}
-
-export interface StoreState {
-  config: Config;
-  /** Accepted edits not yet written. */
-  dirty: boolean;
-  /** The file changed on disk while there were unsaved edits. Editing is blocked until resolved. */
-  conflict: Conflict | null;
-  /** The file on disk is not a valid config (and nothing is unsaved). Editing is blocked until it is fixed. */
-  fileError: string | null;
-  /** Saving would reformat the whole file; nothing is written until acknowledgeReformat(). */
-  reformatPending: boolean;
-  /** The most recent write failure, cleared by a successful write. */
-  saveError: string | null;
-}
 
 export interface StoreOptions {
   configPath: string;
@@ -123,7 +106,7 @@ export class ConfigStore {
   }
 
   /** Apply an edit. An edit that fails, or leaves the config invalid, changes nothing. */
-  apply(edit: Edit): { ok: true; result: EditResult } | { ok: false; error: string } {
+  apply(edit: Edit): ApplyResult {
     if (this.conflict) return { ok: false, error: 'config.json was changed outside the editor; resolve that first' };
     if (this.fileError) return { ok: false, error: `config.json on disk is not usable: ${this.fileError}` };
 
@@ -133,8 +116,7 @@ export class ConfigStore {
       result = applyEdit(candidate, edit, this.env);
       validateConfig(candidate);
     } catch (err) {
-      if (err instanceof EditError || err instanceof Error) return { ok: false, error: err.message };
-      throw err;
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
 
     // An edit that changes nothing (the same label again) writes nothing.

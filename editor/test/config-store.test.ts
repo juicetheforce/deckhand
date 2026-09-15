@@ -282,9 +282,86 @@ async function exitShapedEdit(label: string, text: string): Promise<void> {
   });
 }
 
+/**
+ * Phase A shows other action types read-only, but their icon and label stay
+ * editable. Every key whose action is not a hotkey (or that has onRelease):
+ * set a new icon and label, then remove both — the action, onRelease and
+ * every other field must come through untouched.
+ */
+async function iconAndLabelOnOtherActions(label: string, text: string): Promise<void> {
+  await check(`${label}: icon and label edits on non-hotkey keys leave their actions and other fields untouched`, async () => {
+    const parsed = JSON.parse(text) as Config;
+    const keys: ButtonLocation[] = [];
+    for (const [profile, p] of Object.entries(parsed.profiles)) {
+      for (const [serial, layout] of Object.entries(p.layouts)) {
+        for (const [page, pageDef] of Object.entries(layout.pages)) {
+          for (const [index, button] of Object.entries(pageDef.buttons)) {
+            if ((button.action && button.action.type !== 'hotkey') || button.onRelease) {
+              keys.push({ profile, serial, page, index: Number(index) });
+            }
+          }
+        }
+      }
+    }
+    assert.ok(keys.length > 0, 'the config has no non-hotkey keys, so this checks nothing');
+    const types = new Set(keys.map((k) => parsed.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[String(k.index)].action?.type));
+    console.log(`       (${keys.length} keys: ${[...types].join(', ')})`);
+
+    const buttonOf = (c: Config, k: ButtonLocation) => c.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[String(k.index)];
+    const file = await configFile(text);
+    const store = await openStore(file);
+
+    // 1. New icon and label on every one of them.
+    for (const k of keys) {
+      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: `${HOME}/Pictures/icons/new ${k.index}.png` }).ok, true);
+      assert.equal(store.apply({ kind: 'setLabel', at: k, label: `new ${k.index}` }).ok, true);
+    }
+    await store.flush();
+    const afterSet = await fs.readFile(file, 'utf8');
+    const expectedSet = JSON.parse(text) as Config;
+    for (const k of keys) {
+      const b = buttonOf(expectedSet, k);
+      b.icon = `~/Pictures/icons/new ${k.index}.png`;
+      b.label = `new ${k.index}`;
+    }
+    assert.equal(afterSet, serializeConfig(expectedSet), 'set: file differs from the same change applied directly');
+    const setParsed = JSON.parse(afterSet) as Config;
+    for (const k of keys) {
+      const before = buttonOf(parsed, k);
+      const now = buttonOf(setParsed, k);
+      assert.deepEqual(now.action, before.action, `action changed on ${JSON.stringify(k)}`);
+      assert.deepEqual(now.onRelease, before.onRelease, `onRelease changed on ${JSON.stringify(k)}`);
+      const { icon: _i1, label: _l1, ...restNow } = now;
+      const { icon: _i2, label: _l2, ...restBefore } = before;
+      assert.deepEqual(restNow, restBefore, `another field changed on ${JSON.stringify(k)}`);
+    }
+
+    // 2. Remove both again: every key keeps its action, so none disappears.
+    for (const k of keys) {
+      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: null }).ok, true);
+      assert.equal(store.apply({ kind: 'setLabel', at: k, label: null }).ok, true);
+    }
+    await store.flush();
+    const cleared = JSON.parse(await fs.readFile(file, 'utf8')) as Config;
+    for (const k of keys) {
+      const before = buttonOf(parsed, k);
+      const now = buttonOf(cleared, k);
+      assert.ok(now, `key removed entirely: ${JSON.stringify(k)}`);
+      assert.deepEqual(now.action, before.action);
+      assert.deepEqual(now.onRelease, before.onRelease);
+      assert.equal(now.icon, undefined);
+      assert.equal(now.label, undefined);
+    }
+    store.close();
+  });
+}
+
 await exitShapedEdit('example config', EXAMPLE);
+await iconAndLabelOnOtherActions('example config', EXAMPLE);
 if (process.env.DECKHAND_TEST_REAL_CONFIG) {
-  await exitShapedEdit('copy of a real config', await fs.readFile(process.env.DECKHAND_TEST_REAL_CONFIG, 'utf8'));
+  const real = await fs.readFile(process.env.DECKHAND_TEST_REAL_CONFIG, 'utf8');
+  await exitShapedEdit('copy of a real config', real);
+  await iconAndLabelOnOtherActions('copy of a real config', real);
 }
 
 console.log('saving');

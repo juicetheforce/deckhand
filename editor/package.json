@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json",
     "start": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
     "check:shared": "npm run build && node scripts/check-shared-imports.mjs",
+    "check:bridge": "npm run build && node scripts/check-bridge.mjs",
     "test": "node scripts/run-tests.mjs"
   },
   "engines": {

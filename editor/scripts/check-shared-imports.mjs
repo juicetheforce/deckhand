@@ -3,21 +3,22 @@
 // without being copied, and without pulling the daemon's native or D-Bus
 // dependencies into the editor.
 //
-// Runs the built editor in real Electron with DECKHAND_EDITOR_CHECK=1, which
-// makes main.ts load the config, collect a report from the renderer, print it
+// Runs the built editor in real Electron with DECKHAND_EDITOR_CHECK=shared,
+// which makes the renderer report, and main load the config, print a report
 // and quit. Also checks that Electron's state went to the state directory and
-// not to ~/.config.
+// not to ~/.config. The daemon socket points at a scratch path with nothing
+// listening, so the check never talks to a running daemon.
 //
 // Usage: npm run check:shared   (builds first)
 // DECKHAND_CONFIG_DIR may point at a config to validate; by default the
 // repo's config.example.json is copied into a scratch directory.
 
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import electronPath from 'electron';
+import { runElectronCheck } from './lib/run-electron-check.mjs';
 
 const editorRoot = path.join(import.meta.dirname, '..');
 const repoRoot = path.join(editorRoot, '..');
@@ -45,36 +46,11 @@ if (!configDir) {
 const userConfigHome = process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config');
 const configHomeBefore = new Set(await fs.readdir(userConfigHome));
 
-const output = await new Promise((resolve, reject) => {
-  const env = { ...process.env, DECKHAND_EDITOR_CHECK: '1', DECKHAND_STATE_DIR: stateDir, DECKHAND_CONFIG_DIR: configDir };
-  // VS Code sets ELECTRON_RUN_AS_NODE=1 for processes started from its
-  // extension host; it turns the Electron binary into plain Node, with no
-  // BrowserWindow. Found when the first run of this check failed that way.
-  delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(electronPath, [editorRoot], {
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (d) => (stdout += d));
-  child.stderr.on('data', (d) => (stderr += d));
-  const timer = setTimeout(() => {
-    child.kill();
-    reject(new Error(`electron did not finish in 30 s\nstdout:\n${stdout}\nstderr:\n${stderr}`));
-  }, 30_000);
-  child.on('close', (code) => {
-    clearTimeout(timer);
-    resolve({ code, stdout, stderr });
-  });
-});
-
-const line = output.stdout.split('\n').find((l) => l.startsWith('DECKHAND_EDITOR_CHECK '));
-let report = null;
+const output = await runElectronCheck('shared', { configDir, stateDir, socket: path.join(scratch, 'no-daemon.sock') });
+const report = output.report;
 check('electron ran the check and printed a report', () => {
   assert.equal(output.code, 0, `exit code ${output.code}\nstderr:\n${output.stderr}`);
-  assert.ok(line, `no report line\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`);
-  report = JSON.parse(line.slice('DECKHAND_EDITOR_CHECK '.length));
+  assert.ok(report, `no report line\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`);
 });
 
 if (report) {
