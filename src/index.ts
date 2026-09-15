@@ -2,6 +2,7 @@ import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
 import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
 import { DeckSession } from './deck.js';
 import { input, INPUT_BIN } from './input.js';
+import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
 import { watchHotplug } from './services/hotplug.js';
@@ -18,6 +19,8 @@ const SAFETY_SCAN_INTERVAL_MS = 60000;
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
+/** Created with the first config; updated on every reload. */
+let profiles: Profiles | null = null;
 let shuttingDown = false;
 
 /** `npm run decks` — print serials so you can paste them into config.json. */
@@ -45,8 +48,9 @@ const STARTER_KEYS = 'shift+d';
 
 /**
  * First run: no config.json exists. Write one keyed by the decks connected
- * right now, with one hotkey button on key 0 of each, so the daemon starts
- * lit rather than exiting. Returns false if there was nothing to write.
+ * right now — one profile, with one hotkey button on key 0 of each deck — so
+ * the daemon starts lit rather than exiting. Returns false if there was
+ * nothing to write.
  */
 async function bootstrapConfig(): Promise<boolean> {
   const devices = await listStreamDecks();
@@ -55,7 +59,8 @@ async function bootstrapConfig(): Promise<boolean> {
     return false;
   }
 
-  const starter: Config = { decks: {} };
+  const decks: NonNullable<Config['decks']> = {};
+  const layouts: Config['profiles'][string]['layouts'] = {};
 
   for (const device of devices) {
     // Read the serial the same way attach() does, so the config key matches.
@@ -68,8 +73,8 @@ async function bootstrapConfig(): Promise<boolean> {
     }
     try {
       const serial = (await raw.getSerialNumber()).trim();
-      starter.decks[serial] = {
-        name: raw.PRODUCT_NAME,
+      decks[serial] = { name: raw.PRODUCT_NAME };
+      layouts[serial] = {
         startPage: 'main',
         pages: {
           main: {
@@ -90,11 +95,16 @@ async function bootstrapConfig(): Promise<boolean> {
     }
   }
 
-  if (Object.keys(starter.decks).length === 0) {
+  if (Object.keys(layouts).length === 0) {
     console.error('[main] bootstrap: no deck could be read — nothing written');
     return false;
   }
 
+  const starter: Config = {
+    decks,
+    profiles: { default: { name: 'Default', layouts } },
+    startProfile: 'default',
+  };
   await writeNewConfig(starter);
   console.log(`[main] wrote starter config to ${CONFIG_PATH}`);
   return true;
@@ -123,22 +133,29 @@ async function attach(devicePath: string): Promise<void> {
     return;
   }
 
-  const deckDef = config?.decks[serial];
-  if (!deckDef) {
+  const profileId = profiles?.chooseProfileFor(serial) ?? null;
+  if (!config || !profiles || profileId === null) {
+    // "not in config" is matched by scripts/install.sh; keep the phrase.
     console.warn(
-      `[main] deck ${serial} (${raw.MODEL}) is connected but not in config.json — ` +
-        `add a "${serial}" entry under "decks" to use it`,
+      `[main] deck ${serial} (${raw.MODEL}) is connected but not in config — ` +
+        `no profile has a layout for it; add one under a profile's "layouts" to use it`,
     );
     await raw.close().catch(() => undefined);
     return;
   }
 
-  const session = new DeckSession(
-    raw as unknown as ConstructorParameters<typeof DeckSession>[0],
+  // A const copy: TypeScript does not carry the null check above into the
+  // switchProfile callback, because the module-level variable could change.
+  // It never does after main() sets it.
+  const profileState = profiles;
+  const hardware = config.decks?.[serial] ?? {};
+  const session = new DeckSession(raw as unknown as ConstructorParameters<typeof DeckSession>[0], {
     serial,
-    deckDef,
-    config?.defaults ?? {},
-  );
+    hardware,
+    layout: profileState.layoutFor(profileId, serial),
+    defaults: config.defaults ?? {},
+    switchProfile: (ref) => profileState.switchTo(ref, sessions),
+  });
 
   try {
     await session.start();
@@ -149,9 +166,10 @@ async function attach(devicePath: string): Promise<void> {
   }
 
   sessions.set(serial, session);
+  profileState.markShown(serial, profileId);
   console.log(
-    `[main] attached ${deckDef.name ?? session.model} (${serial}) — ` +
-      `${session.keyCount} keys @ ${session.iconSize}px`,
+    `[main] attached ${hardware.name ?? session.model} (${serial}) — ` +
+      `${session.keyCount} keys @ ${session.iconSize}px, profile "${profileId}"`,
   );
 }
 
@@ -220,16 +238,7 @@ async function reload(): Promise<void> {
     clearRenderCache();
     console.log('[main] config reloaded');
 
-    for (const [serial, session] of sessions) {
-      const deckDef = next.decks[serial];
-      if (!deckDef) {
-        console.log(`[main] deck ${serial} removed from config, detaching`);
-        await session.close();
-        sessions.delete(serial);
-        continue;
-      }
-      await session.reconfigure(deckDef, next.defaults ?? {});
-    }
+    await profiles?.applyReload(next, sessions);
     // Picks up decks that were connected but previously unconfigured.
     await requestScan();
   } catch (err) {
@@ -275,6 +284,8 @@ async function main(): Promise<void> {
     console.error(`[main] cannot load config: ${(err as Error).message}`);
     process.exit(1);
   }
+  profiles = new Profiles(config);
+  console.log(`[main] starting on profile "${profiles.activeProfile()}"`);
 
   input.start();
 

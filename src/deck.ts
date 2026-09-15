@@ -1,4 +1,4 @@
-import { DEFAULTS } from './config.js';
+import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import { describeAction, isDynamic, runAction } from './actions/index.js';
 import { renderButton } from './render.js';
 import type {
@@ -9,6 +9,7 @@ import type {
   DeckHandle,
   Defaults,
   Display,
+  LayoutDef,
 } from './types.js';
 
 interface ControlDef {
@@ -49,6 +50,17 @@ const MODEL_FALLBACK: Record<string, { keys: number; icon: number }> = {
 
 const TICK_MS = 500;
 
+export interface DeckSessionOptions {
+  serial: string;
+  /** This deck's entry under "decks" — hardware settings. Empty if it has none. */
+  hardware: DeckDef;
+  /** What the deck shows, from one profile. */
+  layout: LayoutDef;
+  defaults: Defaults;
+  /** Called by the profile action. Switches every deck, not just this one. */
+  switchProfile: (profile: string) => Promise<void>;
+}
+
 /** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
 function clampBrightness(value: number): number {
   return Math.max(5, Math.min(100, Math.round(value)));
@@ -61,9 +73,13 @@ export class DeckSession implements DeckHandle {
   readonly iconSize: number;
 
   private raw: RawDeck;
-  private def: DeckDef;
+  private hardware: DeckDef;
+  private layout: LayoutDef;
   private defaults: Required<Defaults>;
+  private switchProfile: (profile: string) => Promise<void>;
+  /** ID of the page shown. */
   private page: string;
+  /** Page IDs, for "back". */
   private history: string[] = [];
   private lastSent: Array<Buffer | null>;
   private lastRenderAt: number[];
@@ -75,11 +91,13 @@ export class DeckSession implements DeckHandle {
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
   private brightness: number;
 
-  constructor(raw: RawDeck, serial: string, def: DeckDef, defaults: Defaults = {}) {
+  constructor(raw: RawDeck, options: DeckSessionOptions) {
     this.raw = raw;
-    this.serial = serial;
-    this.def = def;
-    this.defaults = { ...DEFAULTS, ...defaults };
+    this.serial = options.serial;
+    this.hardware = options.hardware;
+    this.layout = options.layout;
+    this.defaults = { ...DEFAULTS, ...options.defaults };
+    this.switchProfile = options.switchProfile;
 
     const modelKey = String(raw.MODEL ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const fallback = MODEL_FALLBACK[modelKey] ?? { keys: 15, icon: 72 };
@@ -101,8 +119,8 @@ export class DeckSession implements DeckHandle {
 
     this.lastSent = new Array(this.keyCount).fill(null);
     this.lastRenderAt = new Array(this.keyCount).fill(0);
-    this.page = def.startPage ?? Object.keys(def.pages)[0];
-    this.brightness = clampBrightness(def.brightness ?? this.defaults.brightness);
+    this.page = startPageOf(this.layout);
+    this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
   }
 
   async start(): Promise<void> {
@@ -120,7 +138,7 @@ export class DeckSession implements DeckHandle {
   }
 
   private label(): string {
-    return this.def.name ?? `${this.model} ${this.serial.slice(-4)}`;
+    return this.hardware.name ?? `${this.model} ${this.serial.slice(-4)}`;
   }
 
   /**
@@ -168,13 +186,14 @@ export class DeckSession implements DeckHandle {
     return {
       deck: this,
       buttonIndex: index,
+      switchProfile: (profile) => this.switchProfile(profile),
       invalidateByType: (types) => this.invalidateByType(types),
       log: (message) => console.log(`[${this.label()}] ${message}`),
     };
   }
 
   private currentButtons(): Record<string, ButtonDef> {
-    return this.def.pages[this.page]?.buttons ?? {};
+    return this.layout.pages[this.page]?.buttons ?? {};
   }
 
   private baseDisplay(button: ButtonDef | undefined): Display {
@@ -269,22 +288,24 @@ export class DeckSession implements DeckHandle {
     return this.page;
   }
 
-  async goToPage(name: string): Promise<void> {
-    if (!this.def.pages[name]) {
-      console.error(`[${this.label()}] no page named "${name}"`);
+  /** Go to a page by ID or name. */
+  async goToPage(ref: string): Promise<void> {
+    const id = resolvePage(this.layout, ref);
+    if (id === null) {
+      console.error(`[${this.label()}] no page with ID or name "${ref}"`);
       return;
     }
-    if (name === this.page) return;
+    if (id === this.page) return;
     this.history.push(this.page);
     if (this.history.length > 32) this.history.shift();
-    this.page = name;
+    this.page = id;
     this.heldRelease.clear();
     await this.renderPage(true);
   }
 
   async goBack(): Promise<void> {
     const previous = this.history.pop();
-    if (!previous || !this.def.pages[previous]) return;
+    if (!previous || !this.layout.pages[previous]) return;
     this.page = previous;
     this.heldRelease.clear();
     await this.renderPage(true);
@@ -300,15 +321,41 @@ export class DeckSession implements DeckHandle {
     return this.brightness;
   }
 
-  /** Apply an edited config without dropping the USB connection. */
-  async reconfigure(def: DeckDef, defaults: Defaults): Promise<void> {
-    this.def = def;
+  /**
+   * Show a different profile's layout: start page, empty back history. Used
+   * when the active profile changes. Brightness is hardware and is untouched.
+   */
+  async setLayout(layout: LayoutDef): Promise<void> {
+    this.layout = layout;
+    this.page = startPageOf(layout);
+    this.history = [];
+    this.heldRelease.clear();
+    await this.renderPage(true);
+  }
+
+  /**
+   * Apply an edited config without dropping the USB connection.
+   *
+   * keepPage is true when the layout is the same profile's layout as before
+   * (edited, not replaced): the deck stays on its page if that page still
+   * exists. When it is false — the deck now shows a different profile — it
+   * goes to the start page, as it would on a profile switch.
+   */
+  async reconfigure(
+    hardware: DeckDef,
+    layout: LayoutDef,
+    defaults: Defaults,
+    keepPage: boolean,
+  ): Promise<void> {
+    this.hardware = hardware;
+    this.layout = layout;
     this.defaults = { ...DEFAULTS, ...defaults };
-    if (!def.pages[this.page]) {
-      this.page = def.startPage ?? Object.keys(def.pages)[0];
+    if (!keepPage || !layout.pages[this.page]) {
+      this.page = startPageOf(layout);
       this.history = [];
+      this.heldRelease.clear();
     }
-    await this.setBrightness(def.brightness ?? this.defaults.brightness);
+    await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
     this.lastSent.fill(null);
     await this.renderPage(true);
   }

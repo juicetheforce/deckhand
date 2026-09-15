@@ -11,208 +11,266 @@
   "decks": {
     "REPLACE-WITH-XL-SERIAL": {
       "name": "XL",
-      "brightness": 70,
-      "startPage": "main",
-      "pages": {
-        "main": {
-          "buttons": {
-            "0": {
-              "label": "Headset",
-              "icon": "~/Pictures/deck-icons/headset.png",
-              "action": {
-                "type": "audio.sink",
-                "match": "headset"
+      "brightness": 70
+    },
+    "REPLACE-WITH-ORIGINAL-V2-SERIAL": {
+      "name": "Original V2",
+      "brightness": 60
+    }
+  },
+  "profiles": {
+    "default": {
+      "name": "Default",
+      "layouts": {
+        "REPLACE-WITH-XL-SERIAL": {
+          "startPage": "main",
+          "pages": {
+            "main": {
+              "name": "Main",
+              "buttons": {
+                "0": {
+                  "label": "Output A",
+                  "icon": "~/Pictures/deck-icons/output-a.png",
+                  "action": {
+                    "type": "audio.sink",
+                    "match": "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION"
+                  }
+                },
+                "1": {
+                  "label": "Output B",
+                  "icon": "~/Pictures/deck-icons/output-b.png",
+                  "action": {
+                    "type": "audio.sink",
+                    "match": "REPLACE-WITH-PART-OF-ANOTHER-SINK-DESCRIPTION"
+                  }
+                },
+                "2": {
+                  "action": {
+                    "type": "audio.micMute",
+                    "iconMuted": "~/Pictures/deck-icons/mic-off.png",
+                    "iconUnmuted": "~/Pictures/deck-icons/mic-on.png",
+                    "labelMuted": "Muted",
+                    "labelUnmuted": "Mic"
+                  }
+                },
+                "5": {
+                  "action": {
+                    "type": "media.info",
+                    "showArt": true,
+                    "show": "title+artist"
+                  },
+                  "labelPosition": "bottom",
+                  "labelSize": 12,
+                  "refreshMs": 2000
+                },
+                "6": {
+                  "label": "Prev",
+                  "action": {
+                    "type": "media.control",
+                    "method": "previous"
+                  }
+                },
+                "7": {
+                  "action": {
+                    "type": "media.control",
+                    "method": "playpause",
+                    "iconPlaying": "~/Pictures/deck-icons/pause.png",
+                    "iconPaused": "~/Pictures/deck-icons/play.png"
+                  }
+                },
+                "8": {
+                  "label": "Next",
+                  "action": {
+                    "type": "media.control",
+                    "method": "next"
+                  }
+                },
+                "24": {
+                  "label": "Games",
+                  "background": "#2a1f3d",
+                  "action": {
+                    "type": "page",
+                    "to": "Games"
+                  }
+                },
+                "31": {
+                  "action": {
+                    "type": "clock",
+                    "format": "HH:mm"
+                  },
+                  "labelPosition": "center",
+                  "labelSize": 20
+                }
               }
             },
-            "1": {
-              "label": "Speakers",
-              "icon": "~/Pictures/deck-icons/speakers.png",
-              "action": {
-                "type": "audio.sink",
-                "match": "speakers"
+            "games": {
+              "name": "Games",
+              "buttons": {
+                "0": {
+                  "label": "Back",
+                  "action": {
+                    "type": "page",
+                    "back": true
+                  }
+                },
+                "1": {
+                  "label": "Screenshot",
+                  "action": {
+                    "type": "hotkey",
+                    "keys": "ctrl+shift+print"
+                  }
+                },
+                "2": {
+                  "label": "Macro",
+                  "action": {
+                    "type": "hotkey",
+                    "keys": [
+                      "ctrl+alt+3",
+                      "ctrl+alt+4"
+                    ],
+                    "gapMs": 80
+                  }
+                },
+                "3": {
+                  "label": "PTT",
+                  "action": {
+                    "type": "keyHold",
+                    "keys": "f14",
+                    "state": "down"
+                  },
+                  "onRelease": {
+                    "type": "keyHold",
+                    "keys": "f14",
+                    "state": "up"
+                  }
+                },
+                "4": {
+                  "label": "GG",
+                  "action": {
+                    "type": "text",
+                    "text": "gg wp\n"
+                  }
+                },
+                "8": {
+                  "label": "Output A\n+ Mute",
+                  "labelSize": 12,
+                  "action": {
+                    "type": "multi",
+                    "steps": [
+                      {
+                        "type": "audio.sink",
+                        "match": "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION"
+                      },
+                      {
+                        "type": "audio.micMute",
+                        "delayMs": 150
+                      }
+                    ]
+                  }
+                }
               }
-            },
-            "2": {
-              "action": {
-                "type": "audio.micMute",
-                "iconMuted": "~/Pictures/deck-icons/mic-off.png",
-                "iconUnmuted": "~/Pictures/deck-icons/mic-on.png",
-                "labelMuted": "Muted",
-                "labelUnmuted": "Mic"
-              }
-            },
-            "5": {
-              "action": {
-                "type": "media.info",
-                "showArt": true,
-                "show": "title+artist"
-              },
-              "labelPosition": "bottom",
-              "labelSize": 12,
-              "refreshMs": 2000
-            },
-            "6": {
-              "label": "Prev",
-              "action": {
-                "type": "media.control",
-                "method": "previous"
-              }
-            },
-            "7": {
-              "action": {
-                "type": "media.control",
-                "method": "playpause",
-                "iconPlaying": "~/Pictures/deck-icons/pause.png",
-                "iconPaused": "~/Pictures/deck-icons/play.png"
-              }
-            },
-            "8": {
-              "label": "Next",
-              "action": {
-                "type": "media.control",
-                "method": "next"
-              }
-            },
-            "24": {
-              "label": "Games",
-              "background": "#2a1f3d",
-              "action": {
-                "type": "page",
-                "to": "games"
-              }
-            },
-            "31": {
-              "action": {
-                "type": "clock",
-                "format": "HH:mm"
-              },
-              "labelPosition": "center",
-              "labelSize": 20
             }
           }
         },
-        "games": {
-          "buttons": {
-            "0": {
-              "label": "Back",
-              "action": {
-                "type": "page",
-                "back": true
-              }
-            },
-            "1": {
-              "label": "Screenshot",
-              "action": {
-                "type": "hotkey",
-                "keys": "ctrl+shift+print"
-              }
-            },
-            "2": {
-              "label": "Macro",
-              "action": {
-                "type": "hotkey",
-                "keys": [
-                  "ctrl+alt+3",
-                  "ctrl+alt+4"
-                ],
-                "gapMs": 80
-              }
-            },
-            "3": {
-              "label": "PTT",
-              "action": {
-                "type": "keyHold",
-                "keys": "f14",
-                "state": "down"
-              },
-              "onRelease": {
-                "type": "keyHold",
-                "keys": "f14",
-                "state": "up"
-              }
-            },
-            "4": {
-              "label": "GG",
-              "action": {
-                "type": "text",
-                "text": "gg wp\n"
-              }
-            },
-            "8": {
-              "label": "Headset\n+ Mute",
-              "labelSize": 12,
-              "action": {
-                "type": "multi",
-                "steps": [
-                  {
-                    "type": "audio.sink",
-                    "match": "headset"
-                  },
-                  {
-                    "type": "audio.micMute",
-                    "delayMs": 150
+        "REPLACE-WITH-ORIGINAL-V2-SERIAL": {
+          "startPage": "main",
+          "pages": {
+            "main": {
+              "buttons": {
+                "0": {
+                  "label": "Vol +",
+                  "action": {
+                    "type": "audio.volume",
+                    "delta": 5
                   }
-                ]
+                },
+                "1": {
+                  "label": "Vol -",
+                  "action": {
+                    "type": "audio.volume",
+                    "delta": -5
+                  }
+                },
+                "2": {
+                  "label": "Mute",
+                  "action": {
+                    "type": "audio.mute"
+                  }
+                },
+                "5": {
+                  "label": "Output",
+                  "action": {
+                    "type": "audio.cycle",
+                    "matches": [
+                      "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION",
+                      "REPLACE-WITH-PART-OF-ANOTHER-SINK-DESCRIPTION"
+                    ]
+                  }
+                },
+                "10": {
+                  "label": "Dim",
+                  "action": {
+                    "type": "brightness",
+                    "delta": -15
+                  }
+                },
+                "11": {
+                  "label": "Bright",
+                  "action": {
+                    "type": "brightness",
+                    "delta": 15
+                  }
+                },
+                "14": {
+                  "label": "Game",
+                  "action": {
+                    "type": "profile",
+                    "to": "Game"
+                  }
+                }
               }
             }
           }
         }
       }
     },
-    "REPLACE-WITH-MK2-SERIAL": {
-      "name": "MK.2",
-      "brightness": 60,
-      "startPage": "main",
-      "pages": {
-        "main": {
-          "buttons": {
-            "0": {
-              "label": "Vol +",
-              "action": {
-                "type": "audio.volume",
-                "delta": 5
-              }
-            },
-            "1": {
-              "label": "Vol -",
-              "action": {
-                "type": "audio.volume",
-                "delta": -5
-              }
-            },
-            "2": {
-              "label": "Mute",
-              "action": {
-                "type": "audio.mute"
-              }
-            },
-            "5": {
-              "label": "Output",
-              "action": {
-                "type": "audio.cycle",
-                "matches": [
-                  "headset",
-                  "speakers"
-                ]
-              }
-            },
-            "10": {
-              "label": "Dim",
-              "action": {
-                "type": "brightness",
-                "delta": -15
-              }
-            },
-            "11": {
-              "label": "Bright",
-              "action": {
-                "type": "brightness",
-                "delta": 15
+    "prof_game": {
+      "name": "Game",
+      "layouts": {
+        "REPLACE-WITH-XL-SERIAL": {
+          "startPage": "Hotbar",
+          "pages": {
+            "pg_hotbar": {
+              "name": "Hotbar",
+              "buttons": {
+                "0": {
+                  "label": "1",
+                  "action": {
+                    "type": "hotkey",
+                    "keys": "ctrl+1"
+                  }
+                },
+                "1": {
+                  "label": "2",
+                  "action": {
+                    "type": "hotkey",
+                    "keys": "ctrl+2"
+                  }
+                },
+                "31": {
+                  "label": "Home",
+                  "background": "#2a1f3d",
+                  "action": {
+                    "type": "profile",
+                    "to": "Default"
+                  }
+                }
               }
             }
           }
         }
       }
     }
-  }
+  },
+  "startProfile": "Default"
 }

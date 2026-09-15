@@ -16,6 +16,7 @@ export const registry: Record<string, ActionHandler> = {
 
   command: system.command,
   page: system.page,
+  profile: system.profile,
   brightness: system.brightness,
   clock: system.clock,
   noop: system.noop,

@@ -47,7 +47,7 @@ export const command: ActionHandler = {
  * page — navigation. Pages can link to each other freely; "back" returns to
  * wherever you came from.
  *
- *   { "type": "page", "to": "games" }
+ *   { "type": "page", "to": "games" }       by page ID or name, on this deck
  *   { "type": "page", "back": true }
  */
 export const page: ActionHandler = {
@@ -59,6 +59,22 @@ export const page: ActionHandler = {
     const to = params.to;
     if (typeof to !== 'string') throw new Error('page action needs "to" or "back": true');
     await ctx.deck.goToPage(to);
+  },
+};
+
+/**
+ * profile — switch the active profile on every connected deck.
+ *
+ *   { "type": "profile", "to": "FFXIV" }     by profile ID or name
+ *
+ * Each deck the profile has a layout for goes to that layout's start page. A
+ * deck it has no layout for keeps what it is showing.
+ */
+export const profile: ActionHandler = {
+  async execute(ctx, params: ActionDef) {
+    const to = params.to;
+    if (typeof to !== 'string') throw new Error('profile action needs "to"');
+    await ctx.switchProfile(to);
   },
 };
 

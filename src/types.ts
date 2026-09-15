@@ -20,18 +20,42 @@ export interface ButtonDef {
   refreshMs?: number;
 }
 
+/** An entry under a layout's "pages", keyed by page ID. */
 export interface PageDef {
+  /** Display name. Optional: a page without one is known by its ID. */
+  name?: string;
   /** Button index (as a string) -> definition. Index 0 is top-left. */
   buttons: Record<string, ButtonDef>;
 }
 
+/**
+ * An entry under "decks", keyed by device serial. Hardware settings only —
+ * what the deck shows lives in a profile's layout, so these are not repeated
+ * in every profile.
+ */
 export interface DeckDef {
   /** Friendly name, only used in logs. */
   name?: string;
   /** 0-100. */
   brightness?: number;
+}
+
+/** An entry under a profile's "layouts", keyed by device serial: what one deck shows. */
+export interface LayoutDef {
+  /** Page ID or name. Defaults to the first page. */
   startPage?: string;
   pages: Record<string, PageDef>;
+}
+
+/** An entry under "profiles", keyed by profile ID. */
+export interface ProfileDef {
+  /** Display name. Optional: a profile without one is known by its ID. */
+  name?: string;
+  /**
+   * Keyed by device serial. A connected deck with no layout here keeps
+   * whatever it was showing when this profile becomes active.
+   */
+  layouts: Record<string, LayoutDef>;
 }
 
 export interface Defaults {
@@ -48,7 +72,10 @@ export interface Defaults {
 export interface Config {
   defaults?: Defaults;
   /** Keyed by device serial number. Use `npm run decks` to discover yours. */
-  decks: Record<string, DeckDef>;
+  decks?: Record<string, DeckDef>;
+  profiles: Record<string, ProfileDef>;
+  /** Profile ID or name. Defaults to the first profile. */
+  startProfile?: string;
 }
 
 /** What a button should look like right now, after dynamic state is applied. */
@@ -70,7 +97,7 @@ export interface DeckHandle {
   model: string;
   keyCount: number;
   iconSize: number;
-  /** Switch to a named page on this deck. */
+  /** Switch to a page on this deck, by ID or name. */
   goToPage(page: string): Promise<void>;
   /** Return to the previously shown page. */
   goBack(): Promise<void>;
@@ -79,12 +106,15 @@ export interface DeckHandle {
   currentBrightness(): number;
   /** Force a re-render of every button on the current page. */
   invalidate(): void;
+  /** The ID of the page currently shown. */
   currentPage(): string;
 }
 
 export interface ActionContext {
   deck: DeckHandle;
   buttonIndex: number;
+  /** Switch the active profile on every connected deck, by ID or name. */
+  switchProfile(profile: string): Promise<void>;
   /** Re-render buttons whose action type is in the given list. */
   invalidateByType(types: string[]): void;
   log(message: string): void;

@@ -1,11 +1,13 @@
 # deckhand
 
-A personal Stream Deck daemon for Linux. Built for Nobara / KDE Plasma on
-Wayland, driving a Stream Deck XL and an MK.2 at the same time.
+A personal Stream Deck daemon for Linux. Built on Fedora KDE Plasma
+(Wayland), driving a Stream Deck XL and a Stream Deck Original V2 at the same
+time. Nothing in it is specific to those two models: key count and icon size
+come from the device.
 
 Not a product. No plugin store, no telemetry, no onboarding wizard. It does
-hotkeys, audio output switching, media control, and pages — and it keeps
-doing them while you're in a game.
+hotkeys, audio output switching, media control, pages and profiles — and it
+keeps doing them while you're in a game.
 
 ## Why it's shaped like this
 
@@ -67,7 +69,8 @@ rebuilding in the checkout changes nothing until you run the update below.
 
 The first time the daemon starts with no config, it writes one to
 `~/.config/deckhand/config.json` for the decks that are plugged in — one
-working hotkey button on each, keyed by serial number. Edit that file.
+profile, with one working hotkey button on each deck, keyed by serial number.
+Edit that file.
 
 The config file is watched. Save it and the decks repaint immediately — no
 restart. If you save a syntax error, the daemon logs it and keeps running on
@@ -81,8 +84,29 @@ decks (safe while the service is running):
 node ~/.local/share/deckhand/dist/index.js --list
 ```
 
-`config.example.json` shows the config format, but its audio `match` strings
-and deck names are examples, not values that will work on your machine.
+`config.example.json` shows the config format. Its serials and audio `match`
+strings are `REPLACE-WITH-…` placeholders, not values that will work on your
+machine.
+
+### Converting a config from before profiles
+
+Configs written before profiles existed (v0.1) kept pages directly under each
+deck. The daemon refuses that format and logs a message saying so. Convert it
+once, from the checkout, with the service stopped:
+
+```bash
+systemctl --user stop deckhand
+npm run build:ts
+node scripts/migrate-config.mjs --dry-run   # optional: print the result, write nothing
+node scripts/migrate-config.mjs
+scripts/install.sh update                   # installs and starts the daemon that reads it
+```
+
+Every deck becomes a layout in one profile, `default`. Buttons are copied
+unchanged, page names become page IDs (so existing `page` links still work),
+and the original is kept as `~/.config/deckhand/config.v0.1.json`. If you ever
+need to go back to a daemon from before profiles, copy that file back over
+`config.json`.
 
 ## Update, uninstall, and the service
 
@@ -138,7 +162,7 @@ An icon is just a path in the config:
 
 Any format sharp can read — png, jpg, webp. It's resized to the right size
 for whichever deck the button is on, so the same icon works on both the XL
-(96px) and the MK.2 (72px). There is no import step and no icon library:
+(96px) and the Original V2 (72px). There is no import step and no icon library:
 drop a file anywhere, point at it, done. Overwrite the file and the button
 picks up the change, because the render cache keys on mtime.
 
@@ -155,18 +179,47 @@ Top level:
 {
   "defaults": { /* background, labelColor, labelSize, labelPosition,
                    iconFit, brightness, refreshMs */ },
-  "decks": {
-    "<serial>": {
-      "name": "XL",
-      "brightness": 70,
-      "startPage": "main",
-      "pages": {
-        "main": { "buttons": { "0": { /* button */ } } }
+
+  "decks": {                                   // hardware settings, optional
+    "<serial>": { "name": "XL", "brightness": 70 }
+  },
+
+  "profiles": {
+    "<profile ID>": {
+      "name": "FFXIV",                         // optional
+      "layouts": {                             // what each deck shows in this profile
+        "<serial>": {
+          "startPage": "Combat",               // page ID or name, optional
+          "pages": {
+            "<page ID>": {
+              "name": "Combat",                // optional
+              "buttons": { "0": { /* button */ } }
+            }
+          }
+        }
       }
     }
-  }
+  },
+
+  "startProfile": "FFXIV"                      // profile ID or name, optional
 }
 ```
+
+**Profiles** switch every deck at once. A deck the active profile has no
+layout for keeps showing what it was showing, so a small deck can hold a
+permanent row of profile keys while the big one changes. Switching sends each
+covered deck to its layout's start page. The daemon always starts on
+`startProfile` (or the first profile).
+
+**IDs and names.** Profiles and pages are keyed by ID. Anything that points at
+one — `startProfile`, `startPage`, and the `profile` and `page` actions —
+matches the ID first, then the `name`. Write `"to": "Combat"` by hand and it
+works; a tool can write IDs so renaming a page never breaks a link. Two pages
+in one layout, or two profiles, can't share a name, and a name can't be another
+entry's ID — the daemon refuses such a config and keeps the last good one.
+
+A deck with no layout in any profile is not used. `decks` is only for
+hardware settings; a deck doesn't need an entry there.
 
 Buttons are keyed by index as a string. Index 0 is top-left, counting across
 rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
@@ -180,13 +233,14 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `text` | Types a literal string (US layout) |
 | `keyHold` | `state: "down"` / `"up"` — pair with `onRelease` for push-to-talk |
 | `command` | `command: "sh string"` or `exec: ["bin","arg"]`. Detached unless `wait: true` |
-| `page` | `to: "pageName"` or `back: true` |
+| `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
+| `profile` | `to: "<profile ID or name>"` — switches every deck |
 | `multi` | `steps: [...]`, each optionally with `delayMs` |
 | `brightness` | `value` or `delta` |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
-| `audio.sink` | `match: "headset"` — switches default output and moves playing streams. Highlights when active |
-| `audio.cycle` | `matches: ["headset","speakers"]` — rotate outputs from one button |
+| `audio.sink` | `match: "<part of a sink description>"` — switches default output and moves playing streams. Highlights when active |
+| `audio.cycle` | `matches: ["<one sink>", "<another>"]` — rotate outputs from one button |
 | `audio.micMute` | Toggles the default input; swaps icon and background with `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5`; shows the current level |
 | `audio.mute` | Toggles output mute |
@@ -194,8 +248,10 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `media.info` | Live now-playing button, with album art via `showArt` |
 
 Sink matching is a case-insensitive substring against the device description
-or node name, so `"headset"` beats pasting a forty-character `alsa_output`
-string that changes when you move the USB port.
+or node name. Pick a substring that appears in only one sink: if several match
+— a headset often has a stereo and a mono sink — the first one wins, silently.
+Local (ALSA) node names don't include the USB port, so they survive replugging
+into a different port; network sink names include an IP address and don't.
 
 Media actions target whichever player is actually playing unless you pin one
 with `player: "tidal"`. Bind it loose and the same buttons work for Tidal
@@ -225,8 +281,9 @@ written to the device, so a 1 Hz refresh costs almost nothing on the wire.
 npm run smoke
 ```
 
-Runs the render pipeline, page navigation, and action dispatch against a
-fake 32-key device. Handy after touching `render.ts`.
+Runs the render pipeline, page navigation, action dispatch, config
+validation and profile switching against fake 32-key devices. Handy after
+touching `render.ts`, `deck.ts`, `config.ts` or `profiles.ts`.
 
 ## Troubleshooting
 
