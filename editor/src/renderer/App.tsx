@@ -4,11 +4,25 @@ import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
 import { Inspector } from './Inspector.js';
 import { Library } from './Library.js';
-import { canSwitchDeck, deckForProfile, followDeck, geometryFor, layoutFor, reconcileSelection, type Selection } from './model.js';
+import {
+  canSwitchDeck,
+  deckForProfile,
+  followDeck,
+  geometryFor,
+  layoutFor,
+  labelDefaults,
+  pageChoices,
+  pageDeletion,
+  pageLabel,
+  profileChoices,
+  profileCoverage,
+  reconcileSelection,
+  type Selection,
+} from './model.js';
 import { Notices } from './Notices.js';
 import { PaneDivider } from './PaneDivider.js';
 import { DEFAULT_PANE_WIDTHS, paneColumns, widthWhileDragging, type PaneName, type PaneWidths } from './panes.js';
-import { Toolbar, type AddPageResult } from './Toolbar.js';
+import { Toolbar, type AddPageResult, type AddProfileResult } from './Toolbar.js';
 import { useEditor } from './useEditor.js';
 
 export function App() {
@@ -36,8 +50,8 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   // would otherwise pull it back for a moment.
   const [inFlight, setInFlight] = useState(0);
   const [switchError, setSwitchError] = useState<string | null>(null);
-  /** Bumped when the library's Hotkey entry is clicked, to start listening in the inspector. */
-  const [listenToken, setListenToken] = useState(0);
+  /** The action last picked from the library, for the inspector to configure. */
+  const [pick, setPick] = useState<{ type: string; token: number } | null>(null);
 
   // Follow the decks (scope §10): any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
@@ -140,6 +154,59 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
     return result.ok ? { ok: true, page: result.result.pageId! } : { ok: false, error: result.error };
   };
 
+  // A new profile is empty, so its decks need somewhere to start: every layout
+  // it creates gets one page. Selecting it afterwards is what switches the
+  // decks — the ordinary breadcrumb path, not a special case.
+  const addProfile = async (name: string, serials: string[]): Promise<AddProfileResult> => {
+    const result = await window.deckhand.apply({ kind: 'addProfile', name, serials, pageName: 'Main' });
+    return result.ok ? { ok: true, profile: result.result.profileId! } : { ok: false, error: result.error };
+  };
+
+  /**
+   * Select a profile that was just created. It cannot go through select(),
+   * which reads the `config` of the render it was made in — that copy does not
+   * have the new profile, so reconcileSelection falls back to the active one
+   * and nothing switches. Here the selection is set outright, and sendSwitch
+   * holds it until the daemon reports the profile active; by then the reloaded
+   * config has arrived and the follow effect reconciles it onto the right page.
+   */
+  const selectNewProfile = (profile: string) => {
+    setSelection((current) => ({ ...current, profile, page: '', key: null }));
+    if (daemon.connected) {
+      void sendSwitch(
+        () => window.deckhand.switchProfile(profile),
+        (view) => view.status?.activeProfile?.id === profile,
+      );
+    }
+  };
+
+  const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
+  const addLayout = async () => {
+    const result = await window.deckhand.apply({
+      kind: 'addLayout',
+      profile: selection.profile,
+      serial: selection.serial,
+      pageName: 'Main',
+    });
+    setAddLayoutError(result.ok ? null : result.error);
+  };
+
+  // Deleting a page is confirmed here rather than in the toolbar, because the
+  // confirmation has to name the keys it is about to clear.
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const deletion = pendingDelete === null ? null : pageDeletion(config, selection.profile, selection.serial, pendingDelete);
+  const confirmDelete = async () => {
+    if (pendingDelete === null) return;
+    const result = await window.deckhand.apply({
+      kind: 'deletePage',
+      profile: selection.profile,
+      serial: selection.serial,
+      page: pendingDelete,
+    });
+    setPendingDelete(null);
+    if (!result.ok) setSwitchError(`Could not delete the page: ${result.error}`);
+  };
+
   return (
     <div className="app">
       <Toolbar
@@ -149,14 +216,31 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
         editingBlocked={editingBlocked}
         onSelect={select}
         onAddPage={addPage}
+        onAddProfile={addProfile}
+        onProfileAdded={selectNewProfile}
+        onRenameDeck={async (serial, name) => {
+          const result = await window.deckhand.apply({ kind: 'renameDeck', serial, name });
+          return result.ok ? null : result.error;
+        }}
+        onDeletePage={setPendingDelete}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
-        <Library onPick={(type) => type === 'hotkey' && selection.key !== null && setListenToken((n) => n + 1)} />
+        <Library
+          onPick={(type) => selection.key !== null && setPick((current) => ({ type, token: (current?.token ?? 0) + 1 }))}
+        />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
           <Notices store={store} daemon={daemon} switchError={switchError} />
           <div className="well">
-            {!layout && <p className="muted">This profile has no layout for this deck.</p>}
+            {!layout && (
+              <div className="no-layout">
+                <p className="muted">This profile has no layout for this deck, so switching to it leaves the deck showing whatever it had.</p>
+                <button className="primary" disabled={editingBlocked} onClick={() => void addLayout()}>
+                  Add a layout for this deck
+                </button>
+                {addLayoutError && <p className="field-error">{addLayoutError}</p>}
+              </div>
+            )}
             {layout && !geometry && (
               <p className="muted">
                 This deck is not connected. Its layout comes from the deck itself, so plug it in to edit this page.
@@ -172,6 +256,15 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
                 onSelectKey={(key) => setSelection((s) => ({ ...s, key }))}
               />
             )}
+            {layout && deletion && pendingDelete !== null && (
+              <DeletePage
+                name={pageLabel(layout, pendingDelete)}
+                deletion={deletion}
+                pageName={(page: string) => pageLabel(layout, page)}
+                onConfirm={() => void confirmDelete()}
+                onCancel={() => setPendingDelete(null)}
+              />
+            )}
           </div>
         </main>
         <PaneDivider pane="inspector" width={paneWidths.inspector} onResize={resizePane} label="Resize the inspector" />
@@ -179,13 +272,84 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
           at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
           editingBlocked={editingBlocked}
-          listenToken={listenToken}
+          pick={pick}
+          pages={layout ? pageChoices(layout) : []}
+          profiles={profileChoices(config)}
+          coverage={(profile) => profileCoverage(config, daemon, profile)}
+          labelDefaults={labelDefaults(config)}
           canPreview={canSwitchDeck(daemon, selection.serial)}
           apply={async (edit) => {
             const result = await window.deckhand.apply(edit);
             return result.ok ? null : result.error;
           }}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The delete confirmation. It names every key that navigates to this page,
+ * because deleting clears those actions (the maintainer, 2026-09-15): the daemon logs and
+ * does nothing for a page action whose target is gone, so leaving them would
+ * leave keys that are dead without looking it. It also says where the deck will
+ * start afterwards, which can change even when nothing pointed at the page.
+ */
+function DeletePage({
+  name,
+  deletion,
+  pageName,
+  onConfirm,
+  onCancel,
+}: {
+  name: string;
+  deletion: NonNullable<ReturnType<typeof pageDeletion>>;
+  pageName: (page: string) => string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (deletion.refusal !== null) {
+    return (
+      <div className="confirm-card glass" role="alertdialog" aria-label="Delete page">
+        <p>
+          <strong>“{name}” cannot be deleted.</strong> {deletion.refusal}
+        </p>
+        <div className="button-row">
+          <button onClick={onCancel}>Close</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="confirm-card glass" role="alertdialog" aria-label="Delete page">
+      <p>
+        Delete <strong>“{name}”</strong> and everything on it?
+      </p>
+      {deletion.links.length > 0 && (
+        <>
+          <p className="warning-text">
+            {deletion.links.length === 1 ? '1 key navigates here' : `${deletion.links.length} keys navigate here`} and will lose that
+            action. Their icons and labels stay.
+          </p>
+          <ul className="link-list">
+            {deletion.links.map((link) => (
+              <li key={`${link.page}/${link.index}/${link.where}`}>
+                {pageName(link.page)} · key {link.index + 1}
+                {link.where === 'onRelease' ? ' (on release)' : ''}
+                {link.inMulti ? ' — one step of a multi action' : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {deletion.startPageAfter !== null && (
+        <p className="muted small">This deck will start on “{pageName(deletion.startPageAfter)}” instead.</p>
+      )}
+      <div className="button-row">
+        <button className="danger" onClick={onConfirm}>
+          Delete page
+        </button>
+        <button onClick={onCancel}>Cancel</button>
       </div>
     </div>
   );

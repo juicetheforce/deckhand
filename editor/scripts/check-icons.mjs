@@ -230,7 +230,7 @@ if (r && !r.error) {
     assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
     assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
   });
-  check('Remove icon removes only the icon', () => assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]));
+  check('"Use the default" removes only the icon', () => assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]));
   check('with the deck connected there is no "not connected" note', () => assert.equal(r.notConnectedNoteShown, false));
   check('the picker is five bands — 5a\'s four with the filter given its own field — and the actions are below the grid', () => {
     assert.deepEqual(r.bands, ['picker-bar', 'picker-bookmarks', 'picker-filter', 'picker-grid', 'picker-bottom']);

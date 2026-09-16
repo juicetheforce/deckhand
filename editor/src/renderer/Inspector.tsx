@@ -1,18 +1,26 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { ButtonDef } from '../../../src/types.js';
 import type { SystemShortcut } from '../shared/bridge.js';
-import type { ButtonLocation, Edit } from '../shared/edits.js';
+import type { ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
-import { describeAction, hotkeyEditable, keyKind } from './model.js';
+import { actionEditable, describeAction, keyKind, type Choice } from './model.js';
 
 interface Props {
   at: ButtonLocation | null;
   button: ButtonDef | undefined;
   editingBlocked: boolean;
-  /** Changes when the library's Hotkey entry is clicked: start listening. */
-  listenToken: number;
+  /** Bumped when a library entry is clicked: configure the key as that action. */
+  pick: { type: string; token: number } | null;
+  /** Pages in the layout being edited, as "Go to page" targets. */
+  pages: Choice[];
+  /** Every profile, as "Switch profile" targets. */
+  profiles: Choice[];
+  /** Which decks a profile covers, and which connected decks it leaves out. */
+  coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
+  /** What the label inherits when the key sets nothing: config `defaults`, then the daemon's. */
+  labelDefaults: { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number };
   /** The daemon is connected and the deck attached, so the icon picker can preview on it. */
   canPreview: boolean;
   apply: (edit: Edit) => Promise<string | null>;
@@ -32,16 +40,16 @@ type Mode =
  * label. Other action types are shown read-only in phase A, label still
  * editable.
  */
-export function Inspector({ at, button, editingBlocked, listenToken, canPreview, apply }: Props) {
+export function Inspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
   const [place, setPlace] = useState<PickerPlace>(EMPTY_PLACE);
-  // The library's Hotkey entry means the Key tab.
-  const firstToken = useRef(listenToken);
+  // Picking an action from the library means the Key tab.
+  const firstToken = useRef(pick?.token ?? 0);
   useEffect(() => {
-    if (listenToken !== firstToken.current) setTab('key');
-  }, [listenToken]);
+    if ((pick?.token ?? 0) !== firstToken.current) setTab('key');
+  }, [pick?.token]);
 
   if (at === null) {
     return (
@@ -57,7 +65,11 @@ export function Inspector({ at, button, editingBlocked, listenToken, canPreview,
       at={at}
       button={button}
       editingBlocked={editingBlocked}
-      listenToken={listenToken}
+      pick={pick}
+      pages={pages}
+      profiles={profiles}
+      coverage={coverage}
+      labelDefaults={labelDefaults}
       canPreview={canPreview}
       apply={apply}
       tab={tab}
@@ -76,18 +88,31 @@ interface KeyInspectorProps extends Props {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, editingBlocked, listenToken, canPreview, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [mode, setMode] = useState<Mode>({ kind: 'view' });
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
-  const editable = hotkeyEditable(button);
+  // The action type being configured: the one picked from the library, else
+  // whatever the key already has. A key with no action shows the hotkey
+  // editor, as it did in phase A.
+  // Seeded from the key's own action, not left null, so an edit that
+  // momentarily removes the action — switching "Back" to "A page" — does not
+  // drop the editor back to Hotkey underneath the user. Per key: the component
+  // is keyed by location.
+  const [chosen, setChosen] = useState<string | null>(() => button?.action?.type ?? null);
+  const type = chosen ?? button?.action?.type ?? 'hotkey';
+  const editable = actionEditable(button, type);
   const combo = button?.action?.type === 'hotkey' && typeof button.action.keys === 'string' ? button.action.keys : null;
 
-  // Start listening when the library's Hotkey entry is clicked (not on first render).
-  const firstToken = useRef(listenToken);
+  // A library pick configures the key as that action (not on first render).
+  const firstToken = useRef(pick?.token ?? 0);
   useEffect(() => {
-    if (listenToken !== firstToken.current && editable && !editingBlocked) setMode({ kind: 'listening', held: [], message: null });
-  }, [listenToken, editable, editingBlocked]);
+    if (pick === null || pick.token === firstToken.current || editingBlocked) return;
+    if (!actionEditable(button, pick.type)) return;
+    setChosen(pick.type);
+    // Hotkey is the one that starts doing something at once: it listens.
+    if (pick.type === 'hotkey') setMode({ kind: 'listening', held: [], message: null });
+  }, [pick?.token]);
 
   // Listening swallows every key; it must never carry on out of sight on another tab.
   useEffect(() => {
@@ -187,7 +212,15 @@ function KeyInspector({ at, button, editingBlocked, listenToken, canPreview, app
         <IconPicker at={at} button={button} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
       )}
 
-      {tab === 'key' && (editable ? (
+      {tab === 'key' && editable && type === 'page' && (
+        <PageAction at={at} action={button?.action} pages={pages} disabled={editingBlocked} run={run} />
+      )}
+
+      {tab === 'key' && editable && type === 'profile' && (
+        <ProfileAction at={at} action={button?.action} profiles={profiles} coverage={coverage} disabled={editingBlocked} run={run} />
+      )}
+
+      {tab === 'key' && (editable && type === 'hotkey' ? (
         <section className="inspector-section">
           <h3 className="section-heading">Hotkey</h3>
 
@@ -272,7 +305,7 @@ function KeyInspector({ at, button, editingBlocked, listenToken, canPreview, app
             </div>
           )}
         </section>
-      ) : (
+      ) : editable && (type === 'page' || type === 'profile') ? null : (
         <section className="inspector-section">
           <h3 className="section-heading">Action</h3>
           <dl className="facts">
@@ -290,13 +323,18 @@ function KeyInspector({ at, button, editingBlocked, listenToken, canPreview, app
         <section className="inspector-section">
           <h3 className="section-heading">Label</h3>
           <LabelField label={button?.label ?? ''} disabled={editingBlocked} onSave={(label) => void run({ kind: 'setLabel', at, label })} />
+          {/* A label with no icon is a finished button, not a placeholder
+              (scope §2), so these are worth having whether or not an icon is
+              set. All three have been in the schema and the renderer since
+              v0.1; only the UI was missing. */}
+          <LabelStyle at={at} button={button} defaults={labelDefaults} disabled={editingBlocked} run={run} />
         </section>
       )}
 
-      {tab === 'key' && button?.icon !== undefined && (
+      {tab === 'key' && (
         <section className="inspector-section">
           <h3 className="section-heading">Icon</h3>
-          <p className="path">{button.icon}</p>
+          <IconState button={button} disabled={editingBlocked} onChoose={(icon) => void run({ kind: 'setIcon', at, icon })} onBrowse={() => onTab('icon')} />
         </section>
       )}
 
@@ -366,5 +404,327 @@ function LabelField({ label, disabled, onSave }: { label: string; disabled: bool
       }}
       onKeyDown={(e) => e.key === 'Enter' && save(text)}
     />
+  );
+}
+
+/**
+ * "Go to page" (scope §10): a plain list of page names in this deck's layout,
+ * not the mockups' thumbnails, plus Back. The target is written as the page's
+ * ID, so renaming a page never breaks the link (scope §5) — but a link
+ * hand-written as a name is still recognised here, since that is how the
+ * daemon resolves it.
+ */
+function PageAction({
+  at,
+  action,
+  pages,
+  disabled,
+  run,
+}: {
+  at: ButtonLocation;
+  action: ButtonDef['action'];
+  pages: Choice[];
+  disabled: boolean;
+  run: (edit: Edit) => Promise<boolean>;
+}) {
+  const back = action?.type === 'page' && action.back === true;
+  const to = action?.type === 'page' && typeof action.to === 'string' ? action.to : null;
+  const target = to === null ? null : (pages.find((p) => p.id === to) ?? pages.find((p) => p.label === to))?.id ?? null;
+  const missing = to !== null && target === null;
+
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Go to page</h3>
+      <div className="button-row">
+        <button
+          className={back ? '' : 'primary'}
+          disabled={disabled || !back}
+          onClick={() => void run({ kind: 'removeAction', at })}
+        >
+          A page
+        </button>
+        <button
+          className={back ? 'primary' : ''}
+          disabled={disabled || back}
+          onClick={() => void run({ kind: 'setAction', at, action: { type: 'page', back: true } })}
+        >
+          Back
+        </button>
+      </div>
+
+      {back ? (
+        <p className="muted small">Returns to whatever page this deck came from. Nothing to choose.</p>
+      ) : (
+        <>
+          {pages.length === 0 && <p className="muted small">This deck has no other pages in this profile yet.</p>}
+          <ul className="target-list">
+            {pages.map((p) => (
+              <li key={p.id}>
+                <button
+                  className={p.id === target ? 'target target-selected' : 'target'}
+                  disabled={disabled}
+                  onClick={() => void run({ kind: 'setAction', at, action: { type: 'page', to: p.id } })}
+                >
+                  {p.label}
+                  {p.id === at.page ? ' — this page' : ''}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {missing && (
+            <p className="warning-text">
+              This key points at “{to}”, which is not a page on this deck. Pressing it does nothing.
+            </p>
+          )}
+          {target === null && !missing && <p className="muted small">Pick the page this key should show.</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * "Switch profile": a list of profiles, each saying which decks it changes.
+ * §2 records that the maintainer never discovered profiles in StreamController, so the
+ * key that switches them has to state plainly that it moves both decks — and
+ * warn when one it does not cover is plugged in, which keeps its old layout
+ * (scope §3).
+ */
+function ProfileAction({
+  at,
+  action,
+  profiles,
+  coverage,
+  disabled,
+  run,
+}: {
+  at: ButtonLocation;
+  action: ButtonDef['action'];
+  profiles: Choice[];
+  coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
+  disabled: boolean;
+  run: (edit: Edit) => Promise<boolean>;
+}) {
+  const to = action?.type === 'profile' && typeof action.to === 'string' ? action.to : null;
+  const target = to === null ? null : (profiles.find((p) => p.id === to) ?? profiles.find((p) => p.label === to))?.id ?? null;
+  const uncovered = target === null ? [] : coverage(target).uncoveredConnected;
+
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Switch profile</h3>
+      <ul className="target-list">
+        {profiles.map((p) => {
+          const { covered } = coverage(p.id);
+          return (
+            <li key={p.id}>
+              <button
+                className={p.id === target ? 'target target-selected' : 'target'}
+                disabled={disabled}
+                onClick={() => void run({ kind: 'setAction', at, action: { type: 'profile', to: p.id } })}
+              >
+                <span className="target-name">
+                  {p.label}
+                  {p.id === at.profile ? ' — the one you are editing' : ''}
+                </span>
+                <span className="target-note">
+                  {covered.length === 0 ? 'covers no deck' : `changes ${covered.join(' and ')}`}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {to !== null && target === null && (
+        <p className="warning-text">This key points at “{to}”, which is not a profile. Pressing it does nothing.</p>
+      )}
+      {uncovered.length > 0 && (
+        <p className="warning-text">
+          {uncovered.join(' and ')} {uncovered.length === 1 ? 'is' : 'are'} plugged in but not covered by this profile, so{' '}
+          {uncovered.length === 1 ? 'it keeps' : 'they keep'} whatever {uncovered.length === 1 ? 'layout it has' : 'layouts they have'}.
+        </p>
+      )}
+      {target === null && to === null && <p className="muted small">Pick the profile this key should switch to.</p>}
+    </section>
+  );
+}
+
+const POSITIONS: ReadonlyArray<{ value: 'top' | 'center' | 'bottom'; label: string }> = [
+  { value: 'top', label: 'Top' },
+  { value: 'center', label: 'Centre' },
+  { value: 'bottom', label: 'Bottom' },
+];
+
+/**
+ * Where the label sits, what colour it is and how big — all three already
+ * supported by `src/render.ts` and the v0.1 schema; this is the UI that was
+ * missing. A field the key does not set is shown as inherited from `defaults`
+ * in config, and "Reset" removes it again rather than writing the default
+ * value in, so the config diff stays small and a later change to `defaults`
+ * still reaches the key.
+ */
+function LabelStyle({
+  at,
+  button,
+  defaults,
+  disabled,
+  run,
+}: {
+  at: ButtonLocation;
+  button: ButtonDef | undefined;
+  defaults: { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number };
+  disabled: boolean;
+  run: (edit: Edit) => Promise<boolean>;
+}) {
+  const position = button?.labelPosition ?? defaults.labelPosition;
+  const colour = button?.labelColor ?? defaults.labelColor;
+  const size = button?.labelSize ?? defaults.labelSize;
+  const set = (field: 'labelPosition' | 'labelColor' | 'labelSize', value: string | number | null) =>
+    void run({ kind: 'setLabelStyle', at, field, value });
+  const inherited = (field: 'labelPosition' | 'labelColor' | 'labelSize') => button?.[field] === undefined;
+
+  return (
+    <div className="label-style">
+      <div className="label-style-row">
+        <span className="label-style-name">Position</span>
+        <div className="segmented" role="group" aria-label="Label position">
+          {POSITIONS.map((p) => (
+            <button
+              key={p.value}
+              className={p.value === position ? 'segment segment-selected' : 'segment'}
+              disabled={disabled}
+              aria-pressed={p.value === position}
+              onClick={() => set('labelPosition', p.value)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="label-style-row">
+        <span className="label-style-name">Colour</span>
+        <input
+          type="color"
+          aria-label="Label colour"
+          className="colour-well"
+          value={/^#[0-9a-fA-F]{6}$/.test(colour) ? colour : '#ffffff'}
+          disabled={disabled}
+          onChange={(e) => set('labelColor', e.target.value)}
+        />
+        <span className="label-style-value">{colour}</span>
+      </div>
+
+      <div className="label-style-row">
+        <span className="label-style-name">Size</span>
+        <input
+          type="number"
+          aria-label="Label size"
+          className="size-input"
+          min={6}
+          max={72}
+          value={size}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.target.value);
+            if (Number.isFinite(next) && next > 0) set('labelSize', next);
+          }}
+        />
+        <span className="label-style-value">px</span>
+      </div>
+
+      <div className="label-style-row">
+        <button
+          className="link-button"
+          disabled={disabled || (inherited('labelPosition') && inherited('labelColor') && inherited('labelSize'))}
+          title="Remove these from the key, so it follows the defaults in config.json again"
+          onClick={() => {
+            set('labelPosition', null);
+            set('labelColor', null);
+            set('labelSize', null);
+          }}
+        >
+          Reset to defaults
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A button's icon has three states and they are not interchangeable
+ * (scope §10): absent means "use the action's built-in default", null means
+ * "deliberately none — label only", and a string is that file. They are shown
+ * as one segmented control rather than two buttons, because **the state has to
+ * be visible rather than inferred from which control was pressed last** (the maintainer,
+ * 2026-09-16) — and until phase C's defaults land, Default and None draw the
+ * same blank key on the hardware, so the sub-line is the only thing telling
+ * them apart.
+ *
+ * No segment is ever disabled (the maintainer, 2026-09-16): going from a file to
+ * "deliberately none" must be one click, not clear-then-tick. Choosing None
+ * with a file set discards the path, which is what was asked for.
+ */
+function IconState({
+  button,
+  disabled,
+  onChoose,
+  onBrowse,
+}: {
+  button: ButtonDef | undefined;
+  disabled: boolean;
+  onChoose: (icon: IconChoice) => void;
+  onBrowse: () => void;
+}) {
+  // Absent, null and a string are three different things; `in` distinguishes
+  // the first two, which `?.` and `??` cannot.
+  const hasKey = button !== undefined && 'icon' in button;
+  const path = typeof button?.icon === 'string' ? button.icon : null;
+  const state: IconChoice['kind'] = path !== null ? 'file' : hasKey ? 'none' : 'default';
+
+  return (
+    <div className="icon-state">
+      <div className="segmented" role="group" aria-label="Icon">
+        <button
+          className={state === 'default' ? 'segment segment-selected' : 'segment'}
+          aria-pressed={state === 'default'}
+          disabled={disabled}
+          onClick={() => onChoose({ kind: 'default' })}
+        >
+          Default
+        </button>
+        <button
+          className={state === 'none' ? 'segment segment-selected' : 'segment'}
+          aria-pressed={state === 'none'}
+          disabled={disabled}
+          onClick={() => onChoose({ kind: 'none' })}
+        >
+          None
+        </button>
+        <button
+          className={state === 'file' ? 'segment segment-selected' : 'segment'}
+          aria-pressed={state === 'file'}
+          disabled={disabled}
+          onClick={onBrowse}
+        >
+          This file
+        </button>
+      </div>
+
+      {state === 'default' && (
+        <p className="muted small">
+          {/* Honest about the gap rather than implying an icon will appear. */}
+          No icon chosen. Nothing renders yet — built-in default icons arrive in phase C.
+        </p>
+      )}
+      {state === 'none' && <p className="muted small">Label only — no icon, now or after phase C.</p>}
+      {state === 'file' && (
+        <>
+          <p className="path">{path}</p>
+          <button className="link-button" disabled={disabled} onClick={onBrowse}>
+            Choose a different icon…
+          </button>
+        </>
+      )}
+    </div>
   );
 }

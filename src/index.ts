@@ -94,7 +94,10 @@ async function bootstrapConfig(): Promise<boolean> {
     }
     try {
       const serial = (await raw.getSerialNumber()).trim();
-      decks[serial] = { name: raw.PRODUCT_NAME };
+      // No `name`: with none set the editor and logs show the model name, which
+      // stays right if the library's naming improves. Writing one here froze
+      // "Stream Deck" into the maintainer's config for an Original V2 (2026-09-16).
+      decks[serial] = {};
       layouts[serial] = {
         startPage: 'main',
         pages: {

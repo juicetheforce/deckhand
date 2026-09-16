@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--recent <folder> ...]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...]
 //
 // --tab icon opens the inspector's Icon tab, which lists real folders under
 // your home directory (read-only) for any ~/ icon path in the config.
@@ -67,6 +67,14 @@ const { values } = parseArgs({
     deck: { type: 'string' },
     disconnected: { type: 'string' },
     tab: { type: 'string' },
+    // 'newprofile' or 'delete': open one of B1's panels before capturing.
+    open: { type: 'string' },
+    // Select a page tab by its label before anything else.
+    page: { type: 'string' },
+    // Type this into the library's search box before capturing.
+    search: { type: 'string' },
+    // Start with every library section collapsed, to show search reaching into them.
+    collapse: { type: 'boolean' },
     recent: { type: 'string', multiple: true },
   },
 });
@@ -99,6 +107,17 @@ for (const serial of serials) {
 if (values.select !== undefined) process.env.DECKHAND_EDITOR_SELECT_KEY = values.select;
 if (values.deck !== undefined) process.env.DECKHAND_EDITOR_SELECT_DECK = values.deck;
 if (values.tab !== undefined) process.env.DECKHAND_EDITOR_SELECT_TAB = values.tab;
+if (values.open !== undefined) process.env.DECKHAND_EDITOR_OPEN = values.open;
+if (values.page !== undefined) process.env.DECKHAND_EDITOR_PAGE = values.page;
+if (values.search !== undefined) process.env.DECKHAND_EDITOR_SEARCH = values.search;
+// Seed the collapse state the way the editor stores it, so search can be shown
+// finding actions inside sections that are shut.
+if (values.collapse) {
+  const editorState = path.join(scratch, 'state', 'editor');
+  await fs.mkdir(editorState, { recursive: true });
+  const groups = ['Keyboard', 'Navigation', 'Media', 'Audio', 'System'];
+  await fs.writeFile(path.join(editorState, 'preferences.json'), JSON.stringify({ collapsedLibrary: groups }, null, 2) + '\n');
+}
 // Seed the picker's recent folders, so a screenshot can show the chips.
 if (values.recent?.length) {
   const editorState = path.join(scratch, 'state', 'editor');

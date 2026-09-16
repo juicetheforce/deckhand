@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef } from '../../../src/types.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
-import type { ButtonLocation } from '../shared/edits.js';
+import type { IconChoice, ButtonLocation } from '../shared/edits.js';
 import { iconUrl } from '../shared/icons.js';
 import { MAX_BOOKMARKS } from '../shared/bridge.js';
 import { bookmarkLabel, elideCrumbs, folderCrumbs, moveCursor, parentFolder, type GridKey } from './picker-model.js';
@@ -193,10 +193,10 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     setMessage(result.code === 'render_failed' ? `The deck cannot draw ${item.entry.name}.` : `Not shown on the deck: ${result.error}`);
   };
 
-  const commit = async (path: string | null) => {
-    if (editingBlocked || busy || (path !== null && refused.has(path))) return;
+  const commit = async (choice: IconChoice) => {
+    if (editingBlocked || busy || (choice.kind === 'file' && refused.has(choice.path))) return;
     setBusy(true);
-    const result = await window.deckhand.commitIcon(at, path, previewing.current ? { serial: at.serial, key: at.index } : null);
+    const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null);
     setBusy(false);
     if (!result.ok) {
       setMessage(result.error);
@@ -206,7 +206,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     setMessage(null);
   };
 
-  const activate = (item: Item) => (item.kind === 'folder' ? openFolder(item.entry.path) : void commit(item.entry.path));
+  const activate = (item: Item) => (item.kind === 'folder' ? openFolder(item.entry.path) : void commit({ kind: 'file', path: item.entry.path }));
 
   const onGridKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter') {
@@ -348,7 +348,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
               title={entry.configPath}
               tabIndex={-1}
               onClick={() => (item.kind === 'folder' ? openFolder(entry.path) : void moveTo(item))}
-              onDoubleClick={() => item.kind === 'image' && void commit(entry.path)}
+              onDoubleClick={() => item.kind === 'image' && void commit({ kind: 'file', path: entry.path })}
             >
               {item.kind === 'folder' ? (
                 <span className="picker-folder-glyph" aria-hidden>
@@ -410,13 +410,16 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
           <button
             className="primary"
             disabled={editingBlocked || busy || !selectedImage || refused.has(selectedImage.path) || isCurrent(selectedImage)}
-            onClick={() => selectedImage && void commit(selectedImage.path)}
+            onClick={() => selectedImage && void commit({ kind: 'file', path: selectedImage.path })}
           >
             Assign
           </button>
+          {/* Named for the state it writes (scope §10): removing the key is what
+              makes the action's built-in default render, so this is not
+              "remove". The Key tab's control shows all three states. */}
           {button?.icon !== undefined && (
-            <button disabled={editingBlocked || busy} onClick={() => void commit(null)}>
-              Remove icon
+            <button disabled={editingBlocked || busy} onClick={() => void commit({ kind: 'default' })}>
+              Use the default
             </button>
           )}
         </div>

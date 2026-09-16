@@ -325,7 +325,8 @@ export function requireAction(value: unknown, name: string): ActionDef {
 function requireButton(args: Record<string, unknown>, name: string): ButtonDef {
   const value = args[name];
   if (!isObject(value)) throw new ControlError('bad_request', `"${name}" must be a button object`);
-  if (value.icon !== undefined && typeof value.icon !== 'string') {
+  // null is a real value here: a preview of a label-only button (scope §10).
+  if (value.icon !== undefined && value.icon !== null && typeof value.icon !== 'string') {
     throw new ControlError('bad_request', `"${name}.icon" must be a path`);
   }
   if (value.label !== undefined && typeof value.label !== 'string') {

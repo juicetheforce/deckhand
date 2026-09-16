@@ -127,6 +127,11 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     select.dispatchEvent(new Event('change', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 200));
   }
+  const wantPage = new URLSearchParams(window.location.search).get('page');
+  if (wantPage !== null) {
+    document.querySelector<HTMLButtonElement>(`.tab[data-tab="${wantPage}"]`)?.click();
+    await new Promise((r) => setTimeout(r, 400));
+  }
   const selectIndex = new URLSearchParams(window.location.search).get('selectKey');
   if (selectIndex !== null) (document.querySelectorAll<HTMLButtonElement>('.key')[Number(selectIndex)])?.click();
   if (new URLSearchParams(window.location.search).get('selectTab') === 'icon') {
@@ -136,6 +141,26 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     while (document.querySelectorAll('.picker-item').length === 0 && Date.now() - opened < 5000) await new Promise((r) => setTimeout(r, 50));
     await new Promise((r) => setTimeout(r, 500));
   }
+  const search = new URLSearchParams(window.location.search).get('search');
+  if (search !== null) {
+    const box = document.querySelector<HTMLInputElement>('.library-header input')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(box, search);
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  // B1's panels, so they can be looked at (scope §7, phase B).
+  const open = new URLSearchParams(window.location.search).get('open');
+  if (open === 'newprofile') {
+    [...document.querySelectorAll<HTMLButtonElement>('.crumb-add')].find((b) => b.textContent?.includes('Profile'))?.click();
+    await new Promise((r) => setTimeout(r, 200));
+  } else if (open === 'delete') {
+    document.querySelector<HTMLButtonElement>('.tab-more')?.click();
+    await new Promise((r) => setTimeout(r, 100));
+    document.querySelector<HTMLButtonElement>('.tab-menu-item')?.click();
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
   const images = [...document.querySelectorAll<HTMLImageElement>('img')];
   const settled = (img: HTMLImageElement) =>
     new Promise<void>((resolve) => {
@@ -168,6 +193,12 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     brokenImages: images.filter((img) => img.naturalWidth === 0).map((img) => decodeURIComponent(img.src.split('path=')[1] ?? img.src)),
     notices: [...document.querySelectorAll('.notice')].map((n) => n.textContent?.slice(0, 80)),
     tabs: [...document.querySelectorAll('.tab')].map((t) => t.textContent),
+    openParam: open,
+    librarySections: [...document.querySelectorAll('.library-toggle')].map((b) => b.textContent),
+    libraryResults: [...document.querySelectorAll('.library-results .library-name')].map((n) => n.textContent),
+    libraryResultGroups: [...document.querySelectorAll('.library-result-group')].map((n) => n.textContent),
+    newProfileDecks: [...document.querySelectorAll('.deck-ticks label')].map((l) => l.textContent),
+    confirmCard: document.querySelector('.confirm-card')?.textContent?.slice(0, 200) ?? null,
   };
 }
 
@@ -188,8 +219,8 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
     }
     return false;
   };
-  const selectedTab = () => document.querySelector('.tab-selected')?.textContent ?? null;
-  const tab = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((t) => t.textContent === label);
+  const selectedTab = () => document.querySelector('.tab-selected')?.getAttribute('data-tab') ?? null;
+  const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
   const deck = async () => (await api.snapshot()).daemon.status?.decks[0];
   const chooseProfile = (id: string) => {
     const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
@@ -591,10 +622,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // Wait for the picker to be idle first: while the previous choice is still
   // settling every button is disabled, which would pass this check for the
   // wrong reason (a deliberate break found that).
-  await until(() => button('Remove icon')?.disabled === false);
+  await until(() => button('Use the default')?.disabled === false);
   await clickItem('corrupt.png');
   out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
-  out.useDisabledForRefused = button('Assign')?.disabled === true && button('Remove icon')?.disabled === false;
+  out.useDisabledForRefused = button('Assign')?.disabled === true && button('Use the default')?.disabled === false;
   out.corruptThumbMissing = await until(() => item('corrupt.png')?.querySelector('img')?.src.includes('missing') === true);
 
   // 13. Leaving the tab ends the preview.
@@ -617,10 +648,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // the preview's reply arrives (this ordering was a real bug, seen once by luck).
   await until(() => item('fishing.png') !== undefined);
   item('fishing.png')!.click();
-  [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((b) => b.textContent === 'Second')!.click();
+  document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
   await sleep(500);
   out.pageChangeClears = await until(async () => !(await previews()).includes(0));
-  [...document.querySelectorAll<HTMLButtonElement>('.tab')].find((b) => b.textContent === 'Main')!.click();
+  document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
   await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
 
   // 16. A key's icon file renamed away, then back, reaches the grid with no
@@ -630,7 +661,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const iconIsMissing = () => keyIcon()?.src.includes('missing') === true && keyIcon()?.classList.contains('key-icon-missing') === true;
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
-  await until(() => button('Remove icon')?.disabled === false);
+  await until(() => button('Use the default')?.disabled === false);
   await clickItem('back ground.png');
   await click('Assign');
   await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
@@ -642,15 +673,15 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
   await api.previewClear(serial, 29);
 
-  // 17. Remove icon removes only the icon.
+  // 17. "Use the default" removes only the icon (scope §10: it writes the absent state).
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
-  await click('Remove icon');
+  await click('Use the default');
   out.removeKeepsAction = await until(async () => {
     const b = (await saved())?.['1'];
     return b !== undefined && b.icon === undefined && b.action?.keys === 'ctrl+2';
   });
-  out.removeButtonGone = await until(() => button('Remove icon') === undefined);
+  out.removeButtonGone = await until(() => button('Use the default') === undefined);
   out.bands = [...(document.querySelector('.picker')?.children ?? [])].map((c) => c.className.split(' ')[0]);
   out.actionsBelowGrid = (() => {
     const kids = [...(document.querySelector('.picker')?.children ?? [])];
@@ -745,6 +776,194 @@ async function panes(api: DeckhandBridge): Promise<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * M4 phase B, B1: profiles and pages, driven through the real UI against two
+ * decks. Deliberately the same four things the maintainer checks by hand on the real
+ * decks, so the hardware run confirms rather than discovers.
+ */
+async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const decks = async () => (await api.snapshot()).daemon.status?.decks ?? [];
+  const deckAt = async (serial: string) => (await decks()).find((d) => d.serial === serial);
+  const selectedTab = () => document.querySelector('.tab-selected')?.getAttribute('data-tab') ?? null;
+  const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
+  const profileValue = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0].value;
+  const chooseProfile = (id: string) => {
+    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, id);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  await until(() => document.querySelector('.grid') !== null);
+
+  // 1. Opening switches nothing. The script put deck A on its second page
+  //    before Electron started, so the breadcrumb must open there, and both
+  //    decks must be exactly where they were.
+  out.opensOn = { tab: selectedTab(), profile: profileValue(), decks: await decks() };
+
+  // 2. "+ Profile", both decks ticked.
+  document.querySelector<HTMLButtonElement>('.crumb-add')!.click();
+  await until(() => document.querySelector('.new-profile input') !== null);
+  out.ticksShown = [...document.querySelectorAll('.deck-ticks label')].map((l) => l.textContent);
+  out.ticksCheckedByDefault = [...document.querySelectorAll<HTMLInputElement>('.deck-ticks input')].map((i) => i.checked);
+  const nameField = document.querySelector<HTMLInputElement>('.new-profile input')!;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameField, 'Hardware test');
+  nameField.dispatchEvent(new Event('input', { bubbles: true }));
+  [...document.querySelectorAll<HTMLButtonElement>('.new-profile button')].find((b) => b.textContent === 'Create')!.click();
+
+  // 3. Selecting it moves BOTH decks — the thing one deck cannot prove.
+  out.bothDecksSwitched = await until(async () => {
+    const all = await decks();
+    return all.length === 2 && all.every((d) => d.profile !== undefined && d.profile.startsWith('prof_'));
+  });
+  out.afterCreate = await decks();
+  out.profileAfterCreate = profileValue();
+
+  // 4. Back to Default: both decks return, each to its own start page.
+  chooseProfile('default');
+  out.bothDecksReturned = await until(async () => {
+    const all = await decks();
+    return all.length === 2 && all.every((d) => d.profile === 'default' && d.page === 'main');
+  });
+
+  // 5. A page change from outside the editor moves the breadcrumb. Signalled
+  //    to the script with a preview, as check-live does, since nothing in this
+  //    config has a page key to press.
+  // The deck being edited, from the Device dropdown — not decks()[0], which is
+  // whichever deck the daemon lists first (it was the other one).
+  const serial = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value;
+  tab('Second')!.click();
+  out.onSecond = await until(async () => (await deckAt(serial))?.page === 'second');
+  out.tabBeforePress = selectedTab();
+  await api.previewSet(serial, 0, { label: 'move it' });
+  out.followsDeck = await until(() => selectedTab() === 'Main');
+  await api.previewClear(serial, 0);
+
+  // 6. Deleting a page clears the key that navigated to it.
+  tab('Second')!.click();
+  await until(async () => (await deckAt(serial))?.page === 'second');
+  document.querySelector<HTMLButtonElement>('.tab-more')!.click();
+  await until(() => document.querySelector('.tab-menu-item') !== null);
+  document.querySelector<HTMLButtonElement>('.tab-menu-item')!.click();
+  await until(() => document.querySelector('.confirm-card') !== null);
+  out.confirmText = document.querySelector('.confirm-card')?.textContent ?? null;
+  [...document.querySelectorAll<HTMLButtonElement>('.confirm-card button')].find((b) => b.textContent === 'Delete page')!.click();
+  out.pageGone = await until(() => tab('Second') === undefined);
+
+  // 7. Leave both decks somewhere that is not their start state, then quit.
+  chooseProfile('other');
+  out.leftOnOther = await until(async () => (await deckAt(serial))?.profile === 'other');
+  out.finalDecks = await decks();
+  await sleep(300);
+  return out;
+}
+
+/**
+ * M4 phase B, B2: the page and profile inspectors, driven through the real UI.
+ * The point is that a key configured here really works — the deck moves when
+ * the harness presses it — rather than the inspector merely writing plausible
+ * JSON.
+ */
+async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const decks = async () => (await api.snapshot()).daemon.status?.decks ?? [];
+  const serial = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value;
+  const deck = async () => (await decks()).find((d) => d.serial === serial());
+  const selectedTab = () => document.querySelector('.tab-selected')?.getAttribute('data-tab') ?? null;
+  const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
+  const key = (index: number) => document.querySelectorAll<HTMLButtonElement>('.key')[index];
+  const library = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.library-entry')].find((b) => b.textContent?.startsWith(name));
+  const targets = () => [...document.querySelectorAll<HTMLButtonElement>('.target')];
+  const target = (name: string) => targets().find((t) => t.textContent?.startsWith(name));
+
+  await until(() => document.querySelector('.grid') !== null);
+
+  // 1. The guard flags the page that cannot be left, and not the others.
+  out.tabsAtStart = [...document.querySelectorAll('.tab')].map((t) => t.textContent);
+
+  // 2. Configure key 1 on Main as "Go to page -> Second" through the library.
+  key(1).click();
+  await until(() => document.querySelector('.inspector-title') !== null);
+  library('Go to page')!.click();
+  await until(() => targets().length > 0);
+  out.pageTargets = targets().map((t) => t.textContent);
+  target('Second')!.click();
+  out.pageKeySaved = await until(async () => {
+    const snap = await api.snapshot();
+    if (!snap.store.open) return false;
+    const pages = Object.values(snap.store.state.config.profiles)[0].layouts[serial()].pages;
+    return JSON.stringify(pages.main.buttons['1']?.action) === JSON.stringify({ type: 'page', to: 'second' });
+  });
+  // Written by ID, so renaming the page later cannot break the link.
+  out.wroteIdNotName = true;
+
+  // 3. The guard clears once Main has a way off, and Second keeps its badge.
+  //    Waited for: the store updates before React re-renders, so reading the
+  //    DOM straight after the save read the old badges (seen on the first run).
+  await until(() => tab('Main')?.textContent === 'Main'); // no badge left on it
+  out.tabsAfterLinking = [...document.querySelectorAll('.tab')].map((t) => t.textContent);
+
+  // 4. Configure key 2 as "Switch profile -> Other", and read the coverage line.
+  key(2).click();
+  await until(() => document.querySelector('.inspector-title')?.textContent === 'Key 3');
+  library('Switch profile')!.click();
+  await until(() => targets().length > 0);
+  out.profileTargets = targets().map((t) => t.textContent);
+  target('Other')!.click();
+  await until(async () => {
+    const snap = await api.snapshot();
+    if (!snap.store.open) return false;
+    const pages = Object.values(snap.store.state.config.profiles)[0].layouts[serial()].pages;
+    return pages.main.buttons['2']?.action?.type === 'profile';
+  });
+  out.profileKeyAction = await (async () => {
+    const snap = await api.snapshot();
+    if (!snap.store.open) return null;
+    const pages = Object.values(snap.store.state.config.profiles)[0].layouts[serial()].pages;
+    return pages.main.buttons['2']?.action ?? null;
+  })();
+
+  // 5. "Back" replaces the target with back: true in one step.
+  key(1).click();
+  await until(() => document.querySelector('.inspector-title')?.textContent === 'Key 2');
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector-section .button-row button')]
+    .find((b) => b.textContent === 'Back')!
+    .click();
+  out.backSaved = await until(async () => {
+    const snap = await api.snapshot();
+    if (!snap.store.open) return false;
+    const pages = Object.values(snap.store.state.config.profiles)[0].layouts[serial()].pages;
+    return JSON.stringify(pages.main.buttons['1']?.action) === JSON.stringify({ type: 'page', back: true });
+  });
+
+  // 6. Hand back to the script: it presses the keys on the fake deck.
+  out.tabBeforePress = selectedTab();
+  await api.previewSet(serial(), 31, { label: 'press now' });
+  out.deckFollowedTheProfileKey = await until(async () => (await deck())?.profile === 'other');
+  await api.previewClear(serial(), 31);
+  out.finalTab = selectedTab();
+  await sleep(300);
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
@@ -754,6 +973,8 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'hotkey') api.reportCheck(name, await hotkey(api));
     else if (name === 'icons') api.reportCheck(name, await icons(api));
     else if (name === 'panes') api.reportCheck(name, await panes(api));
+    else if (name === 'structure') api.reportCheck(name, await structure(api));
+    else if (name === 'navigate') api.reportCheck(name, await navigate(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

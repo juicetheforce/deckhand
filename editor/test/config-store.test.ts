@@ -15,6 +15,8 @@ import { pathToFileURL } from 'node:url';
 import type { Config } from '../../src/types.js';
 import { serializeConfig, toConfigPath, type ButtonLocation } from '../src/main/config-document.js';
 import { ConfigStore, type StoreState } from '../src/main/config-store.js';
+import { resolveProfile, startPageOf } from '../../src/config-common.js';
+import { pageDeletion } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
 const TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'deckhand-editor-store-'));
@@ -156,7 +158,7 @@ await check('setLabel "" removes the label; setIcon null removes the icon', asyn
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);
   store.apply({ kind: 'setLabel', at: at(1), label: '' });
-  store.apply({ kind: 'setIcon', at: at(1), icon: null });
+  store.apply({ kind: 'setIcon', at: at(1), icon: { kind: 'default' } });
   await store.flush();
   assert.equal(
     await fs.readFile(file, 'utf8'),
@@ -175,7 +177,7 @@ await check('icon paths under $HOME are stored as ~/..., others as given', async
   assert.equal(toConfigPath(HOME, HOME), '~');
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);
-  store.apply({ kind: 'setIcon', at: at(7), icon: `${HOME}/Pictures/icons/ffxiv.png` });
+  store.apply({ kind: 'setIcon', at: at(7), icon: { kind: 'file', path: `${HOME}/Pictures/icons/ffxiv.png` } });
   await store.flush();
   assert.equal(xlMain(JSON.parse(await fs.readFile(file, 'utf8')))['7'].icon, '~/Pictures/icons/ffxiv.png');
   store.close();
@@ -251,6 +253,411 @@ await check('addPage never reuses an existing page ID', async () => {
   store.close();
 });
 
+console.log('label appearance (M4 phase B)');
+
+await check('setLabelStyle writes position, colour and size, and null removes each again', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const where = at(6); // XL main key 6, { label: "Prev", action: media.control }
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelPosition', value: 'top' }).ok, true);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelColor', value: '#ff8800' }).ok, true);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelSize', value: 20 }).ok, true);
+  await store.flush();
+  assert.equal(
+    await fs.readFile(file, 'utf8'),
+    expected((c) => {
+      const b = xlMain(c)['6'];
+      b.labelPosition = 'top';
+      b.labelColor = '#ff8800';
+      b.labelSize = 20;
+    }),
+  );
+  // Removing them leaves the button, and its action, exactly as it was.
+  for (const field of ['labelPosition', 'labelColor', 'labelSize'] as const) {
+    assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field, value: null }).ok, true);
+  }
+  await store.flush();
+  assert.equal(await fs.readFile(file, 'utf8'), EXAMPLE, 'back to exactly the original file');
+  store.close();
+});
+
+await check('setLabelStyle refuses values the renderer could not use', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const where = at(6);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelPosition', value: 'middle' }).ok, false);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelSize', value: 0 }).ok, false);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelSize', value: -4 }).ok, false);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelSize', value: 'big' }).ok, false);
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelColor', value: '  ' }).ok, false);
+  assert.equal(store.state().dirty, false, 'nothing was accepted');
+  store.close();
+});
+
+await check("the icon's three states are distinct in the file, and each is reachable in one edit", async () => {
+  // scope §10: absent = use the action's default; null = deliberately none;
+  // a string = that file. One field, three readings.
+  const store = await openStore(await configFile(EXAMPLE));
+  const where = at(0); // starts with an icon path
+  const icon = () => {
+    const b = store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons['0'];
+    return 'icon' in b ? b.icon : '(absent)';
+  };
+  assert.equal(typeof icon(), 'string', 'starts as a file');
+
+  // One step from a file straight to "deliberately none" — not clear-then-tick.
+  assert.equal(store.apply({ kind: 'setIcon', at: where, icon: { kind: 'none' } }).ok, true);
+  assert.equal(icon(), null, 'explicit null, not removed');
+
+  assert.equal(store.apply({ kind: 'setIcon', at: where, icon: { kind: 'default' } }).ok, true);
+  assert.equal(icon(), '(absent)', 'the key is gone, so the default will render');
+
+  assert.equal(store.apply({ kind: 'setIcon', at: where, icon: { kind: 'file', path: '~/Pictures/x.png' } }).ok, true);
+  assert.equal(icon(), '~/Pictures/x.png');
+  store.close();
+});
+
+await check('a null icon survives a save and reload as null, not as an absent key', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  assert.equal(store.apply({ kind: 'setIcon', at: at(0), icon: { kind: 'none' } }).ok, true);
+  await store.flush();
+  const text = await fs.readFile(file, 'utf8');
+  assert.match(text, /"icon": null/, 'written as null in the file');
+  // And the daemon's own validator accepts it.
+  const reparsed = JSON.parse(text) as Config;
+  assert.equal(reparsed.profiles.default.layouts[XL.serial].pages.main.buttons['0'].icon, null);
+  store.close();
+});
+
+await check('a label-only button is expressible: removing the icon keeps the label and the action', async () => {
+  // scope §2/§10: a label with no icon is a finished button, not a placeholder.
+  const store = await openStore(await configFile(EXAMPLE));
+  const where = at(0); // { label: "Output A", icon: "~/...", action: audio.sink }
+  assert.equal(store.apply({ kind: 'setIcon', at: where, icon: { kind: 'default' } }).ok, true);
+  const button = store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons['0'];
+  assert.equal(button.icon, undefined, 'the icon is gone');
+  assert.equal(button.label, 'Output A', 'the label stays');
+  assert.ok(button.action, 'the action stays');
+  store.close();
+});
+
+console.log('renaming a deck (M4 phase B)');
+
+await check('renameDeck writes decks.<serial>.name, and clearing it removes the field', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  assert.equal(store.apply({ kind: 'renameDeck', serial: XL.serial, name: '  Left XL  ' }).ok, true);
+  assert.equal(store.state().config.decks![XL.serial].name, 'Left XL', 'trimmed');
+  await store.flush();
+  assert.equal(await fs.readFile(file, 'utf8'), expected((c) => (c.decks![XL.serial].name = 'Left XL')));
+
+  // Clearing it leaves brightness alone — the entry is not wiped.
+  assert.equal(store.apply({ kind: 'renameDeck', serial: XL.serial, name: null }).ok, true);
+  assert.equal(store.state().config.decks![XL.serial].name, undefined);
+  assert.equal(store.state().config.decks![XL.serial].brightness, 70, 'the rest of the deck entry survives');
+  store.close();
+});
+
+await check('a deck with nothing left on it is removed, rather than leaving an empty entry', async () => {
+  // A deck named but never given a brightness: clearing the name should take
+  // the whole entry, not leave `"<serial>": {}` behind in the diff.
+  const bare: Config = {
+    decks: { 'DECK-1': { name: 'Temporary' } },
+    profiles: { p1: { layouts: { 'DECK-1': { startPage: 'main', pages: { main: { buttons: {} } } } } } },
+  };
+  const store = await openStore(await configFile(serializeConfig(bare)));
+  assert.equal(store.apply({ kind: 'renameDeck', serial: 'DECK-1', name: '' }).ok, true);
+  assert.equal(store.state().config.decks, undefined, '"decks" itself goes when it is empty');
+  store.close();
+});
+
+await check('a deck the config has never mentioned can be named', async () => {
+  const noDecks: Config = {
+    profiles: { p1: { layouts: { 'DECK-9': { startPage: 'main', pages: { main: { buttons: {} } } } } } },
+  };
+  const store = await openStore(await configFile(serializeConfig(noDecks)));
+  assert.equal(store.state().config.decks, undefined);
+  assert.equal(store.apply({ kind: 'renameDeck', serial: 'DECK-9', name: 'Right XL' }).ok, true);
+  assert.equal(store.state().config.decks!['DECK-9'].name, 'Right XL');
+  store.close();
+});
+
+console.log('add profile and add layout (M4 phase B, B1)');
+
+const XL_SERIAL = 'REPLACE-WITH-XL-SERIAL';
+const V2_SERIAL = 'REPLACE-WITH-ORIGINAL-V2-SERIAL';
+
+await check('addProfile covers every deck it names, each with one empty start page', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const r = store.apply({ kind: 'addProfile', name: 'FFXIV', serials: [XL_SERIAL, V2_SERIAL], pageName: 'Main' });
+  assert.deepEqual(r, { ok: true, result: { profileId: 'prof_beef' } });
+  await store.flush();
+  const after = await fs.readFile(file, 'utf8');
+  const layout = () => ({ startPage: 'pg_beef', pages: { pg_beef: { name: 'Main', buttons: {} } } });
+  assert.equal(
+    after,
+    expected((c) => {
+      c.profiles.prof_beef = { name: 'FFXIV', layouts: { [XL_SERIAL]: layout(), [V2_SERIAL]: layout() } };
+    }),
+  );
+  // Nothing outside the new profile moved: the whole edit is added lines.
+  const d = await diff(EXAMPLE, after);
+  assert.equal(d.removed, 0, `removed ${d.removed}: ${d.removedLines.join(' | ')}`);
+  assert.equal(d.added, 23, 'the new profile and its two layouts, and nothing else');
+  store.close();
+});
+
+await check('addProfile writes startPage explicitly, and the daemon starts the deck there', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  assert.equal(store.apply({ kind: 'addProfile', name: 'FFXIV', serials: [XL_SERIAL], pageName: 'Main' }).ok, true);
+  const layout = store.state().config.profiles.prof_beef.layouts[XL_SERIAL];
+  assert.equal(layout.startPage, 'pg_beef');
+  assert.equal(startPageOf(layout), 'pg_beef', "the daemon's own startPageOf");
+  store.close();
+});
+
+await check('addProfile refuses a duplicate name, a name equal to a profile ID, a blank name and no decks', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const base = { kind: 'addProfile' as const, serials: [XL_SERIAL], pageName: 'Main' };
+  // validateConfig would refuse both of these anyway, so assert the editor's
+  // own message: without it these passed with the clash check deleted.
+  const refusal = (name: string) => {
+    const r = store.apply({ ...base, name });
+    assert.equal(r.ok, false, name);
+    return r.ok ? '' : r.error;
+  };
+  assert.match(refusal('Game'), /already a profile called "Game"/, 'existing name');
+  assert.match(refusal('prof_game'), /already a profile called "prof_game"/, 'existing ID');
+  assert.equal(store.apply({ ...base, name: '  ' }).ok, false, 'blank name');
+  assert.equal(store.apply({ kind: 'addProfile', name: 'FFXIV', serials: [], pageName: 'Main' }).ok, false, 'no decks');
+  assert.equal(store.apply({ kind: 'addProfile', name: 'FFXIV', serials: [XL_SERIAL], pageName: ' ' }).ok, false, 'blank page name');
+  assert.equal(store.state().dirty, false);
+  store.close();
+});
+
+await check('addProfile never reuses a profile ID, and a repeated deck makes one layout', async () => {
+  const ids = ['beef', 'beef', 'cafe'];
+  const store = await openStore(await configFile(EXAMPLE), 30, undefined, () => ids.shift() ?? 'ffff');
+  // 'beef' is consumed by the first profile's own ID, so its page is 'pg_beef' too.
+  assert.deepEqual(store.apply({ kind: 'addProfile', name: 'One', serials: [XL_SERIAL, XL_SERIAL], pageName: 'Main' }), {
+    ok: true,
+    result: { profileId: 'prof_beef' },
+  });
+  assert.deepEqual(Object.keys(store.state().config.profiles.prof_beef.layouts), [XL_SERIAL], 'a repeated serial is one layout');
+  assert.deepEqual(store.apply({ kind: 'addProfile', name: 'Two', serials: [V2_SERIAL], pageName: 'Main' }), {
+    ok: true,
+    result: { profileId: 'prof_cafe' },
+  });
+  store.close();
+});
+
+await check('addLayout gives an uncovered deck a layout, and refuses one it already has', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  // prof_game covers the XL only.
+  assert.equal(store.apply({ kind: 'addLayout', profile: 'prof_game', serial: XL_SERIAL, pageName: 'Main' }).ok, false, 'already covered');
+  assert.deepEqual(store.apply({ kind: 'addLayout', profile: 'prof_game', serial: V2_SERIAL, pageName: 'Emotes' }), { ok: true, result: {} });
+  assert.equal(store.apply({ kind: 'addLayout', profile: 'no-such-profile', serial: V2_SERIAL, pageName: 'Main' }).ok, false, 'unknown profile');
+  await store.flush();
+  const after = await fs.readFile(file, 'utf8');
+  assert.equal(
+    after,
+    expected((c) => {
+      c.profiles.prof_game.layouts[V2_SERIAL] = { startPage: 'pg_beef', pages: { pg_beef: { name: 'Emotes', buttons: {} } } };
+    }),
+  );
+  store.close();
+});
+
+await check('a profile added in the editor is one the daemon accepts and can be switched to by name', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  assert.equal(store.apply({ kind: 'addProfile', name: 'FFXIV', serials: [XL_SERIAL, V2_SERIAL], pageName: 'Main' }).ok, true);
+  const config = store.state().config;
+  // The store only accepts an edit validateConfig passes, but check the two
+  // resolutions a `profile` key depends on, by the daemon's own functions.
+  assert.equal(resolveProfile(config, 'FFXIV'), 'prof_beef', 'by name');
+  assert.equal(resolveProfile(config, 'prof_beef'), 'prof_beef', 'by ID');
+  store.close();
+});
+
+console.log('delete page (M4 phase B, B1)');
+
+await check('deleting a page takes the navigation off keys that pointed at it, keeping icon and label', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  // XL "main" key 24 is { label: "Games", background, action: page -> "Games" },
+  // linked by the page's *name*, not its ID.
+  assert.deepEqual(store.apply({ kind: 'deletePage', profile: 'default', serial: XL_SERIAL, page: 'games' }), { ok: true, result: {} });
+  await store.flush();
+  assert.equal(
+    await fs.readFile(file, 'utf8'),
+    expected((c) => {
+      const layout = c.profiles.default.layouts[XL_SERIAL];
+      delete layout.pages.games;
+      delete layout.pages.main.buttons['24'].action;
+    }),
+  );
+  const key24 = store.state().config.profiles.default.layouts[XL_SERIAL].pages.main.buttons['24'];
+  assert.deepEqual(key24, { label: 'Games', background: '#2a1f3d' }, 'the key still looks placed');
+  store.close();
+});
+
+await check('a startPage naming the deleted page moves, and "back" keys are not links', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  assert.equal(store.apply({ kind: 'deletePage', profile: 'default', serial: XL_SERIAL, page: 'main' }).ok, true);
+  const layout = store.state().config.profiles.default.layouts[XL_SERIAL];
+  assert.equal(layout.startPage, 'games', 'startPage moved to the page that is left');
+  assert.equal(startPageOf(layout), 'games', "the daemon's own startPageOf agrees");
+  // { type: "page", back: true } names no page, so it is not a link to anything.
+  assert.deepEqual(layout.pages.games.buttons['0'].action, { type: 'page', back: true });
+  store.close();
+});
+
+await check("a layout's last page cannot be deleted, and an unknown page is refused", async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  // prof_game covers the XL with one page, and its startPage names it ("Hotbar").
+  const last = store.apply({ kind: 'deletePage', profile: 'prof_game', serial: XL_SERIAL, page: 'pg_hotbar' });
+  assert.equal(last.ok, false);
+  assert.match(last.ok ? '' : last.error, /at least one page/);
+  assert.equal(store.apply({ kind: 'deletePage', profile: 'default', serial: XL_SERIAL, page: 'nope' }).ok, false, 'unknown page');
+  assert.equal(store.state().dirty, false, 'a refused delete changes nothing');
+  store.close();
+});
+
+await check('only the layout that owns the page is scanned, and a multi loses just the step that pointed there', async () => {
+  const OTHER = 'SERIAL-B';
+  const linked: Config = {
+    profiles: {
+      p1: {
+        layouts: {
+          [XL_SERIAL]: {
+            startPage: 'home',
+            pages: {
+              home: {
+                name: 'Home',
+                buttons: {
+                  // by ID, by name, on release, and one step of a macro
+                  '0': { label: 'A', action: { type: 'page', to: 'combat' } },
+                  '1': { label: 'B', action: { type: 'page', to: 'Combat' } },
+                  '2': { label: 'C', onRelease: { type: 'page', to: 'combat' } },
+                  '3': {
+                    label: 'D',
+                    action: { type: 'multi', steps: [{ type: 'audio.micMute' }, { type: 'page', to: 'Combat' }] },
+                  },
+                  '4': { label: 'E', action: { type: 'page', to: 'home' } },
+                },
+              },
+              combat: { name: 'Combat', buttons: { '0': { action: { type: 'page', back: true } } } },
+            },
+          },
+          // Another deck with a page of the same ID *and* name — normal, and
+          // what the maintainer's own config does with "main". Its key resolves inside
+          // its own layout, so deleting this one must not touch it.
+          [OTHER]: {
+            startPage: 'own',
+            pages: {
+              own: { name: 'Own', buttons: { '0': { label: 'Mine', action: { type: 'page', to: 'Combat' } } } },
+              combat: { name: 'Combat', buttons: {} },
+            },
+          },
+        },
+      },
+    },
+  };
+  const store = await openStore(await configFile(serializeConfig(linked)));
+  assert.equal(store.apply({ kind: 'deletePage', profile: 'p1', serial: XL_SERIAL, page: 'combat' }).ok, true);
+  const after = store.state().config.profiles.p1;
+  const home = after.layouts[XL_SERIAL].pages.home.buttons;
+  assert.deepEqual(home['0'], { label: 'A' }, 'linked by ID');
+  assert.deepEqual(home['1'], { label: 'B' }, 'linked by name');
+  assert.deepEqual(home['2'], { label: 'C' }, 'linked on release');
+  assert.deepEqual(home['3'], { label: 'D', action: { type: 'multi', steps: [{ type: 'audio.micMute' }] } }, 'the macro keeps its other step');
+  assert.deepEqual(home['4'], { label: 'E', action: { type: 'page', to: 'home' } }, 'a link to another page is untouched');
+  assert.deepEqual(
+    after.layouts[OTHER].pages.own.buttons['0'],
+    { label: 'Mine', action: { type: 'page', to: 'Combat' } },
+    "another deck's layout, with a page of the same ID and name, is not scanned",
+  );
+  assert.ok(after.layouts[OTHER].pages.combat, "and its own page of that ID is still there");
+  store.close();
+});
+
+await check('a multi whose only step pointed at the page loses the action, not an empty macro', async () => {
+  const one: Config = {
+    profiles: {
+      p1: {
+        layouts: {
+          [XL_SERIAL]: {
+            startPage: 'home',
+            pages: {
+              home: { buttons: { '0': { icon: '~/x.png', action: { type: 'multi', steps: [{ type: 'page', to: 'combat' }] } } } },
+              combat: { buttons: {} },
+            },
+          },
+        },
+      },
+    },
+  };
+  const store = await openStore(await configFile(serializeConfig(one)));
+  assert.equal(store.apply({ kind: 'deletePage', profile: 'p1', serial: XL_SERIAL, page: 'combat' }).ok, true);
+  assert.deepEqual(store.state().config.profiles.p1.layouts[XL_SERIAL].pages.home.buttons['0'], { icon: '~/x.png' });
+  store.close();
+});
+
+await check("the confirmation's preview matches what the delete actually does", async () => {
+  // pageDeletion (renderer, for the dialog) and applyEdit (main, authoritative)
+  // each decide where the start page lands. This is what stops them drifting.
+  // Three pages, so "the first page that is left" is a different answer from
+  // "the last one": with two, every choice of remaining page coincides.
+  const three: Config = {
+    profiles: {
+      p1: {
+        layouts: {
+          [XL_SERIAL]: {
+            startPage: 'a',
+            pages: {
+              a: { name: 'A', buttons: { '0': { action: { type: 'page', to: 'b' } } } },
+              b: { name: 'B', buttons: { '0': { action: { type: 'page', to: 'A' } } } },
+              c: { name: 'C', buttons: {} },
+            },
+          },
+        },
+      },
+    },
+  };
+  const cases: Array<[string, string, string, string]> = [
+    [EXAMPLE, 'default', XL_SERIAL, 'games'],
+    [EXAMPLE, 'default', XL_SERIAL, 'main'],
+    [EXAMPLE, 'prof_game', XL_SERIAL, 'pg_hotbar'],
+    [serializeConfig(three), 'p1', XL_SERIAL, 'a'],
+  ];
+  for (const [text, profile, serial, page] of cases) {
+    const store = await openStore(await configFile(text));
+    const before = store.state().config;
+    const preview = pageDeletion(before, profile, serial, page)!;
+    const layoutBefore = before.profiles[profile].layouts[serial];
+    const startedOn = startPageOf(layoutBefore);
+    const result = store.apply({ kind: 'deletePage', profile, serial, page });
+
+    if (preview.refusal !== null) {
+      assert.equal(result.ok, false, `${page}: preview refused but the edit went through`);
+      store.close();
+      continue;
+    }
+    assert.equal(result.ok, true, `${page}: preview allowed it but the edit failed`);
+    const layoutAfter = store.state().config.profiles[profile].layouts[serial];
+    assert.equal(startPageOf(layoutAfter), preview.startPageAfter ?? startedOn, `${page}: start page`);
+    for (const link of preview.links) {
+      const button = layoutAfter.pages[link.page].buttons[String(link.index)];
+      const action = button?.[link.where];
+      const stillThere = action?.type === 'page' || (action?.type === 'multi' && JSON.stringify(action.steps).includes('"page"'));
+      assert.equal(stillThere, false, `${page}: ${link.page} key ${link.index} kept its navigation`);
+    }
+    store.close();
+  }
+});
+
 async function exitShapedEdit(label: string, text: string): Promise<void> {
   await check(`${label}: a new page with hotkeys and icons diffs only inside the new page`, async () => {
     const parsed = JSON.parse(text) as Config;
@@ -264,7 +671,7 @@ async function exitShapedEdit(label: string, text: string): Promise<void> {
     for (let i = 0; i < 9; i++) {
       const loc = { profile, serial, page, index: i };
       store.apply({ kind: 'setAction', at: loc, action: { type: 'hotkey', keys: `ctrl+${i + 1}` } });
-      store.apply({ kind: 'setIcon', at: loc, icon: `${HOME}/Pictures/icons/FFXIV/IconKit Battle(Set)/14_BEAR/Bolt_${i}.png` });
+      store.apply({ kind: 'setIcon', at: loc, icon: { kind: 'file', path: `${HOME}/Pictures/icons/FFXIV/IconKit Battle(Set)/14_BEAR/Bolt_${i}.png` } });
       store.apply({ kind: 'setLabel', at: loc, label: `B${i}` });
     }
     await store.flush();
@@ -313,7 +720,7 @@ async function iconAndLabelOnOtherActions(label: string, text: string): Promise<
 
     // 1. New icon and label on every one of them.
     for (const k of keys) {
-      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: `${HOME}/Pictures/icons/new ${k.index}.png` }).ok, true);
+      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: { kind: 'file', path: `${HOME}/Pictures/icons/new ${k.index}.png` } }).ok, true);
       assert.equal(store.apply({ kind: 'setLabel', at: k, label: `new ${k.index}` }).ok, true);
     }
     await store.flush();
@@ -338,7 +745,7 @@ async function iconAndLabelOnOtherActions(label: string, text: string): Promise<
 
     // 2. Remove both again: every key keeps its action, so none disappears.
     for (const k of keys) {
-      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: null }).ok, true);
+      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: { kind: 'default' } }).ok, true);
       assert.equal(store.apply({ kind: 'setLabel', at: k, label: null }).ok, true);
     }
     await store.flush();

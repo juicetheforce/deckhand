@@ -7,7 +7,7 @@
  */
 import type { DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config } from '../../../src/types.js';
-import type { ApplyResult, ButtonLocation, Edit } from './edits.js';
+import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 export interface Conflict {
@@ -125,6 +125,16 @@ export interface DeckhandBridge {
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
 
+  /**
+   * Which action-library sections are collapsed, by group name. Sections
+   * default to expanded (the maintainer, 2026-09-16): collapsed-by-default would hide
+   * capabilities from someone who does not know to look for them, which is the
+   * §2 problem the library exists to solve — collapsing is a choice, never
+   * inherited. Editor preferences, never config.json.
+   */
+  collapsedLibrary(): Promise<string[]>;
+  setCollapsedLibrary(groups: string[]): Promise<void>;
+
   /** Bookmarked icon folders, in order; missing ones are kept and marked (src/main/preferences.ts). */
   bookmarks(): Promise<IconFolderEntry[]>;
   /** Bookmark a folder (ignored when the list is full or it is already there); returns the list. */
@@ -149,11 +159,11 @@ export interface DeckhandBridge {
   /** The system folder dialog; null if cancelled. */
   chooseIconFolder(current: string | null): Promise<string | null>;
   /**
-   * Set (or with null remove) a key's icon, save, and once the daemon has
+   * Set a key's icon to one of its three states (scope §10), save, and once the daemon has
    * reloaded, clear the preview on that key — so the key shows the saved icon
    * and responds to presses again. Remembers the icon's folder as recent.
    */
-  commitIcon(at: ButtonLocation, icon: string | null, preview: { serial: string; key: number } | null): Promise<ApplyResult>;
+  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
   /** Called on every store change; returns a function that stops the calls. */
   onStore(callback: (view: StoreView) => void): () => void;

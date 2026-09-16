@@ -9,6 +9,7 @@ import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
+import { pageLinks, type PageLink } from '../shared/links.js';
 
 export type DeckGeometryWithSerial = DecksResult[number];
 
@@ -58,6 +59,74 @@ export function deckChoices(config: Config, profile: string, daemon: DaemonView)
     const name = config.decks?.[serial]?.name ?? geometry?.productName ?? serial;
     return { id: serial, label: name, connected: geometry !== null, hasLayout: layouts.includes(serial) };
   });
+}
+
+/**
+ * Every deck the editor knows about, for the new-profile control: the decks
+ * named in config, then any connected deck that is not. Unlike deckChoices
+ * this is not scoped to a profile — it is the set a new profile may cover.
+ */
+export function knownDecks(config: Config, daemon: DaemonView): DeckChoice[] {
+  const named = Object.keys(config.decks ?? {});
+  const connected = (daemon.decks ?? []).map((d) => d.serial);
+  const serials = [...named, ...connected.filter((s) => !named.includes(s))];
+  return serials.map((serial) => {
+    const geometry = geometryFor(daemon, serial);
+    return {
+      id: serial,
+      label: config.decks?.[serial]?.name ?? geometry?.productName ?? serial,
+      connected: geometry !== null,
+      hasLayout: false,
+    };
+  });
+}
+
+/** What deleting a page would do, for the confirmation (scope §7, B1). */
+export interface PageDeletion {
+  /** Keys in this layout that navigate to it, and would lose that action. */
+  links: PageLink[];
+  /** The page the deck would start on instead, or null if that does not change. */
+  startPageAfter: string | null;
+  /** Why it cannot be deleted at all, or null. */
+  refusal: string | null;
+}
+
+/**
+ * A description only — config-document.ts is what actually applies the delete,
+ * and test/config-store.test.ts checks this description against what it does.
+ * The links come from the same pageLinks() the edit uses, and the start page
+ * from the daemon's own startPageOf, so neither rule is restated here.
+ */
+export function pageDeletion(config: Config, profile: string, serial: string, page: string): PageDeletion | null {
+  const layout = layoutFor(config, profile, serial);
+  if (!layout || !Object.prototype.hasOwnProperty.call(layout.pages, page)) return null;
+  const remaining = Object.keys(layout.pages).filter((id) => id !== page);
+  if (remaining.length === 0) {
+    return { links: [], startPageAfter: null, refusal: "This is the deck's only page in this profile, and a layout must keep one." };
+  }
+  const pages = Object.fromEntries(Object.entries(layout.pages).filter(([id]) => id !== page));
+  // No startPage fixup here, deliberately. The edit has to write one, because
+  // validateConfig refuses a startPage that does not resolve; startPageOf only
+  // has to *answer*, and its fallback is the first remaining page — which is
+  // exactly what the edit writes. Restating the rule would be a second copy to
+  // drift (config-store.test.ts checks the two agree).
+  const startPageAfter = startPageOf({ ...layout, pages });
+  return {
+    links: pageLinks(layout, page),
+    startPageAfter: startPageAfter === startPageOf(layout) ? null : startPageAfter,
+    refusal: null,
+  };
+}
+
+/** What a key's label inherits when it sets nothing: config `defaults`, then the daemon's. */
+export function labelDefaults(config: Config): { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number } {
+  const d = { ...DEFAULTS, ...config.defaults };
+  return { labelPosition: d.labelPosition, labelColor: d.labelColor, labelSize: d.labelSize };
+}
+
+/** A page's display name, for messages: its name, else its ID. */
+export function pageLabel(layout: LayoutDef, page: string): string {
+  return layout.pages[page]?.name ?? page;
 }
 
 export function pageChoices(layout: LayoutDef): Choice[] {
@@ -171,16 +240,56 @@ export function keyFace(config: Config, button: ButtonDef | undefined, iconSize:
 }
 
 /**
- * Whether the phase A hotkey inspector may edit this key's action: a key with
- * no action at all, or a plain single-combo hotkey. A hotkey with a sequence,
- * holdMs or repeat, or anything with onRelease, is shown read-only so
- * recording over it cannot silently drop those settings.
+ * The fields each editable action type may carry. An action with anything else
+ * on it is shown read-only, so editing it here cannot silently drop settings
+ * the inspector has no field for (scope §10, phase A's rule for hotkey,
+ * extended to page and profile in phase B).
  */
-export function hotkeyEditable(button: ButtonDef | undefined): boolean {
+const EDITABLE_FIELDS: Record<string, readonly string[]> = {
+  hotkey: ['keys'],
+  page: ['to', 'back'],
+  profile: ['to'],
+};
+
+/**
+ * Whether the inspector may edit this key's action as `type`. True for a key
+ * with no action at all — it can become anything — and for an action already
+ * of that type carrying only fields the inspector knows about. Anything with
+ * onRelease is read-only: that is a two-phase key, which is phase C.
+ */
+export function actionEditable(button: ButtonDef | undefined, type: string): boolean {
   if (button?.onRelease) return false;
   const action = button?.action;
   if (!action) return true;
-  return action.type === 'hotkey' && typeof action.keys === 'string' && Object.keys(action).every((k) => k === 'type' || k === 'keys');
+  if (action.type !== type) return false;
+  const fields = EDITABLE_FIELDS[type];
+  if (!fields) return false;
+  // A hotkey sequence is an array; phase A edits single combos only.
+  if (type === 'hotkey' && typeof action.keys !== 'string') return false;
+  return Object.keys(action).every((k) => k === 'type' || fields.includes(k));
+}
+
+/** Kept for phase A's call sites and tests: hotkey is just one editable type. */
+export function hotkeyEditable(button: ButtonDef | undefined): boolean {
+  return actionEditable(button, 'hotkey');
+}
+
+/**
+ * The decks a profile covers, by their display names — §2's discoverability
+ * point, which asks that a profile say plainly that it changes both decks.
+ * `connected` decks it does not cover are what the uncovered-deck warning
+ * needs (scope §10).
+ */
+export function profileCoverage(
+  config: Config,
+  daemon: DaemonView,
+  profile: string,
+): { covered: string[]; uncoveredConnected: string[] } {
+  const layouts = Object.keys(config.profiles[profile]?.layouts ?? {});
+  const label = (serial: string) =>
+    config.decks?.[serial]?.name ?? geometryFor(daemon, serial)?.productName ?? serial;
+  const uncoveredConnected = (daemon.decks ?? []).filter((d) => !layouts.includes(d.serial)).map((d) => label(d.serial));
+  return { covered: layouts.map(label), uncoveredConnected };
 }
 
 /** One line describing what a key does, for its tooltip and the inspector. */

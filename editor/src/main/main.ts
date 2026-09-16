@@ -11,7 +11,7 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
-import type { ApplyResult, ButtonLocation, Edit } from '../shared/edits.js';
+import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
@@ -117,6 +117,32 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
   }
 }
 
+/**
+ * Make a profile active (scope §10, live switching). Mirrors showPage, and for
+ * the same reason: the profile may exist only in edits not yet saved — one
+ * just created — so save first, and wait for the daemon to report the reload.
+ *
+ * Retried like showPage, because announcing a reload is not the same as having
+ * applied it: src/index.ts reload() fires its config event *before*
+ * profiles.applyReload(), and Profiles keeps its own copy of the config, so a
+ * switch sent on the announcement can still be answered "not_found".
+ */
+async function switchProfile(to: string): Promise<DaemonResult> {
+  const before = daemon.lastReloadAt();
+  const wrote = (await store?.flush()) ?? false;
+  if (wrote) {
+    const reload = await daemon.waitForReloadAfter(before, 5000);
+    if (reload === null) return { ok: false, code: 'timeout', error: 'the daemon did not pick up the saved config within 5 s' };
+    if (!reload.ok) return { ok: false, code: 'config_refused', error: `the daemon refused the saved config: ${reload.error}` };
+  }
+  const ATTEMPTS = wrote ? 10 : 1;
+  for (let attempt = 1; ; attempt++) {
+    const result = await daemonCall(() => daemon.switchProfile(to).then(() => undefined));
+    if (result.ok || attempt >= ATTEMPTS || result.code !== 'not_found') return result;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 // --- Icon picker (scope §10) -------------------------------------------------
 
 // The editor's own preferences (scope §10), in Electron's userData — never
@@ -154,11 +180,13 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
  * Choosing (or removing) an icon. The preview on the key is cleared only
  * after the daemon has reloaded the saved file, so the key goes straight from
  * the preview to the saved icon — and presses work again, since a previewed
- * key is inert (scope §7, M3 decision 3). `[inference]` The daemon reports a
- * reload in the same turn it gives the first deck its new layout; a key on a
- * second deck can show its old icon for a moment, until that deck repaints.
+ * key is inert (scope §7, M3 decision 3). `[confirmed]` 2026-09-15 by reading
+ * src/index.ts, src/profiles.ts and src/deck.ts: reload() fires its config
+ * event before applyReload() runs, and applyReload awaits each deck in turn,
+ * so a key on a second deck can show its old icon until the first deck's full
+ * repaint has finished. Ordering confirmed; duration not measured.
  */
-async function commitIcon(at: ButtonLocation, icon: string | null, preview: { serial: string; key: number } | null): Promise<ApplyResult> {
+async function commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null): Promise<ApplyResult> {
   if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
   const result = store.apply({ kind: 'setIcon', at, icon });
   if (!result.ok) return result;
@@ -167,6 +195,13 @@ async function commitIcon(at: ButtonLocation, icon: string | null, preview: { se
   if (wrote && daemon.view().connected) await daemon.waitForReloadAfter(before, 5000);
   if (preview) await daemonCall(() => daemon.previewClear(preview.serial, preview.key));
   return result;
+}
+
+function isIconChoice(value: unknown): value is IconChoice {
+  const v = value as IconChoice;
+  if (typeof v !== 'object' || v === null) return false;
+  if (v.kind === 'none' || v.kind === 'default') return true;
+  return v.kind === 'file' && typeof v.path === 'string' && v.path !== '';
 }
 
 function isLocation(value: unknown): value is ButtonLocation {
@@ -205,7 +240,7 @@ function registerIpc(): void {
     fromOurWindow(event) && typeof combo === 'string' && combo.length < 200 ? findSystemShortcut(combo) : null,
   );
   ipcMain.handle('switchProfile', (event, to: string) =>
-    fromOurWindow(event) ? daemonCall(() => daemon.switchProfile(to).then(() => undefined)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+    fromOurWindow(event) ? switchProfile(to) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
@@ -241,6 +276,15 @@ function registerIpc(): void {
     });
     return picked.canceled ? null : (picked.filePaths[0] ?? null);
   });
+  ipcMain.handle('collapsedLibrary', async (event) => {
+    if (!fromOurWindow(event)) return [];
+    const saved = (await preferences.read()).collapsedLibrary;
+    return Array.isArray(saved) ? saved.filter((g): g is string => typeof g === 'string') : [];
+  });
+  ipcMain.handle('setCollapsedLibrary', async (event, groups: unknown) => {
+    if (!fromOurWindow(event) || !Array.isArray(groups) || groups.some((g) => typeof g !== 'string')) return;
+    await preferences.set({ collapsedLibrary: groups });
+  });
   ipcMain.handle('bookmarks', async (event) => (fromOurWindow(event) ? existingFolders(await bookmarks.list(), os.homedir(), true) : []));
   ipcMain.handle('addBookmark', async (event, folder: unknown) => {
     if (!fromOurWindow(event) || typeof folder !== 'string' || !path.isAbsolute(folder)) return [];
@@ -251,7 +295,7 @@ function registerIpc(): void {
     return existingFolders(await bookmarks.remove(folder), os.homedir(), true);
   });
   ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown) => {
-    if (!fromOurWindow(event) || !isLocation(at) || !(icon === null || typeof icon === 'string')) return { ok: false, error: 'not allowed' };
+    if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
     const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
     return commitIcon(at, icon, target);
@@ -340,6 +384,9 @@ function createWindow(): void {
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_KEY) query.selectKey = process.env.DECKHAND_EDITOR_SELECT_KEY;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_DECK) query.selectDeck = process.env.DECKHAND_EDITOR_SELECT_DECK;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_TAB) query.selectTab = process.env.DECKHAND_EDITOR_SELECT_TAB;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_OPEN) query.open = process.env.DECKHAND_EDITOR_OPEN;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_PAGE) query.page = process.env.DECKHAND_EDITOR_PAGE;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SEARCH) query.search = process.env.DECKHAND_EDITOR_SEARCH;
   void window.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query });
 }
 

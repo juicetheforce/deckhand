@@ -17,6 +17,8 @@
     "check:hotkey": "npm run build && node scripts/check-hotkey.mjs",
     "check:icons": "npm run build && node scripts/check-icons.mjs",
     "check:panes": "npm run build && node scripts/check-panes.mjs",
+    "check:structure": "npm run build && node scripts/check-structure.mjs",
+    "check:navigate": "npm run build && node scripts/check-navigate.mjs",
     "test": "node scripts/run-tests.mjs"
   },
   "engines": {

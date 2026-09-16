@@ -9,8 +9,22 @@ import { pathToFileURL } from 'node:url';
 import type { Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
-import { CATALOGUE } from '../src/renderer/catalogue.js';
-import { canSwitchDeck, deckChoices, deckForProfile, describeAction, followDeck, keyFace, keyKind, reconcileSelection } from '../src/renderer/model.js';
+import { pagesWithNoWayOff } from '../src/shared/links.js';
+import { CATALOGUE, pendingReason, searchCatalogue } from '../src/renderer/catalogue.js';
+import {
+  canSwitchDeck,
+  deckChoices,
+  deckForProfile,
+  describeAction,
+  followDeck,
+  keyFace,
+  keyKind,
+  knownDecks,
+  actionEditable,
+  profileCoverage,
+  pageDeletion,
+  reconcileSelection,
+} from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
 process.env.DECKHAND_INPUT_BIN = path.join(REPO, 'scripts/test/fake-input-helper.mjs');
@@ -75,9 +89,157 @@ await check("every action in the daemon's registry is in the catalogue (scope §
   assert.deepEqual(Object.keys(registry).filter((type) => !listed.has(type)), []);
 });
 
-await check('phase A: only hotkey is editable', () => {
+await check('phase B: hotkey, page and profile are editable; the rest wait for phase C', () => {
   const editable = CATALOGUE.flatMap((g) => g.entries.filter((e) => e.editable).map((e) => e.type));
-  assert.deepEqual(editable, ['hotkey']);
+  assert.deepEqual(editable, ['hotkey', 'page', 'profile']);
+  // Every editable entry must have an inspector that will accept a bare key.
+  for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
+});
+
+console.log('the navigation guard (M4 phase B, B2)');
+
+const layoutOf = (pages: Record<string, unknown>, startPage = Object.keys(pages)[0]) =>
+  ({ startPage, pages } as never);
+
+await check('a page with no key that can leave it is flagged', () => {
+  const layout = layoutOf({
+    home: { name: 'Home', buttons: { '0': { action: { type: 'page', to: 'far' } } } },
+    far: { name: 'Far', buttons: { '0': { action: { type: 'hotkey', keys: 'ctrl+1' } } } },
+  });
+  assert.deepEqual(pagesWithNoWayOff(layout), ['far']);
+});
+
+await check('back, a profile key, and a step inside a multi all count as ways off', () => {
+  const ways: Record<string, unknown> = {
+    back: { type: 'page', back: true },
+    profile: { type: 'profile', to: 'Other' },
+    multi: { type: 'multi', steps: [{ type: 'audio.micMute' }, { type: 'page', back: true }] },
+  };
+  for (const [name, action] of Object.entries(ways)) {
+    const layout = layoutOf({ home: { buttons: {} }, far: { buttons: { '0': { action } } } });
+    assert.deepEqual(pagesWithNoWayOff(layout), ['home'], `${name} did not count`);
+  }
+  // On release counts too.
+  const onRelease = layoutOf({ home: { buttons: {} }, far: { buttons: { '0': { onRelease: { type: 'page', back: true } } } } });
+  assert.deepEqual(pagesWithNoWayOff(onRelease), ['home']);
+});
+
+await check('a page key pointing nowhere is not a way off, because the daemon does nothing with it', () => {
+  const layout = layoutOf({
+    home: { buttons: { '0': { action: { type: 'page', to: 'deleted-page' } } } },
+    other: { buttons: { '0': { action: { type: 'page', to: 'home' } } } },
+  });
+  assert.deepEqual(pagesWithNoWayOff(layout), ['home'], 'a dangling target must not count as an exit');
+});
+
+await check('a single-page layout is never flagged — there is nowhere to go', () => {
+  assert.deepEqual(pagesWithNoWayOff(layoutOf({ only: { buttons: {} } })), []);
+  // And the real config: each deck's start page links onward, so nothing is flagged.
+  const xl = EXAMPLE.profiles.default.layouts[XL];
+  assert.deepEqual(pagesWithNoWayOff(xl), [], 'the example config has no stranded page');
+});
+
+console.log('library search (M4 phase B, B2)');
+
+const names = (q: string) => searchCatalogue(q).map((m) => m.entry.name).sort();
+
+await check('search matches aliases, not just the names the daemon uses', () => {
+  // The §2 case: nobody types "audio.sink".
+  assert.deepEqual(names('headphones'), ['Cycle outputs', 'Output device']);
+  assert.deepEqual(names('skip'), ['Media control']);
+  assert.deepEqual(names('forward'), ['Go to page']);
+  assert.deepEqual(names('ptt'), ['Press / Release']);
+  assert.deepEqual(names('backlight'), ['Brightness']);
+});
+
+await check('deliberately ambiguous words find every action they could mean', () => {
+  assert.deepEqual(names('macro'), ['Multi action', 'Type text']);
+  assert.deepEqual(names('mute'), ['Mic mute', 'Mute output']);
+});
+
+await check('search is case-insensitive, an empty query matches nothing, and player names are not aliases', () => {
+  assert.deepEqual(names('HEADPHONES'), ['Cycle outputs', 'Output device']);
+  assert.deepEqual(names('  '), [], 'the caller shows the grouped list instead');
+  assert.deepEqual(names(''), []);
+  assert.deepEqual(names('spotify'), [], 'player names date and were left out');
+  assert.deepEqual(names('tidal'), []);
+});
+
+await check('search is independent of collapse — it reads the catalogue, not the DOM', () => {
+  // The requirement: collapsing everything must make search more useful, not
+  // break it. searchCatalogue takes no collapse state at all, so there is no
+  // way for it to miss a shut section.
+  assert.equal(searchCatalogue.length, 1, 'searchCatalogue takes only the query');
+  const everything = CATALOGUE.flatMap((g) => g.entries);
+  for (const entry of everything) {
+    assert.ok(names(entry.name).includes(entry.name), `${entry.type} cannot be found by its own name`);
+  }
+});
+
+await check('aliases add only what the name and description do not already say', () => {
+  for (const group of CATALOGUE) {
+    for (const entry of group.entries) {
+      const already = `${entry.name} ${entry.description}`.toLowerCase();
+      for (const alias of entry.aliases ?? []) {
+        assert.equal(alias, alias.toLowerCase(), `${entry.type}: "${alias}" is not lowercase`);
+        assert.ok(!already.includes(alias), `${entry.type}: "${alias}" is already in the name or description`);
+      }
+    }
+  }
+});
+
+await check('every greyed library entry says why, and daemon-blocked ones say so differently', () => {
+  const later = CATALOGUE.flatMap((g) => g.entries.filter((e) => !e.editable));
+  assert.ok(later.length > 0);
+  for (const entry of later) {
+    assert.ok(entry.pending, `${entry.type} is greyed with no reason`);
+    assert.match(pendingReason(entry), /\S/);
+  }
+  // The three blocked on phase C1 daemon work, not just a missing form.
+  const daemon = later.filter((e) => e.pending === 'daemon').map((e) => e.type).sort();
+  assert.deepEqual(daemon, ['audio.cycle', 'audio.mute', 'audio.sink']);
+  const byType = (t: string) => later.find((e) => e.type === t)!;
+  assert.match(pendingReason(byType('audio.sink')), /daemon work/);
+  // Everything else works today if hand-written; command is not special.
+  assert.match(pendingReason(byType('command')), /by hand/);
+  assert.match(pendingReason(byType('clock')), /by hand/);
+  assert.equal(pendingReason(byType('command')), pendingReason(byType('clock')));
+});
+
+await check('an action is editable only when the inspector knows every field on it', () => {
+  // A key with nothing on it can become any of them.
+  assert.equal(actionEditable({}, 'page'), true);
+  assert.equal(actionEditable(undefined, 'profile'), true);
+  // The right type, carrying only fields the inspector has a control for.
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'page'), true);
+  assert.equal(actionEditable({ action: { type: 'page', back: true } }, 'page'), true);
+  assert.equal(actionEditable({ action: { type: 'profile', to: 'x' } }, 'profile'), true);
+  // The wrong type.
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'profile'), false);
+  // A field the inspector would silently drop.
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x', unknownThing: 1 } }, 'page'), false);
+  // onRelease makes it a two-phase key, which is phase C.
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' }, onRelease: { type: 'noop' } }, 'page'), false);
+  // hotkey keeps phase A's rule: single combos only, never a sequence.
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1' } }, 'hotkey'), true);
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2 } }, 'hotkey'), false);
+  // A type with no inspector is never editable.
+  assert.equal(actionEditable({ action: { type: 'clock' } }, 'clock'), false);
+});
+
+await check('profileCoverage names the decks a profile changes, and the connected ones it leaves out', () => {
+  const view = daemonView([XL, V2]);
+  const both = profileCoverage(EXAMPLE, view, 'default');
+  assert.deepEqual(both.covered, ['XL', 'Original V2'], 'names from config');
+  assert.deepEqual(both.uncoveredConnected, [], 'default covers both');
+
+  const xlOnly = profileCoverage(EXAMPLE, view, 'prof_game');
+  assert.deepEqual(xlOnly.covered, ['XL']);
+  assert.deepEqual(xlOnly.uncoveredConnected, ['Original V2'], 'the V2 is plugged in and not covered');
+
+  // A deck that is not plugged in is not a warning: nothing is left showing.
+  assert.deepEqual(profileCoverage(EXAMPLE, daemonView([XL]), 'prof_game').uncoveredConnected, []);
 });
 
 console.log('keys');
@@ -223,6 +385,65 @@ await check('a switch is sent only for a connected deck with a session, with the
   assert.equal(canSwitchDeck(view, 'NOT-LISTED'), false);
   view.connected = false;
   assert.equal(canSwitchDeck(view, XL), false);
+});
+
+console.log('profiles and pages (M4 phase B, B1)');
+
+await check('knownDecks lists every deck in config, then connected decks that are not', async () => {
+  // prof_game covers only the XL, but both decks are in "decks", so a new
+  // profile can be given either.
+  const both = knownDecks(EXAMPLE, daemonView([XL]));
+  assert.deepEqual(
+    both.map((d) => [d.id, d.connected]),
+    [
+      [XL, true],
+      [V2, false],
+    ],
+  );
+  // A deck connected but never named in config still has to be offerable.
+  const stranger = knownDecks({ profiles: EXAMPLE.profiles }, daemonView([XL, V2]));
+  assert.deepEqual(
+    stranger.map((d) => [d.id, d.connected]),
+    [
+      [XL, true],
+      [V2, true],
+    ],
+  );
+  assert.equal(knownDecks(EXAMPLE, daemonView([XL]))[0].label, 'XL', 'named from config');
+  assert.equal(stranger[0].label, 'Test 8x4', "and from the daemon's product name when config does not name it");
+});
+
+await check('pageDeletion names the keys that would lose their navigation', async () => {
+  const d = pageDeletion(EXAMPLE, 'default', XL, 'games')!;
+  assert.equal(d.refusal, null);
+  // XL "main" key 24 navigates to "Games" by name.
+  assert.deepEqual(d.links, [{ page: 'main', index: 24, where: 'action', inMulti: false }]);
+  assert.equal(d.startPageAfter, null, 'the deck still starts on main');
+});
+
+await check('pageDeletion reports a start page that would move, and refuses a last page', async () => {
+  const moved = pageDeletion(EXAMPLE, 'default', XL, 'main')!;
+  assert.equal(moved.startPageAfter, 'games');
+  assert.deepEqual(moved.links, [], 'the back key on games names no page');
+
+  const last = pageDeletion(EXAMPLE, 'prof_game', XL, 'pg_hotbar')!;
+  assert.match(String(last.refusal), /only page/);
+
+  assert.equal(pageDeletion(EXAMPLE, 'default', XL, 'no-such-page'), null);
+  assert.equal(pageDeletion(EXAMPLE, 'default', 'NO-SUCH-DECK', 'main'), null);
+});
+
+await check('pageDeletion reports a start page moving even when no key pointed at the page', async () => {
+  // A layout with no explicit startPage: deleting the first page silently
+  // changes where the deck starts, so the confirmation has to say so.
+  const implicit: Config = {
+    profiles: {
+      p1: { layouts: { [XL]: { pages: { first: { name: 'First', buttons: {} }, second: { name: 'Second', buttons: {} } } } } },
+    },
+  };
+  const d = pageDeletion(implicit, 'p1', XL, 'first')!;
+  assert.deepEqual(d.links, []);
+  assert.equal(d.startPageAfter, 'second');
 });
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

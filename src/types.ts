@@ -4,8 +4,13 @@ export interface ActionDef {
 }
 
 export interface ButtonDef {
-  /** Absolute path (or ~/...) to any image file. Resized to fit automatically. */
-  icon?: string;
+  /**
+   * Three states (docs/scope.md §10): **absent** means nothing is chosen, so
+   * the action's built-in default renders (phase C); **null** means
+   * deliberately no icon, for a label-only button; a **string** is an absolute
+   * path, or ~/..., to any image file, resized to fit automatically.
+   */
+  icon?: string | null;
   /** 'cover' crops to fill the square, 'contain' letterboxes. */
   iconFit?: 'cover' | 'contain';
   label?: string;

@@ -30,6 +30,24 @@ export interface KeyPosition {
   feedback: string;
 }
 
+/**
+ * Names the library gives two different products, so it cannot tell them apart
+ * (`[confirmed]` 2026-09-16 by reading `MODEL_NAMES` in
+ * `@elgato-stream-deck/core/dist/id.js`: both `original` and `originalv2` are
+ * "Stream Deck"). Only ambiguous models are listed; every other model keeps the
+ * library's own name, so a deck this table has never heard of is unaffected and
+ * nothing here is load-bearing for behaviour — geometry still comes from
+ * CONTROLS (scope §3).
+ */
+const AMBIGUOUS_MODEL_NAMES: Record<string, string> = {
+  original: 'Stream Deck Original',
+  originalv2: 'Stream Deck Original V2',
+};
+
+export function productNameFor(model: string, libraryName: unknown): string {
+  return AMBIGUOUS_MODEL_NAMES[model] ?? String(libraryName ?? model ?? 'unknown');
+}
+
 export interface DeckGeometry {
   /** The library's model id, e.g. "xl". */
   model: string;
@@ -77,7 +95,7 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
   keys.sort((a, b) => a.index - b.index);
   return {
     model: String(source.MODEL ?? 'unknown'),
-    productName: String(source.PRODUCT_NAME ?? source.MODEL ?? 'unknown'),
+    productName: productNameFor(String(source.MODEL ?? ''), source.PRODUCT_NAME),
     keyCount: keys.length > 0 ? keys[keys.length - 1].index + 1 : 0,
     iconSize,
     rows,

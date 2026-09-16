@@ -1,6 +1,6 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import { describeAction, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
-import { geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
+import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
 import { renderButton } from './render.js';
 import type {
   ActionContext,
@@ -103,7 +103,9 @@ export class DeckSession implements DeckHandle {
     const modelKey = String(raw.MODEL ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const fallback = MODEL_FALLBACK[modelKey] ?? { keys: 15, icon: 72 };
 
-    this.model = raw.PRODUCT_NAME ?? (raw.MODEL ? String(raw.MODEL) : 'unknown');
+    // Through the same correction the geometry uses, so the logs and the
+    // `decks` command cannot disagree about what a deck is called.
+    this.model = productNameFor(raw.MODEL ? String(raw.MODEL) : '', raw.PRODUCT_NAME);
     this.geometry = geometryOf(raw);
 
     const buttons = (raw.CONTROLS ?? []).filter(
@@ -221,7 +223,10 @@ export class DeckSession implements DeckHandle {
 
   private baseDisplay(button: ButtonDef | undefined): Display {
     return {
-      icon: button?.icon,
+      // null (deliberately no icon) and absent both mean "draw no icon layer"
+      // here; which of the two it was matters only to the editor and, in phase
+      // C, to default resolution (scope §10).
+      icon: button?.icon ?? undefined,
       iconFit: button?.iconFit ?? this.defaults.iconFit,
       label: button?.label,
       labelColor: button?.labelColor ?? this.defaults.labelColor,

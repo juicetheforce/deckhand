@@ -88,6 +88,11 @@ button:disabled {
   gap: 10px;
   padding: 8px 12px;
   flex-wrap: wrap;
+  /* The panes below are glass, and backdrop-filter makes a stacking context
+     that would paint over anything hanging out of the toolbar — the new-profile
+     panel and the page menu both do. */
+  position: relative;
+  z-index: 50;
 }
 
 .crumb {
@@ -216,9 +221,32 @@ button:disabled {
   min-height: 0;
 }
 
-.library,
 .inspector {
   padding: 14px;
+  overflow-y: auto;
+}
+
+/* The library is a fixed header (search) above a scrolling body, rather than
+   one scrolling column with a sticky box masked by a gradient. The gradient
+   was a square background over a rounded pane, which showed at the corners
+   (the maintainer, 2026-09-16), and masking is the wrong answer anyway: nothing should
+   pass behind the search box at all. */
+.library {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.library-header {
+  flex: 0 0 auto;
+  padding-bottom: 10px;
+}
+
+.library-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -240,6 +268,8 @@ button:disabled {
 
 .well {
   flex: 1;
+  /* The delete confirmation sits over the grid rather than beside it. */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -329,7 +359,9 @@ button:disabled {
   aspect-ratio: 1;
   container-type: inline-size;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  /* Against the near-black well these were too faint to read as buttons
+     (the maintainer, 2026-09-16): 0.09 → 0.22 and 2px, and the dashed empties likewise. */
+  border: 2px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.055);
   padding: 0;
   overflow: hidden;
@@ -337,7 +369,7 @@ button:disabled {
 
 .key-empty {
   background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border: 2px dashed rgba(255, 255, 255, 0.28);
 }
 
 .key:hover {
@@ -735,10 +767,16 @@ button:disabled {
   color: var(--text);
 }
 
-/* Opened out, the path scrolls sideways — it still never wraps. */
+/* Opened out, the path scrolls sideways — it still never wraps. It is the one
+   place that hides its scrollbar on purpose, so it opts out of the themed
+   scrollbars at the end of this file in both spellings. */
 .picker-path .picker-crumbs {
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.picker-path .picker-crumbs::-webkit-scrollbar {
+  display: none;
 }
 
 /* Band 2: the saved places. Chips carry their parent folder, because leaf
@@ -1065,4 +1103,448 @@ button:disabled {
   .picker-grid {
     --picker-columns: 3;
   }
+}
+
+/* Profiles and pages (M4 phase B, B1) */
+
+.crumb-add {
+  background: transparent;
+  border: 1px dashed var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 10px;
+  color: var(--text-muted);
+}
+
+.crumb-add:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.new-profile-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.new-profile {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 300px;
+  background: #14141c;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding: 14px;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.new-profile input[type='text'],
+.new-profile input:not([type]) {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 6px 8px;
+}
+
+.deck-ticks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.deck-ticks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* A tab and its menu */
+
+.tab-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab-more {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  padding: 4px 6px;
+  margin-left: -6px;
+  border-radius: 7px;
+  line-height: 1;
+}
+
+.tab-more:not(:disabled):hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tab-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  min-width: 160px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: #14141c;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.tab-menu-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 10px;
+  color: var(--text);
+}
+
+.tab-menu-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tab-menu-item.danger {
+  color: var(--red);
+}
+
+/* A deck this profile does not cover */
+
+.no-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  text-align: center;
+}
+
+/* Confirmations over the grid */
+
+.confirm-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  width: min(420px, 90%);
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(232, 90, 110, 0.45);
+  /* Opaque, not glass: it sits over the grid, and the keys behind it made the
+     text hard to read (looked at, 2026-09-15). */
+  background: #14141c;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 140px;
+  overflow: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.link-list li {
+  padding: 2px 0;
+}
+
+/* Action targets — Go to page, Switch profile (M4 phase B, B2) */
+
+.target-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.target {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 7px 10px;
+  color: var(--text);
+}
+
+.target:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.target-selected,
+.target-selected:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.target-note {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Collapsible library sections (M4 phase B, B2) */
+
+.library-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.library-toggle:hover {
+  color: var(--text);
+}
+
+.library-caret {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 120ms ease;
+}
+
+.library-caret-shut {
+  transform: rotate(-90deg);
+}
+
+.library-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* Library search (M4 phase B, B2) */
+
+.library-header input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 6px 9px;
+  color: var(--text);
+}
+
+.library-header input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.library-result-count {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.library-results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.library-results li {
+  position: relative;
+}
+
+.library-result-group {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Scrollbars (2026-09-16). Eight areas scroll — the library, the stage well,
+   the icon grid, the inspector, the target and link lists — and every one was
+   on Chromium's default, which is a light-on-grey bar against a dark glass UI.
+   Styled here once rather than per pane. One element opts out deliberately —
+   the icon picker's path field, which scrolls sideways and must show no bar. */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  /* Inset from the track, so the thumb does not touch the pane edge. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Label appearance (M4 phase B) */
+
+.label-style {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label-style-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label-style-name {
+  flex: 0 0 56px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.label-style-value {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.segment {
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 4px 9px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.segment:not(:disabled):hover {
+  color: var(--text);
+}
+
+.segment-selected,
+.segment-selected:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* .inspector input sets width:100%, which out-specifies a bare class. */
+.inspector .colour-well {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  background: transparent;
+}
+
+.inspector .size-input {
+  width: 68px;
+}
+
+.link-button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.icon-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rename-deck {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rename-deck input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 5px 8px;
+  width: 190px;
+  color: var(--text);
+}
+
+/* Navigation guards (M4 phase B, B2) */
+
+.tab-warn {
+  margin-left: 5px;
+  color: var(--amber);
+  font-size: 11px;
+}
+
+.tab-selected .tab-warn {
+  color: #ffe6b8;
+}
+
+.warn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 180, 90, 0.45);
+  background: rgba(232, 180, 90, 0.1);
+  color: var(--amber);
+  font-size: 11px;
 }
