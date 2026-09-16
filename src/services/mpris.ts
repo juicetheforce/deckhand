@@ -49,11 +49,69 @@ function getBus(): dbus.MessageBus {
  */
 const proxies = new Map<string, Promise<dbus.ProxyObject>>();
 
+/**
+ * The standard MPRIS interfaces, written out rather than discovered.
+ *
+ * **Why (2026-09-16).** dbus-next builds a proxy purely from an object's
+ * introspection XML, and **Chromium publishes none**: `Introspect` on
+ * `/org/mpris/MediaPlayer2` returns `<node></node>` while `Properties.Get`
+ * answers correctly. `[confirmed]` on this machine against Brave (Flatpak) and
+ * native `chromium-browser` alike — so it is Chromium's implementation, not the
+ * Flatpak bus proxy, and every Chromium browser behaves this way.
+ *
+ * Discovering these buys nothing anyway: both interfaces are fixed by the MPRIS
+ * and D-Bus specifications, so their members cannot vary by player. Supplying
+ * them removes an Introspect round trip and an XML parse from every call, for
+ * every player, not just the ones that could not be read.
+ *
+ * Only what the daemon actually uses is declared. A player offering more is
+ * unaffected; nothing here restricts it.
+ */
+const STANDARD_MPRIS_XML = `<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="v" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" direction="in"/><arg type="a{sv}" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="v" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s"/><arg type="a{sv}"/><arg type="as"/>
+    </signal>
+  </interface>
+  <interface name="org.mpris.MediaPlayer2.Player">
+    <method name="PlayPause"/>
+    <method name="Play"/>
+    <method name="Pause"/>
+    <method name="Next"/>
+    <method name="Previous"/>
+    <method name="Stop"/>
+    <property name="PlaybackStatus" type="s" access="read"/>
+    <property name="Metadata" type="a{sv}" access="read"/>
+  </interface>
+</node>`;
+
+/**
+ * Players whose direct calls have failed, so a broken one is reported once
+ * rather than on every refresh of a visible now-playing key (the maintainer,
+ * 2026-09-16: a failure that vanishes silently is worse than one that is
+ * noisy, but once is enough). Cleared when the name leaves the bus, so a
+ * player that is fixed and restarted can complain again.
+ */
+const warnedPlayers = new Set<string>();
+
 function proxyFor(name: string, objectPath: string): Promise<dbus.ProxyObject> {
   const key = `${name} ${objectPath}`;
   let proxy = proxies.get(key);
   if (!proxy) {
-    proxy = getBus().getProxyObject(name, objectPath);
+    // The bus itself is introspected normally; only MPRIS players get the
+    // standard XML, because only they are known to publish none.
+    proxy = name.startsWith(MPRIS_PREFIX)
+      ? getBus().getProxyObject(name, objectPath, STANDARD_MPRIS_XML)
+      : getBus().getProxyObject(name, objectPath);
     // A failed introspection must not be cached.
     proxy.catch(() => proxies.delete(key));
     proxies.set(key, proxy);
@@ -65,6 +123,13 @@ function forgetProxies(name: string): void {
   for (const key of proxies.keys()) {
     if (key.startsWith(`${name} `)) proxies.delete(key);
   }
+}
+
+/** Report a player that cannot be read, once per name (see warnedPlayers). */
+function warnOnce(name: string, message: string): void {
+  if (warnedPlayers.has(name)) return;
+  warnedPlayers.add(name);
+  console.error(`[mpris] cannot read ${name.slice(MPRIS_PREFIX.length)}: ${message} — it will be skipped until it reappears`);
 }
 
 /** dbus-next wraps everything in Variants; peel them off. */
@@ -86,7 +151,10 @@ export async function listPlayers(): Promise<string[]> {
   // Drop proxies for players that have left the bus.
   for (const key of proxies.keys()) {
     const name = key.split(' ')[0];
-    if (name.startsWith(MPRIS_PREFIX) && !players.includes(name)) forgetProxies(name);
+    if (name.startsWith(MPRIS_PREFIX) && !players.includes(name)) {
+      forgetProxies(name);
+      warnedPlayers.delete(name);
+    }
   }
   return players;
 }
@@ -199,7 +267,7 @@ export async function getTrackInfo(hint?: string): Promise<TrackInfo | null> {
     };
   } catch (err) {
     forgetProxies(name);
-    console.error(`[mpris] failed to read ${name}: ${(err as Error).message}`);
+    warnOnce(name, (err as Error).message);
     return null;
   }
 }
@@ -260,8 +328,13 @@ export function subscribe(onChange: () => void): () => void {
       const handler = () => fire();
       props.on('PropertiesChanged', handler);
       attached.set(name, { props, handler });
-    } catch {
-      // player vanished between being announced and attaching; harmless
+    } catch (err) {
+      // Not only "the player vanished before we attached", which is harmless.
+      // Until 2026-09-16 this also swallowed the introspection failure that
+      // made Chromium players unreadable, so they got no PropertiesChanged
+      // listener and a now-playing key never updated on a track change — it
+      // only caught up on the next refresh. Worth saying out loud now.
+      warnOnce(name, `cannot follow its changes: ${(err as Error).message}`);
     }
   };
 
@@ -274,6 +347,7 @@ export function subscribe(onChange: () => void): () => void {
       attached.delete(name);
     }
     forgetProxies(name);
+    warnedPlayers.delete(name);
     if (lastActive === name) lastActive = null;
   };
 
