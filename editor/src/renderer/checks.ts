@@ -584,7 +584,97 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
     return b !== undefined && b.icon === undefined && b.action?.keys === 'ctrl+2';
   });
   out.removeButtonGone = await until(() => button('Remove icon') === undefined);
+  out.bands = [...(document.querySelector('.picker')?.children ?? [])].map((c) => c.className.split(' ')[0]);
+  out.actionsBelowGrid = (() => {
+    const kids = [...(document.querySelector('.picker')?.children ?? [])];
+    return kids.findIndex((c) => c.className.includes('picker-bottom')) > kids.findIndex((c) => c.className.includes('picker-grid'));
+  })();
+  out.bookmarkChipLabels = [...document.querySelectorAll('.picker-bookmarks .chip')].map((c) => c.textContent?.trim());
   out.notConnectedNoteShown = document.body.textContent?.includes('not connected, so icons are not shown') ?? false;
+  // Remove the bookmark added earlier, so the file ends with exactly the seeded ones.
+  const bookmarkedNow = [...document.querySelectorAll<HTMLButtonElement>('.picker-bookmarks .chip')].find((c) => c.textContent?.includes('BEAR'));
+  if (bookmarkedNow) {
+    bookmarkedNow.click();
+    await until(() => button('− Remove bookmark') !== undefined);
+    await click('− Remove bookmark');
+    await until(() => button('+ Bookmark this folder') !== undefined);
+  }
+  out.bookmarksAtEnd = [...document.querySelectorAll('.picker-bookmarks .chip')].map((c) => c.textContent?.trim()).filter((n) => n !== '+ Bookmark this folder');
+  await sleep(600); // let the debounced preferences write land before quitting
+  return out;
+}
+
+/**
+ * The resizable panes (scope §10), through the real UI: the widths the editor
+ * starts with come from its state file, dragging a divider changes them and
+ * stops at the limits, double-click restores the default, and arrow keys move
+ * it too. scripts/check-panes.mjs seeds the state file and reads it back
+ * afterwards.
+ */
+async function panes(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean, ms = 5000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const columns = () =>
+    getComputedStyle(document.querySelector('.panes')!)
+      .gridTemplateColumns.split(' ')
+      .map((c) => Math.round(parseFloat(c)));
+  const widths = () => {
+    const c = columns();
+    return { library: c[0], inspector: c[c.length - 1] };
+  };
+  const dividers = () => [...document.querySelectorAll<HTMLElement>('.pane-divider')];
+  /** Drag a divider by `dx` pixels with synthetic pointer events. */
+  const drag = async (which: 0 | 1, dx: number) => {
+    const el = dividers()[which];
+    const box = el.getBoundingClientRect();
+    const startX = box.left + box.width / 2;
+    const options = { bubbles: true, cancelable: true, pointerId: 1, button: 0, buttons: 1 };
+    el.dispatchEvent(new PointerEvent('pointerdown', { ...options, clientX: startX }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...options, clientX: startX + dx / 2 }));
+    el.dispatchEvent(new PointerEvent('pointermove', { ...options, clientX: startX + dx }));
+    el.dispatchEvent(new PointerEvent('pointerup', { ...options, clientX: startX + dx, buttons: 0 }));
+    await sleep(120);
+  };
+
+  await until(() => document.querySelector('.panes') !== null && dividers().length === 2);
+  await sleep(300); // the stored widths arrive from main just after the first paint
+  out.startingWidths = widths();
+  out.dividerCount = dividers().length;
+
+  await drag(0, 60);
+  out.afterLibraryDrag = widths();
+
+  await drag(0, 5000);
+  out.libraryAtMax = widths().library;
+
+  await drag(1, -40);
+  out.afterInspectorDrag = widths();
+
+  await drag(1, -5000);
+  out.inspectorAtMax = widths().inspector;
+
+  // Double-click restores that pane's default.
+  dividers()[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  await sleep(120);
+  out.afterDoubleClick = widths().library;
+
+  // Arrow keys move a divider, for anyone not using a pointer.
+  const before = widths().inspector;
+  dividers()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  await sleep(120);
+  out.arrowMoved = widths().inspector !== before;
+  out.finalWidths = widths();
+  // The grid between them keeps a width of its own.
+  out.gridColumnPositive = columns()[2] > 100;
+  await sleep(600); // let the debounced write reach the state file before quitting
   return out;
 }
 

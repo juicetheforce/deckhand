@@ -208,9 +208,10 @@ button:disabled {
 
 .panes {
   display: grid;
-  /* The inspector is wider than the library: the icon picker's thumbnails live there. */
-  grid-template-columns: 230px minmax(0, 1fr) 340px;
-  gap: 12px;
+  /* Columns come from the pane widths (src/renderer/panes.ts): library,
+     divider, grid, divider, inspector. The inspector starts wider than the
+     library because the icon picker's thumbnails live there. */
+  gap: 8px;
   flex: 1;
   min-height: 0;
 }
@@ -803,4 +804,83 @@ button:disabled {
   color: var(--text-muted);
   text-decoration: underline dotted;
   cursor: pointer;
+}
+
+/* Pane dividers (scope §10): the library and inspector are draggable. */
+
+.pane-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  border-radius: 999px;
+  /* The gap between panes belongs to the divider, so there is something to grab. */
+  margin: 0 -4px;
+}
+
+.pane-divider-grip {
+  width: 2px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.pane-divider:hover .pane-divider-grip,
+.pane-divider:focus-visible .pane-divider-grip {
+  background: var(--accent);
+  height: 64px;
+}
+
+.pane-divider:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* How many items a subfolder holds (mockup 5a). One line, whatever the pane's width. */
+.picker-count {
+  max-width: 100%;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: ui-monospace, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-folder .picker-name {
+  color: #aeb8f4;
+  font-weight: 600;
+}
+
+/* Band 4 (mockup 5a): what is shown, and the actions — under the grid. */
+.picker-bottom {
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 8px;
+}
+
+.picker-bottom .picker-status {
+  margin: 0;
+}
+
+.picker-bottom .picker-actions {
+  margin-top: 8px;
+}
+
+@container (max-width: 288px) {
+  .picker-grid {
+    --picker-columns: 5;
+  }
+}
+
+@container (max-width: 239px) {
+  .picker-grid {
+    --picker-columns: 4;
+  }
+}
+
+@container (max-width: 190px) {
+  .picker-grid {
+    --picker-columns: 3;
+  }
 }

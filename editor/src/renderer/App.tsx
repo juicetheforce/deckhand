@@ -6,6 +6,8 @@ import { Inspector } from './Inspector.js';
 import { Library } from './Library.js';
 import { canSwitchDeck, deckForProfile, followDeck, geometryFor, layoutFor, reconcileSelection, type Selection } from './model.js';
 import { Notices } from './Notices.js';
+import { PaneDivider } from './PaneDivider.js';
+import { DEFAULT_PANE_WIDTHS, paneColumns, widthWhileDragging, type PaneName, type PaneWidths } from './panes.js';
 import { Toolbar, type AddPageResult } from './Toolbar.js';
 import { useEditor } from './useEditor.js';
 
@@ -111,6 +113,11 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   const page = layout?.pages[selection.page];
   const geometry = geometryFor(daemon, selection.serial);
 
+  // Pane widths (scope §10): dragged by the dividers, and deliberately not
+  // persisted — a fresh editor opens at the defaults (the maintainer, 2026-09-15).
+  const [paneWidths, setPaneWidths] = useState<PaneWidths>(DEFAULT_PANE_WIDTHS);
+  const resizePane = (pane: PaneName, width: number) => setPaneWidths((current) => ({ ...current, [pane]: width }));
+
   // Icon files on this page are watched while it is shown, so a file renamed
   // away or put back reaches the grid (the maintainer, 2026-09-15). The stamp goes in
   // the icon URL; without it Chromium keeps the image it loaded first.
@@ -143,8 +150,9 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
         onSelect={select}
         onAddPage={addPage}
       />
-      <div className="panes">
+      <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
         <Library onPick={(type) => type === 'hotkey' && selection.key !== null && setListenToken((n) => n + 1)} />
+        <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
           <Notices store={store} daemon={daemon} switchError={switchError} />
           <div className="well">
@@ -166,6 +174,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
             )}
           </div>
         </main>
+        <PaneDivider pane="inspector" width={paneWidths.inspector} onResize={resizePane} label="Resize the inspector" />
         <Inspector
           at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
