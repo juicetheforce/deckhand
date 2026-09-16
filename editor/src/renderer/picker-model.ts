@@ -60,3 +60,38 @@ export function moveCursor(count: number, columns: number, index: number, key: G
   if ((key === 'ArrowUp' || key === 'ArrowDown') && (next < 0 || next >= count)) return index;
   return Math.min(count - 1, Math.max(0, next));
 }
+
+/** A breadcrumb with its middle elided, for a path too long for one fixed-height row. */
+export interface ElidedCrumbs {
+  crumbs: Crumb[];
+  /** The segments left out, for the ellipsis's tooltip; empty when nothing was. */
+  elided: string[];
+}
+
+/**
+ * The breadcrumb field has a fixed height and cannot wrap (mockup 5a), so a
+ * deep path keeps its root and its last `tail` segments and drops the middle.
+ * The folder you are in is always the last one.
+ */
+export function elideCrumbs(crumbs: Crumb[], tail = 2): ElidedCrumbs {
+  if (crumbs.length <= tail + 1) return { crumbs, elided: [] };
+  return {
+    crumbs: [crumbs[0], ...crumbs.slice(-tail)],
+    elided: crumbs.slice(1, -tail).map((c) => c.label),
+  };
+}
+
+/**
+ * What a bookmark chip says: **the folder's own name**, nothing else (the maintainer,
+ * 2026-09-15 — the path made the chip needlessly long). The full path is in
+ * the chip's tooltip.
+ *
+ * The cost, which the maintainer hit before and chose to accept: two bookmarks whose
+ * folders share a name read the same, as his `03_Attack/Job` and `02_Support/Job`
+ * both read "Job".
+ */
+export function bookmarkLabel(configPath: string, max = 18): string {
+  const leaf = configPath.split('/').filter((p) => p !== '').at(-1) ?? configPath;
+  return leaf.length > max ? `${leaf.slice(0, max - 1)}…` : leaf;
+}
+

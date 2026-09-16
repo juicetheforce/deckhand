@@ -4,13 +4,22 @@ import type { ButtonDef } from '../../../src/types.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
 import type { ButtonLocation } from '../shared/edits.js';
 import { iconUrl } from '../shared/icons.js';
-import { folderCrumbs, moveCursor, parentFolder, type GridKey } from './picker-model.js';
+import { MAX_BOOKMARKS } from '../shared/bridge.js';
+import { bookmarkLabel, elideCrumbs, folderCrumbs, moveCursor, parentFolder, type GridKey } from './picker-model.js';
 
-/** Where the picker is: kept by the inspector across keys, so assigning icons to key after key stays in one folder. */
+/**
+ * Where the picker is: kept by the inspector across keys, so assigning icons
+ * to key after key stays in one folder. `past` and `future` are what the back
+ * and forward buttons walk (mockup 5a).
+ */
 export interface PickerPlace {
   folder: string | null;
   query: string;
+  past: string[];
+  future: string[];
 }
+
+export const EMPTY_PLACE: PickerPlace = { folder: null, query: '', past: [], future: [] };
 
 interface Props {
   at: ButtonLocation;
@@ -27,12 +36,22 @@ type Item = { kind: 'folder'; entry: IconFolderEntry } | { kind: 'image'; entry:
 const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
 
 /**
- * The icon picker, an inspector tab (scope §10). Browse a folder tree, filter
- * the whole tree below the open folder, jump to recent folders. Selecting an
- * image shows it on the deck (preview.set); choosing it — Use this icon,
- * double-click, or Enter — saves it. The preview ends when the icon is
- * chosen, another key or page is selected, the tab is left, or the editor
- * closes. Config stores the plain path (scope §3).
+ * The icon picker, an inspector tab (scope §10), laid out as mockup 5a — four
+ * bands and no more, so the grid keeps the height:
+ *
+ *   1. one row: back, forward, up, the path field, refresh;
+ *   2. the bookmarks row;
+ *   3. the filter;
+ *   4. the grid;
+ *   5. the bottom bar: what is shown, and the actions.
+ *
+ * Five bands, not 5a's four: the filter keeps a field of its own, because it
+ * is what makes a tree of hundreds of icons usable and a glyph inside another
+ * control hid it (the maintainer, 2026-09-15). The path field is still a control rather
+ * than a line of text: fixed height, so it cannot wrap — a long path loses its
+ * middle, and the ellipsis opens it out. Selecting an image shows it on the
+ * deck (preview.set); choosing it — Assign, double-click, or Enter — saves it.
+ * Config stores the plain path (scope §3).
  */
 export function IconPicker({ at, button, editingBlocked, canPreview, place, onPlace }: Props) {
   const { folder, query } = place;
@@ -40,7 +59,11 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState<{ matches: IconSearchMatch[]; truncated: boolean } | null>(null);
   const [searching, setSearching] = useState(false);
-  const [recent, setRecent] = useState<IconFolderEntry[]>([]);
+  const [bookmarks, setBookmarks] = useState<IconFolderEntry[]>([]);
+  /** Bumped by the ↻ button to read the open folder again (mockup 5a). */
+  const [refreshToken, setRefreshToken] = useState(0);
+  /** The elided middle of a deep path has been opened out; the field scrolls sideways rather than wrapping. */
+  const [pathExpanded, setPathExpanded] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   /** Images the deck refused to draw (render_failed): marked, and cannot be chosen. */
   const [refused, setRefused] = useState<ReadonlySet<string>>(new Set());
@@ -56,11 +79,11 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
 
   // Open somewhere: the key's icon's folder, a recent folder, Pictures, home.
   useEffect(() => {
-    if (folder === null) void window.deckhand.iconStartFolder(button?.icon ?? null).then((f) => onPlace({ folder: f, query: '' }));
+    if (folder === null) void window.deckhand.iconStartFolder(button?.icon ?? null).then((f) => onPlace({ ...place, folder: f, query: '' }));
   }, [folder]);
 
   useEffect(() => {
-    void window.deckhand.recentIconFolders().then(setRecent);
+    void window.deckhand.bookmarks().then(setBookmarks);
     return () => {
       // Leaving the key, the page or the tab ends the preview (scope §10).
       if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
@@ -85,7 +108,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
       alive = false;
       stop();
     };
-  }, [folder]);
+  }, [folder, refreshToken]);
 
   // The filter searches the whole tree below the open folder, 200 ms after typing pauses.
   useEffect(() => {
@@ -123,9 +146,29 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
   const isCurrent = (entry: IconFolderEntry) => button?.icon !== undefined && (entry.configPath === button.icon || entry.path === button.icon);
 
   const openFolder = (path: string) => {
+    if (path === folder) return;
     setCursor(null);
-    onPlace({ folder: path, query: '' });
+    setPathExpanded(false);
+    onPlace({ folder: path, query: '', past: folder === null ? place.past : [...place.past, folder], future: [] });
   };
+
+  const goBack = () => {
+    const previous = place.past.at(-1);
+    if (previous === undefined || folder === null) return;
+    setCursor(null);
+    setPathExpanded(false);
+    onPlace({ folder: previous, query: '', past: place.past.slice(0, -1), future: [folder, ...place.future] });
+  };
+
+  const goForward = () => {
+    const [next, ...rest] = place.future;
+    if (next === undefined || folder === null) return;
+    setCursor(null);
+    setPathExpanded(false);
+    onPlace({ folder: next, query: '', past: [...place.past, folder], future: rest });
+  };
+
+  const bookmarked = folder !== null && bookmarks.some((mark) => mark.path === folder);
 
   const moveTo = async (item: Item) => {
     setCursor(item.entry.path);
@@ -161,7 +204,6 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     }
     previewing.current = false;
     setMessage(null);
-    void window.deckhand.recentIconFolders().then(setRecent);
   };
 
   const activate = (item: Item) => (item.kind === 'folder' ? openFolder(item.entry.path) : void commit(item.entry.path));
@@ -181,79 +223,115 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
   };
 
   const crumbs = listing ? folderCrumbs(listing.path, listing.configPath) : [];
+  // The field cannot wrap, so a deep path keeps its root and its last two
+  // folders until the ellipsis is clicked, which opens the rest out.
+  const shown = pathExpanded ? { crumbs, elided: [] } : elideCrumbs(crumbs);
 
   return (
     <div className="picker">
-      {recent.length > 0 && (
-        <div className="picker-recent" aria-label="Recent folders">
-          {recent.map((r) => (
-            <button key={r.path} className={`chip ${r.path === folder ? 'chip-selected' : ''}`} title={r.configPath} onClick={() => openFolder(r.path)}>
-              {r.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="picker-crumbs" aria-label="Folder">
-        {crumbs.map((c, i) => (
-          <span key={c.path}>
-            {i > 0 && <span className="crumb-sep">/</span>}
-            <button className="picker-crumb" disabled={i === crumbs.length - 1 && !search} onClick={() => openFolder(c.path)}>
-              {c.label}
-            </button>
-          </span>
-        ))}
+      {/* Band 1 (mockup 5a): history, the path field, refresh. One row, fixed height. */}
+      <div className="picker-bar">
+        <button className="picker-nav" disabled={place.past.length === 0} title="Back" aria-label="Back" onClick={goBack}>
+          ←
+        </button>
+        <button className="picker-nav" disabled={place.future.length === 0} title="Forward" aria-label="Forward" onClick={goForward}>
+          →
+        </button>
         <button
-          className="picker-change"
-          onClick={() =>
-            void window.deckhand.chooseIconFolder(folder).then((picked) => {
-              if (picked) openFolder(picked);
-            })
-          }
+          className="picker-nav"
+          disabled={listing?.parent === null || listing === null}
+          title={listing?.parent === null ? 'Already at the top' : 'Up one folder'}
+          aria-label="Up one folder"
+          onClick={() => listing?.parent && openFolder(listing.parent)}
         >
-          Change folder…
+          ↑
+        </button>
+
+        <div className="picker-path" aria-label="Folder">
+          <div className="picker-crumbs">
+            {shown.crumbs.map((c, i) => (
+              <span className="picker-crumb-part" key={c.path}>
+                {i > 0 && <span className="crumb-sep" aria-hidden>›</span>}
+                {i === 1 && shown.elided.length > 0 && (
+                  <>
+                    <button
+                      className="crumb-ellipsis"
+                      title={`Show ${shown.elided.join(' / ')}`}
+                      aria-label={`Show the folders left out: ${shown.elided.join(', ')}`}
+                      onClick={() => setPathExpanded(true)}
+                    >
+                      …
+                    </button>
+                    <span className="crumb-sep" aria-hidden>›</span>
+                  </>
+                )}
+                <button
+                  className={`picker-crumb ${i === shown.crumbs.length - 1 ? 'picker-crumb-here' : ''}`}
+                  disabled={i === shown.crumbs.length - 1}
+                  title={i === shown.crumbs.length - 1 ? undefined : `Open ${c.label}`}
+                  onClick={() => openFolder(c.path)}
+                >
+                  {c.label}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <button className="picker-nav" title="Read this folder again" aria-label="Refresh" onClick={() => setRefreshToken((n) => n + 1)}>
+          ↻
         </button>
       </div>
 
+      {/* One row of saved places (mockup 5a): bookmarks, not recents, which drift (the maintainer, 2026-09-15). */}
+      <div className="picker-bookmarks" aria-label="Bookmarks">
+        <span className="picker-bookmarks-label">BOOKMARKS</span>
+        {bookmarks.map((mark) => (
+          <button
+            key={mark.path}
+            className={`chip ${mark.path === folder ? 'chip-selected' : ''} ${mark.missing ? 'chip-missing' : ''}`}
+            title={mark.missing ? `${mark.configPath} — not there any more` : mark.configPath}
+            onClick={() => openFolder(mark.path)}
+          >
+            ★ {bookmarkLabel(mark.configPath)}
+          </button>
+        ))}
+        {folder !== null &&
+          (bookmarked ? (
+            <button className="chip chip-add" title="Remove this folder from the bookmarks" onClick={() => void window.deckhand.removeBookmark(folder).then(setBookmarks)}>
+              − Remove bookmark
+            </button>
+          ) : (
+            <button
+              className="chip chip-add"
+              disabled={bookmarks.length >= MAX_BOOKMARKS}
+              title={bookmarks.length >= MAX_BOOKMARKS ? `${MAX_BOOKMARKS} bookmarks is the limit` : 'Keep this folder in the row'}
+              onClick={() => void window.deckhand.addBookmark(folder).then(setBookmarks)}
+            >
+              + Bookmark this folder
+            </button>
+          ))}
+      </div>
+
+      {/* Band 3: the filter, full width and unmissable — it is what makes a deep
+          tree usable, so it is not a glyph tucked into another control (the maintainer). */}
       <input
         className="picker-filter"
         aria-label="Filter icons"
         placeholder="Filter this folder and everything below"
         value={query}
-        onChange={(e) => onPlace({ folder, query: e.target.value })}
-        onKeyDown={(e) => e.key === 'Escape' && onPlace({ folder, query: '' })}
+        onChange={(e) => onPlace({ ...place, query: e.target.value })}
+        onKeyDown={(e) => e.key === 'Escape' && onPlace({ ...place, query: '' })}
       />
 
-      <p className="muted small picker-status">
-        {listError
-          ? `Cannot open this folder: ${listError}`
-          : searching
-            ? 'Searching…'
-            : search
-              ? `${search.matches.length} ${search.matches.length === 1 ? 'match' : 'matches'}${search.truncated ? ' — stopped early; type more to narrow it' : ''}`
-              : listing
-                ? `${listing.folders.length} ${listing.folders.length === 1 ? 'folder' : 'folders'} · ${listing.images.length} ${listing.images.length === 1 ? 'image' : 'images'}`
-                : 'Opening…'}
-      </p>
-
-      <div className="button-row picker-actions">
-        <button
-          className="primary"
-          disabled={editingBlocked || busy || !selectedImage || refused.has(selectedImage.path) || isCurrent(selectedImage)}
-          onClick={() => selectedImage && void commit(selectedImage.path)}
-        >
-          Use this icon
-        </button>
-        {button?.icon !== undefined && (
-          <button disabled={editingBlocked || busy} onClick={() => void commit(null)}>
-            Remove icon
-          </button>
-        )}
-      </div>
-      {message && <p className="field-error">{message}</p>}
-      {!canPreview && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
-
-      <div className="picker-grid" ref={gridRef} tabIndex={0} role="listbox" aria-label="Icons" onKeyDown={onGridKey}>
+      <div
+        className="picker-grid"
+        ref={gridRef}
+        tabIndex={0}
+        role="listbox"
+        aria-label="Icons"
+        onKeyDown={onGridKey}
+      >
         {items.map((item) => {
           const { entry } = item;
           const classes = ['picker-item', `picker-${item.kind}`];
@@ -288,6 +366,13 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
                 />
               )}
               <span className="picker-name">{entry.name}</span>
+              {/* 5a writes "4 items"; six columns in this pane leave room for the
+                  number alone, so the words live in the tooltip. */}
+              {item.kind === 'folder' && (
+                <span className="picker-count" title={entry.items === 1 ? '1 item' : `${entry.items ?? 0} items`}>
+                  {entry.items ?? 0}
+                </span>
+              )}
               {'folder' in entry && (
                 <span
                   className="picker-where"
@@ -304,6 +389,37 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
             </button>
           );
         })}
+      </div>
+
+      {/* Band 5: what is shown, then the actions — below the thing they act on. */}
+      <div className="picker-bottom">
+        <p className="muted small picker-status">
+          {listError
+            ? `Cannot open this folder: ${listError}`
+            : searching
+              ? 'Searching…'
+              : search
+                ? `${search.matches.length} ${search.matches.length === 1 ? 'match' : 'matches'}${search.truncated ? ' — stopped early; type more' : ''}`
+                : listing
+                  ? `${listing.folders.length} ${listing.folders.length === 1 ? 'folder' : 'folders'} · ${listing.images.length} ${listing.images.length === 1 ? 'image' : 'images'}`
+                  : 'Opening…'}
+        </p>
+        {message && <p className="field-error">{message}</p>}
+        {!canPreview && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
+        <div className="button-row picker-actions">
+          <button
+            className="primary"
+            disabled={editingBlocked || busy || !selectedImage || refused.has(selectedImage.path) || isCurrent(selectedImage)}
+            onClick={() => selectedImage && void commit(selectedImage.path)}
+          >
+            Assign
+          </button>
+          {button?.icon !== undefined && (
+            <button disabled={editingBlocked || busy} onClick={() => void commit(null)}>
+              Remove icon
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

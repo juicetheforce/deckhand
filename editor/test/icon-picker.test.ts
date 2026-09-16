@@ -12,17 +12,10 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {
-  compareNames,
-  existingFolders,
-  FolderWatcher,
-  listFolder,
-  MAX_RECENT_FOLDERS,
-  RecentFolders,
-  searchFolder,
-  startFolder,
-} from '../src/main/icon-browser.js';
+import { compareNames, existingFolders, FolderWatcher, listFolder, searchFolder, startFolder } from '../src/main/icon-browser.js';
+import { Bookmarks, Preferences } from '../src/main/preferences.js';
 import { IconFiles, stamp } from '../src/main/icon-files.js';
+import { MAX_BOOKMARKS } from '../src/shared/bridge.js';
 import { ICON_CONTENT_TYPES, iconUrl, isShownIcon } from '../src/shared/icons.js';
 import { folderCrumbs, moveCursor, parentFolder } from '../src/renderer/picker-model.js';
 
@@ -175,21 +168,55 @@ await check('start folder: the icon\'s folder, else a recent one that exists, el
   assert.equal(await startFolder(null, [], ['/nope']), '/nope', 'the last fallback, even if missing, rather than nothing');
 });
 
-await check('recent folders: newest first, no duplicates, capped, kept in the given file; bad file contents are an empty list', async () => {
-  const stateFile = path.join(home, 'state', 'editor', 'icon-picker.json');
-  const recent = new RecentFolders(stateFile);
-  assert.deepEqual(await recent.list(), []);
-  for (let i = 0; i < 8; i++) await recent.remember(`/f${i}`);
-  await recent.remember('/f5');
-  const list = await recent.list();
-  assert.equal(list.length, MAX_RECENT_FOLDERS);
-  assert.deepEqual(list, ['/f5', '/f7', '/f6', '/f4', '/f3', '/f2']);
-  assert.deepEqual((await fs.readdir(path.dirname(stateFile))).sort(), ['icon-picker.json'], 'no temporary file left');
-  await fs.writeFile(stateFile, '{"recentFolders": ["/ok", 3, "relative", null]}');
-  assert.deepEqual(await recent.list(), ['/ok']);
-  await fs.writeFile(stateFile, 'not json');
-  assert.deepEqual(await recent.list(), []);
-  assert.deepEqual((await existingFolders([icons, '/nope'], home)).map((f) => f.configPath), ['~/Pictures/icons']);
+await check('bookmarks: kept in order, capped, seeded from the old recents file, and stored outside the config', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-prefs-'));
+  const prefsFile = path.join(dir, 'preferences.json');
+  const recentsFile = path.join(dir, 'icon-picker.json');
+
+  // First run with an old recents file: the row is seeded from it, oldest last in recents becoming first here.
+  await fs.writeFile(recentsFile, JSON.stringify({ recentFolders: ['/newest', '/middle', '/oldest'] }));
+  const seeded = new Bookmarks(new Preferences(prefsFile, 10), recentsFile);
+  assert.deepEqual(await seeded.list(), ['/oldest', '/middle', '/newest'], 'seeded oldest-first, so the newest sits at the end of the row');
+  await sleep(100);
+  assert.deepEqual(JSON.parse(await fs.readFile(prefsFile, 'utf8')).bookmarks, ['/oldest', '/middle', '/newest']);
+
+  // Adding, de-duplicating, removing.
+  const marks = new Bookmarks(new Preferences(prefsFile, 10), recentsFile);
+  assert.deepEqual(await marks.add('/extra'), ['/oldest', '/middle', '/newest', '/extra']);
+  assert.deepEqual(await marks.add('/extra'), ['/oldest', '/middle', '/newest', '/extra'], 'already there');
+  assert.deepEqual(await marks.remove('/middle'), ['/oldest', '/newest', '/extra']);
+  assert.deepEqual(await marks.remove('/not-bookmarked'), ['/oldest', '/newest', '/extra']);
+
+  // The cap holds, and the oldest stay. Checked on what is *stored*, not just
+  // what list() returns: list() slices too, so a lost cap would not show there.
+  for (let i = 0; i < 20; i++) await marks.add(`/f${i}`);
+  const full = await marks.list();
+  assert.equal(full.length, MAX_BOOKMARKS);
+  assert.equal(full[0], '/oldest');
+  assert.equal(MAX_BOOKMARKS, 12);
+  await sleep(100);
+  const storedAfterMany = JSON.parse(await fs.readFile(prefsFile, 'utf8')).bookmarks;
+  assert.equal(storedAfterMany.length, MAX_BOOKMARKS, 'the file itself must not grow past the cap');
+
+  // No recents file: an empty row, not a crash.
+  const fresh = new Bookmarks(new Preferences(path.join(dir, 'other.json'), 10), path.join(dir, 'no-such.json'));
+  assert.deepEqual(await fresh.list(), []);
+
+  // Rubbish in either file is an empty list.
+  await fs.writeFile(prefsFile, 'not json');
+  assert.deepEqual(await new Bookmarks(new Preferences(prefsFile, 10), path.join(dir, 'no-such.json')).list(), []);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+await check('folders in a listing carry how many items they hold; bookmarks keep a missing folder and mark it', async () => {
+  const listing = await listFolder(icons, home);
+  const byName = Object.fromEntries(listing.folders.map((f) => [f.name, f.items]));
+  assert.equal(byName['Job 2'], 1, 'one image');
+  assert.equal(byName['FFXIV'], 1, 'one subfolder (the symlinked loop is not counted as a folder to open)');
+  assert.equal(byName['locked'], 0, 'unreadable: counted as nothing rather than failing the listing');
+  const marks = await existingFolders([icons, '/gone-for-good'], home, true);
+  assert.deepEqual(marks.map((m) => [m.name, m.missing ?? false]), [['icons', false], ['gone-for-good', true]]);
+  assert.deepEqual((await existingFolders([icons, '/gone-for-good'], home)).map((m) => m.name), ['icons'], 'without keepMissing, gone folders drop out');
 });
 
 await check('watcher: a burst of changes in the open folder is reported once; another folder\'s changes are not', async () => {

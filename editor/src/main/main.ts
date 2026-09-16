@@ -15,8 +15,9 @@ import type { ApplyResult, ButtonLocation, Edit } from '../shared/edits.js';
 import { iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
-import { existingFolders, FolderWatcher, listFolder, RecentFolders, searchFolder, startFolder } from './icon-browser.js';
+import { existingFolders, FolderWatcher, listFolder, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
+import { Bookmarks, Preferences } from './preferences.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
 
@@ -118,7 +119,10 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
 
 // --- Icon picker (scope §10) -------------------------------------------------
 
-const recentFolders = new RecentFolders(path.join(app.getPath('userData'), 'icon-picker.json'));
+// The editor's own preferences (scope §10), in Electron's userData — never
+// beside config.json, which belongs to the daemon.
+const preferences = new Preferences(path.join(app.getPath('userData'), 'preferences.json'));
+const bookmarks = new Bookmarks(preferences, path.join(app.getPath('userData'), 'icon-picker.json'));
 const folderWatcher = new FolderWatcher((folder) => window?.webContents.send('iconFolderChanged', folder));
 const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps', stamps));
 /** Bumped by every search; a walk still running for an older number stops. */
@@ -162,7 +166,6 @@ async function commitIcon(at: ButtonLocation, icon: string | null, preview: { se
   const wrote = await store.flush();
   if (wrote && daemon.view().connected) await daemon.waitForReloadAfter(before, 5000);
   if (preview) await daemonCall(() => daemon.previewClear(preview.serial, preview.key));
-  if (icon) await recentFolders.remember(path.dirname(expandPath(icon))).catch(() => undefined);
   return result;
 }
 
@@ -214,7 +217,9 @@ function registerIpc(): void {
   ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown) => {
     if (!fromOurWindow(event)) return os.homedir();
     const icon = typeof currentIcon === 'string' && currentIcon !== '' ? expandPath(currentIcon) : null;
-    return startFolder(icon, await recentFolders.list(), [app.getPath('pictures'), os.homedir()]);
+    // Newest bookmark first: the list is kept oldest-first for the row's order.
+    const saved = [...(await bookmarks.list())].reverse();
+    return startFolder(icon, saved, [app.getPath('pictures'), os.homedir()]);
   });
   ipcMain.handle('listIconFolder', (event, folder: unknown) =>
     fromOurWindow(event) && typeof folder === 'string' ? listIconFolder(folder) : { ok: false, error: 'not allowed' },
@@ -236,7 +241,15 @@ function registerIpc(): void {
     });
     return picked.canceled ? null : (picked.filePaths[0] ?? null);
   });
-  ipcMain.handle('recentIconFolders', async (event) => (fromOurWindow(event) ? existingFolders(await recentFolders.list(), os.homedir()) : []));
+  ipcMain.handle('bookmarks', async (event) => (fromOurWindow(event) ? existingFolders(await bookmarks.list(), os.homedir(), true) : []));
+  ipcMain.handle('addBookmark', async (event, folder: unknown) => {
+    if (!fromOurWindow(event) || typeof folder !== 'string' || !path.isAbsolute(folder)) return [];
+    return existingFolders(await bookmarks.add(folder), os.homedir(), true);
+  });
+  ipcMain.handle('removeBookmark', async (event, folder: unknown) => {
+    if (!fromOurWindow(event) || typeof folder !== 'string') return [];
+    return existingFolders(await bookmarks.remove(folder), os.homedir(), true);
+  });
   ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown) => {
     if (!fromOurWindow(event) || !isLocation(at) || !(icon === null || typeof icon === 'string')) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
@@ -338,7 +351,7 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   flushedBeforeQuit = true;
   const current = store;
-  void current.flush().finally(() => {
+  void Promise.allSettled([current.flush(), preferences.flush()]).finally(() => {
     current.close();
     daemon.stop();
     app.quit();

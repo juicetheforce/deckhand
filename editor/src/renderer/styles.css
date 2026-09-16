@@ -222,6 +222,14 @@ button:disabled {
   overflow-y: auto;
 }
 
+/* With the icon picker open the inspector is a column, so the picker's grid
+   can take the height instead of the page scrolling (mockup 5a). */
+.inspector:has(.picker) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .stage {
   display: flex;
   flex-direction: column;
@@ -662,59 +670,216 @@ button:disabled {
 /* Icon picker (scope §10) */
 
 .picker {
+  /* The grid's columns come from this element's width (below). */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+  /* Four bands (mockup 5a): bar, bookmarks, grid, bottom. The grid takes the height. */
+  flex: 1;
+  min-height: 0;
 }
 
-.picker-recent {
+/* Band 1: the nav buttons and the path field, one row that never wraps. */
+.picker-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
-.chip {
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 11.5px;
-}
-
-.chip-selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.picker-crumbs {
+/* The path field is a control, not a line of text: bordered, fixed height, fills the row. */
+.picker-path {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+/* Band 3: the filter, full width — the control that makes a deep tree usable. */
+.picker-filter {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0 10px;
   font-size: 12px;
 }
 
-.picker-crumb {
+.picker-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.crumb-ellipsis {
+  color: var(--text-muted);
+  padding: 0 4px;
   background: transparent;
   border: 0;
-  padding: 2px 3px;
   border-radius: 5px;
+}
+
+.crumb-ellipsis:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+/* Opened out, the path scrolls sideways — it still never wraps. */
+.picker-path .picker-crumbs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+/* Band 2: the saved places. Chips carry their parent folder, because leaf
+   names collide in a tree of job folders, and the row wraps rather than
+   scrolling — three bookmarks must never need a scrollbar (the maintainer). */
+.picker-bookmarks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.picker-bookmarks .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-bookmarks-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+  margin-right: 2px;
+}
+
+.chip-add {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.chip-add:hover {
+  color: var(--text);
+}
+
+/* A bookmarked folder that is no longer there: kept, so it can be removed. */
+.chip-missing {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* Rounded rectangles, as mockup 2c draws them — not pills (the maintainer, 2026-09-15). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+
+.chip-selected {
+  border-color: rgba(91, 110, 232, 0.35);
+  background: rgba(91, 110, 232, 0.16);
+  color: #ccd2f8;
+}
+
+/* Inside the path field: one line, never wrapping; a long path is elided in picker-model.ts. */
+.picker-crumbs {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.picker-crumb-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Back, forward, up and refresh (mockup 5a), at its sizes scaled to this pane. */
+.picker-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe2f2;
+  font-size: 13px;
+}
+
+.picker-nav:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--accent);
+}
+
+.picker-nav:disabled {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Each parent folder is a button and looks like one; the folder you are in is the label. */
+.picker-crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text);
 }
 
 .picker-crumb:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--accent);
 }
 
-.picker-crumb:disabled {
+.picker-crumb-here:disabled {
+  border-color: transparent;
+  background: transparent;
   font-weight: 600;
   opacity: 1;
+  padding-left: 2px;
 }
 
 .picker-change {
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--glass-border);
   border-radius: 8px;
@@ -736,11 +901,28 @@ button:disabled {
   background: #14152a;
 }
 
+/* Band 4: the grid takes the height the other bands do not need.
+   **Tiles keep their size; the column count changes** — 6 at the default pane
+   width, then 5, 4, 3 as it narrows (the maintainer, 2026-09-15: icons are picked by
+   sight, so the image must stay legible). auto-fill drops a column when one
+   no longer fits at TILE_MIN; the max-width stops it ever exceeding six, and
+   a tile growing past TILE_MAX. */
 .picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: 6px;
+  /* **Tiles keep their size; the column count changes** — 6, 5, 4, 3 as the
+     pane narrows (the maintainer, 2026-09-15: icons are picked by sight, so the image
+     has to stay legible). Six is the most, so a wide pane grows the tiles
+     rather than adding a seventh column.
+     n columns need n × 44px + (n − 1) × 5px: 289, 240, 191 for 6, 5, 4.
+     Container queries rather than a ResizeObserver: a hidden window never
+     delivers resize callbacks, so that could not be checked. */
+  grid-template-columns: repeat(var(--picker-columns, 6), minmax(0, 1fr));
+  gap: 5px;
   outline: none;
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  align-content: start;
 }
 
 .picker-item {
@@ -775,8 +957,8 @@ button:disabled {
 
 .picker-thumb,
 .picker-folder-glyph {
-  width: 56px;
-  height: 56px;
+  width: 100%;
+  aspect-ratio: 1;
   object-fit: contain;
   border-radius: 8px;
   background: #101014;

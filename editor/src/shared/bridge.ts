@@ -53,6 +53,13 @@ export interface SystemShortcut {
   componentId: string;
 }
 
+/**
+ * At most this many bookmarked folders (scope §10). The maintainer expects to keep five
+ * to eight, and the row scrolls, so the cap is a guard rather than a limit he
+ * would meet.
+ */
+export const MAX_BOOKMARKS = 12;
+
 /** A folder or image in the icon picker (src/main/icon-browser.ts). */
 export interface IconFolderEntry {
   name: string;
@@ -62,6 +69,10 @@ export interface IconFolderEntry {
   configPath: string;
   /** Images only: the file's stamp, for the icon URL (src/main/icon-files.ts). */
   stamp?: string;
+  /** Folders in a listing: how many folders and images it holds, for its tile (mockup 5a). */
+  items?: number;
+  /** Bookmarks only: the folder is no longer there. */
+  missing?: boolean;
 }
 
 export interface IconFolderListing {
@@ -114,6 +125,12 @@ export interface DeckhandBridge {
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
 
+  /** Bookmarked icon folders, in order; missing ones are kept and marked (src/main/preferences.ts). */
+  bookmarks(): Promise<IconFolderEntry[]>;
+  /** Bookmark a folder (ignored when the list is full or it is already there); returns the list. */
+  addBookmark(folder: string): Promise<IconFolderEntry[]>;
+  removeBookmark(folder: string): Promise<IconFolderEntry[]>;
+
   /**
    * Watch exactly these icon paths (as the config stores them) and return
    * their stamps now; onIconStamps reports later changes. The renderer puts a
@@ -131,8 +148,6 @@ export interface DeckhandBridge {
   searchIcons(folder: string, query: string): Promise<IconSearchResult>;
   /** The system folder dialog; null if cancelled. */
   chooseIconFolder(current: string | null): Promise<string | null>;
-  /** Folders icons were recently chosen from, newest first, that still exist. */
-  recentIconFolders(): Promise<IconFolderEntry[]>;
   /**
    * Set (or with null remove) a key's icon, save, and once the daemon has
    * reloaded, clear the preview on that key — so the key shows the saved icon

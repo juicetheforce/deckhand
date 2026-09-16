@@ -6,7 +6,10 @@
 // icon paths as ~/... and opens Pictures by default). When the renderer signals
 // with a preview on key 31, this script adds a file to the open folder, to
 // show the folder is watched. Afterwards it checks the saved config.json, the
-// recent-folders file and the deck.
+// editor's preferences file and the deck.
+//
+// The old recent-folders file is seeded, so the bookmarks row proves it is
+// carried over rather than opening empty (scope §10).
 //
 // Usage: npm run check:icons   (builds first)
 
@@ -80,6 +83,11 @@ const CONFIG = {
   },
 };
 await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
+
+// An old recents file: the bookmarks row is seeded from it on first read.
+const SEEDED_RECENTS = [path.join(icons, 'FFXIV/WOLF'), path.join(icons, 'FFXIV')];
+await fs.mkdir(path.join(stateDir, 'editor'), { recursive: true });
+await fs.writeFile(path.join(stateDir, 'editor', 'icon-picker.json'), JSON.stringify({ recentFolders: SEEDED_RECENTS }, null, 2) + '\n');
 
 const daemon = await startDaemon(scratch, CONFIG);
 const deck = new FakeDeck();
@@ -156,24 +164,52 @@ check('electron ran the check', () => {
   assert.equal(r.error, undefined, r.error);
 });
 if (r && !r.error) {
-  check('with no icon and no recent folder, the picker opens on Pictures', () => assert.equal(r.startWithNothing, path.join(home, 'Pictures')));
+  check('with no icon set, the picker opens at the newest bookmark', () =>
+    assert.equal(r.startWithNothing, SEEDED_RECENTS[0], 'the newest of the seeded bookmarks'));
   check('the grid draws a broken icon path with the built-in missing icon (loaded under the CSP); a good icon is not', () => {
     assert.deepEqual([r.missingInGrid, r.goodIconNotMissing], [true, true]);
   });
   check("the Icon tab opens on the key's icon's folder, subfolders first, the current icon marked", () => {
-    assert.equal(r.openedOn, '~/Pictures/icons/FFXIV/BEAR');
+    // The field has a fixed height and elides the middle: root, then the last two folders.
+    assert.equal(r.openedOn, '~/FFXIV/BEAR');
     assert.deepEqual(r.blmItems, ['Shared_Actions', 'Bolt_III.png', 'Flame_IV.png']);
     assert.deepEqual(r.currentMarked, ['Bolt_III.png']);
   });
   check('selecting an image previews it on the deck and saves nothing', () => assert.deepEqual([r.previewShown, r.previewNotSaved], [true, true]));
   check('arrow keys move the selection', () => assert.deepEqual([r.arrowLeft, r.arrowRight], [true, true]));
-  check('Use this icon saves ~/..., clears the preview after the reload, adds a recent folder, and is disabled on the current icon', () => {
-    assert.deepEqual([r.usedSaved, r.previewClearedOnUse, r.recentChip, r.useDisabledOnCurrent], [true, true, true, true]);
+  check('Assign saves ~/..., clears the preview after the reload, and is disabled on the current icon', () => {
+    assert.deepEqual([r.usedSaved, r.previewClearedOnUse, r.useDisabledOnCurrent], [true, true, true]);
+  });
+  check('the bookmarks row is seeded from the old recents file, oldest first, each chip named for its folder alone', () => {
+    // The folder's own name, nothing else (the maintainer): the full path is the tooltip.
+    assert.deepEqual(r.bookmarksSeeded, ['★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
+  });
+  check('"+ Bookmark this folder" keeps the open folder, and turns into a way to remove it', () => {
+    assert.deepEqual([r.bookmarkAdded, r.bookmarkButtonTurnsIntoRemove], [true, true]);
+  });
+  check('back, forward and up walk the folder history; refresh keeps the folder; the grid has six columns', () => {
+    assert.deepEqual([r.upWentToParent, r.backEnabled, r.backReturned, r.forwardWentOn, r.refreshKeptFolder], [true, true, true, true, true]);
+    assert.equal(r.gridColumns, 6);
+  });
+  check('narrowing the pane drops columns and leaves the thumbnails their size', () => {
+    const [start, narrower, narrowest, back] = r.narrowing;
+    const shown = JSON.stringify(r.narrowing);
+    assert.equal(start.columns, 6, `six columns at the default pane width: ${shown}`);
+    assert.ok(narrower.columns < start.columns, `narrowing drops a column: ${shown}`);
+    assert.ok(narrowest.columns < narrower.columns, `and another: ${shown}`);
+    assert.ok(r.narrowing.every((w) => w.tile >= 44), `tiles never shrink below their minimum: ${shown}`);
+    assert.equal(back.columns, 6, `dragging back restores six columns: ${shown}`);
+  });
+  check('a subfolder tile says how many items it holds — the number on the tile, the words in its tooltip', () => {
+    assert.deepEqual(r.folderCounts, ['BEAR=4/4 items', 'WOLF=1/1 item']);
   });
   check('double-click chooses', () => assert.equal(r.doubleClickSaved, true));
   check('a file added to the open folder appears without a refresh', () => {
     assert.equal(wroteNewFile, true, 'the renderer never signalled');
     assert.deepEqual([r.newFileAbsentBefore, r.watcherShowedNewFile], [true, true]);
+  });
+  check('a deep path is elided in the fixed-height field, and the ellipsis opens it out', () => {
+    assert.deepEqual([r.pathElided, r.pathExpanded], [true, true]);
   });
   check('the breadcrumb goes up; mp4 and tga are left out; names sort as a person expects', () => {
     assert.deepEqual(r.rootItems, ['FFXIV', 'back ground.png', 'corrupt.png', 'fishing.jpg', 'fishing.png']);
@@ -196,6 +232,11 @@ if (r && !r.error) {
   });
   check('Remove icon removes only the icon', () => assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]));
   check('with the deck connected there is no "not connected" note', () => assert.equal(r.notConnectedNoteShown, false));
+  check('the picker is five bands — 5a\'s four with the filter given its own field — and the actions are below the grid', () => {
+    assert.deepEqual(r.bands, ['picker-bar', 'picker-bookmarks', 'picker-filter', 'picker-grid', 'picker-bottom']);
+    assert.equal(r.actionsBelowGrid, true);
+    assert.equal(r.filterIsItsOwnField, true, 'the filter must be its own full-width field, not a glyph inside another control');
+  });
 }
 
 const saved = await fs.readFile(path.join(configDir, 'config.json'), 'utf8');
@@ -205,11 +246,12 @@ check('config.json holds exactly the changes the UI made, in the editor format; 
   assert.equal(saved, JSON.stringify(expected, null, 2) + '\n');
   assert.ok(reloads >= 4, `only ${reloads} reloads`);
 });
-const recentFile = path.join(stateDir, 'editor', 'icon-picker.json');
-const recent = JSON.parse(await fs.readFile(recentFile, 'utf8').catch(() => '{}'));
+const prefsFile = path.join(stateDir, 'editor', 'preferences.json');
+const prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8').catch(() => '{}'));
 const configEntries = (await fs.readdir(configDir)).sort();
-check('recent folders are kept in the editor state directory, newest first', () => {
-  assert.deepEqual(recent.recentFolders, [icons, path.join(icons, 'FFXIV/WOLF'), path.join(icons, 'FFXIV/BEAR')]);
+check('bookmarks are kept in the editor preferences file, in the editor state directory', () => {
+  assert.deepEqual(prefs.bookmarks, [path.join(icons, 'FFXIV'), path.join(icons, 'FFXIV/WOLF')], 'the seeded pair, after the added one was removed again');
+  assert.deepEqual(r?.bookmarksAtEnd, ['★ FFXIV', '★ WOLF']);
 });
 check('nothing but config.json in the config directory', () => assert.deepEqual(configEntries, ['config.json']));
 check('no preview is left on the deck, and key 1 shows no icon, like key 0', () => {

@@ -400,7 +400,8 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
  * Step 5: the icon picker, through the real UI. scripts/check-icons.mjs runs
  * the harness daemon with HOME pointed at a scratch icon tree, writes a file
  * into the open folder when this check signals for it (a preview on key 31),
- * and checks the saved config, the recent-folders file and the deck afterwards.
+ * and checks the saved config, the editor's preferences file and the deck
+ * afterwards.
  */
 async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -443,6 +444,11 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
     item(name)!.click();
   };
   const crumbs = () => [...document.querySelectorAll('.picker-crumb')].map((c) => c.textContent).join('/');
+  /** Open a folder from the path field, opening the elided middle out first if that segment is hidden. */
+  const openCrumb = async (name: string) => {
+    if (button(name) === undefined && document.querySelector('.crumb-ellipsis') !== null) await click('…');
+    await click(name);
+  };
   const selectedName = () => document.querySelector('.picker-item-selected .picker-name')?.textContent ?? null;
   const gridKey = (key: string) => document.querySelector('.picker-grid')!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   const iconOf = async (key: string) => (await saved())?.[key]?.icon;
@@ -450,7 +456,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected && (v.decks?.length ?? 0) > 0);
   await until(() => document.querySelector('.grid') !== null);
 
-  // 1. With no icon and no recent folder, the picker would open on Pictures.
+  // 1. With no icon set, the picker opens at the newest bookmark (Pictures when there are none — test/icon-picker.test.ts).
   out.startWithNothing = await api.iconStartFolder(null);
 
   // 2. The grid draws a key whose icon cannot be read with the built-in missing icon, loaded under the page's CSP.
@@ -480,11 +486,16 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.arrowRight = await until(() => selectedName() === 'Flame_IV.png');
 
   // 6. Use this icon saves the path as ~/..., clears the preview after the reload, and remembers the folder.
-  await click('Use this icon');
+  await click('Assign');
   out.usedSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
   out.previewClearedOnUse = await until(async () => !(await previews()).includes(1));
-  out.recentChip = await until(() => [...document.querySelectorAll('.chip')].some((c) => c.textContent === 'BEAR'));
-  out.useDisabledOnCurrent = await until(() => button('Use this icon')?.disabled === true);
+  out.bookmarksSeeded = [...document.querySelectorAll('.picker-bookmarks .chip')].map((c) => c.textContent?.trim());
+  out.useDisabledOnCurrent = await until(() => button('Assign')?.disabled === true);
+
+  // 6b. Bookmarks (mockup 5a): the open folder can be kept, and removed again.
+  await click('+ Bookmark this folder');
+  out.bookmarkAdded = await until(() => [...document.querySelectorAll('.picker-bookmarks .chip')].some((c) => c.textContent?.includes('BEAR')));
+  out.bookmarkButtonTurnsIntoRemove = button('− Remove bookmark') !== undefined && button('+ Bookmark this folder') === undefined;
 
   // 7. Double-click chooses.
   await until(() => item('Bolt_III.png') !== undefined);
@@ -497,20 +508,76 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
   await api.previewClear(serial, 31);
 
-  // 9. The breadcrumb goes up; files the editor does not show are left out.
-  await click('icons');
+  // 8b. Back, forward and up (mockup 5a), and the count on a folder tile.
+  const crumbNow = () => document.querySelector('.picker-crumb-here')?.textContent;
+  await click('↑');
+  out.upWentToParent = await until(() => crumbNow() === 'FFXIV');
+  out.backEnabled = button('←')?.disabled === false;
+  await click('←');
+  out.backReturned = await until(() => crumbNow() === 'BEAR');
+  await click('→');
+  out.forwardWentOn = await until(() => crumbNow() === 'FFXIV');
+  out.folderCounts = [...document.querySelectorAll('.picker-folder')].map(
+    (f) => `${f.querySelector('.picker-name')?.textContent}=${f.querySelector('.picker-count')?.textContent}/${f.querySelector('.picker-count')?.getAttribute('title')}`,
+  );
+  await click('↻');
+  out.refreshKeptFolder = await until(() => crumbNow() === 'FFXIV' && document.querySelectorAll('.picker-item').length > 0);
+  const gridTracks = () => getComputedStyle(document.querySelector('.picker-grid')!).gridTemplateColumns.split(' ').map((c) => Math.round(parseFloat(c)));
+  /** Track sizes once they stop changing: a resize settles over a frame or two. */
+  const settledTracks = async () => {
+    let previous = gridTracks();
+    for (let i = 0; i < 40; i++) {
+      await sleep(50);
+      const now = gridTracks();
+      if (now.length === previous.length && now[0] === previous[0]) return { columns: now.length, tile: now[0] };
+      previous = now;
+    }
+    return { columns: previous.length, tile: previous[0] };
+  };
+  out.gridColumns = (await settledTracks()).columns;
+  out.tileWidth = (await settledTracks()).tile;
+
+  // Narrowing the pane must drop a column, not shrink the tiles (the maintainer, 2026-09-15).
+  const inspectorDivider = document.querySelectorAll<HTMLElement>('.pane-divider')[1];
+  const dragDivider = async (dx: number) => {
+    const box = inspectorDivider.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const options = { bubbles: true, cancelable: true, pointerId: 7, button: 0, buttons: 1 };
+    inspectorDivider.dispatchEvent(new PointerEvent('pointerdown', { ...options, clientX: x }));
+    inspectorDivider.dispatchEvent(new PointerEvent('pointermove', { ...options, clientX: x + dx }));
+    inspectorDivider.dispatchEvent(new PointerEvent('pointerup', { ...options, clientX: x + dx, buttons: 0 }));
+    return settledTracks();
+  };
+  const widths = [await settledTracks()];
+  widths.push(await dragDivider(40)); // narrower
+  widths.push(await dragDivider(40)); // narrower still
+  widths.push(await dragDivider(-80)); // back to where it started
+  out.narrowing = widths;
+
+  // 9. A deep path is elided; the ellipsis opens it out, and the breadcrumb goes up.
+  out.pathElided = document.querySelector('.crumb-ellipsis') !== null;
+  await click('…');
+  out.pathExpanded = await until(() => document.querySelector('.crumb-ellipsis') === null && button('icons') !== undefined);
+  await openCrumb('icons');
   await until(() => crumbs().endsWith('icons') && names().includes('FFXIV'));
   out.rootItems = names();
 
   // 10. The filter searches below the open folder and says where each match lives; clicking that opens it.
+  out.filterIsItsOwnField = (() => {
+    const field = document.querySelector<HTMLInputElement>('.picker-filter');
+    const picker = document.querySelector('.picker');
+    // Its own band, full width, and not tucked inside the path field.
+    return field !== null && field.parentElement === picker && field.getBoundingClientRect().width > (picker?.getBoundingClientRect().width ?? 0) * 0.9;
+  })();
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'aura');
   out.filterFound = await until(() => names().join() === 'Aura.png');
   out.filterWhere = document.querySelector('.picker-where')?.textContent;
   (document.querySelector<HTMLElement>('.picker-where'))?.click();
+  // Opening a folder from a match clears the filter.
   out.whereOpens = await until(() => crumbs().endsWith('Shared_Actions') && document.querySelector<HTMLInputElement>('.picker-filter')!.value === '');
 
   // 11. Enter chooses; a path with spaces and parentheses is stored as it is.
-  await click('icons');
+  await openCrumb('icons');
   await until(() => crumbs().endsWith('icons'));
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'halo');
   await clickItem('Halo (Area).png');
@@ -527,7 +594,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => button('Remove icon')?.disabled === false);
   await clickItem('corrupt.png');
   out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
-  out.useDisabledForRefused = button('Use this icon')?.disabled === true && button('Remove icon')?.disabled === false;
+  out.useDisabledForRefused = button('Assign')?.disabled === true && button('Remove icon')?.disabled === false;
   out.corruptThumbMissing = await until(() => item('corrupt.png')?.querySelector('img')?.src.includes('missing') === true);
 
   // 13. Leaving the tab ends the preview.
@@ -565,7 +632,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   if (!document.querySelector('.picker')) await click('Icon');
   await until(() => button('Remove icon')?.disabled === false);
   await clickItem('back ground.png');
-  await click('Use this icon');
+  await click('Assign');
   await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
   out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
   await api.previewSet(serial, 30, { label: 'RENAME-AWAY' });
@@ -686,6 +753,7 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'live') api.reportCheck(name, await live(api));
     else if (name === 'hotkey') api.reportCheck(name, await hotkey(api));
     else if (name === 'icons') api.reportCheck(name, await icons(api));
+    else if (name === 'panes') api.reportCheck(name, await panes(api));
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

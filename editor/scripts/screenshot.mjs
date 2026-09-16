@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>] [--tab icon]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--recent <folder> ...]
 //
 // --tab icon opens the inspector's Icon tab, which lists real folders under
 // your home directory (read-only) for any ~/ icon path in the config.
@@ -67,6 +67,7 @@ const { values } = parseArgs({
     deck: { type: 'string' },
     disconnected: { type: 'string' },
     tab: { type: 'string' },
+    recent: { type: 'string', multiple: true },
   },
 });
 if (!values.out) {
@@ -98,6 +99,12 @@ for (const serial of serials) {
 if (values.select !== undefined) process.env.DECKHAND_EDITOR_SELECT_KEY = values.select;
 if (values.deck !== undefined) process.env.DECKHAND_EDITOR_SELECT_DECK = values.deck;
 if (values.tab !== undefined) process.env.DECKHAND_EDITOR_SELECT_TAB = values.tab;
+// Seed the picker's recent folders, so a screenshot can show the chips.
+if (values.recent?.length) {
+  const editorState = path.join(scratch, 'state', 'editor');
+  await fs.mkdir(editorState, { recursive: true });
+  await fs.writeFile(path.join(editorState, 'icon-picker.json'), JSON.stringify({ recentFolders: values.recent.map((f) => path.resolve(f)) }, null, 2) + '\n');
+}
 process.env.DECKHAND_EDITOR_SCREENSHOT = path.resolve(values.out);
 const output = await runElectronCheck('screenshot', {
   configDir,

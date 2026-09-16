@@ -6,9 +6,10 @@ import { toConfigPath } from './config-document.js';
 import { stamp } from './icon-files.js';
 
 /**
- * The file side of the icon picker (docs/scope.md §10): list a folder, search
- * the tree below it, watch the open folder, remember recent folders. Plain
- * Node, no Electron, so test/icon-browser.test.ts runs it directly.
+ * The file side of the icon picker (docs/scope.md §10): list a folder with a
+ * count on each subfolder, search the tree below it, watch the open folder.
+ * Plain Node, no Electron, so test/icon-picker.test.ts runs it directly.
+ * Bookmarked folders are the editor's own preference (src/main/preferences.ts).
  *
  * Icons are plain paths (scope §3). Nothing here copies, imports or indexes
  * anything: every listing and search reads the file system as it is now.
@@ -18,8 +19,6 @@ import { stamp } from './icon-files.js';
 export const MAX_SEARCH_ENTRIES = 20_000;
 /** ...and returns at most this many matches. Both are reported as `truncated`. */
 export const MAX_SEARCH_MATCHES = 500;
-/** Recent folders kept: the folders icons were most recently chosen from. */
-export const MAX_RECENT_FOLDERS = 6;
 
 /** Sort as a person expects: case-insensitive, with numbers in number order (Job 2 before Job 10). */
 export function compareNames(a: string, b: string): number {
@@ -29,6 +28,21 @@ export function compareNames(a: string, b: string): number {
 function entry(folder: string, name: string, homeDir: string): IconFolderEntry {
   const full = path.join(folder, name);
   return { name, path: full, configPath: toConfigPath(full, homeDir) };
+}
+
+/**
+ * How many folders and images a subfolder holds, for the count on its tile
+ * (mockup 5a). Hidden entries and files the editor does not show are left out,
+ * so the number matches what opening it would list. An unreadable folder
+ * counts as nothing rather than failing the listing around it.
+ */
+async function countItems(folder: string): Promise<number> {
+  try {
+    const dirents = await fs.readdir(folder, { withFileTypes: true });
+    return dirents.filter((d) => !d.name.startsWith('.') && (d.isDirectory() || isShownIcon(d.name))).length;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -55,7 +69,7 @@ export async function listFolder(folder: string, homeDir: string): Promise<IconF
         continue;
       }
     }
-    if (isDirectory) folders.push(entry(folder, d.name, homeDir));
+    if (isDirectory) folders.push({ ...entry(folder, d.name, homeDir), items: await countItems(path.join(folder, d.name)) });
     else if (isFile && isShownIcon(d.name)) images.push({ ...entry(folder, d.name, homeDir), stamp: await stamp(path.join(folder, d.name)) });
   }
   folders.sort((a, b) => compareNames(a.name, b.name));
@@ -149,15 +163,22 @@ export async function startFolder(currentIconPath: string | null, recent: string
   return fallbacks[fallbacks.length - 1] ?? '/';
 }
 
-/** Those of `folders` that are still directories, as picker entries (name, path, ~/ form). */
-export async function existingFolders(folders: string[], homeDir: string): Promise<IconFolderEntry[]> {
+/**
+ * Folders as picker entries (name, path, ~/ form). With `keepMissing`, a folder
+ * that is gone is kept and marked — a bookmark the user saved should say it is
+ * missing rather than quietly disappear.
+ */
+export async function existingFolders(folders: string[], homeDir: string, keepMissing = false): Promise<IconFolderEntry[]> {
   const found: IconFolderEntry[] = [];
   for (const folder of folders) {
+    let exists = false;
     try {
-      if ((await fs.stat(folder)).isDirectory()) found.push(entry(path.dirname(folder), path.basename(folder), homeDir));
+      exists = (await fs.stat(folder)).isDirectory();
     } catch {
-      // gone
+      exists = false;
     }
+    if (exists) found.push(entry(path.dirname(folder), path.basename(folder), homeDir));
+    else if (keepMissing) found.push({ ...entry(path.dirname(folder), path.basename(folder), homeDir), missing: true });
   }
   return found;
 }
@@ -205,35 +226,5 @@ export class FolderWatcher {
     this.watcher?.close();
     this.watcher = null;
     this.folder = null;
-  }
-}
-
-/**
- * The picker's remembered state: recent folders, newest first. Kept in the
- * editor's state directory (Electron's userData, scope §0) — never beside
- * config.json. A missing or unreadable file is an empty list.
- */
-export class RecentFolders {
-  constructor(private readonly file: string) {}
-
-  async list(): Promise<string[]> {
-    try {
-      const parsed: unknown = JSON.parse(await fs.readFile(this.file, 'utf8'));
-      const folders = (parsed as { recentFolders?: unknown })?.recentFolders;
-      if (!Array.isArray(folders)) return [];
-      return folders.filter((f): f is string => typeof f === 'string' && path.isAbsolute(f)).slice(0, MAX_RECENT_FOLDERS);
-    } catch {
-      return [];
-    }
-  }
-
-  /** Put `folder` first. Written to a temporary file and renamed, so a crash cannot leave half a file. */
-  async remember(folder: string): Promise<string[]> {
-    const next = [folder, ...(await this.list()).filter((f) => f !== folder)].slice(0, MAX_RECENT_FOLDERS);
-    await fs.mkdir(path.dirname(this.file), { recursive: true });
-    const temp = `${this.file}.${process.pid}.tmp`;
-    await fs.writeFile(temp, JSON.stringify({ recentFolders: next }, null, 2) + '\n');
-    await fs.rename(temp, this.file);
-    return next;
   }
 }

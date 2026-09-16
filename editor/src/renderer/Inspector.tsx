@@ -4,7 +4,7 @@ import type { SystemShortcut } from '../shared/bridge.js';
 import type { ButtonLocation, Edit } from '../shared/edits.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
 import { actionName } from './catalogue.js';
-import { IconPicker, type PickerPlace } from './IconPicker.js';
+import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
 import { describeAction, hotkeyEditable, keyKind } from './model.js';
 
 interface Props {
@@ -36,7 +36,7 @@ export function Inspector({ at, button, editingBlocked, listenToken, canPreview,
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
-  const [place, setPlace] = useState<PickerPlace>({ folder: null, query: '' });
+  const [place, setPlace] = useState<PickerPlace>(EMPTY_PLACE);
   // The library's Hotkey entry means the Key tab.
   const firstToken = useRef(listenToken);
   useEffect(() => {
