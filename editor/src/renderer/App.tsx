@@ -222,6 +222,16 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
           const result = await window.deckhand.apply({ kind: 'renameDeck', serial, name });
           return result.ok ? null : result.error;
         }}
+        onRenamePage={async (page, name) => {
+          const result = await window.deckhand.apply({
+            kind: 'renamePage',
+            profile: selection.profile,
+            serial: selection.serial,
+            page,
+            name,
+          });
+          return result.ok ? null : result.error;
+        }}
         onDeletePage={setPendingDelete}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>

@@ -18,6 +18,23 @@ function sharedImports(): SharedImportReport {
   }
 }
 
+/** Open the "+" menu and pick one of its two items (Toolbar's AddMenu). */
+async function openAddMenu(item: 'New page' | 'New profile'): Promise<void> {
+  document.querySelector<HTMLButtonElement>('.tab-add')!.click();
+  await new Promise((r) => setTimeout(r, 80));
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith(item))!.click();
+  await new Promise((r) => setTimeout(r, 120));
+}
+
+/** Right-click a page tab and pick from its menu — the only way in since the "⋯" went. */
+async function openTabMenu(page: string, item: 'Rename page' | 'Delete page'): Promise<void> {
+  const tab = document.querySelector<HTMLButtonElement>(`.tab[data-tab="${page}"]`)!;
+  tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith(item))!.click();
+  await new Promise((r) => setTimeout(r, 120));
+}
+
 function waitFor<T>(subscribe: (cb: (v: T) => void) => () => void, first: T, condition: (v: T) => boolean, ms = 10_000): Promise<T> {
   if (condition(first)) return Promise.resolve(first);
   return new Promise((resolve, reject) => {
@@ -152,13 +169,10 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   // B1's panels, so they can be looked at (scope §7, phase B).
   const open = new URLSearchParams(window.location.search).get('open');
   if (open === 'newprofile') {
-    [...document.querySelectorAll<HTMLButtonElement>('.crumb-add')].find((b) => b.textContent?.includes('Profile'))?.click();
-    await new Promise((r) => setTimeout(r, 200));
+    await openAddMenu('New profile');
   } else if (open === 'delete') {
-    document.querySelector<HTMLButtonElement>('.tab-more')?.click();
-    await new Promise((r) => setTimeout(r, 100));
-    document.querySelector<HTMLButtonElement>('.tab-menu-item')?.click();
-    await new Promise((r) => setTimeout(r, 200));
+    const shown = document.querySelector('.tab-selected')?.getAttribute('data-tab');
+    if (shown) await openTabMenu(shown, 'Delete page');
   }
 
   const images = [...document.querySelectorAll<HTMLImageElement>('img')];
@@ -261,7 +275,7 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   });
 
   // 3. A page added through "+ Page" is selected and shown on the deck (save, reload, then show).
-  [...document.querySelectorAll<HTMLButtonElement>('.tab-add')][0].click();
+  await openAddMenu('New page');
   await until(() => document.querySelector('.add-page input') !== null);
   const input = document.querySelector<HTMLInputElement>('.add-page input')!;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Live page');
@@ -811,7 +825,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   out.opensOn = { tab: selectedTab(), profile: profileValue(), decks: await decks() };
 
   // 2. "+ Profile", both decks ticked.
-  document.querySelector<HTMLButtonElement>('.crumb-add')!.click();
+  await openAddMenu('New profile');
   await until(() => document.querySelector('.new-profile input') !== null);
   out.ticksShown = [...document.querySelectorAll('.deck-ticks label')].map((l) => l.textContent);
   out.ticksCheckedByDefault = [...document.querySelectorAll<HTMLInputElement>('.deck-ticks input')].map((i) => i.checked);
@@ -851,9 +865,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   // 6. Deleting a page clears the key that navigated to it.
   tab('Second')!.click();
   await until(async () => (await deckAt(serial))?.page === 'second');
-  document.querySelector<HTMLButtonElement>('.tab-more')!.click();
-  await until(() => document.querySelector('.tab-menu-item') !== null);
-  document.querySelector<HTMLButtonElement>('.tab-menu-item')!.click();
+  await openTabMenu('Second', 'Delete page');
   await until(() => document.querySelector('.confirm-card') !== null);
   out.confirmText = document.querySelector('.confirm-card')?.textContent ?? null;
   [...document.querySelectorAll<HTMLButtonElement>('.confirm-card button')].find((b) => b.textContent === 'Delete page')!.click();

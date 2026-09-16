@@ -61,7 +61,19 @@ export type Edit =
    * applies everywhere. null (or a blank name) removes it, and the deck falls
    * back to the model name the daemon reports.
    */
-  | { kind: 'renameDeck'; serial: string; name: string | null };
+  | { kind: 'renameDeck'; serial: string; name: string | null }
+  /**
+   * Rename a page. **Pulled forward from M5** (the maintainer, 2026-09-16) so the tab's
+   * right-click menu can carry Rename beside Delete, which is what lets the
+   * "⋯" button go.
+   *
+   * Pages resolve by ID first and then by name (§5), and the editor writes
+   * IDs — but a hand-written `"to": "Combat"`, or a `startPage` naming the
+   * page, would stop resolving the moment it is renamed. Both are rewritten to
+   * the page's ID as part of the rename, which preserves what they meant and
+   * makes them immune to the next rename.
+   */
+  | { kind: 'renamePage'; profile: string; serial: string; page: string; name: string };
 
 /**
  * A button's icon has three states, and they are not interchangeable

@@ -481,6 +481,73 @@ await check('a profile added in the editor is one the daemon accepts and can be 
   store.close();
 });
 
+console.log('rename page (pulled forward from M5, 2026-09-16)');
+
+await check('renaming a page pins links that reached it by name to its ID', async () => {
+  // The editor writes IDs, but a hand-written link uses the name — and a
+  // startPage may too. Both must survive the rename.
+  const byName: Config = {
+    profiles: {
+      p1: {
+        layouts: {
+          [XL.serial]: {
+            startPage: 'Combat',
+            pages: {
+              home: { name: 'Home', buttons: { '0': { action: { type: 'page', to: 'Combat' } } } },
+              combat: {
+                name: 'Combat',
+                buttons: {
+                  '0': { onRelease: { type: 'page', to: 'Home' } },
+                  '1': { action: { type: 'multi', steps: [{ type: 'page', to: 'Combat' }] } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  const store = await openStore(await configFile(serializeConfig(byName)));
+  assert.equal(store.apply({ kind: 'renamePage', profile: 'p1', serial: XL.serial, page: 'combat', name: 'Battle' }).ok, true);
+  const layout = store.state().config.profiles.p1.layouts[XL.serial];
+  assert.equal(layout.pages.combat.name, 'Battle');
+  assert.equal(layout.startPage, 'combat', 'startPage pinned to the ID');
+  assert.deepEqual(layout.pages.home.buttons['0'].action, { type: 'page', to: 'combat' }, 'the name link is now an ID');
+  assert.deepEqual(layout.pages.combat.buttons['1'].action, { type: 'multi', steps: [{ type: 'page', to: 'combat' }] }, 'inside a multi too');
+  // A link to a *different* page is untouched.
+  assert.deepEqual(layout.pages.combat.buttons['0'].onRelease, { type: 'page', to: 'Home' });
+  // And the daemon still resolves everything.
+  assert.equal(startPageOf(layout), 'combat');
+  store.close();
+});
+
+await check('a rename that changes nothing writes nothing, and a config using IDs is untouched', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  // Same name again.
+  assert.equal(store.apply({ kind: 'renamePage', profile: 'default', serial: XL.serial, page: 'main', name: 'Main' }).ok, true);
+  assert.equal(store.state().dirty, false, 'no write for a no-op rename');
+  // A real rename of a page nothing links to by name leaves other keys alone.
+  assert.equal(store.apply({ kind: 'renamePage', profile: 'default', serial: XL.serial, page: 'main', name: 'Home' }).ok, true);
+  const layout = store.state().config.profiles.default.layouts[XL.serial];
+  assert.equal(layout.pages.main.name, 'Home');
+  // Only links to the *renamed* page are pinned; this one points at Games, so
+  // renaming Main must leave it exactly as it was.
+  assert.deepEqual(layout.pages.main.buttons['24'].action, { type: 'page', to: 'Games' }, 'a link to another page is untouched');
+  store.close();
+});
+
+await check('renaming refuses a clash, a blank name, and an unknown page', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const where = { kind: 'renamePage' as const, profile: 'default', serial: XL.serial };
+  assert.equal(store.apply({ ...where, page: 'main', name: 'Games' }).ok, false, "another page's name");
+  assert.equal(store.apply({ ...where, page: 'main', name: 'games' }).ok, false, "another page's ID");
+  assert.equal(store.apply({ ...where, page: 'main', name: '   ' }).ok, false, 'blank');
+  assert.equal(store.apply({ ...where, page: 'nope', name: 'X' }).ok, false, 'unknown page');
+  // Its own ID is allowed — validateConfig only refuses a name that is *another* entry's ID.
+  assert.equal(store.apply({ ...where, page: 'main', name: 'main' }).ok, true);
+  store.close();
+});
+
 console.log('delete page (M4 phase B, B1)');
 
 await check('deleting a page takes the navigation off keys that pointed at it, keeping icon and label', async () => {

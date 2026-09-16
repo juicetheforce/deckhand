@@ -1120,11 +1120,6 @@ button:disabled {
   color: var(--text);
 }
 
-.new-profile-wrap {
-  position: relative;
-  display: inline-flex;
-}
-
 .new-profile {
   position: absolute;
   top: calc(100% + 6px);
@@ -1547,4 +1542,60 @@ button:disabled {
   background: rgba(232, 180, 90, 0.1);
   color: var(--amber);
   font-size: 11px;
+}
+
+/* One "+" for pages and profiles; rename on the tab menu (2026-09-16) */
+
+.add-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* An icon-only control. The svg inside takes currentColor, so the same rules
+   that dim text dim the glyph. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px;
+  color: var(--text-muted);
+  line-height: 0;
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+}
+
+.icon-button:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.menu-note {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.tab-menu-item:disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.add-panel {
+  padding: 10px;
+  min-width: 220px;
+}
+
+.tab-rename {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  padding: 4px 8px;
+  width: 150px;
+  color: var(--text);
 }

@@ -107,7 +107,8 @@ if (r && !r.error) {
   check('the guard flags the page with no way off it, and only that page', () => {
     // "Second" has no keys at all; "Main" is the start page but also has none,
     // so both are flagged before anything is bound.
-    assert.deepEqual(r.tabsAtStart, ['Main⚠', 'Second⚠', '+ Page'], 'before anything is bound');
+    // The last entry is the "+" menu, which shares the .tab class.
+    assert.deepEqual(r.tabsAtStart, ['Main⚠', 'Second⚠', '+'], 'before anything is bound');
   });
 
   check('the page inspector lists the pages in this layout, and writes the page ID', () => {
@@ -116,7 +117,7 @@ if (r && !r.error) {
   });
 
   check('binding a Go to page key clears the guard on the page it leaves', () => {
-    assert.deepEqual(r.tabsAfterLinking, ['Main', 'Second⚠', '+ Page'], 'Main now has a way off; Second still does not');
+    assert.deepEqual(r.tabsAfterLinking, ['Main', 'Second⚠', '+'], 'Main now has a way off; Second still does not');
   });
 
   check('the profile inspector lists profiles with the decks each one changes', () => {

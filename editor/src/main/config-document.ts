@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { resolvePage } from '../../../src/config-common.js';
-import type { ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { multiSteps, pageLinks, targetsPage } from '../shared/links.js';
 
@@ -129,6 +129,32 @@ function clearPageLinks(layout: LayoutDef, pageId: string): void {
 }
 
 /**
+ * Point every link that reached this page **by name** at its ID instead, so a
+ * rename cannot break it. Only links whose `to` is not already the ID are
+ * touched, so a config that already uses IDs comes out unchanged.
+ */
+function pinNameLinksToId(layout: LayoutDef, pageId: string): void {
+  const pin = (action: ActionDef | undefined): void => {
+    if (!action) return;
+    if (targetsPage(action, layout, pageId) && action.to !== pageId) {
+      action.to = pageId;
+      return;
+    }
+    for (const step of multiSteps(action) ?? []) pin(step);
+  };
+  for (const page of Object.values(layout.pages)) {
+    for (const button of Object.values(page.buttons)) {
+      pin(button.action);
+      pin(button.onRelease);
+    }
+  }
+  // startPage takes an ID or a name too, and an unresolvable one is refused.
+  if (layout.startPage !== undefined && layout.startPage !== pageId && resolvePage(layout, layout.startPage) === pageId) {
+    layout.startPage = pageId;
+  }
+}
+
+/**
  * Apply one edit to a config, in place. The caller passes a copy and validates
  * the result. Throws EditError when the edit cannot apply.
  */
@@ -213,6 +239,22 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       for (const serial of serials) layouts[serial] = newLayout(edit.pageName, env);
       config.profiles[profileId] = { name, layouts };
       return { profileId };
+    }
+    case 'renamePage': {
+      const layout = layoutAt(config, edit.profile, edit.serial);
+      const page = Object.prototype.hasOwnProperty.call(layout.pages, edit.page) ? layout.pages[edit.page] : undefined;
+      if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
+      const name = edit.name.trim();
+      if (name === '') throw new EditError('a page needs a name');
+      for (const [id, other] of Object.entries(layout.pages)) {
+        if (id === edit.page) continue;
+        if (other.name === name || id === name) throw new EditError(`this deck already has a page called "${name}"`);
+      }
+      if (page.name === name) return {};
+      // Before the name changes, while the old one still resolves.
+      pinNameLinksToId(layout, edit.page);
+      page.name = name;
+      return {};
     }
     case 'deletePage': {
       const layout = layoutAt(config, edit.profile, edit.serial);

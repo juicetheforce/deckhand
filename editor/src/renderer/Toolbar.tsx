@@ -3,6 +3,7 @@ import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { deckChoices, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
 import { pagesWithNoWayOff } from '../shared/links.js';
+import { EditIcon } from './icons.js';
 
 interface Props {
   config: Config;
@@ -16,6 +17,8 @@ interface Props {
   onProfileAdded: (profile: string) => void;
   /** Rename the selected deck, or (null) clear the name back to the model name. */
   onRenameDeck: (serial: string, name: string | null) => Promise<string | null>;
+  /** Rename a page. Returns an error to show, or null. */
+  onRenamePage: (page: string, name: string) => Promise<string | null>;
   /** Ask to delete a page; App shows the confirmation, since it names what would change. */
   onDeletePage: (page: string) => void;
 }
@@ -29,7 +32,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * change from elsewhere (live switching, 2026-09-15). The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onDeletePage }: Props) {
+export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onDeletePage }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const layout = layoutFor(config, selection.profile, selection.serial);
@@ -52,12 +55,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           ))}
         </select>
       </label>
-      <NewProfile
-        decks={knownDecks(config, daemon)}
-        disabled={editingBlocked}
-        onAdd={onAddProfile}
-        onAdded={onProfileAdded}
-      />
       <span className="crumb-sep">›</span>
       <label className="crumb">
         <span className="crumb-label">Device</span>
@@ -91,10 +88,19 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
               stranded={stranded.has(p.id)}
               disabled={editingBlocked}
               onSelect={() => onSelect({ page: p.id })}
+              onRename={(name) => onRenamePage(p.id, name)}
               onDelete={() => onDeletePage(p.id)}
             />
           ))}
-        {layout && <AddPage disabled={editingBlocked} onAdd={onAddPage} onAdded={(page) => onSelect({ page })} />}
+        <AddMenu
+          canAddPage={layout !== null}
+          decks={knownDecks(config, daemon)}
+          disabled={editingBlocked}
+          onAddPage={onAddPage}
+          onPageAdded={(page) => onSelect({ page })}
+          onAddProfile={onAddProfile}
+          onProfileAdded={onProfileAdded}
+        />
       </nav>
       <span className="toolbar-spacer" />
       {uncovered.length > 0 && (
@@ -117,8 +123,12 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
   );
 }
 
+/**
+ * Name a new page. Reached from the "+" menu, which is the trigger — so this
+ * shows the field straight away rather than another button behind the first
+ * (which is what it did when the toolbar had its own "+ Page").
+ */
 function AddPage({ disabled, onAdd, onAdded }: { disabled: boolean; onAdd: (name: string) => Promise<AddPageResult>; onAdded: (page: string) => void }) {
-  const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -128,40 +138,24 @@ function AddPage({ disabled, onAdd, onAdded }: { disabled: boolean; onAdd: (name
       setError(result.error); // e.g. a name this deck already has; the field stays open
       return;
     }
-    setEditing(false);
-    setName('');
-    setError(null);
     onAdded(result.page);
   };
 
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') void submit();
-    if (e.key === 'Escape') {
-      setEditing(false);
-      setName('');
-      setError(null);
-    }
-  };
-
-  if (!editing) {
-    return (
-      <button className="tab tab-add" disabled={disabled} title="Add a page to this deck" onClick={() => setEditing(true)}>
-        + Page
-      </button>
-    );
-  }
   return (
     <span className="add-page">
       <input
         autoFocus
+        aria-label="New page name"
         placeholder="New page name"
         value={name}
+        disabled={disabled}
         onChange={(e) => {
           setName(e.target.value);
           setError(null);
         }}
-        onKeyDown={onKey}
-        onBlur={() => name === '' && setEditing(false)}
+        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'Enter') void submit();
+        }}
       />
       {error && <span className="field-error">{error}</span>}
     </span>
@@ -180,6 +174,7 @@ function PageTab({
   stranded,
   disabled,
   onSelect,
+  onRename,
   onDelete,
 }: {
   label: string;
@@ -188,9 +183,13 @@ function PageTab({
   stranded: boolean;
   disabled: boolean;
   onSelect: () => void;
+  onRename: (name: string) => Promise<string | null>;
   onDelete: () => void;
 }) {
   const [menu, setMenu] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
 
   // Close on a click anywhere else, and on Escape. Pointerdown rather than
@@ -208,6 +207,39 @@ function PageTab({
       window.removeEventListener('keydown', key, true);
     };
   }, [menu]);
+
+  const submitRename = async () => {
+    const failure = await onRename(draft);
+    if (failure !== null) {
+      setError(failure);
+      return;
+    }
+    setRenaming(false);
+    setError(null);
+  };
+
+  if (renaming) {
+    return (
+      <span className="tab-wrap" ref={wrap}>
+        <input
+          autoFocus
+          className="tab-rename"
+          aria-label={`Rename ${label}`}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === 'Enter') void submitRename();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          onBlur={() => void submitRename()}
+        />
+        {error && <span className="field-error">{error}</span>}
+      </span>
+    );
+  }
 
   return (
     <span className="tab-wrap" ref={wrap}>
@@ -231,19 +263,26 @@ function PageTab({
           </span>
         )}
       </button>
-      {selected && (
-        <button
-          className="tab-more"
-          aria-label={`Page options for ${label}`}
-          aria-expanded={menu}
-          disabled={disabled}
-          onClick={() => setMenu((open) => !open)}
-        >
-          ⋯
-        </button>
-      )}
+      {/* Right-click is the only way in (the maintainer, 2026-09-16): rename and delete
+          on a tab are universal muscle memory, and a per-tab button costs a
+          slot on every page ever created. Operations may hide behind a
+          gesture; capabilities may not (scope §10). */}
       {menu && (
         <ul className="tab-menu" role="menu">
+          <li>
+            <button
+              role="menuitem"
+              className="tab-menu-item"
+              onClick={() => {
+                setMenu(false);
+                setDraft(label);
+                setError(null);
+                setRenaming(true);
+              }}
+            >
+              Rename page…
+            </button>
+          </li>
           <li>
             <button
               role="menuitem"
@@ -268,6 +307,13 @@ function PageTab({
  * control that makes one has to say plainly that it covers both decks at once.
  * Connected decks start checked.
  */
+/**
+ * Create a profile, reached from the "+" menu which owns the positioning
+ * wrapper. The deck checkboxes are the point, not a detail: §2 records that
+ * the maintainer never found profiles in StreamController, so the control that makes one
+ * has to say plainly that it covers both decks at once. Connected decks start
+ * ticked.
+ */
 function NewProfile({
   decks,
   disabled,
@@ -279,21 +325,11 @@ function NewProfile({
   onAdd: (name: string, serials: string[]) => Promise<AddProfileResult>;
   onAdded: (profile: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [chosen, setChosen] = useState<string[]>([]);
+  // Connected decks start ticked; the list is fixed while the panel is open.
+  const [chosen, setChosen] = useState<string[]>(() => decks.filter((d) => d.connected).map((d) => d.id));
   const [error, setError] = useState<string | null>(null);
 
-  const start = () => {
-    setName('');
-    setChosen(decks.filter((d) => d.connected).map((d) => d.id));
-    setError(null);
-    setOpen(true);
-  };
-  const close = () => {
-    setOpen(false);
-    setError(null);
-  };
   const toggle = (serial: string) =>
     setChosen((current) => (current.includes(serial) ? current.filter((s) => s !== serial) : [...current, serial]));
 
@@ -303,73 +339,168 @@ function NewProfile({
       setError(result.error);
       return;
     }
-    close();
     onAdded(result.profile);
   };
 
-  // The button stays in the flow and the panel hangs off it, so opening the
-  // panel does not reflow the breadcrumb.
   return (
-    <span className="new-profile-wrap">
-      <button
-        className="crumb-add"
-        disabled={disabled}
-        title="Create a profile"
-        aria-expanded={open}
-        onClick={() => (open ? close() : start())}
-      >
-        + Profile
-      </button>
-      {open && <Panel />}
-    </span>
-  );
-
-  function Panel() {
-    return (
-      <div className="new-profile glass" role="dialog" aria-label="New profile">
-        <input
-          autoFocus
-          aria-label="Profile name"
-          placeholder="Profile name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            setError(null);
-          }}
-          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-            if (e.key === 'Enter') void submit();
-            if (e.key === 'Escape') close();
-          }}
-        />
-        <p className="muted small">Switching to this profile changes every deck you tick here, in one press.</p>
-        <ul className="deck-ticks">
-          {decks.map((deck) => (
-            <li key={deck.id}>
-              <label>
-                <input type="checkbox" checked={chosen.includes(deck.id)} onChange={() => toggle(deck.id)} />
-                {deck.label}
-                {deck.connected ? '' : ' — not connected'}
-              </label>
-            </li>
-          ))}
-        </ul>
-        {decks.length === 0 && <p className="muted small">No decks are known yet. Plug one in.</p>}
-        {error && <p className="field-error">{error}</p>}
-        <div className="button-row">
-          <button className="primary" disabled={name.trim() === '' || chosen.length === 0} onClick={() => void submit()}>
-            Create
-          </button>
-          <button onClick={close}>Cancel</button>
-        </div>
+    <div className="new-profile glass" role="dialog" aria-label="New profile">
+      <input
+        autoFocus
+        aria-label="Profile name"
+        placeholder="Profile name"
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'Enter') void submit();
+        }}
+      />
+      <p className="muted small">Switching to this profile changes every deck you tick here, in one press.</p>
+      <ul className="deck-ticks">
+        {decks.map((deck) => (
+          <li key={deck.id}>
+            <label>
+              <input type="checkbox" checked={chosen.includes(deck.id)} onChange={() => toggle(deck.id)} />
+              {deck.label}
+              {deck.connected ? '' : ' — not connected'}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {decks.length === 0 && <p className="muted small">No decks are known yet. Plug one in.</p>}
+      {error && <p className="field-error">{error}</p>}
+      <div className="button-row">
+        <button className="primary" disabled={disabled || name.trim() === '' || chosen.length === 0} onClick={() => void submit()}>
+          Create
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
 }
 
 /**
- * Rename the selected deck (scope §10, the maintainer 2026-09-16). `decks.<serial>.name`
- * has been in the schema since v0.1 and deck config sits outside profiles, so a
- * name set once applies everywhere — this is UI over an existing field.
+ * One "+" for both new pages and new profiles (the maintainer, 2026-09-16). The toolbar
+ * is the row that fills up as pages are added — FFXIV alone is three or four
+ * tabs per device — so two labelled buttons is space the tabs will want.
+ *
+ * It is a button with a menu, not a right-click: §2's distinction is that
+ * *operations* on something you can already see may hide behind a gesture, but
+ * a *capability* may not. The maintainer never found profiles in StreamController
+ * because nothing said the concept existed, and right-clicking does not help
+ * when you do not know what to right-click. Clicking "+" is the obvious move
+ * when you want to add something, and the menu then names both concepts.
+ */
+function AddMenu({
+  canAddPage,
+  decks,
+  disabled,
+  onAddPage,
+  onPageAdded,
+  onAddProfile,
+  onProfileAdded,
+}: {
+  canAddPage: boolean;
+  decks: DeckChoice[];
+  disabled: boolean;
+  onAddPage: (name: string) => Promise<AddPageResult>;
+  onPageAdded: (page: string) => void;
+  onAddProfile: (name: string, serials: string[]) => Promise<AddProfileResult>;
+  onProfileAdded: (profile: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'menu' | 'page' | 'profile'>('menu');
+  const wrap = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', key, true);
+    return () => {
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', key, true);
+    };
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    setMode('menu');
+  };
+
+  return (
+    <span className="add-menu-wrap" ref={wrap}>
+      <button
+        className="tab tab-add"
+        disabled={disabled}
+        aria-expanded={open}
+        aria-label="Add a page or a profile"
+        title="Add a page or a profile"
+        onClick={() => {
+          setMode('menu');
+          setOpen((o) => !o);
+        }}
+      >
+        +
+      </button>
+
+      {open && mode === 'menu' && (
+        <ul className="tab-menu" role="menu">
+          <li>
+            <button role="menuitem" className="tab-menu-item" disabled={!canAddPage} onClick={() => setMode('page')}>
+              New page
+              <span className="menu-note">another page on this deck</span>
+            </button>
+          </li>
+          <li>
+            <button role="menuitem" className="tab-menu-item" onClick={() => setMode('profile')}>
+              New profile
+              <span className="menu-note">a layout for several decks, switched together</span>
+            </button>
+          </li>
+        </ul>
+      )}
+
+      {open && mode === 'page' && (
+        <div className="tab-menu add-panel">
+          <AddPage
+            disabled={disabled}
+            onAdd={onAddPage}
+            onAdded={(page) => {
+              close();
+              onPageAdded(page);
+            }}
+          />
+        </div>
+      )}
+
+      {open && mode === 'profile' && (
+        <NewProfile
+          decks={decks}
+          disabled={disabled}
+          onAdd={onAddProfile}
+          onAdded={(profile) => {
+            close();
+            onProfileAdded(profile);
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * Rename the selected deck (scope §10). `decks.<serial>.name` has been in the
+ * schema since v0.1 and deck config sits outside profiles, so a name set once
+ * applies everywhere — this is UI over an existing field.
+ *
+ * A pencil rather than the word "Rename" (the maintainer, 2026-09-16): the toolbar is the
+ * row that fills up as pages are added, so anything that can give back width
+ * should.
  *
  * **With no name set the model name is shown and nothing else.** No serial is
  * appended and no attempt is made to tell identical devices apart: nobody knows
@@ -395,11 +526,6 @@ function RenameDeck({
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const start = () => {
-    setText(name ?? '');
-    setError(null);
-    setEditing(true);
-  };
   const submit = async () => {
     const failure = await onRename(serial, text.trim() === '' ? null : text);
     if (failure !== null) {
@@ -413,12 +539,17 @@ function RenameDeck({
   if (!editing) {
     return (
       <button
-        className="crumb-add"
+        className="icon-button"
         disabled={disabled}
+        aria-label={name === null ? `Name this deck (currently showing the model name, ${modelName})` : `Rename "${name}"`}
         title={name === null ? `No name set — showing the model name, ${modelName}. Click to name this deck.` : `Rename "${name}"`}
-        onClick={start}
+        onClick={() => {
+          setText(name ?? '');
+          setError(null);
+          setEditing(true);
+        }}
       >
-        Rename
+        <EditIcon />
       </button>
     );
   }
