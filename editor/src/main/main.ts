@@ -341,6 +341,9 @@ async function finishCheck(rendererReport: unknown): Promise<void> {
         image: await status(icon),
         textFile: await status(icon.replace(/dot\.png$/, 'secret.txt')),
         missing: await status(icon.replace(/dot\.png$/, 'absent.png')),
+        builtin: await status('builtin:speaker'),
+        builtinUnknown: await status('builtin:nope'),
+        builtinClimbing: await status('builtin:../missing'),
       };
     }
   }

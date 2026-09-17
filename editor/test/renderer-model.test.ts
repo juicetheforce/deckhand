@@ -10,7 +10,8 @@ import type { Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
-import { CATALOGUE, pendingReason, searchCatalogue } from '../src/renderer/catalogue.js';
+import { BUILTIN_ICONS } from '../../src/default-icons.js';
+import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue } from '../src/renderer/catalogue.js';
 import {
   canSwitchDeck,
   deckChoices,
@@ -271,6 +272,37 @@ await check("key faces use the button's values, then config defaults, then the d
   assert.equal(withDefaults.labelScale, 20 / 72);
   const own = keyFace(EXAMPLE, { background: '#2a1f3d', labelPosition: 'top', icon: '~/a.png', iconFit: 'contain' }, 96);
   assert.deepEqual([own.background, own.labelPosition, own.icon, own.iconFit], ['#2a1f3d', 'top', '~/a.png', 'contain']);
+});
+
+await check("key faces draw the action's default when no icon is set, as the deck does (C2)", () => {
+  const icon = (button: Parameters<typeof keyFace>[1]) => keyFace(EXAMPLE, button, 96).icon;
+  const hotkey = { type: 'hotkey', keys: 'ctrl+1' };
+  assert.equal(icon({ action: hotkey }), 'builtin:key-combo', 'absent: the default');
+  assert.equal(icon({ icon: null, action: hotkey }), null, 'null: deliberately none');
+  assert.equal(icon({ icon: '~/a.png', action: hotkey }), '~/a.png', 'a path wins');
+  assert.equal(icon({ icon: 'builtin:pause', action: hotkey }), 'builtin:pause', 'a chosen built-in wins');
+  assert.equal(icon({ label: 'x' }), null, 'no action, no default');
+  assert.equal(icon({ onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } }), null, 'the deck gives a default only for a press action');
+  assert.equal(icon(undefined), null);
+  assert.equal(icon({ action: { type: 'page', back: true } }), 'builtin:back', 'parameters count');
+  assert.equal(icon({ action: { type: 'keyHold', keys: 'f24', state: 'down' } }), 'builtin:press-release');
+  assert.equal(icon({ action: { type: 'audio.micMute' } }), 'builtin:mic', 'no state in the editor: the resting half');
+  assert.equal(icon({ action: { type: 'media.control', method: 'playpause' } }), 'builtin:play');
+  assert.equal(icon({ action: { type: 'media.info' } }), 'builtin:now-playing', 'shown as idle');
+  assert.equal(icon({ action: { type: 'clock' } }), null, 'the time is the face');
+  assert.equal(icon({ action: { type: 'noop' } }), null, 'a spacer');
+});
+
+await check('library rows show default icons: every action but Nothing has one, and each is a shipped built-in', () => {
+  for (const entry of CATALOGUE.flatMap((g) => g.entries)) {
+    const icon = libraryIcon(entry.type);
+    if (entry.type === 'noop') assert.equal(icon, null);
+    else assert.ok(icon !== null && (BUILTIN_ICONS as readonly string[]).includes(icon), `${entry.type}: ${icon}`);
+  }
+  assert.deepEqual(
+    ['clock', 'media.info', 'brightness', 'page', 'keyHold'].map(libraryIcon),
+    ['clock', 'now-playing', 'brightness-up', 'forward', 'press-release'],
+  );
 });
 
 await check('describeAction: combos, sequences, and keys that do nothing', () => {

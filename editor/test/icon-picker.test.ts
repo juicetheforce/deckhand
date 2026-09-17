@@ -14,9 +14,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { compareNames, existingFolders, FolderWatcher, listFolder, searchFolder, startFolder } from '../src/main/icon-browser.js';
 import { Bookmarks, Preferences } from '../src/main/preferences.js';
+import { BUILTIN_PREFIX as DAEMON_BUILTIN_PREFIX } from '../../src/builtin-icons.js';
+import { BUILTIN_ICONS } from '../../src/default-icons.js';
+import { iconFilePath } from '../src/main/builtin-icons.js';
 import { IconFiles, stamp } from '../src/main/icon-files.js';
 import { MAX_BOOKMARKS } from '../src/shared/bridge.js';
-import { ICON_CONTENT_TYPES, iconUrl, isShownIcon } from '../src/shared/icons.js';
+import { BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon } from '../src/shared/icons.js';
 import { folderCrumbs, moveCursor, parentFolder } from '../src/renderer/picker-model.js';
 
 let failures = 0;
@@ -260,6 +263,32 @@ await check('icon stamps: a file, a missing file, and ~ expanded', async () => {
   }
   assert.equal(iconUrl('~/a b.png', '12-34'), 'deckhand-icon://icon/?path=~%2Fa%20b.png&v=12-34');
   assert.equal(iconUrl('~/a b.png'), 'deckhand-icon://icon/?path=~%2Fa%20b.png');
+});
+
+// Bundled into editor/dist/test/, three levels below the repository.
+const REPO = path.resolve(import.meta.dirname, '../../..');
+
+await check("built-in icons: builtin:<name> is the checkout's assets/icons/ file, the prefix agrees with the daemon's, an unknown or malformed name is no file", async () => {
+  assert.equal(BUILTIN_PREFIX, DAEMON_BUILTIN_PREFIX);
+  assert.equal(iconFilePath('builtin:speaker'), path.join(REPO, 'assets/icons/speaker.svg'));
+  for (const name of BUILTIN_ICONS) await fs.access(iconFilePath(builtinRef(name))!);
+  assert.equal(iconFilePath('builtin:nope'), null);
+  assert.equal(iconFilePath('builtin:../missing'), null);
+  assert.equal(iconFilePath('builtin:Speaker'), null);
+  assert.equal(iconFilePath('/somewhere/x.png'), '/somewhere/x.png');
+  assert.match(await stamp('builtin:speaker'), /^\d+-\d+$/);
+  assert.equal(await stamp('builtin:nope'), 'missing');
+});
+
+await check('icon files: a built-in is watched in assets/icons/; an unknown built-in watches nothing — never "." (the working directory)', async () => {
+  const files = new IconFiles(() => {});
+  const stamps = await files.watchFiles(['builtin:speaker', 'builtin:nope']);
+  assert.match(stamps['builtin:speaker'], /^\d+-\d+$/);
+  assert.equal(stamps['builtin:nope'], 'missing');
+  // Private, read only here: which folders are watched is not observable from outside.
+  const watched = [...(files as unknown as { watchers: Map<string, unknown> }).watchers.keys()];
+  assert.deepEqual(watched, [path.join(REPO, 'assets/icons')]);
+  files.close();
 });
 
 await check('icon files: a watched icon renamed away, put back, or replaced is reported; unrelated writes are not', async () => {

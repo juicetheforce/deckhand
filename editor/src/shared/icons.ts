@@ -1,5 +1,30 @@
-/** The scheme main serves icon files on (src/main/icon-protocol.ts). Import-free: the renderer uses it. */
+import { BUILTIN_ICONS, type BuiltinIcon } from '../../../src/default-icons.js';
+
+/** The scheme main serves icon files on (src/main/icon-protocol.ts). No Node imports: the renderer uses this module. */
 export const ICON_SCHEME = 'deckhand-icon';
+
+/**
+ * How a key names a built-in icon: `builtin:<name>` (scope §7 C1 call 5).
+ * The same string as BUILTIN_PREFIX in src/builtin-icons.ts, which the renderer
+ * cannot import (it uses node:path); test/icon-picker.test.ts checks they agree.
+ */
+export const BUILTIN_PREFIX = 'builtin:';
+
+export function builtinRef(name: BuiltinIcon): string {
+  return `${BUILTIN_PREFIX}${name}`;
+}
+
+/**
+ * The built-in an icon names, or null when it is not a `builtin:` reference or
+ * names an icon this checkout does not ship. The editor lists built-ins from
+ * the checkout it runs from (scope §10), so an unknown name is a broken icon
+ * here, as on the deck — which also draws `missing` for it.
+ */
+export function builtinName(icon: string): BuiltinIcon | null {
+  if (!icon.startsWith(BUILTIN_PREFIX)) return null;
+  const name = icon.slice(BUILTIN_PREFIX.length);
+  return (BUILTIN_ICONS as readonly string[]).includes(name) ? (name as BuiltinIcon) : null;
+}
 
 /**
   * The URL the renderer uses to show an icon path from the config.

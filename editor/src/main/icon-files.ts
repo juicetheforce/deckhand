@@ -1,6 +1,6 @@
 import { promises as fs, watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
-import { expandPath } from '../../../src/config.js';
+import { iconFilePath } from './builtin-icons.js';
 
 /**
  * Keeps the editor's view of the icon files a page uses current.
@@ -28,7 +28,11 @@ export class IconFiles {
   /** Watch exactly these icon paths (as the config stores them), and return their stamps now. */
   async watchFiles(configPaths: string[]): Promise<Record<string, string>> {
     const wanted = [...new Set(configPaths)];
-    const folders = new Set(wanted.map((p) => path.dirname(expandPath(p))));
+    // A built-in name the checkout does not ship has no file and no folder to
+    // watch: it stamps as missing. (path.dirname of "builtin:x" would be ".",
+    // the editor's working directory.)
+    const files = wanted.map((p) => iconFilePath(p)).filter((f): f is string => f !== null);
+    const folders = new Set(files.map((f) => path.dirname(f)));
 
     for (const [folder, watcher] of this.watchers) {
       if (folders.has(folder)) continue;
@@ -81,10 +85,12 @@ export class IconFiles {
   }
 }
 
-/** A file's modification time and size, or "missing" — enough to tell one version of an icon from another. */
+/** A file's modification time and size, or "missing" — enough to tell one version of an icon from another. Takes builtin:<name> too. */
 export async function stamp(configPath: string): Promise<string> {
+  const file = iconFilePath(configPath);
+  if (file === null) return 'missing';
   try {
-    const st = await fs.stat(expandPath(configPath));
+    const st = await fs.stat(file);
     return `${Math.round(st.mtimeMs)}-${st.size}`;
   } catch {
     return 'missing';

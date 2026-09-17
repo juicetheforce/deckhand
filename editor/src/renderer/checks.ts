@@ -527,6 +527,20 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   });
   out.goodIconNotMissing = document.querySelectorAll('.key')[1]?.querySelector('.key-icon-missing') === null;
 
+  // 2b. Default icons (C2): key 0 has an action and no icon, so the grid draws
+  //     its built-in default, loaded through the icon protocol; the library's
+  //     rows draw theirs.
+  const loadedDefault = (index: number, name: string) => {
+    const img = document.querySelectorAll('.key')[index]?.querySelector<HTMLImageElement>('img.key-icon');
+    return !!img && !img.classList.contains('key-icon-missing') && decodeURIComponent(img.src).includes(`path=builtin:${name}`) && img.complete && img.naturalWidth > 0;
+  };
+  out.defaultInGrid = await until(() => loadedDefault(0, 'key-combo'));
+  out.libraryIconsLoaded = await until(() => {
+    const imgs = [...document.querySelectorAll<HTMLImageElement>('img.library-icon')];
+    return imgs.length > 0 && imgs.every((i) => i.complete && i.naturalWidth > 0);
+  });
+  out.libraryIcons = [...document.querySelectorAll<HTMLImageElement>('img.library-icon')].map((i) => i.dataset.icon);
+
   // 3. The Icon tab opens on the folder of the key's icon, marks it, lists subfolders first.
   await selectKey(1);
   await click('Icon');
@@ -715,6 +729,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
     return b !== undefined && b.icon === undefined && b.action?.keys === 'ctrl+2';
   });
   out.removeButtonGone = await until(() => button('Clear icon') === undefined);
+  out.clearedShowsDefault = await until(() => loadedDefault(1, 'key-combo'));
   out.pickerButtons = [...document.querySelectorAll('.picker-actions button')].map((b) => b.textContent);
   out.bands = [...(document.querySelector('.picker')?.children ?? [])].map((c) => c.className.split(' ')[0]);
   out.actionsBelowGrid = (() => {

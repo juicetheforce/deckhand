@@ -19,6 +19,7 @@ import {
   profileChoices,
   profileCoverage,
   reconcileSelection,
+  faceIcon,
   type Selection,
 } from './model.js';
 import { BulkStatus, KeyMenu } from './KeyMenu.js';
@@ -155,9 +156,10 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
 
   // Icon files on this page are watched while it is shown, so a file renamed
   // away or put back reaches the grid (the maintainer, 2026-09-15). The stamp goes in
-  // the icon URL; without it Chromium keeps the image it loaded first.
+  // the icon URL; without it Chromium keeps the image it loaded first. Default
+  // icons count: they are files too, in the checkout's assets/icons/.
   const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
-  const pageIcons = page ? [...new Set(Object.values(page.buttons).map((b) => b.icon).filter((i): i is string => typeof i === 'string'))] : [];
+  const pageIcons = page ? [...new Set(Object.values(page.buttons).map(faceIcon).filter((i): i is string => i !== null))] : [];
   const iconsKey = pageIcons.join('\u0000');
   useEffect(() => {
     let alive = true;

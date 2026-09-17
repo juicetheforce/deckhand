@@ -302,7 +302,8 @@ button:disabled {
 
 .library-entry {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 9px;
   width: 100%;
   padding: 6px 9px;
   border: 0;
@@ -335,6 +336,18 @@ button:disabled {
 
 .library-entry-later {
   opacity: 0.45;
+}
+
+.library-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.library-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .library-name {

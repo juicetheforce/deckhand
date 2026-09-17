@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { protocol } from 'electron';
-import { expandPath } from '../../../src/config.js';
+import { iconFilePath } from './builtin-icons.js';
 import { ICON_CONTENT_TYPES, ICON_SCHEME, iconExtension, isShownIcon } from '../shared/icons.js';
 
 /**
@@ -10,7 +10,8 @@ import { ICON_CONTENT_TYPES, ICON_SCHEME, iconExtension, isShownIcon } from '../
  * off to allow file:// would open far more than images. This serves only
  * files with an image extension Chromium can draw (ICON_CONTENT_TYPES, shared
  * with the icon picker); anything else is 404. Paths are as the config stores
- * them (~/... allowed).
+ * them: ~/... is allowed, and builtin:<name> is served from the checkout's
+ * assets/icons/ (src/main/builtin-icons.ts).
  */
 
 /** Must run before the app is ready. */
@@ -23,7 +24,8 @@ export function handleIconScheme(): void {
   protocol.handle(ICON_SCHEME, async (request) => {
     const requested = new URL(request.url).searchParams.get('path');
     if (!requested) return new Response('no path', { status: 400 });
-    const filePath = expandPath(requested);
+    const filePath = iconFilePath(requested);
+    if (filePath === null) return new Response('not a built-in icon', { status: 404 });
     if (!isShownIcon(filePath)) return new Response('not an image type the editor shows', { status: 404 });
     const type = ICON_CONTENT_TYPES[iconExtension(filePath)];
     try {

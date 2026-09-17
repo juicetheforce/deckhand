@@ -6,9 +6,11 @@
  * are read from `decks` geometry, never assumed.
  */
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
+import { defaultIconFor } from '../../../src/default-icons.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
+import { builtinRef } from '../shared/icons.js';
 import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
@@ -316,16 +318,35 @@ export interface KeyFace {
 }
 
 /**
+ * The icon a key shows, as the config would write it (scope §3, §10): its own
+ * icon — a path or `builtin:<name>` — when it has one; none when `icon` is
+ * `null`; otherwise its action's built-in default, from the same
+ * `defaultIconFor` the daemon draws with. A key with no action has no default.
+ *
+ * The editor has no mute or play state, so a state pair shows its resting
+ * half (`mic`, `speaker`, `play`), and now playing shows its idle icon. The
+ * deck is the truth (§10).
+ */
+export function faceIcon(button: ButtonDef | undefined): string | null {
+  if (!button) return null;
+  // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
+  if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
+  const action = button.action;
+  const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : {});
+  return name === null ? null : builtinRef(name);
+}
+
+/**
  * An approximation of the key face (scope §10: the grid is an approximation,
- * the deck is the truth). Live faces — clock, now playing, active output —
- * are not drawn.
+ * the deck is the truth). Live faces — clock time, track, active output — are
+ * not drawn; default icons are (faceIcon).
  */
 export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
   const size = iconSize ?? 72;
   return {
     background: button?.background ?? d.background,
-    icon: button?.icon ?? null,
+    icon: faceIcon(button),
     iconFit: button?.iconFit ?? d.iconFit,
     label: button?.label ?? null,
     labelColor: button?.labelColor ?? d.labelColor,

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { CATALOGUE, pendingReason, searchCatalogue, type CatalogueEntry } from './catalogue.js';
+import { builtinRef, iconUrl } from '../shared/icons.js';
+import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue, type CatalogueEntry } from './catalogue.js';
 
 /**
- * The action library: the whole §6 catalogue, grouped (scope §10). Design
+ * The action library: the whole §6 catalogue, grouped (scope §10), each row
+ * with its action's default icon (phase C2). Design
  * rules here all come from §2's discoverability point — an action nobody can
  * see is one nobody finds, and the maintainer never discovered profiles in
  * StreamController because nothing surfaced them:
@@ -113,6 +115,7 @@ export function Library({ onPick }: { onPick: (type: string) => void }) {
 }
 
 function Entry({ entry, tone, onPick }: { entry: CatalogueEntry; tone: string; onPick: (type: string) => void }) {
+  const icon = libraryIcon(entry.type);
   return (
     <button
       className={`library-entry tone-${tone}${entry.editable ? '' : ' library-entry-later'}`}
@@ -120,8 +123,16 @@ function Entry({ entry, tone, onPick }: { entry: CatalogueEntry; tone: string; o
       disabled={!entry.editable}
       onClick={() => onPick(entry.type)}
     >
-      <span className="library-name">{entry.name}</span>
-      <span className="library-description">{entry.description}</span>
+      {/* The same built-in the deck draws for a key with no icon of its own (scope §10). */}
+      {icon === null ? (
+        <span className="library-icon" aria-hidden="true" />
+      ) : (
+        <img className="library-icon" src={iconUrl(builtinRef(icon))} alt="" draggable={false} data-icon={icon} />
+      )}
+      <span className="library-text">
+        <span className="library-name">{entry.name}</span>
+        <span className="library-description">{entry.description}</span>
+      </span>
     </button>
   );
 }

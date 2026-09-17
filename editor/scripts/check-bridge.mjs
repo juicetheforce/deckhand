@@ -110,8 +110,8 @@ if (r && !r.error) {
     assert.equal(r.iconMissing, -1);
     assert.match(String(r.iconFetch), /^refused/, 'page script could read the icon bytes');
   });
-  check('icon protocol, by status: image 200, a .txt beside it 404, a missing image 404', () => {
-    assert.deepEqual(output.report.iconStatuses, { image: 200, textFile: 404, missing: 404 });
+  check('icon protocol, by status: image 200, a .txt beside it 404, a missing image 404; builtin:speaker 200, an unknown or climbing built-in 404', () => {
+    assert.deepEqual(output.report.iconStatuses, { image: 200, textFile: 404, missing: 404, builtin: 200, builtinUnknown: 404, builtinClimbing: 404 });
   });
   check('the preview reached the fake deck', () => {
     assert.ok((deck.writes.get(3) ?? 0) > writesBefore, 'key 3 was not written');

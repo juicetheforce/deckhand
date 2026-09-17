@@ -10,6 +10,8 @@
  * rest arrive in phase C (§7).
  */
 
+import { defaultIconFor, type BuiltinIcon } from '../../../src/default-icons.js';
+
 export interface CatalogueEntry {
   type: string;
   name: string;
@@ -127,6 +129,21 @@ export function searchCatalogue(query: string): Array<{ group: CatalogueGroup; e
     }
   }
   return found;
+}
+
+/**
+ * The icon a library row shows (scope §10: the library shows each action's
+ * default icon). The deck's own default, for a representative setting where
+ * the default depends on one — Go to page shows `forward`, Brightness
+ * `brightness-up`. Two library-side exceptions (docs/code-state.md, C2 notes):
+ * Clock and Now playing show `clock` and `now-playing`, though on the deck their
+ * face is the time or the track (§7 C1 call 4). Nothing has none: it is a spacer.
+ */
+export function libraryIcon(type: string): BuiltinIcon | null {
+  if (type === 'clock') return 'clock';
+  if (type === 'media.info') return 'now-playing';
+  if (type === 'brightness') return defaultIconFor({ type, delta: 10 });
+  return defaultIconFor({ type });
 }
 
 /** The catalogue name for an action type, or the type itself if it is not listed. */

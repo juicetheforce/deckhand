@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import type { ButtonDef } from '../../../src/types.js';
 import type { SystemShortcut } from '../shared/bridge.js';
 import type { ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
+import { builtinName } from '../shared/icons.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
@@ -707,9 +708,8 @@ function LabelStyle({
  * "deliberately none — label only", and a string is that file. They are shown
  * as one segmented control rather than two buttons, because **the state has to
  * be visible rather than inferred from which control was pressed last** (the maintainer,
- * 2026-09-16) — and until phase C's defaults land, Default and None draw the
- * same blank key on the hardware, so the sub-line is the only thing telling
- * them apart.
+ * 2026-09-16). On a key with no action, Default and None draw the same, so the
+ * sub-line says which it is.
  *
  * No segment is ever disabled (the maintainer, 2026-09-16): going from a file to
  * "deliberately none" must be one click, not clear-then-tick. Choosing None
@@ -763,14 +763,15 @@ function IconState({
 
       {state === 'default' && (
         <p className="muted small">
-          {/* Honest about the gap rather than implying an icon will appear. */}
-          No icon chosen. Nothing renders yet — built-in default icons arrive in phase C.
+          {button?.action
+            ? "No icon chosen, so the key draws its action's built-in icon."
+            : 'No icon chosen. A key with no action draws no icon.'}
         </p>
       )}
-      {state === 'none' && <p className="muted small">Label only — no icon, now or after phase C.</p>}
+      {state === 'none' && <p className="muted small">Label only — no icon.</p>}
       {state === 'file' && (
         <>
-          <p className="path">{path}</p>
+          <p className="path">{path !== null && builtinName(path) !== null ? `Built-in: ${builtinName(path)}` : path}</p>
           <button className="link-button" disabled={disabled} onClick={onBrowse}>
             Choose a different icon…
           </button>

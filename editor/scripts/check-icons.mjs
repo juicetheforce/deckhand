@@ -169,6 +169,11 @@ if (r && !r.error) {
   check('the grid draws a broken icon path with the built-in missing icon (loaded under the CSP); a good icon is not', () => {
     assert.deepEqual([r.missingInGrid, r.goodIconNotMissing], [true, true]);
   });
+  check("a key with an action and no icon draws its default in the grid; library rows draw theirs, all loaded", () => {
+    assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
+    assert.equal(r.libraryIcons.length, 17, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    assert.ok(r.libraryIcons.includes('press-release') && r.libraryIcons.includes('now-playing'), JSON.stringify(r.libraryIcons));
+  });
   check("the Icon tab opens on the key's icon's folder, subfolders first, the current icon marked", () => {
     // The field has a fixed height and elides the middle: root, then the last two folders.
     assert.equal(r.openedOn, '~/FFXIV/BEAR');
@@ -230,8 +235,8 @@ if (r && !r.error) {
     assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
     assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
   });
-  check('"Clear icon" removes only the icon, and is the picker\'s only action', () => {
-    assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]);
+  check('"Clear icon" removes only the icon, the grid falls back to the default, and it is the picker\'s only action', () => {
+    assert.deepEqual([r.removeKeepsAction, r.removeButtonGone, r.clearedShowsDefault], [true, true, true]);
     assert.deepEqual(r.pickerButtons, [], 'with no icon set there is nothing to clear, and nothing else');
   });
   check('with the deck connected there is no "not connected" note', () => assert.equal(r.notConnectedNoteShown, false));
@@ -257,7 +262,7 @@ check('bookmarks are kept in the editor preferences file, in the editor state di
   assert.deepEqual(r?.bookmarksAtEnd, ['★ FFXIV', '★ WOLF']);
 });
 check('nothing but config.json in the config directory', () => assert.deepEqual(configEntries, ['config.json']));
-check('no preview is left on the deck, and key 1 shows no icon, like key 0', () => {
+check('no preview is left on the deck, and key 1 draws its default, like key 0', () => {
   assert.deepEqual(daemon.sessions.get(SERIAL).previewKeys(), []);
   assert.equal(Buffer.compare(deck.images.get(1), deck.images.get(0)), 0);
 });
