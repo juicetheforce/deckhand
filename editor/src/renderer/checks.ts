@@ -435,6 +435,21 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await selectKey(4);
   [...document.querySelectorAll<HTMLButtonElement>('.library-entry')].find((b) => b.textContent?.startsWith('Hotkey'))!.click();
   out.libraryStartsListening = await until(listening);
+  // 7b. Leaving the Key tab while listening stops it: a key pressed on the Icon
+  //     tab is neither swallowed nor recorded, and coming back does not listen again.
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector-tab')].find((b) => b.textContent === 'Icon')!.click();
+  await until(() => document.querySelector('.picker') !== null);
+  const before = JSON.stringify((await saved())?.['4'] ?? null);
+  out.iconTabNotSwallowed = !press('KeyQ', { ctrlKey: true });
+  await sleep(300);
+  out.iconTabNotRecorded = JSON.stringify((await saved())?.['4'] ?? null) === before;
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector-tab')].find((b) => b.textContent === 'Key')!.click();
+  await until(() => document.querySelector('.label-input') !== null);
+  await sleep(200);
+  out.backOnKeyTabNotListening = !listening();
+  // And the library pick still starts listening after that.
+  [...document.querySelectorAll<HTMLButtonElement>('.library-entry')].find((b) => b.textContent?.startsWith('Hotkey'))!.click();
+  out.libraryListensAgain = await until(listening);
   await click('Cancel');
   await until(() => !listening());
 

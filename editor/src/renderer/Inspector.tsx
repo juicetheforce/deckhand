@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ButtonDef } from '../../../src/types.js';
-import type { SystemShortcut } from '../shared/bridge.js';
-import type { ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
-import { builtinName } from '../shared/icons.js';
-import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
+import type { ButtonLocation, Edit } from '../shared/edits.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
+import { HotkeyForm } from './inspector/HotkeyForm.js';
+import { IconState } from './inspector/IconState.js';
+import { LabelField, LabelStyle } from './inspector/LabelFields.js';
+import { PageAction } from './inspector/PageAction.js';
+import { ProfileAction } from './inspector/ProfileAction.js';
 import { actionEditable, clipboardSummary, describeAction, keyKind, type Choice } from './model.js';
-import { keyCapture } from './key-capture.js';
 import type { Bulk } from './useBulk.js';
 
 interface Props {
@@ -34,17 +35,10 @@ interface Props {
 
 type Tab = 'key' | 'icon';
 
-type Mode =
-  | { kind: 'view' }
-  | { kind: 'listening'; held: Modifier[]; message: string | null }
-  | { kind: 'typing'; text: string; error: string | null }
-  | { kind: 'confirm'; combo: string; shortcut: SystemShortcut };
-
 /**
- * The selected key (scope §10): the hotkey inspector — record by pressing
- * the combo, Type manually, Re-record / Clear hotkey / Clear button — and the
- * label. Other action types are shown read-only in phase A, label still
- * editable.
+ * The selected key (scope §10): a form for its action (one file per action in
+ * inspector/), its label and icon state, and Clear button. An action with no
+ * form, or carrying settings its form has no control for, is shown read-only.
  */
 export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
@@ -138,7 +132,6 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
 }
 
 function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
-  const [mode, setMode] = useState<Mode>({ kind: 'view' });
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -151,7 +144,8 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   const [chosen, setChosen] = useState<string | null>(() => button?.action?.type ?? null);
   const type = chosen ?? button?.action?.type ?? 'hotkey';
   const editable = actionEditable(button, type);
-  const combo = button?.action?.type === 'hotkey' && typeof button.action.keys === 'string' ? button.action.keys : null;
+  // A library pick of Hotkey asks the hotkey form to start listening.
+  const [listenRequest, setListenRequest] = useState(false);
 
   // A library pick configures the key as that action (not on first render).
   const firstToken = useRef(pick?.token ?? 0);
@@ -160,93 +154,14 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     if (!actionEditable(button, pick.type)) return;
     setChosen(pick.type);
     // Hotkey is the one that starts doing something at once: it listens.
-    if (pick.type === 'hotkey') setMode({ kind: 'listening', held: [], message: null });
+    if (pick.type === 'hotkey') setListenRequest(true);
   }, [pick?.token]);
-
-  // Listening swallows every key; it must never carry on out of sight on another tab.
-  useEffect(() => {
-    if (tab !== 'key') setMode({ kind: 'view' });
-  }, [tab]);
-
-  // Is the saved combo a KDE shortcut? Checked whenever it changes.
-  const [savedShortcut, setSavedShortcut] = useState<SystemShortcut | null>(null);
-  useEffect(() => {
-    let alive = true;
-    setSavedShortcut(null);
-    if (combo) void window.deckhand.findSystemShortcut(combo).then((s) => alive && setSavedShortcut(s));
-    return () => {
-      alive = false;
-    };
-  }, [combo]);
 
   const run = async (edit: Edit) => {
     const failure = await apply(edit);
     setError(failure);
     return failure === null;
   };
-
-  /** Save a combo, unless it is a KDE shortcut and has not been confirmed. */
-  const offer = async (next: string, confirmed = false) => {
-    if (!confirmed) {
-      const shortcut = await window.deckhand.findSystemShortcut(next);
-      if (shortcut) {
-        setMode({ kind: 'confirm', combo: next, shortcut });
-        return;
-      }
-    }
-    if (await run({ kind: 'setAction', at, action: { type: 'hotkey', keys: next } })) setMode({ kind: 'view' });
-  };
-
-  // Listening: every key event is read and swallowed before anything else sees it.
-  useEffect(() => {
-    if (mode.kind !== 'listening') return;
-    const onKey = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.type === 'keyup') {
-        const released = captureKey(event);
-        if (released.kind === 'modifier') {
-          setMode((m) => (m.kind === 'listening' ? { ...m, held: m.held.filter((h) => h !== released.modifier) } : m));
-        }
-        return;
-      }
-      if (event.repeat) return;
-      // Every key records, Esc included — it is a real binding (close a
-      // window, open a menu). Only the Cancel button stops listening (the maintainer,
-      // 2026-09-15).
-      const captured = captureKey(event);
-      if (captured.kind === 'modifier') {
-        // Shown by code: a modifier's own keydown may not carry its flag (Meta's does not, scope §10).
-        setMode((m) => (m.kind === 'listening' && !m.held.includes(captured.modifier) ? { ...m, held: [...m.held, captured.modifier] } : m));
-      } else if (captured.kind === 'unknown') {
-        setMode((m) => (m.kind === 'listening' ? { ...m, message: `That key (${captured.code}) has no name Deckhand can send. Use Type manually.` } : m));
-      } else {
-        void offer(captured.combo);
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('keyup', onKey, true);
-    // The grid's bulk shortcuts stand down while this records (key-capture.ts).
-    keyCapture.active = true;
-    return () => {
-      keyCapture.active = false;
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('keyup', onKey, true);
-    };
-    // Re-subscribed only when the mode changes. `offer` from this render is
-    // enough: it reads `at`, which cannot change — the component is keyed by it.
-  }, [mode.kind]);
-
-  const submitTyped = () => {
-    if (mode.kind !== 'typing') return;
-    try {
-      void offer(canonicalCombo(mode.text));
-    } catch (err) {
-      setMode({ ...mode, error: (err as Error).message });
-    }
-  };
-
-  const remapped = (c: string) => LAYOUT_REMAPPED_KEYS.has(c.split('+').pop()!);
 
   return (
     <aside className="inspector glass" aria-label="Inspector">
@@ -272,92 +187,11 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         <ProfileAction at={at} action={button?.action} profiles={profiles} coverage={coverage} disabled={editingBlocked} run={run} />
       )}
 
-      {tab === 'key' && (editable && type === 'hotkey' ? (
-        <section className="inspector-section">
-          <h3 className="section-heading">Hotkey</h3>
+      {tab === 'key' && editable && type === 'hotkey' && (
+        <HotkeyForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
+      )}
 
-          {mode.kind === 'view' && (
-            <>
-              {combo ? <Keycaps combo={combo} /> : <p className="muted">No hotkey.</p>}
-              {combo && savedShortcut && (
-                <p className="warning-text">
-                  {keycaps(combo).join('+')} is a system shortcut ({savedShortcut.component}).
-                </p>
-              )}
-              {combo && remapped(combo) && <RemapNote combo={combo} />}
-              <div className="button-row">
-                <button className="primary" disabled={editingBlocked} onClick={() => setMode({ kind: 'listening', held: [], message: null })}>
-                  {combo ? 'Re-record' : 'Record hotkey'}
-                </button>
-                <button disabled={editingBlocked} onClick={() => setMode({ kind: 'typing', text: combo ?? '', error: null })}>
-                  Type manually
-                </button>
-                {combo && (
-                  <button disabled={editingBlocked} onClick={() => void run({ kind: 'removeAction', at })}>
-                    Clear hotkey
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-
-          {mode.kind === 'listening' && (
-            <div className="listening" role="status">
-              <p>Press the key combination…</p>
-              <div className="keycaps">
-                {MODIFIER_ORDER.filter((m) => mode.held.includes(m)).map((m) => (
-                  <kbd key={m}>{keycaps(m)[0]}</kbd>
-                ))}
-                <span className="listening-dot">listening</span>
-              </div>
-              {mode.message && <p className="warning-text">{mode.message}</p>}
-              <p className="muted small">Every key records, Esc included — click Cancel to stop. Combos KDE uses for itself never arrive here — use Type manually.</p>
-              <div className="button-row">
-                <button onClick={() => setMode({ kind: 'typing', text: '', error: null })}>Type manually</button>
-                <button onClick={() => setMode({ kind: 'view' })}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {mode.kind === 'typing' && (
-            <div className="typing">
-              <input
-                autoFocus
-                aria-label="Key combination"
-                placeholder="e.g. ctrl+1"
-                value={mode.text}
-                onChange={(e) => setMode({ kind: 'typing', text: e.target.value, error: null })}
-                onKeyDown={(e: ReactKeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === 'Enter') submitTyped();
-                  if (e.key === 'Escape') setMode({ kind: 'view' });
-                }}
-              />
-              {mode.error && <p className="field-error">{mode.error}</p>}
-              <p className="muted small">Names like ctrl, shift, alt, meta, f1–f24, a–z, 0–9, - = [ ] ; ' ` , . /, space, enter, esc, up, pageup, kp1, mute, playpause — joined with +.</p>
-              <div className="button-row">
-                <button className="primary" onClick={submitTyped}>
-                  Save
-                </button>
-                <button onClick={() => setMode({ kind: 'view' })}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {mode.kind === 'confirm' && (
-            <div className="confirm" role="alertdialog" aria-label="System shortcut">
-              <p>
-                {keycaps(mode.combo).join('+')} is a system shortcut ({mode.shortcut.component}). Use it anyway?
-              </p>
-              <div className="button-row">
-                <button className="primary" onClick={() => void offer(mode.combo, true)}>
-                  Use it anyway
-                </button>
-                <button onClick={() => setMode({ kind: 'listening', held: [], message: null })}>Choose another</button>
-              </div>
-            </div>
-          )}
-        </section>
-      ) : editable && (type === 'page' || type === 'profile') ? null : (
+      {tab === 'key' && !(editable && FORMS.has(type)) && (
         <section className="inspector-section">
           <h3 className="section-heading">Action</h3>
           <dl className="facts">
@@ -369,7 +203,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
           <p className="muted">Not configurable in the editor yet. As saved:</p>
           <pre className="json">{JSON.stringify({ action: button?.action, onRelease: button?.onRelease }, null, 2)}</pre>
         </section>
-      ))}
+      )}
 
       {tab === 'key' && (
         <section className="inspector-section">
@@ -403,380 +237,5 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   );
 }
 
-function Keycaps({ combo }: { combo: string }) {
-  return (
-    <div className="keycaps">
-      {keycaps(combo).map((cap, i) => (
-        <kbd key={i}>{cap}</kbd>
-      ))}
-    </div>
-  );
-}
-
-function RemapNote({ combo }: { combo: string }) {
-  const key = keycaps(combo).pop();
-  return <p className="muted small">{key} may not reach the game: the keyboard layout can turn it into another key.</p>;
-}
-
-/** Saves when typing pauses, on Enter, and on leaving the field. An empty label removes it. */
-function LabelField({ label, disabled, onSave }: { label: string; disabled: boolean; onSave: (label: string) => void }) {
-  const [text, setText] = useState(label);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const focused = useRef(false);
-  // A label changed elsewhere (a reload, an outside edit) shows here — but not
-  // while typing, when the saved value is just this field's own autosave.
-  useEffect(() => {
-    if (!focused.current) setText(label);
-  }, [label]);
-  const save = (value: string) => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    if (value !== label) onSave(value);
-  };
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  return (
-    <input
-      className="label-input"
-      aria-label="Label"
-      placeholder="No label"
-      value={text}
-      disabled={disabled}
-      onChange={(e) => {
-        const value = e.target.value;
-        setText(value);
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => save(value), 400);
-      }}
-      onFocus={() => (focused.current = true)}
-      onBlur={() => {
-        focused.current = false;
-        save(text);
-      }}
-      onKeyDown={(e) => e.key === 'Enter' && save(text)}
-    />
-  );
-}
-
-/**
- * "Go to page" (scope §10): a plain list of page names in this deck's layout,
- * not the mockups' thumbnails, plus Back. The target is written as the page's
- * ID, so renaming a page never breaks the link (scope §5) — but a link
- * hand-written as a name is still recognised here, since that is how the
- * daemon resolves it.
- */
-function PageAction({
-  at,
-  action,
-  pages,
-  disabled,
-  run,
-}: {
-  at: ButtonLocation;
-  action: ButtonDef['action'];
-  pages: Choice[];
-  disabled: boolean;
-  run: (edit: Edit) => Promise<boolean>;
-}) {
-  const back = action?.type === 'page' && action.back === true;
-  const to = action?.type === 'page' && typeof action.to === 'string' ? action.to : null;
-  const target = to === null ? null : (pages.find((p) => p.id === to) ?? pages.find((p) => p.label === to))?.id ?? null;
-  const missing = to !== null && target === null;
-
-  return (
-    <section className="inspector-section">
-      <h3 className="section-heading">Go to page</h3>
-      <div className="button-row">
-        <button
-          className={back ? '' : 'primary'}
-          disabled={disabled || !back}
-          onClick={() => void run({ kind: 'removeAction', at })}
-        >
-          A page
-        </button>
-        <button
-          className={back ? 'primary' : ''}
-          disabled={disabled || back}
-          onClick={() => void run({ kind: 'setAction', at, action: { type: 'page', back: true } })}
-        >
-          Back
-        </button>
-      </div>
-
-      {back ? (
-        <p className="muted small">Returns to whatever page this deck came from. Nothing to choose.</p>
-      ) : (
-        <>
-          {pages.length === 0 && <p className="muted small">This deck has no other pages in this profile yet.</p>}
-          <ul className="target-list">
-            {pages.map((p) => (
-              <li key={p.id}>
-                <button
-                  className={p.id === target ? 'target target-selected' : 'target'}
-                  disabled={disabled}
-                  onClick={() => void run({ kind: 'setAction', at, action: { type: 'page', to: p.id } })}
-                >
-                  {p.label}
-                  {p.id === at.page ? ' — this page' : ''}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {missing && (
-            <p className="warning-text">
-              This key points at “{to}”, which is not a page on this deck. Pressing it does nothing.
-            </p>
-          )}
-          {target === null && !missing && <p className="muted small">Pick the page this key should show.</p>}
-        </>
-      )}
-    </section>
-  );
-}
-
-/**
- * "Switch profile": a list of profiles, each saying which decks it changes.
- * §2 records that the maintainer never discovered profiles in StreamController, so the
- * key that switches them has to state plainly that it moves both decks — and
- * warn when one it does not cover is plugged in, which keeps its old layout
- * (scope §3).
- */
-function ProfileAction({
-  at,
-  action,
-  profiles,
-  coverage,
-  disabled,
-  run,
-}: {
-  at: ButtonLocation;
-  action: ButtonDef['action'];
-  profiles: Choice[];
-  coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
-  disabled: boolean;
-  run: (edit: Edit) => Promise<boolean>;
-}) {
-  const to = action?.type === 'profile' && typeof action.to === 'string' ? action.to : null;
-  const target = to === null ? null : (profiles.find((p) => p.id === to) ?? profiles.find((p) => p.label === to))?.id ?? null;
-  const uncovered = target === null ? [] : coverage(target).uncoveredConnected;
-
-  return (
-    <section className="inspector-section">
-      <h3 className="section-heading">Switch profile</h3>
-      <ul className="target-list">
-        {profiles.map((p) => {
-          const { covered } = coverage(p.id);
-          return (
-            <li key={p.id}>
-              <button
-                className={p.id === target ? 'target target-selected' : 'target'}
-                disabled={disabled}
-                onClick={() => void run({ kind: 'setAction', at, action: { type: 'profile', to: p.id } })}
-              >
-                <span className="target-name">
-                  {p.label}
-                  {p.id === at.profile ? ' — the one you are editing' : ''}
-                </span>
-                <span className="target-note">
-                  {covered.length === 0 ? 'covers no deck' : `changes ${covered.join(' and ')}`}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {to !== null && target === null && (
-        <p className="warning-text">This key points at “{to}”, which is not a profile. Pressing it does nothing.</p>
-      )}
-      {uncovered.length > 0 && (
-        <p className="warning-text">
-          {uncovered.join(' and ')} {uncovered.length === 1 ? 'is' : 'are'} plugged in but not covered by this profile, so{' '}
-          {uncovered.length === 1 ? 'it keeps' : 'they keep'} whatever {uncovered.length === 1 ? 'layout it has' : 'layouts they have'}.
-        </p>
-      )}
-      {target === null && to === null && <p className="muted small">Pick the profile this key should switch to.</p>}
-    </section>
-  );
-}
-
-const POSITIONS: ReadonlyArray<{ value: 'top' | 'center' | 'bottom'; label: string }> = [
-  { value: 'top', label: 'Top' },
-  { value: 'center', label: 'Centre' },
-  { value: 'bottom', label: 'Bottom' },
-];
-
-/**
- * Where the label sits, what colour it is and how big — all three already
- * supported by `src/render.ts` and the v0.1 schema; this is the UI that was
- * missing. A field the key does not set is shown as inherited from `defaults`
- * in config, and "Reset" removes it again rather than writing the default
- * value in, so the config diff stays small and a later change to `defaults`
- * still reaches the key.
- */
-function LabelStyle({
-  at,
-  button,
-  defaults,
-  disabled,
-  run,
-}: {
-  at: ButtonLocation;
-  button: ButtonDef | undefined;
-  defaults: { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number };
-  disabled: boolean;
-  run: (edit: Edit) => Promise<boolean>;
-}) {
-  const position = button?.labelPosition ?? defaults.labelPosition;
-  const colour = button?.labelColor ?? defaults.labelColor;
-  const size = button?.labelSize ?? defaults.labelSize;
-  const set = (field: 'labelPosition' | 'labelColor' | 'labelSize', value: string | number | null) =>
-    void run({ kind: 'setLabelStyle', at, field, value });
-  const inherited = (field: 'labelPosition' | 'labelColor' | 'labelSize') => button?.[field] === undefined;
-
-  return (
-    <div className="label-style">
-      <div className="label-style-row">
-        <span className="label-style-name">Position</span>
-        <div className="segmented" role="group" aria-label="Label position">
-          {POSITIONS.map((p) => (
-            <button
-              key={p.value}
-              className={p.value === position ? 'segment segment-selected' : 'segment'}
-              disabled={disabled}
-              aria-pressed={p.value === position}
-              onClick={() => set('labelPosition', p.value)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="label-style-row">
-        <span className="label-style-name">Colour</span>
-        <input
-          type="color"
-          aria-label="Label colour"
-          className="colour-well"
-          value={/^#[0-9a-fA-F]{6}$/.test(colour) ? colour : '#ffffff'}
-          disabled={disabled}
-          onChange={(e) => set('labelColor', e.target.value)}
-        />
-        <span className="label-style-value">{colour}</span>
-      </div>
-
-      <div className="label-style-row">
-        <span className="label-style-name">Size</span>
-        <input
-          type="number"
-          aria-label="Label size"
-          className="size-input"
-          min={6}
-          max={72}
-          value={size}
-          disabled={disabled}
-          onChange={(e) => {
-            const next = Number(e.target.value);
-            if (Number.isFinite(next) && next > 0) set('labelSize', next);
-          }}
-        />
-        <span className="label-style-value">px</span>
-      </div>
-
-      <div className="label-style-row">
-        <button
-          className="link-button"
-          disabled={disabled || (inherited('labelPosition') && inherited('labelColor') && inherited('labelSize'))}
-          title="Remove these from the key, so it follows the defaults in config.json again"
-          onClick={() => {
-            set('labelPosition', null);
-            set('labelColor', null);
-            set('labelSize', null);
-          }}
-        >
-          Reset to defaults
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * A button's icon has three states and they are not interchangeable
- * (scope §10): absent means "use the action's built-in default", null means
- * "deliberately none — label only", and a string is that file. They are shown
- * as one segmented control rather than two buttons, because **the state has to
- * be visible rather than inferred from which control was pressed last** (the maintainer,
- * 2026-09-16). On a key with no action, Default and None draw the same, so the
- * sub-line says which it is.
- *
- * No segment is ever disabled (the maintainer, 2026-09-16): going from a file to
- * "deliberately none" must be one click, not clear-then-tick. Choosing None
- * with a file set discards the path, which is what was asked for.
- */
-function IconState({
-  button,
-  disabled,
-  onChoose,
-  onBrowse,
-}: {
-  button: ButtonDef | undefined;
-  disabled: boolean;
-  onChoose: (icon: IconChoice) => void;
-  onBrowse: () => void;
-}) {
-  // Absent, null and a string are three different things; `in` distinguishes
-  // the first two, which `?.` and `??` cannot.
-  const hasKey = button !== undefined && 'icon' in button;
-  const path = typeof button?.icon === 'string' ? button.icon : null;
-  const state: IconChoice['kind'] = path !== null ? 'file' : hasKey ? 'none' : 'default';
-
-  return (
-    <div className="icon-state">
-      <div className="segmented" role="group" aria-label="Icon">
-        <button
-          className={state === 'default' ? 'segment segment-selected' : 'segment'}
-          aria-pressed={state === 'default'}
-          disabled={disabled}
-          onClick={() => onChoose({ kind: 'default' })}
-        >
-          Default
-        </button>
-        <button
-          className={state === 'none' ? 'segment segment-selected' : 'segment'}
-          aria-pressed={state === 'none'}
-          disabled={disabled}
-          onClick={() => onChoose({ kind: 'none' })}
-        >
-          None
-        </button>
-        <button
-          className={state === 'file' ? 'segment segment-selected' : 'segment'}
-          aria-pressed={state === 'file'}
-          disabled={disabled}
-          onClick={onBrowse}
-        >
-          This file
-        </button>
-      </div>
-
-      {state === 'default' && (
-        <p className="muted small">
-          {button?.action
-            ? "No icon chosen, so the key draws its action's built-in icon."
-            : 'No icon chosen. A key with no action draws no icon.'}
-        </p>
-      )}
-      {state === 'none' && <p className="muted small">Label only — no icon.</p>}
-      {state === 'file' && (
-        <>
-          <p className="path">{path !== null && builtinName(path) !== null ? `Built-in: ${builtinName(path)}` : path}</p>
-          <button className="link-button" disabled={disabled} onClick={onBrowse}>
-            Choose a different icon…
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
+/** Action types with a form in inspector/. Anything else is shown read-only, as saved. */
+const FORMS: ReadonlySet<string> = new Set(['hotkey', 'page', 'profile']);

@@ -89,6 +89,9 @@ if (r && !r.error) {
   check('a key with no name says so', () => assert.equal(r.unknownKeyMessage, true));
   check('label saves; Clear hotkey keeps the label', () => assert.deepEqual([r.labelSaved, r.clearHotkeyKeepsLabel], [true, true]));
   check("the library's Hotkey entry starts listening", () => assert.equal(r.libraryStartsListening, true));
+  check('leaving the Key tab stops listening — a key there is neither swallowed nor recorded — and coming back does not listen again; the library still starts it', () => {
+    assert.deepEqual([r.iconTabNotSwallowed, r.iconTabNotRecorded, r.backOnKeyTabNotListening, r.libraryListensAgain], [true, true, true, true]);
+  });
   check('media and sequence keys are read-only; the media key label still saves', () => {
     assert.deepEqual([r.mediaReadOnly, r.mediaLabelSaved, r.sequenceReadOnly], [true, true, true]);
   });
