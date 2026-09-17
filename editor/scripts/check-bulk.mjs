@@ -154,6 +154,31 @@ if (r && !r.error) {
     assert.equal(r.copyToDevice.deckStayed, true, 'copying to a deck switched the editor to it');
   });
 
+  check('dragging a key onto an occupied key swaps the two, drawn dimmed with a dashed target, and selects the moved key', () => {
+    assert.deepEqual(r.swap.whileDragging, { dragging: [0], target: [1] });
+    assert.deepEqual(r.swap.after, { dragging: [], target: [] });
+    assert.deepEqual(r.swap.key0, SPRINT);
+    assert.deepEqual(r.swap.key1, JUMP);
+    assert.deepEqual(r.swap.selected, [1]);
+  });
+
+  check('dragging onto an empty key moves it', () => {
+    assert.deepEqual(r.moveToEmpty, { key1: null, key10: JUMP });
+  });
+
+  check('after a drop on another key, the next click still selects', () => {
+    assert.equal(r.clickAfterDrop, true);
+  });
+
+  check('a press that moves less than the threshold is a click, not a drag', () => {
+    assert.deepEqual(r.smallMoveIsClick, { selected: true, dragDrawn: { dragging: [], target: [] } });
+  });
+
+  check('Escape cancels a drag without clearing the selection, and an empty key cannot be dragged', () => {
+    assert.deepEqual(r.escapeCancels, { unchanged: true, selected: [0], drawn: { dragging: [], target: [] } });
+    assert.equal(r.emptyNotDragged, true);
+  });
+
   check('Ctrl+A selects every key on the deck, and Escape selects none', () => {
     assert.equal(r.selectAll, 32);
     assert.equal(r.afterEscape, 0);
@@ -164,11 +189,11 @@ const saved = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 
 check('the saved file holds exactly what the operations produced, and nothing else changed', () => {
   const expected = structuredClone(CONFIG);
   expected.profiles.default.layouts[XL].pages.main.buttons = {
-    0: JUMP,
-    1: SPRINT,
+    0: SPRINT, // swapped with key 1 by dragging, and key 1 then dragged to 10
     2: TO_SECOND,
     3: { ...JUMP, action: { type: 'hotkey', keys: 'esc' } },
     7: FAR,
+    10: JUMP,
     24: LOW,
   };
   expected.profiles.default.layouts[XL].pages.second.buttons[1] = SPRINT;

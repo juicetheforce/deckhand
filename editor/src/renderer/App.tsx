@@ -285,6 +285,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
                 iconStamps={iconStamps}
                 selectedKeys={selection.keys}
                 onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
+                onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}
                 onKeyMenu={(index, x, y) => {
                   // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
                   if (!selection.keys.includes(index)) selectKeys([index]);

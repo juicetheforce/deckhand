@@ -1165,7 +1165,67 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
     deckStayed: document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value === 'BULK-XL' && document.querySelectorAll('.key').length === 32,
   };
 
-  // 11. Ctrl+A selects every key; Escape selects none.
+  // 11. Key onto key. Pointer events go where a real pointer's would: the
+  //     element under it, bubbling to window.
+  const centre = (index: number) => {
+    const r = key(index).getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+  const pointer = (type: string, x: number, y: number) =>
+    (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(
+      new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0, isPrimary: true }),
+    );
+  const dragKey = async (from: number, to: number, before?: () => void) => {
+    const a = centre(from);
+    const b = centre(to);
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await sleep(50);
+    before?.();
+    pointer('pointerup', b.x, b.y);
+  };
+  const drawn = () => ({
+    dragging: [...document.querySelectorAll('.key')].flatMap((k, i) => (k.classList.contains('key-dragging') ? [i] : [])),
+    target: [...document.querySelectorAll('.key')].flatMap((k, i) => (k.classList.contains('key-drop-target') ? [i] : [])),
+  });
+
+  // a. Onto an occupied key: the two swap, and the moved button is selected.
+  let whileDragging: unknown = null;
+  await dragKey(0, 1, () => (whileDragging = drawn()));
+  await until(async () => (await buttons())?.['1']?.label === 'Jump');
+  await until(() => selected().join() === '1');
+  out.swap = { whileDragging, after: drawn(), key0: (await buttons())?.['0'], key1: (await buttons())?.['1'], selected: selected() };
+
+  // b. Onto an empty key: a move.
+  await dragKey(1, 10);
+  await until(async () => (await buttons())?.['10'] !== undefined);
+  out.moveToEmpty = { key1: (await buttons())?.['1'] ?? null, key10: (await buttons())?.['10'] };
+
+  // c. A click straight after dropping elsewhere still selects (the post-drag click is not left pending).
+  click(2);
+  out.clickAfterDrop = await until(() => selected().join() === '2');
+
+  // d. Under the threshold it is a click, not a drag; the browser's click follows on the same key.
+  const small = centre(0);
+  pointer('pointerdown', small.x, small.y);
+  pointer('pointermove', small.x + 3, small.y);
+  pointer('pointerup', small.x + 3, small.y);
+  click(0);
+  out.smallMoveIsClick = { selected: await until(() => selected().join() === '0'), dragDrawn: drawn() };
+
+  // e. Escape during a drag cancels it, and does not clear the selection.
+  const keysBeforeCancel = JSON.stringify(await buttons());
+  await dragKey(0, 5, () => press('Escape'));
+  await sleep(600);
+  out.escapeCancels = { unchanged: JSON.stringify(await buttons()) === keysBeforeCancel, selected: selected(), drawn: drawn() };
+
+  // f. An empty key cannot be dragged.
+  await dragKey(12, 0);
+  await sleep(600);
+  out.emptyNotDragged = JSON.stringify(await buttons()) === keysBeforeCancel;
+
+  // 12. Ctrl+A selects every key; Escape selects none.
   press('KeyA', { ctrlKey: true });
   await until(() => selected().length === 32);
   out.selectAll = selected().length;

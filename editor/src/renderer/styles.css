@@ -1713,3 +1713,14 @@ button:disabled {
 .bulk-clipboard .link-button {
   margin-left: auto;
 }
+
+/* Key onto key (M4 phase B3): a dimmed dragged key and a dashed drop target, as mockup 2a draws them. */
+
+.key-dragging {
+  opacity: 0.4;
+}
+
+.key.key-drop-target {
+  border: 2px dashed var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

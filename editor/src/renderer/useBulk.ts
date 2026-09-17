@@ -7,6 +7,7 @@ import {
   duplicateKeys,
   pasteAnchor,
   placeClipboard,
+  swapKeys,
   type ButtonWrite,
   type Clipboard,
 } from '../shared/bulk.js';
@@ -34,6 +35,8 @@ export interface Bulk {
   paste: () => Promise<void>;
   duplicate: () => Promise<void>;
   clear: () => Promise<void>;
+  /** Key onto key: move a button, swapping with whatever is at `to`; the moved button becomes the selection. */
+  move: (from: number, to: number) => Promise<void>;
   /** Copy the selected keys to the same positions on another page, of this deck or another in this profile. */
   copyTo: (serial: string, page: string) => Promise<void>;
 }
@@ -134,6 +137,18 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       const deckName = deckChoices(config, selection.profile, daemon).find((d) => d.id === serial)?.label ?? serial;
       // The selection, the clipboard and the decks stay as they were: nothing here is shown until you go and look.
       setMessage(placementMessage('Copied', placement, serial === selection.serial ? pageName : `${deckName} › ${pageName}`));
+    },
+
+    move: async (from, to) => {
+      if (!ready || from === to) return;
+      const failure = await put(swapKeys(page, from, to));
+      if (failure !== null) {
+        setMessage(`Could not move the key: ${failure}`);
+        return;
+      }
+      setMessage(null);
+      // The inspector follows the button to where it now is.
+      selectKeys([to]);
     },
 
     clear: async () => {

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
@@ -16,14 +16,105 @@ interface Props {
   onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   /** A right-click, at window coordinates, for the bulk menu. */
   onKeyMenu: (index: number, x: number, y: number) => void;
+  /** A key dropped on another key: move it, swapping with whatever is there. Null when editing is blocked. */
+  onMoveKey: ((from: number, to: number) => void) | null;
 }
 
+/** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
+const DRAG_THRESHOLD_PX = 6;
+
 /**
- * The page's keys, laid out from the daemon's geometry: each key at the row
- * and column the deck reports, never an assumed row-major order (scope §7,
- * "decks"). Key faces are a CSS approximation; the deck is the truth (§10).
+ * Key onto key (scope §10): drag a button and drop it on another key to move
+ * it; an occupied key swaps. Only the key under the pointer moves, even with
+ * several selected — a block of keys moves by Copy, Paste and Clear.
+ *
+ * Pointer events rather than HTML drag-and-drop, the same as the pane
+ * dividers: the key is found under the pointer with elementFromPoint, so
+ * nothing depends on the platform's drag-and-drop path. Escape cancels.
  */
-export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu }: Props) {
+function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
+  const press = useRef<{ from: number; pointerId: number; x: number; y: number } | null>(null);
+  // The drag as drawn, and a ref to the same, for the window listeners below.
+  const [drag, setDragState] = useState<{ from: number; over: number | null } | null>(null);
+  const dragRef = useRef(drag);
+  const setDrag = (next: { from: number; over: number | null } | null) => {
+    dragRef.current = next;
+    setDragState(next);
+  };
+  const moveRef = useRef(onMoveKey);
+  moveRef.current = onMoveKey;
+  // A drag that ends back on its own key still produces a click there; it is not a click.
+  const suppressClick = useRef(false);
+
+  // Added once for the grid's lifetime. Each returns at once unless a key was pressed.
+  useEffect(() => {
+    const keyUnder = (x: number, y: number): number | null => {
+      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key-index]');
+      return el ? Number(el.dataset.keyIndex) : null;
+    };
+    const move = (e: PointerEvent) => {
+      const p = press.current;
+      if (!p || e.pointerId !== p.pointerId) return;
+      if (!dragRef.current && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD_PX) return;
+      const over = keyUnder(e.clientX, e.clientY);
+      if (dragRef.current?.over !== over || dragRef.current?.from !== p.from) setDrag({ from: p.from, over });
+    };
+    const up = (e: PointerEvent) => {
+      const p = press.current;
+      if (!p || e.pointerId !== p.pointerId) return;
+      press.current = null;
+      if (!dragRef.current) return; // never passed the threshold: an ordinary click
+      const over = keyUnder(e.clientX, e.clientY);
+      // The browser clicks the element where the press and the release share an
+      // ancestor: the key itself only if the drag ended back on it. Released
+      // anywhere else, no key is clicked, and a flag left set would swallow the
+      // next real click.
+      suppressClick.current = over === p.from;
+      setDrag(null);
+      if (over !== null && over !== p.from) moveRef.current?.(p.from, over);
+    };
+    const cancel = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !press.current) return;
+      // Cancelling a drag must not also clear the selection. Two guards, and
+      // either alone holds (a check break removed each in turn; only removing
+      // both failed): stopping it here keeps it from the grid's bubble-phase
+      // shortcuts, and they also ignore an event already prevented.
+      e.stopPropagation();
+      e.preventDefault();
+      press.current = null;
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    window.addEventListener('keydown', cancel, true);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      window.removeEventListener('keydown', cancel, true);
+    };
+  }, []);
+
+  return {
+    drag,
+    /** Start watching a press on a key that holds a button. */
+    onPointerDown: (index: number, occupied: boolean, e: ReactPointerEvent) => {
+      if (!onMoveKey || !occupied || e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
+      press.current = { from: index, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      suppressClick.current = false;
+    },
+    /** True once for the click that ends a drag. */
+    takeSuppressedClick: () => {
+      const suppressed = suppressClick.current;
+      suppressClick.current = false;
+      return suppressed;
+    },
+  };
+}
+
+export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu, onMoveKey }: Props) {
+  const keyDrag = useKeyDrag(onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -45,8 +136,13 @@ export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onC
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
           selected={selectedKeys.includes(k.index)}
-          onClick={(modifiers) => onClickKey(k.index, modifiers)}
+          onClick={(modifiers) => {
+            if (!keyDrag.takeSuppressedClick()) onClickKey(k.index, modifiers);
+          }}
           onMenu={(x, y) => onKeyMenu(k.index, x, y)}
+          onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.index, occupied, e)}
+          dragging={keyDrag.drag?.from === k.index}
+          dropTarget={keyDrag.drag !== null && keyDrag.drag.over === k.index && keyDrag.drag.from !== k.index}
         />
       ))}
     </div>
@@ -65,9 +161,14 @@ interface KeyProps {
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
+  onPointerDown: (occupied: boolean, e: ReactPointerEvent) => void;
+  /** This key is being dragged (drawn dimmed, as in mockup 2a). */
+  dragging: boolean;
+  /** A dragged key is over this one (drawn as the dashed drop target). */
+  dropTarget: boolean;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onClick, onMenu }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const face = keyFace(config, button, iconSize);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
@@ -76,7 +177,16 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
   const [missingIcon, setMissingIcon] = useState<string | null>(null);
   const iconId = face.icon === null ? null : `${face.icon}|${stamp ?? ''}`;
   const iconMissing = iconId !== null && missingIcon === iconId;
-  const classes = ['key', `key-${kind}`, selected ? 'key-selected' : '', hasScreen ? '' : 'key-no-screen'].filter(Boolean).join(' ');
+  const classes = [
+    'key',
+    `key-${kind}`,
+    selected ? 'key-selected' : '',
+    hasScreen ? '' : 'key-no-screen',
+    dragging ? 'key-dragging' : '',
+    dropTarget ? 'key-drop-target' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const title = kind === 'empty' ? `Key ${index + 1}: empty` : `Key ${index + 1}: ${describeAction(button)}`;
 
   return (
@@ -86,6 +196,8 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
       title={title}
       aria-label={title}
       aria-pressed={selected}
+      data-key-index={index}
+      onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
       onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
       onContextMenu={(e) => {
         e.preventDefault();
