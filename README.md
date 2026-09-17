@@ -281,7 +281,7 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `audio.source` | `node: "<node from deckhand sources>"`, `label` — switches the default input. Highlights when active |
 | `audio.micMute` | Toggles the default input; swaps icon and background with `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5`; shows the current level |
-| `audio.mute` | Toggles output mute |
+| `audio.mute` | Toggles output mute; swaps icon (and label) with `iconMuted` / `iconUnmuted` |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause` |
 | `media.info` | Live now-playing button, with album art via `showArt` |
 

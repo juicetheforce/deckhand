@@ -93,7 +93,7 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'audio.source', name: 'Input device', description: 'Switch the default input', editable: false, pending: 'inspector', aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
       { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: false, pending: 'inspector', aliases: ['microphone', 'unmute', 'talk'] },
       { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: false, pending: 'inspector', aliases: ['louder', 'quieter', 'gain'] },
-      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute', editable: false, pending: 'daemon', aliases: ['silence', 'speakers'] },
+      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', editable: false, pending: 'inspector', aliases: ['silence', 'speakers'] },
     ],
   },
   {

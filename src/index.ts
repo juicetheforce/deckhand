@@ -346,7 +346,7 @@ async function main(): Promise<void> {
     for (const session of sessions.values()) session.invalidate();
   };
   const stopAudio = audioService.subscribe(() => {
-    sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.micMute', 'audio.volume']));
+    sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.source', 'audio.micMute', 'audio.volume', 'audio.mute']));
     events?.audio();
   });
   const stopMpris = mprisService.subscribe(() =>

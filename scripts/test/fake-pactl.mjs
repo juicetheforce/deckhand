@@ -14,7 +14,9 @@
  * (none), and `set-default-source` the same way. A test can also write
  * `absent: [node names]` into the file to take devices away, and
  * `refuse: [node names]` for devices the server silently declines to make
- * default. Without the variable nothing is remembered.
+ * default. `set-sink-mute @DEFAULT_SINK@ toggle` and `set-source-mute
+ * @DEFAULT_SOURCE@ toggle` flip `muted[node]`, which the lists report. Without
+ * the variable nothing is remembered.
  *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
@@ -59,8 +61,10 @@ if (statePath) {
   }
 }
 const absent = new Set(state.absent ?? []);
-const presentSinks = sinks.filter((s) => !absent.has(s.name));
-const presentSources = sources.filter((s) => !absent.has(s.name));
+const muted = state.muted ?? {};
+const withMute = (d) => (d.name in muted ? { ...d, mute: muted[d.name] } : d);
+const presentSinks = sinks.filter((s) => !absent.has(s.name)).map(withMute);
+const presentSources = sources.filter((s) => !absent.has(s.name)).map(withMute);
 
 const info = {
   default_sink_name: state.defaultSink ?? sinks[0].name,
@@ -92,6 +96,12 @@ else if (statePath && (args[0] === 'set-default-sink' || args[0] === 'set-defaul
     else state.defaultSource = target.name;
     save();
   }
+} else if (statePath && (joined === 'set-sink-mute @DEFAULT_SINK@ toggle' || joined === 'set-source-mute @DEFAULT_SOURCE@ toggle')) {
+  const isSink = args[0] === 'set-sink-mute';
+  const name = isSink ? info.default_sink_name : info.default_source_name;
+  const current = (isSink ? presentSinks : presentSources).find((d) => d.name === name);
+  state.muted = { ...muted, [name]: !(current?.mute === true) };
+  save();
 } else {
   process.stderr.write(`fake-pactl: unsupported: ${joined}\n`);
   process.exit(1);

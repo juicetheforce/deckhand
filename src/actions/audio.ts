@@ -95,7 +95,7 @@ export const sink: ActionHandler = {
     await audio.setDefaultSink(found.name, params.moveStreams !== false);
     confirmDefaultIs(found);
     ctx.log(`audio output -> ${found.description}`);
-    ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
+    ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume', 'audio.mute']);
   },
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
@@ -164,7 +164,7 @@ export const cycle: ActionHandler = {
     await audio.setDefaultSink(next.name, params.moveStreams !== false);
     confirmDefaultIs(next);
     ctx.log(`audio output -> ${next.description}`);
-    ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume']);
+    ctx.invalidateByType(['audio.sink', 'audio.cycle', 'audio.volume', 'audio.mute']);
   },
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
@@ -284,11 +284,34 @@ export const volume: ActionHandler = {
 };
 
 /**
- * audio.mute — toggle output mute.
+ * audio.mute — toggle output mute, with the button reflecting state.
+ *
+ *   { "type": "audio.mute", "iconMuted": "~/icons/speaker-off.png",
+ *     "iconUnmuted": "~/icons/speaker.png" }
+ *
+ * The same icon and label parameters as audio.micMute, but **no background
+ * change**: output mute shows its state by the icon pair alone (the maintainer,
+ * docs/scope.md §7 C1 call 6). The face follows the *default* output, so
+ * switching outputs can change it.
  */
 export const mute: ActionHandler = {
   async execute(ctx, _params: ActionDef) {
     await audio.toggleSinkMute();
     ctx.invalidateByType(['audio.volume', 'audio.mute']);
+  },
+
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
+  async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
+    const state = audio.cachedState();
+    if (!state) return null;
+    const patch: DisplayPatch = {};
+    if (state.defaultSinkMuted) {
+      if (params.iconMuted) patch.icon = String(params.iconMuted);
+      if (params.labelMuted) patch.label = String(params.labelMuted);
+    } else {
+      if (params.iconUnmuted) patch.icon = String(params.iconUnmuted);
+      if (params.labelUnmuted) patch.label = String(params.labelUnmuted);
+    }
+    return patch;
   },
 };

@@ -223,6 +223,45 @@ console.log('audio.source by node');
   check('a face with no node shows nothing', (await describe({ type: 'audio.source' })) === null);
 }
 
+console.log('audio.mute face (output mute state)');
+{
+  const muteKey = { type: 'audio.mute', iconMuted: '/icons/speaker-off.png', iconUnmuted: '/icons/speaker.png', labelMuted: 'Muted', labelUnmuted: 'Sound' };
+  await serverState({ defaultSink: STEREO });
+  check('the cache knows the default output is not muted', audio.cachedState().defaultSinkMuted === false);
+  const unmuted = await describe(muteKey);
+  check('unmuted: the unmuted icon and label', unmuted.icon === '/icons/speaker.png' && unmuted.label === 'Sound');
+  check('...and no background: state is shown by the icon pair only', !('background' in unmuted));
+
+  const ctx = context();
+  const invalidated = [];
+  ctx.invalidateByType = (types) => invalidated.push(...types);
+  await runActionOrThrow(ctx, { type: 'audio.mute' });
+  check('a press mutes the default output, and the cache sees it at once', audio.cachedState().defaultSinkMuted === true);
+  check('...and repaints mute keys', invalidated.includes('audio.mute'));
+  const muted = await describe(muteKey);
+  check('muted: the muted icon and label, still no background', muted.icon === '/icons/speaker-off.png' && muted.label === 'Muted' && !('background' in muted));
+  await runActionOrThrow(context(), { type: 'audio.mute' });
+  check('a second press unmutes', audio.cachedState().defaultSinkMuted === false && (await describe(muteKey)).icon === '/icons/speaker.png');
+
+  await serverState({ defaultSink: STEREO, muted: { [MONO]: true } });
+  check('the face follows the default output: another device muted changes nothing', (await describe(muteKey)).icon === '/icons/speaker.png');
+  const switched = context();
+  const repaint = [];
+  switched.invalidateByType = (types) => repaint.push(...types);
+  await runActionOrThrow(switched, { type: 'audio.sink', ...monoRef });
+  check('...switching to a muted output shows muted', (await describe(muteKey)).icon === '/icons/speaker-off.png');
+  check('...and the output switch repaints mute keys', repaint.includes('audio.mute'));
+
+  check('with no icon or label parameters the face changes nothing (defaults come later)', JSON.stringify(await describe({ type: 'audio.mute' })) === '{}');
+
+  // The fake's default input starts muted (fake-pactl.mjs), so compare, not assume.
+  await serverState({ defaultSink: STEREO, muted: { [STEREO]: false } });
+  const micBefore = audio.cachedState().defaultSourceMuted;
+  await serverState({ defaultSink: STEREO, muted: { [STEREO]: true } });
+  check('mic mute is unaffected by output mute',
+    audio.cachedState().defaultSinkMuted === true && audio.cachedState().defaultSourceMuted === micBefore);
+}
+
 console.log('cost');
 {
   const before = (await spawns()).length;
@@ -230,8 +269,9 @@ console.log('cost');
     await describe({ type: 'audio.sink', ...stereoRef });
     await describe({ type: 'audio.cycle', devices: [stereoRef, monoRef] });
     await describe({ type: 'audio.source', node: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source', label: 'x' });
+    await describe({ type: 'audio.mute', iconMuted: '/a.png' });
   }
-  check('150 key-face refreshes by node spawn no pactl', (await spawns()).length === before);
+  check('200 audio key-face refreshes spawn no pactl', (await spawns()).length === before);
 }
 
 await fs.rm(TMP, { recursive: true, force: true });

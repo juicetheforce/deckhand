@@ -52,6 +52,8 @@ export interface AudioState {
   defaultSink: string;
   /** First channel's volume of the default sink, in percent. */
   defaultSinkVolume: number | null;
+  /** Whether the default sink (output) is muted. For audio.mute's face. */
+  defaultSinkMuted: boolean;
   defaultSourceMuted: boolean;
   /** Every sink and source, for the control socket's device lists. */
   sinkDevices: AudioDevice[];
@@ -181,6 +183,7 @@ async function readState(): Promise<AudioState> {
     sinks: parseSinks(sinksRaw),
     defaultSink,
     defaultSinkVolume: defaultSinkJson ? firstChannelPercent(defaultSinkJson.volume) : null,
+    defaultSinkMuted: defaultSinkJson?.mute === true,
     defaultSourceMuted: defaultSourceJson?.mute === true,
     sinkDevices: parseDevices(sinksJson),
     sourceDevices: parseDevices(sourcesJson),
