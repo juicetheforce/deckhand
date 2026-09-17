@@ -205,6 +205,23 @@ picks up the change, because the render cache keys on mtime.
 
 `iconFit` is `cover` (crop to fill, the default) or `contain` (letterbox).
 
+**Leave `icon` out and the key draws its action's built-in icon** — a keycap for
+a hotkey, a speaker for an output, play or pause for play/pause (swapping as
+the player does), a mic that turns red when muted. Nothing is written to the
+config for that: the icons ship with Deckhand and are drawn when no icon is
+set. Three ways to write `icon`:
+
+- left out — the action's default (a key with no action stays blank);
+- `null` — deliberately no icon, for a label-only key;
+- a path — that file. `"builtin:pause"` names one of the shipped icons
+  instead, which survives updates in a way a path into the install directory
+  would not.
+
+Clocks and now-playing keys show the time and the track rather than an icon.
+Volume and brightness keys draw their icon without the level; add
+`"showLevel": true` to put the level back. An icon that cannot be drawn —
+a missing file, or an unknown `builtin:` name — shows a dashed "missing" icon.
+
 Labels are drawn with a dark outline behind the glyphs so light text stays
 readable on a bright icon. `\n` in a label gives you a second line.
 
@@ -273,14 +290,14 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
 | `multi` | `steps: [...]`, each optionally with `delayMs` |
-| `brightness` | `value` or `delta` |
+| `brightness` | `value` or `delta`; `showLevel: true` shows the level |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
 | `audio.sink` | `node: "<node from deckhand sinks>"`, `label: "<its description>"` — switches default output and moves playing streams. Highlights when active |
 | `audio.cycle` | `devices: [{ node, label }, …]` — rotate outputs from one button; shows the active entry's label |
 | `audio.source` | `node: "<node from deckhand sources>"`, `label` — switches the default input. Highlights when active |
 | `audio.micMute` | Toggles the default input; swaps icon and background with `iconMuted` / `iconUnmuted` |
-| `audio.volume` | `delta: 5`; shows the current level |
+| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the current level |
 | `audio.mute` | Toggles output mute; swaps icon (and label) with `iconMuted` / `iconUnmuted` |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause` |
 | `media.info` | Live now-playing button, with album art via `showArt` |

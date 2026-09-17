@@ -82,12 +82,14 @@ const a = await startFakePlayer('fakeA', { status: 'Paused', track: { title: 'Fi
   check('...status, title and artist', t.status === 'Paused' && t.artist === 'Band' && t.player === 'fakeA');
   check('...and the change listener fired', await until(() => changes > 0));
   check('paused: play/pause shows iconPaused', (await describe(control))?.icon === '/icons/play.svg');
+  check('...and the default icon state says not playing', registry['media.control'].iconState({ type: 'media.control', method: 'playpause' }).playing === false);
   check('now-playing shows title and artist', (await describe(info))?.label === 'First\nBand');
 
   const before = changes;
   a.set({ status: 'Playing' });
   check('PlaybackStatus from the signal reaches the cache', await until(() => mpris.cachedTrackInfo()?.status === 'Playing', 500));
   check('playing: play/pause shows iconPlaying', (await describe(control))?.icon === '/icons/pause.svg');
+  check('...and the default icon state says playing, from the cache', registry['media.control'].iconState({ type: 'media.control', method: 'playpause' }).playing === true);
   check('...and the change listener fired again', await until(() => changes > before));
 
   a.set({ track: { title: 'Second', artist: 'Band' } });

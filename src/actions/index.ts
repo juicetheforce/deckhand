@@ -1,3 +1,4 @@
+import type { IconState } from '../default-icons.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import * as keyboard from './keyboard.js';
 import * as audio from './audio.js';
@@ -108,4 +109,9 @@ export async function describeAction(
     ctx.log(`describe for "${action.type}" failed: ${(err as Error).message}`);
     return null;
   }
+}
+
+/** The state an action's default icon pair shows, from cached state only; {} for actions with no pair. */
+export function iconStateOf(action: ActionDef): IconState {
+  return registry[action.type]?.iconState?.(action) ?? {};
 }

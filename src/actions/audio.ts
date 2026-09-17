@@ -245,6 +245,8 @@ export const micMute: ActionHandler = {
     ctx.invalidateByType(['audio.micMute']);
   },
 
+  iconState: () => ({ muted: audio.cachedState()?.defaultSourceMuted === true }),
+
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const state = audio.cachedState();
@@ -267,6 +269,12 @@ export const micMute: ActionHandler = {
  * audio.volume — nudge the default output volume.
  *
  *   { "type": "audio.volume", "delta": 5 }
+ *   { "type": "audio.volume", "delta": -5, "showLevel": true }
+ *
+ * The key draws its default icon (`speaker`, or `volume-down` for a negative
+ * delta). The level is shown only with `showLevel: true` — off by default since
+ * C1, so a default key is not a label drawn over an icon (docs/scope.md §7 C1
+ * call 4).
  */
 export const volume: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -277,7 +285,7 @@ export const volume: ActionHandler = {
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    if (params.showLevel === false) return null;
+    if (params.showLevel !== true) return null;
     const level = audio.cachedState()?.defaultSinkVolume ?? null;
     return level === null ? null : { label: `${level}%` };
   },
@@ -299,6 +307,8 @@ export const mute: ActionHandler = {
     await audio.toggleSinkMute();
     ctx.invalidateByType(['audio.volume', 'audio.mute']);
   },
+
+  iconState: () => ({ muted: audio.cachedState()?.defaultSinkMuted === true }),
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {

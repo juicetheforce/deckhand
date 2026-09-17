@@ -1,3 +1,5 @@
+import type { IconState } from './default-icons.js';
+
 export interface ActionDef {
   type: string;
   [param: string]: unknown;
@@ -6,9 +8,10 @@ export interface ActionDef {
 export interface ButtonDef {
   /**
    * Three states (docs/scope.md §10): **absent** means nothing is chosen, so
-   * the action's built-in default renders (phase C); **null** means
-   * deliberately no icon, for a label-only button; a **string** is an absolute
-   * path, or ~/..., to any image file, resized to fit automatically.
+   * the action's built-in default renders (src/default-icons.ts); **null**
+   * means deliberately no icon, for a label-only button; a **string** is an
+   * absolute path, or ~/..., to any image file, resized to fit automatically —
+   * or `builtin:<name>`, one of the icons shipped with the app.
    */
   icon?: string | null;
   /** 'cover' crops to fill the square, 'contain' letterboxes. */
@@ -135,4 +138,10 @@ export interface ActionHandler {
    * Presence of this method is what makes a button refresh on a timer.
    */
   describe?(ctx: ActionContext, params: ActionDef): Promise<DisplayPatch | null>;
+  /**
+   * Optional. The state a default icon pair shows (src/default-icons.ts):
+   * mute for audio.micMute and audio.mute, play state for media.control. Must
+   * read cached state only — it runs on every render of the key.
+   */
+  iconState?(params: ActionDef): IconState;
 }

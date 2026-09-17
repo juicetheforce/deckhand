@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
-import { builtinIconPath, type BuiltinIcon } from './builtin-icons.js';
+import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
 import type { Display } from './types.js';
 
@@ -124,7 +124,8 @@ async function builtinLayer(name: BuiltinIcon, size: number): Promise<Buffer | n
  * socket's preview uses this to tell the editor the file is bad.
  */
 export async function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
-  const iconPath = display.icon ? expandPath(display.icon) : undefined;
+  // `builtin:<name>` names a shipped icon; anything else is a path, `~/` allowed.
+  const iconPath = display.icon ? (builtinRefPath(display.icon) ?? expandPath(display.icon)) : undefined;
   const stamp = iconPath ? await iconStamp(iconPath) : 'none';
   const cacheKey = `${size}|${stamp}|${JSON.stringify(display)}`;
 

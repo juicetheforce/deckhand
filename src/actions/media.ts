@@ -37,6 +37,11 @@ export const control: ActionHandler = {
     ctx.invalidateByType(['media.control', 'media.info']);
   },
 
+  // Cached, like describe(): no D-Bus call on a render.
+  iconState: (params) => ({
+    playing: mpris.cachedTrackInfo(params.player ? String(params.player) : undefined)?.status === 'Playing',
+  }),
+
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const key = String(params.method ?? 'playpause').toLowerCase();
     if (key !== 'playpause') return null;
@@ -70,7 +75,8 @@ export const info: ActionHandler = {
     const track = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
 
     if (!track || (!track.title && !track.artist)) {
-      return { label: String(params.idleLabel ?? 'No music'), icon: undefined };
+      // No `icon` here: `icon: undefined` used to wipe the key's own icon while idle.
+      return { label: String(params.idleLabel ?? 'No music') };
     }
 
     const mode = String(params.show ?? 'title+artist');

@@ -1,5 +1,7 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { describeAction, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
+import { describeAction, iconStateOf, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
+import { builtinIconRef } from './builtin-icons.js';
+import { defaultIconFor } from './default-icons.js';
 import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
 import { renderButton } from './render.js';
 import type {
@@ -223,9 +225,8 @@ export class DeckSession implements DeckHandle {
 
   private baseDisplay(button: ButtonDef | undefined): Display {
     return {
-      // null (deliberately no icon) and absent both mean "draw no icon layer"
-      // here; which of the two it was matters only to the editor and, in phase
-      // C, to default resolution (scope §10).
+      // null (deliberately no icon) and absent both start with no icon layer
+      // here; drawKey() gives an absent one the action's default (scope §10).
       icon: button?.icon ?? undefined,
       iconFit: button?.iconFit ?? this.defaults.iconFit,
       label: button?.label,
@@ -256,6 +257,15 @@ export class DeckSession implements DeckHandle {
 
     const patch = await describeAction(this.context(index), button?.action);
     if (patch) Object.assign(display, patch);
+
+    // The action's built-in default (docs/scope.md §3), in this order: an icon
+    // the action chose (iconMuted, album art) wins, then the key's own icon;
+    // `icon: null` means deliberately none, so only an *absent* icon gets a
+    // default; and a key with no action gets none — it stays blank.
+    if (button?.action && button.icon === undefined && display.icon === undefined) {
+      const name = defaultIconFor(button.action, iconStateOf(button.action));
+      if (name) display.icon = builtinIconRef(name);
+    }
 
     const buffer = await renderButton(display, this.iconSize, strictIcon);
 

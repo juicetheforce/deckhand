@@ -86,6 +86,10 @@ export const profile: ActionHandler = {
  *
  * The current level lives on the deck the button belongs to, so each deck
  * nudges from its own level. The deck clamps the value to 5-100.
+ *
+ * A `delta` key draws `brightness-up` or `brightness-down`. The level is shown
+ * only with `showLevel: true` — off by default since C1 (docs/scope.md §7 C1
+ * call 4).
  */
 export const brightness: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -102,7 +106,7 @@ export const brightness: ActionHandler = {
   },
 
   async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    return params.showLevel === false ? null : { label: `${ctx.deck.currentBrightness()}%` };
+    return params.showLevel === true ? { label: `${ctx.deck.currentBrightness()}%` } : null;
   },
 };
 
