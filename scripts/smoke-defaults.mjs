@@ -35,14 +35,14 @@ console.log('the mapping');
     [{ type: 'hotkey', keys: 'ctrl+1' }, {}, 'key-combo'],
     [{ type: 'text', text: 'gg' }, {}, 'text-macro'],
     [{ type: 'multi', steps: [] }, {}, 'multi-action'],
-    [{ type: 'keyHold', keys: 'f24', state: 'down' }, {}, null],
-    [{ type: 'command', command: 'true' }, {}, null],
-    [{ type: 'profile', to: 'x' }, {}, null],
+    [{ type: 'keyHold', keys: 'f24', state: 'down' }, {}, 'press-release'],
+    [{ type: 'command', command: 'true' }, {}, 'command'],
+    [{ type: 'profile', to: 'x' }, {}, 'profile'],
     [{ type: 'page', to: 'Jobs' }, {}, 'forward'],
     [{ type: 'page', back: true }, {}, 'back'],
     [{ type: 'brightness', delta: 10 }, {}, 'brightness-up'],
     [{ type: 'brightness', delta: -10 }, {}, 'brightness-down'],
-    [{ type: 'brightness', value: 40 }, {}, null],
+    [{ type: 'brightness', value: 40 }, {}, 'brightness-set'],
     [{ type: 'clock' }, {}, null],
     [{ type: 'media.info' }, {}, null],
     [{ type: 'media.info' }, { idle: false }, null],
@@ -172,8 +172,8 @@ console.log('which icon a key draws');
   check('an idle now-playing key keeps its own icon (was wiped), with no label', same(key(17), await expected(GOOD)));
   check('an idle now-playing key with no icon draws now-playing and no label', same(key(22), await expected(icon('now-playing'))));
   check('idleLabel puts a label back over it', same(key(23), await renderButton(display({ icon: icon('now-playing'), label: 'Quiet' }), 96)));
-  check('an action whose icon is not drawn yet draws no icon, not missing', same(key(18), bare));
-  check('...and keeps its label alone', same(key(19), await renderButton(display({ label: 'FFXIV' }), 96)));
+  check('Press/Release (keyHold) draws press-release', same(key(18), await expected(icon('press-release'))));
+  check('a profile key draws profile under its label', same(key(19), await renderButton(display({ icon: icon('profile'), label: 'FFXIV' }), 96)));
   check('builtin:<name> on a key with no action draws too', same(key(20), await expected(icon('pause'))));
   check('a label-only key (icon: null) draws the label with no default', same(key(21), await renderButton(display({ label: 'Only a label' }), 96)));
 }

@@ -18,8 +18,10 @@ import type { ActionDef } from './types.js';
 export const BUILTIN_ICONS = [
   'back',
   'brightness-down',
+  'brightness-set',
   'brightness-up',
   'clock',
+  'command',
   'forward',
   'headset',
   'headset-muted',
@@ -34,13 +36,18 @@ export const BUILTIN_ICONS = [
   'now-playing',
   'pause',
   'play',
+  'press-release',
   'previous',
+  'profile',
   'speaker',
   'speaker-muted',
   'speaker-out',
   'speaker-out-muted',
   'stop',
   'text-macro',
+  // No action draws this by default: Toggle is M7 (docs/scope.md §7). It can
+  // still be chosen for a key as builtin:toggle.
+  'toggle',
   'volume-down',
 ] as const;
 
@@ -71,12 +78,14 @@ const MEDIA_METHODS: Record<string, BuiltinIcon> = {
  * only the action type (§7): `page`'s `back`, the sign of a `delta`,
  * `media.control`'s `method`, and the mute or play state of the three pairs.
  *
- * Null for three different reasons, kept apart in the comments below:
- *   - the icon has not been drawn yet — never `missing`, which would put a
- *     broken-looking icon on keys that look fine today (§7 C1);
+ * Null for two reasons, kept apart in the comments below:
  *   - the face is its own content: `clock`'s time, `media.info`'s track while
  *     one plays (call 4);
  *   - `noop`, a deliberate spacer (call 6).
+ *
+ * Every other action has a drawn icon since 2026-09-17. **A future action
+ * whose icon is not drawn yet maps to null too — never to `missing`**, which
+ * would put a broken-looking icon on keys that look fine (§7 C1).
  */
 export function defaultIconFor(action: ActionDef | undefined, state: IconState = {}): BuiltinIcon | null {
   if (!action) return null;
@@ -87,15 +96,17 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return 'text-macro';
     case 'multi':
       return 'multi-action';
-    case 'keyHold': // Press/Release: to be drawn (the maintainer)
-    case 'command': // to be drawn (the maintainer)
-    case 'profile': // to be drawn (the maintainer)
-      return null;
+    case 'keyHold': // Press/Release
+      return 'press-release';
+    case 'command':
+      return 'command';
+    case 'profile':
+      return 'profile';
     case 'page':
       return action.back === true ? 'back' : 'forward';
     case 'brightness':
       if (typeof action.delta === 'number') return action.delta < 0 ? 'brightness-down' : 'brightness-up';
-      return null; // set brightness (`value`): to be drawn (the maintainer)
+      return 'brightness-set'; // set brightness (`value`)
     case 'media.info':
       // The track and its art are the face while something plays (call 4);
       // idle, the icon alone, with no "No music" label (the maintainer, 2026-09-16).
