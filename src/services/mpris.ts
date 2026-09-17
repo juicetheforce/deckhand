@@ -234,42 +234,93 @@ async function cacheArt(url: string): Promise<string | undefined> {
   }
 }
 
-export async function getTrackInfo(hint?: string): Promise<TrackInfo | null> {
-  const name = await pickPlayer(hint);
-  if (!name) return null;
+// ---------------------------------------------------------------------------
+// Player state cache for key faces (docs/scope.md §11 item 1, built C1)
+// ---------------------------------------------------------------------------
 
-  try {
-    const obj = await proxyFor(name, OBJECT_PATH);
-    const props = obj.getInterface(PROPS_IFACE) as unknown as {
-      Get(iface: string, prop: string): Promise<unknown>;
-    };
+/**
+ * What a key face needs from one player, kept current by subscribe() from the
+ * player's PropertiesChanged signal. Key faces read this and never make a
+ * D-Bus call: before the cache, every refresh of a visible now-playing key
+ * listed the bus's names, asked each player its status, and read status and
+ * metadata again — about 6 ms of D-Bus work (measured 2026-09-14), awaited
+ * serially across a page repaint, so a hung player could stall every key.
+ *
+ * Presses still read fresh (call() → pickPlayer()): a press is rare, and it
+ * should act on the player as it is, as audio presses do.
+ */
+interface PlayerState {
+  status: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  /** mpris:artUrl as the player gave it. */
+  artUrl?: string;
+  /** Local path of that art once cacheArt() has it; undefined while it downloads. */
+  artPath?: string;
+}
 
-    const status = String(unwrap(await props.Get(PLAYER_IFACE, 'PlaybackStatus')));
-    const metadata = (unwrap(await props.Get(PLAYER_IFACE, 'Metadata')) ?? {}) as Record<
-      string,
-      unknown
-    >;
+/** Bus name → state, in the order players were first seen. Only subscribe() writes it. */
+const playerStates = new Map<string, PlayerState>();
 
-    const title = unwrap(metadata['xesam:title']);
-    const artistRaw = unwrap(metadata['xesam:artist']);
-    const album = unwrap(metadata['xesam:album']);
-    const artUrl = unwrap(metadata['mpris:artUrl']);
+function metadataFields(raw: unknown): Pick<PlayerState, 'title' | 'artist' | 'album' | 'artUrl'> {
+  const metadata = (unwrap(raw) ?? {}) as Record<string, unknown>;
+  const title = unwrap(metadata['xesam:title']);
+  const artistRaw = unwrap(metadata['xesam:artist']);
+  const album = unwrap(metadata['xesam:album']);
+  const artUrl = unwrap(metadata['mpris:artUrl']);
+  const artist = Array.isArray(artistRaw) ? artistRaw.join(', ') : artistRaw;
+  return {
+    title: title ? String(title) : undefined,
+    artist: artist ? String(artist) : undefined,
+    album: album ? String(album) : undefined,
+    artUrl: artUrl ? String(artUrl) : undefined,
+  };
+}
 
-    const artist = Array.isArray(artistRaw) ? artistRaw.join(', ') : artistRaw;
+/** Read a player's status and metadata directly. Throws if it cannot be read. */
+async function readPlayer(name: string): Promise<PlayerState> {
+  const obj = await proxyFor(name, OBJECT_PATH);
+  const props = obj.getInterface(PROPS_IFACE) as unknown as {
+    Get(iface: string, prop: string): Promise<unknown>;
+  };
+  const status = String(unwrap(await props.Get(PLAYER_IFACE, 'PlaybackStatus')));
+  const metadata = await props.Get(PLAYER_IFACE, 'Metadata');
+  return { status, ...metadataFields(metadata) };
+}
 
-    return {
-      player: name.slice(MPRIS_PREFIX.length),
-      status,
-      title: title ? String(title) : undefined,
-      artist: artist ? String(artist) : undefined,
-      album: album ? String(album) : undefined,
-      artPath: artUrl ? await cacheArt(String(artUrl)) : undefined,
-    };
-  } catch (err) {
-    forgetProxies(name);
-    warnOnce(name, (err as Error).message);
-    return null;
+/**
+ * The now-playing state for a key face, from the cache: no D-Bus call, no
+ * download, never awaits. Chooses a player as pickPlayer() does — the hint,
+ * then whatever is playing, then the last thing that played, then the first —
+ * but among cached players. Null when there is none, including before
+ * subscribe() has read them.
+ */
+export function cachedTrackInfo(hint?: string): TrackInfo | null {
+  const names = [...playerStates.keys()];
+  if (names.length === 0) return null;
+
+  let name: string | undefined;
+  if (hint) {
+    const needle = hint.toLowerCase();
+    name = names.find((n) => n.toLowerCase().includes(needle));
   }
+  if (!name) {
+    name = names.find((n) => playerStates.get(n)?.status === 'Playing');
+    if (name) lastActive = name;
+  }
+  if (!name && lastActive && playerStates.has(lastActive)) name = lastActive;
+  name ??= names[0];
+
+  const state = playerStates.get(name)!;
+  return {
+    player: name.slice(MPRIS_PREFIX.length),
+    status: state.status,
+    title: state.title,
+    artist: state.artist,
+    album: state.album,
+    artPath: state.artPath,
+  };
 }
 
 export type MediaMethod = 'PlayPause' | 'Play' | 'Pause' | 'Next' | 'Previous' | 'Stop';
@@ -320,22 +371,78 @@ export function subscribe(onChange: () => void): () => void {
     debounce = setTimeout(onChange, 150);
   };
 
+  /**
+   * Fetch the art for a player's current artUrl in the background, and fire
+   * once it is on disk — so a first read of a new track's cover (measured
+   * 664 ms once) never holds up a render. Ignored if the track changed
+   * meanwhile.
+   */
+  const fetchArt = (name: string, state: PlayerState) => {
+    state.artPath = undefined;
+    const url = state.artUrl;
+    if (!url) return;
+    void cacheArt(url).then((artPath) => {
+      const current = playerStates.get(name);
+      if (stopped || !current || current.artUrl !== url || !artPath) return;
+      current.artPath = artPath;
+      fire();
+    });
+  };
+
+  /** Read a player into the cache from scratch: on attach, and when it invalidates a property without sending the value. */
+  const readIntoCache = async (name: string) => {
+    try {
+      const state = await readPlayer(name);
+      if (stopped || !attached.has(name)) return;
+      playerStates.set(name, state);
+      fetchArt(name, state);
+      fire();
+    } catch (err) {
+      forgetProxies(name);
+      warnOnce(name, (err as Error).message);
+    }
+  };
+
+  /** Apply a PropertiesChanged signal to the cache, without a call where the signal carries the values. */
+  const onPropertiesChanged = (name: string, iface: unknown, changed: unknown, invalidated: unknown) => {
+    if (iface !== PLAYER_IFACE) return;
+    const state = playerStates.get(name);
+    const values = (changed ?? {}) as Record<string, unknown>;
+    const gone = Array.isArray(invalidated) ? (invalidated as unknown[]) : [];
+    if (!state || gone.includes('PlaybackStatus') || gone.includes('Metadata')) {
+      void readIntoCache(name);
+      return;
+    }
+    if ('PlaybackStatus' in values) state.status = String(unwrap(values.PlaybackStatus));
+    if ('Metadata' in values) {
+      const previousUrl = state.artUrl;
+      Object.assign(state, metadataFields(values.Metadata));
+      if (state.artUrl !== previousUrl) fetchArt(name, state);
+    }
+    fire();
+  };
+
   const attach = async (name: string) => {
     if (attached.has(name) || stopped) return;
     try {
-      const obj = await getBus().getProxyObject(name, OBJECT_PATH);
+      // Through proxyFor(), so the player is built from STANDARD_MPRIS_XML.
+      // Until C1 this called getProxyObject() without it, so a Chromium
+      // player — which publishes no introspection data — got no listener and
+      // its key only caught up on the next refresh, despite the 2026-09-16
+      // fix saying otherwise. With faces reading this cache, a missing
+      // listener would mean a key that never updates at all.
+      const obj = await proxyFor(name, OBJECT_PATH);
       const props = obj.getInterface(PROPS_IFACE) as unknown as SignalSource;
-      const handler = () => fire();
+      const handler = (...args: unknown[]) => onPropertiesChanged(name, args[0], args[1], args[2]);
       props.on('PropertiesChanged', handler);
       attached.set(name, { props, handler });
     } catch (err) {
       // Not only "the player vanished before we attached", which is harmless.
-      // Until 2026-09-16 this also swallowed the introspection failure that
-      // made Chromium players unreadable, so they got no PropertiesChanged
-      // listener and a now-playing key never updated on a track change — it
-      // only caught up on the next refresh. Worth saying out loud now.
       warnOnce(name, `cannot follow its changes: ${(err as Error).message}`);
+      return;
     }
+    // Listen first, then read, so no change falls between the two.
+    await readIntoCache(name);
   };
 
   // Remove the listener rather than leave it: a player that restarts gets a
@@ -346,6 +453,7 @@ export function subscribe(onChange: () => void): () => void {
       entry.props.removeListener('PropertiesChanged', entry.handler);
       attached.delete(name);
     }
+    playerStates.delete(name);
     forgetProxies(name);
     warnedPlayers.delete(name);
     if (lastActive === name) lastActive = null;
@@ -356,7 +464,7 @@ export function subscribe(onChange: () => void): () => void {
     if (stopped || !name.startsWith(MPRIS_PREFIX)) return;
     if (newOwner) {
       console.log(`[mpris] player appeared: ${name.slice(MPRIS_PREFIX.length)}`);
-      void attach(name).then(fire);
+      void attach(name);
     } else {
       console.log(`[mpris] player disappeared: ${name.slice(MPRIS_PREFIX.length)}`);
       detach(name);

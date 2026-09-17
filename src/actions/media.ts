@@ -42,7 +42,8 @@ export const control: ActionHandler = {
     if (key !== 'playpause') return null;
     if (!params.iconPlaying && !params.iconPaused) return null;
 
-    const info = await mpris.getTrackInfo(params.player ? String(params.player) : undefined);
+    // From the player state cache: no D-Bus call on a refresh (services/mpris.ts).
+    const info = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
     const playing = info?.status === 'Playing';
     const icon = playing ? params.iconPlaying : params.iconPaused;
     return icon ? { icon: String(icon) } : null;
@@ -65,7 +66,8 @@ export const info: ActionHandler = {
   },
 
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    const track = await mpris.getTrackInfo(params.player ? String(params.player) : undefined);
+    // From the player state cache: no D-Bus call and no art download on a refresh.
+    const track = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
 
     if (!track || (!track.title && !track.artist)) {
       return { label: String(params.idleLabel ?? 'No music'), icon: undefined };
