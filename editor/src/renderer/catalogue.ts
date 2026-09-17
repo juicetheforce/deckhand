@@ -7,8 +7,7 @@
  * `editable` is what the inspector can configure so far. Phase A: hotkey.
  * Phase B adds page and profile, which is what the exit needs — navigating
  * between pages from the decks, and one key switching the whole layout. The
- * rest arrive in phase C (§7). audio.source is decided but not built in the
- * daemon, so it is not listed.
+ * rest arrive in phase C (§7).
  */
 
 export interface CatalogueEntry {
@@ -89,8 +88,9 @@ export const CATALOGUE: CatalogueGroup[] = [
     name: 'Audio',
     tone: 'neutral',
     entries: [
-      { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: false, pending: 'daemon', aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
-      { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: false, pending: 'daemon', aliases: ['swap', 'headphones', 'speakers', 'next output'] },
+      { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: false, pending: 'inspector', aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
+      { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: false, pending: 'inspector', aliases: ['swap', 'headphones', 'speakers', 'next output'] },
+      { type: 'audio.source', name: 'Input device', description: 'Switch the default input', editable: false, pending: 'inspector', aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
       { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: false, pending: 'inspector', aliases: ['microphone', 'unmute', 'talk'] },
       { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: false, pending: 'inspector', aliases: ['louder', 'quieter', 'gain'] },
       { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute', editable: false, pending: 'daemon', aliases: ['silence', 'speakers'] },

@@ -188,14 +188,50 @@ console.log('audio.cycle by matches (hand-edited config), unchanged');
   check('matches still show the default\'s first word', (await describe({ type: 'audio.cycle', matches: ['Mono', 'Accented'] }))?.label === 'Example');
 }
 
+console.log('audio.source by node');
+{
+  const HEADSET_MIC = 'alsa_input.usb-Example_Headset-00.mono-fallback';
+  const BUILTIN_MIC = 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source';
+  const headsetMic = { type: 'audio.source', node: HEADSET_MIC, label: 'Example Headset Mono Mic' };
+  const builtinMic = { type: 'audio.source', node: BUILTIN_MIC, label: 'Built-in Microphone' };
+  const defaultSource = () => audio.cachedState().defaultSource;
+
+  await serverState({ defaultSource: HEADSET_MIC });
+  const ctx = context();
+  const invalidated = [];
+  ctx.invalidateByType = (types) => invalidated.push(...types);
+  await runActionOrThrow(ctx, builtinMic);
+  check('a press makes that exact input the default', defaultSource() === BUILTIN_MIC);
+  check('...and repaints mic mute keys, which now show another device', invalidated.includes('audio.micMute'));
+  check('the default input\'s key shows active', (await describe(builtinMic)).background === '#1d4d2b');
+  check('another input\'s key shows inactive', (await describe(headsetMic)).background === '#101014');
+  check('an explicit activeBackground is used', (await describe({ ...builtinMic, activeBackground: '#123456' })).background === '#123456');
+
+  await serverState({ defaultSource: HEADSET_MIC, absent: [BUILTIN_MIC] });
+  const before = (await spawns()).length;
+  const gone = context();
+  await runAction(gone, builtinMic);
+  check('an input that is not present: logged, naming the label and node',
+    gone.logs.some((l) => /failed/.test(l) && l.includes('"Built-in Microphone"') && l.includes(BUILTIN_MIC) && /not present/.test(l)));
+  check('...and nothing run, default unchanged',
+    !(await spawns()).slice(before).some((l) => l.startsWith('set-default-source')) && defaultSource() === HEADSET_MIC);
+
+  await serverState({ defaultSource: HEADSET_MIC, refuse: [BUILTIN_MIC] });
+  check('a switch the server declines is a failure', /did not take effect/.test(await refusal(builtinMic) ?? ''));
+  check('an action with no node asks for one', /needs a "node"/.test(await refusal({ type: 'audio.source', label: 'x' }) ?? ''));
+  check('match is not accepted (a new action, editor-written)', /needs a "node"/.test(await refusal({ type: 'audio.source', match: 'Microphone' }) ?? ''));
+  check('a face with no node shows nothing', (await describe({ type: 'audio.source' })) === null);
+}
+
 console.log('cost');
 {
   const before = (await spawns()).length;
   for (let i = 0; i < 50; i++) {
     await describe({ type: 'audio.sink', ...stereoRef });
     await describe({ type: 'audio.cycle', devices: [stereoRef, monoRef] });
+    await describe({ type: 'audio.source', node: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source', label: 'x' });
   }
-  check('100 key-face refreshes by node spawn no pactl', (await spawns()).length === before);
+  check('150 key-face refreshes by node spawn no pactl', (await spawns()).length === before);
 }
 
 await fs.rm(TMP, { recursive: true, force: true });

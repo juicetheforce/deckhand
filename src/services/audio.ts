@@ -135,6 +135,17 @@ export async function findSinkByNode(node: string): Promise<Sink | null> {
   return (await listSinks()).find((s) => s.name === node) ?? null;
 }
 
+/**
+ * The source (input) whose node name is exactly `node`, from a fresh list — or
+ * null if it is not present. Like findSinkByNode(), no fallback. Monitor
+ * sources are not refused here: the editor offers only real inputs, and a
+ * hand-written monitor node is the user's call (docs/scope.md §3).
+ */
+export async function findSourceByNode(node: string): Promise<AudioDevice | null> {
+  const sources = JSON.parse(await pactl(['-f', 'json', 'list', 'sources'])) as Array<Record<string, unknown>>;
+  return parseDevices(sources).find((d) => d.name === node) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Cached state for describe()
 // ---------------------------------------------------------------------------
@@ -236,6 +247,12 @@ async function moveAllStreams(sinkName: string): Promise<void> {
 export async function setDefaultSink(sinkName: string, moveStreams = true): Promise<void> {
   await pactl(['set-default-sink', sinkName]);
   if (moveStreams) await moveAllStreams(sinkName);
+  await refreshCache();
+}
+
+/** Switch the default input. Streams already recording are not moved. */
+export async function setDefaultSource(sourceName: string): Promise<void> {
+  await pactl(['set-default-source', sourceName]);
   await refreshCache();
 }
 

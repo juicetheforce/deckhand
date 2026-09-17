@@ -11,8 +11,10 @@
  * calls, so presses can be tested: `set-default-sink` (an unknown name fails
  * as pactl does; a sink whose active port is "not available" is silently not
  * made default, as the real server was seen to do) and `list sink-inputs`
- * (none). A test can also write `absent: [node names]` into the file to take
- * devices away. Without the variable nothing is remembered.
+ * (none), and `set-default-source` the same way. A test can also write
+ * `absent: [node names]` into the file to take devices away, and
+ * `refuse: [node names]` for devices the server silently declines to make
+ * default. Without the variable nothing is remembered.
  *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
@@ -76,15 +78,18 @@ else if (joined === '-f json list sources') process.stdout.write(JSON.stringify(
 else if (joined === '-f json list sink-inputs') process.stdout.write('[]');
 else if (joined === 'subscribe') setInterval(() => undefined, 1 << 30);
 else if (joined === 'get-default-sink') process.stdout.write(info.default_sink_name + '\n');
-else if (statePath && args[0] === 'set-default-sink' && args.length === 2) {
-  const target = presentSinks.find((s) => s.name === args[1]);
+else if (statePath && (args[0] === 'set-default-sink' || args[0] === 'set-default-source') && args.length === 2) {
+  const isSink = args[0] === 'set-default-sink';
+  const target = (isSink ? presentSinks : presentSources).find((d) => d.name === args[1]);
   if (!target) {
     process.stderr.write('Failure: No such entity\n');
     process.exit(1);
   }
   const port = target.ports.find((p) => p.name === target.active_port);
-  if (port?.availability !== 'not available') {
-    state.defaultSink = target.name;
+  const declined = port?.availability === 'not available' || (state.refuse ?? []).includes(target.name);
+  if (!declined) {
+    if (isSink) state.defaultSink = target.name;
+    else state.defaultSource = target.name;
     save();
   }
 } else {

@@ -278,6 +278,7 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `noop` | Deliberately blank |
 | `audio.sink` | `node: "<node from deckhand sinks>"`, `label: "<its description>"` — switches default output and moves playing streams. Highlights when active |
 | `audio.cycle` | `devices: [{ node, label }, …]` — rotate outputs from one button; shows the active entry's label |
+| `audio.source` | `node: "<node from deckhand sources>"`, `label` — switches the default input. Highlights when active |
 | `audio.micMute` | Toggles the default input; swaps icon and background with `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5`; shows the current level |
 | `audio.mute` | Toggles output mute |

@@ -193,6 +193,47 @@ export const cycle: ActionHandler = {
 };
 
 /**
+ * audio.source — switch the default input (docs/scope.md §6).
+ *
+ *   { "type": "audio.source", "node": "alsa_input.usb-…mono-fallback", "label": "USB Headset Mic" }
+ *
+ * A mirror of audio.sink, by `node` only: it is new, so there is no
+ * hand-edited `match` to keep. A device that is not present logs and does
+ * nothing. The key paints `activeBackground` while this input is the default,
+ * so "why can nobody hear me" is a glance (§6). Streams already recording are
+ * not moved.
+ */
+export const source: ActionHandler = {
+  async execute(ctx, params: ActionDef) {
+    const node = nodeOf(params);
+    if (!node) throw new Error('audio.source action needs a "node"');
+    const label = typeof params.label === 'string' ? params.label : '';
+    const found = await audio.findSourceByNode(node);
+    if (!found) throw new Error(`input ${nameOf({ node, label })} is not present`);
+
+    await audio.setDefaultSource(found.name);
+    // As confirmDefaultIs() for outputs: the server can decline without an error.
+    const state = audio.cachedState();
+    if (state?.defaultSource !== found.name) {
+      throw new Error(`switch to ${nameOf({ node, label })} did not take effect; default input is still "${state?.defaultSource ?? 'unknown'}"`);
+    }
+    ctx.log(`audio input -> ${found.description}`);
+    // micMute shows the default input's mute, which just became another device's.
+    ctx.invalidateByType(['audio.source', 'audio.micMute']);
+  },
+
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
+  async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
+    const state = audio.cachedState();
+    const node = nodeOf(params);
+    if (!state || !node) return null;
+    return node === state.defaultSource
+      ? { background: String(params.activeBackground ?? '#1d4d2b') }
+      : { background: String(params.inactiveBackground ?? '#101014') };
+  },
+};
+
+/**
  * audio.micMute — toggle the default input, with the button reflecting state.
  *
  *   { "type": "audio.micMute", "iconMuted": "~/icons/mic-off.png",

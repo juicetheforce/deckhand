@@ -199,11 +199,12 @@ await check('every greyed library entry says why, and daemon-blocked ones say so
     assert.ok(entry.pending, `${entry.type} is greyed with no reason`);
     assert.match(pendingReason(entry), /\S/);
   }
-  // The three blocked on phase C1 daemon work, not just a missing form.
+  // Blocked on phase C1 daemon work, not just a missing form. audio.sink and
+  // audio.cycle left this list with C1 piece 1 (node + label).
   const daemon = later.filter((e) => e.pending === 'daemon').map((e) => e.type).sort();
-  assert.deepEqual(daemon, ['audio.cycle', 'audio.mute', 'audio.sink']);
+  assert.deepEqual(daemon, ['audio.mute']);
   const byType = (t: string) => later.find((e) => e.type === t)!;
-  assert.match(pendingReason(byType('audio.sink')), /daemon work/);
+  assert.match(pendingReason(byType('audio.mute')), /daemon work/);
   // Everything else works today if hand-written; command is not special.
   assert.match(pendingReason(byType('command')), /by hand/);
   assert.match(pendingReason(byType('clock')), /by hand/);
