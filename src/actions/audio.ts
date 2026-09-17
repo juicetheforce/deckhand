@@ -24,22 +24,73 @@ function confirmDefaultIs(requested: audio.Sink): void {
 }
 
 /**
- * audio.sink — switch the default output to the first sink matching a
- * substring, and drag playing streams along with it.
+ * A device as the editor stores it (docs/scope.md §3): the exact node the user
+ * picked from the daemon's list, and its description at the time, for showing.
+ */
+interface DeviceRef {
+  node: string;
+  label: string;
+}
+
+/** The node an action names, or null if it names none. */
+function nodeOf(params: ActionDef): string | null {
+  return typeof params.node === 'string' && params.node !== '' ? params.node : null;
+}
+
+/** How to name a device in a message: its stored label, else the node. */
+function nameOf(ref: DeviceRef): string {
+  return ref.label !== '' ? `"${ref.label}" (${ref.node})` : ref.node;
+}
+
+/**
+ * audio.cycle's `devices`, or null if the action does not use them. An entry
+ * without a node throws: a list the editor wrote is never like that, and
+ * skipping it silently would make a key that steps through fewer outputs than
+ * it shows.
+ */
+function devicesOf(params: ActionDef): DeviceRef[] | null {
+  if (!Array.isArray(params.devices)) return null;
+  return params.devices.map((entry, i) => {
+    const e = entry as Record<string, unknown> | null;
+    if (!e || typeof e.node !== 'string' || e.node === '') {
+      throw new Error(`audio.cycle "devices" entry ${i} has no "node"`);
+    }
+    return { node: e.node, label: typeof e.label === 'string' ? e.label : '' };
+  });
+}
+
+/**
+ * audio.sink — switch the default output, and drag playing streams along.
  *
- *   { "type": "audio.sink", "match": "headset" }
- *   { "type": "audio.sink", "match": "Speakers", "moveStreams": false }
+ *   { "type": "audio.sink", "node": "alsa_output.usb-…analog-stereo", "label": "USB Headset" }
+ *   { "type": "audio.sink", "match": "headset" }            hand-edited config only
+ *   { "type": "audio.sink", "node": "…", "moveStreams": false }
+ *
+ * `node` is what the editor writes: the exact device picked from the daemon's
+ * list (`deckhand sinks`). If that device is not present the press logs and
+ * does nothing — no fallback (docs/scope.md §3). `label` is for showing only.
+ * `match`, a substring of the description or node name, is kept for
+ * hand-edited config and is ignored when `node` is set.
  *
  * When this sink is the active one the button paints `activeBackground`,
  * so you can see at a glance where sound is going.
  */
 export const sink: ActionHandler = {
   async execute(ctx, params: ActionDef) {
-    const match = String(params.match ?? '');
-    if (!match) throw new Error('audio.sink action needs a "match" value');
-
-    const found = await audio.findSink(match);
-    if (!found) throw new Error(`no audio output matching "${match}"`);
+    const node = nodeOf(params);
+    let found: audio.Sink | null;
+    if (node) {
+      found = await audio.findSinkByNode(node);
+      if (!found) {
+        const label = typeof params.label === 'string' ? params.label : '';
+        throw new Error(`output ${nameOf({ node, label })} is not present`);
+      }
+    } else {
+      const match = String(params.match ?? '');
+      if (!match) throw new Error('audio.sink action needs a "node" (or a "match" in hand-edited config)');
+      found = await audio.findSink(match);
+      if (!found) throw new Error(`no audio output matching "${match}"`);
+    }
 
     await audio.setDefaultSink(found.name, params.moveStreams !== false);
     confirmDefaultIs(found);
@@ -49,32 +100,64 @@ export const sink: ActionHandler = {
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    const match = String(params.match ?? '');
     const state = audio.cachedState();
-    if (!match || !state) return null;
-    const found = audio.findSinkIn(state.sinks, match);
-    if (found && found.name === state.defaultSink) {
-      return { background: String(params.activeBackground ?? '#1d4d2b') };
+    if (!state) return null;
+    const node = nodeOf(params);
+    let active: boolean;
+    if (node) {
+      active = node === state.defaultSink;
+    } else {
+      const match = String(params.match ?? '');
+      if (!match) return null;
+      active = audio.findSinkIn(state.sinks, match)?.name === state.defaultSink;
     }
-    return { background: String(params.inactiveBackground ?? '#101014') };
+    return active
+      ? { background: String(params.activeBackground ?? '#1d4d2b') }
+      : { background: String(params.inactiveBackground ?? '#101014') };
   },
 };
 
 /**
  * audio.cycle — rotate through a list of outputs with one button.
  *
- *   { "type": "audio.cycle", "matches": ["headset", "speakers"] }
+ *   { "type": "audio.cycle", "devices": [
+ *       { "node": "alsa_output.usb-…analog-stereo", "label": "USB Headset" },
+ *       { "node": "alsa_output.pci-…HiFi__Speaker__sink", "label": "Speakers" } ] }
+ *   { "type": "audio.cycle", "matches": ["headset", "speakers"] }   hand-edited config only
+ *
+ * Each press moves to the entry after the current default, wrapping round, so
+ * two entries make a toggle; if the default is not in the list it goes to the
+ * first. Entries whose device is not present are skipped, and said so.
+ * `devices` is what the editor writes; `matches` is ignored when it is set.
+ *
+ * The key shows the active entry's stored label — which tells a headset's
+ * stereo and mono sinks apart, where the description's first word could not —
+ * and nothing when the default is not in the list. `label` fixes the text;
+ * `showCurrent: false` turns it off. With `matches` the key shows the first
+ * word of the default's description, as it always has.
  */
 export const cycle: ActionHandler = {
   async execute(ctx, params: ActionDef) {
-    const matches = Array.isArray(params.matches) ? (params.matches as string[]) : [];
-    if (matches.length < 2) throw new Error('audio.cycle needs at least two "matches"');
-
-    const current = await audio.getDefaultSink();
-    const resolved = await Promise.all(matches.map((m) => audio.findSink(m)));
-    const available = resolved.filter((s): s is audio.Sink => s !== null);
+    const devices = devicesOf(params);
+    let available: audio.Sink[];
+    if (devices) {
+      if (devices.length < 2) throw new Error('audio.cycle needs at least two "devices"');
+      const sinks = await audio.listSinks();
+      available = [];
+      for (const ref of devices) {
+        const found = sinks.find((s) => s.name === ref.node);
+        if (found) available.push(found);
+        else ctx.log(`audio.cycle: skipping output ${nameOf(ref)}, not present`);
+      }
+    } else {
+      const matches = Array.isArray(params.matches) ? (params.matches as string[]) : [];
+      if (matches.length < 2) throw new Error('audio.cycle needs at least two "devices" (or "matches" in hand-edited config)');
+      const resolved = await Promise.all(matches.map((m) => audio.findSink(m)));
+      available = resolved.filter((s): s is audio.Sink => s !== null);
+    }
     if (available.length === 0) throw new Error('none of the listed outputs exist');
 
+    const current = await audio.getDefaultSink();
     const idx = available.findIndex((s) => s.name === current);
     const next = available[(idx + 1) % available.length];
 
@@ -89,6 +172,19 @@ export const cycle: ActionHandler = {
     if (params.showCurrent === false) return null;
     const state = audio.cachedState();
     if (!state) return null;
+    // A malformed list is reported by the press; the face, refreshed every
+    // second, shows nothing rather than logging the same error each time.
+    let devices: DeviceRef[] | null;
+    try {
+      devices = devicesOf(params);
+    } catch {
+      return null;
+    }
+    if (devices) {
+      const active = devices.find((ref) => ref.node === state.defaultSink);
+      if (!active) return null;
+      return { label: String(params.label ?? (active.label !== '' ? active.label : active.node)) };
+    }
     const active = state.sinks.find((s) => s.name === state.defaultSink);
     if (!active) return null;
     // First word of the description is usually the recognisable part.

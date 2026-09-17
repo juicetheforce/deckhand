@@ -33,7 +33,8 @@
                   "icon": "~/Pictures/deck-icons/output-a.png",
                   "action": {
                     "type": "audio.sink",
-                    "match": "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION"
+                    "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks",
+                    "label": "REPLACE-WITH-ITS-LABEL"
                   }
                 },
                 "1": {
@@ -41,7 +42,8 @@
                   "icon": "~/Pictures/deck-icons/output-b.png",
                   "action": {
                     "type": "audio.sink",
-                    "match": "REPLACE-WITH-PART-OF-ANOTHER-SINK-DESCRIPTION"
+                    "node": "REPLACE-WITH-ANOTHER-NODE-FROM-deckhand-sinks",
+                    "label": "REPLACE-WITH-ITS-LABEL"
                   }
                 },
                 "2": {
@@ -159,7 +161,8 @@
                     "steps": [
                       {
                         "type": "audio.sink",
-                        "match": "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION"
+                        "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks",
+                        "label": "REPLACE-WITH-ITS-LABEL"
                       },
                       {
                         "type": "audio.micMute",
@@ -201,9 +204,9 @@
                   "label": "Output",
                   "action": {
                     "type": "audio.cycle",
-                    "matches": [
-                      "REPLACE-WITH-PART-OF-A-SINK-DESCRIPTION",
-                      "REPLACE-WITH-PART-OF-ANOTHER-SINK-DESCRIPTION"
+                    "devices": [
+                      { "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks", "label": "REPLACE-WITH-ITS-LABEL" },
+                      { "node": "REPLACE-WITH-ANOTHER-NODE-FROM-deckhand-sinks", "label": "REPLACE-WITH-ITS-LABEL" }
                     ]
                   }
                 },

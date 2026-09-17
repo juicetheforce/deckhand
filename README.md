@@ -90,8 +90,8 @@ decks (safe while the service is running):
 node ~/.local/share/deckhand/dist/index.js --list
 ```
 
-`config.example.json` shows the config format. Its serials and audio `match`
-strings are `REPLACE-WITH-…` placeholders, not values that will work on your
+`config.example.json` shows the config format. Its serials and audio `node`
+names are `REPLACE-WITH-…` placeholders, not values that will work on your
 machine.
 
 ### Converting a config from before profiles
@@ -276,19 +276,25 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `brightness` | `value` or `delta` |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
-| `audio.sink` | `match: "<part of a sink description>"` — switches default output and moves playing streams. Highlights when active |
-| `audio.cycle` | `matches: ["<one sink>", "<another>"]` — rotate outputs from one button |
+| `audio.sink` | `node: "<node from deckhand sinks>"`, `label: "<its description>"` — switches default output and moves playing streams. Highlights when active |
+| `audio.cycle` | `devices: [{ node, label }, …]` — rotate outputs from one button; shows the active entry's label |
 | `audio.micMute` | Toggles the default input; swaps icon and background with `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5`; shows the current level |
 | `audio.mute` | Toggles output mute |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause` |
 | `media.info` | Live now-playing button, with album art via `showArt` |
 
-Sink matching is a case-insensitive substring against the device description
-or node name. Pick a substring that appears in only one sink: if several match
-— a headset often has a stereo and a mono sink — the first one wins, silently.
-Local (ALSA) node names don't include the USB port, so they survive replugging
-into a different port; network sink names include an IP address and don't.
+Audio keys name the exact device: `node` is a name from `deckhand sinks`, and
+`label` is only for showing. If that device is not present, a press logs it
+and does nothing — there is no guessing at a similar device. Local (ALSA) node
+names don't include the USB port, so they survive replugging into a different
+port; network sink names include an IP address and don't.
+
+Hand-edited config can still use `match` (and `matches` for `audio.cycle`): a
+case-insensitive substring of the description or node name, ignored when
+`node` / `devices` is set. If a substring matches several sinks — a headset
+often has a stereo and a mono sink — the first one wins, and the log says so
+once.
 
 Media actions target whichever player is actually playing unless you pin one
 with `player: "tidal"`. Bind it loose and the same buttons work for Tidal
@@ -347,8 +353,10 @@ device, then replug the deck.
 accessible; the install script's access report says so directly. If the
 device doesn't exist at all, `sudo modprobe uinput`.
 
-**Audio button doesn't change anything.** `pactl -f json list sinks` and
-check that your `match` substring actually appears in a description.
+**Audio button doesn't change anything.** `journalctl --user -u deckhand` says
+why: a device that is not present, or a switch the audio server refused. Check
+the key's `node` against `deckhand sinks`; with a hand-written `match`, check
+the substring appears in a description in `pactl -f json list sinks`.
 
 **Media buttons do nothing.** `busctl --user list | grep mpris` — if nothing
 is listed, your player isn't exposing MPRIS.

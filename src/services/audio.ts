@@ -95,24 +95,44 @@ export async function getDefaultSink(): Promise<string> {
   return (await pactl(['get-default-sink'])).trim();
 }
 
+/** Substrings already reported as matching several sinks, so each is logged once. */
+const warnedAmbiguous = new Set<string>();
+
 /**
- * Match a sink by case-insensitive substring against either its description
- * ("Sennheiser GSP 370") or its node name. Means the config can say
- * "headset" instead of a forty-character alsa_output string that changes
- * when you move the USB port.
+ * Match a sink by case-insensitive substring against its description, or
+ * failing that its node name. **For hand-edited config only** (docs/scope.md
+ * §3): the editor writes the exact `node` the user picked, found with
+ * findSinkByNode() instead.
+ *
+ * A substring that matches several sinks — a headset's stereo and mono sinks
+ * usually share a word — takes the first, as it always has, and says so once
+ * per substring (the maintainer, 2026-09-16). Called from describe() on every refresh,
+ * hence once rather than every time.
  */
 export function findSinkIn(sinks: Sink[], match: string): Sink | null {
   const needle = match.toLowerCase();
-  return (
-    sinks.find((s) => s.description.toLowerCase().includes(needle)) ??
-    sinks.find((s) => s.name.toLowerCase().includes(needle)) ??
-    null
-  );
+  const byDescription = sinks.filter((s) => s.description.toLowerCase().includes(needle));
+  const hits = byDescription.length > 0 ? byDescription : sinks.filter((s) => s.name.toLowerCase().includes(needle));
+  if (hits.length > 1 && !warnedAmbiguous.has(match)) {
+    warnedAmbiguous.add(match);
+    const names = hits.map((s) => `"${s.description}"`).join(', ');
+    console.error(`[audio] "${match}" matches ${hits.length} outputs (${names}); using the first. Pick the device in the editor to choose exactly.`);
+  }
+  return hits[0] ?? null;
 }
 
 /** Same match as findSinkIn, against a fresh list from pactl. For presses. */
 export async function findSink(match: string): Promise<Sink | null> {
   return findSinkIn(await listSinks(), match);
+}
+
+/**
+ * The sink whose node name is exactly `node`, from a fresh list — or null if
+ * that device is not present. No fallback of any kind (docs/scope.md §3: the
+ * software applies no logic to what the user picked).
+ */
+export async function findSinkByNode(node: string): Promise<Sink | null> {
+  return (await listSinks()).find((s) => s.name === node) ?? null;
 }
 
 // ---------------------------------------------------------------------------

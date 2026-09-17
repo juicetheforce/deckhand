@@ -7,10 +7,17 @@
  * `subscribe` by staying silent. Each invocation is appended to the file
  * named by FAKE_PACTL_LOG, so a test can count spawns.
  *
+ * With FAKE_PACTL_STATE naming a JSON file, it also remembers changes between
+ * calls, so presses can be tested: `set-default-sink` (an unknown name fails
+ * as pactl does; a sink whose active port is "not available" is silently not
+ * made default, as the real server was seen to do) and `list sink-inputs`
+ * (none). A test can also write `absent: [node names]` into the file to take
+ * devices away. Without the variable nothing is remembered.
+ *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 if (process.env.FAKE_PACTL_LOG) appendFileSync(process.env.FAKE_PACTL_LOG, args.join(' ') + '\n');
@@ -40,15 +47,47 @@ const sources = [
   { index: 202, name: 'alsa_input.virtual-portless', description: 'Portless Input', flags: ['HARDWARE'], monitor_source: '', ports: [], active_port: null, mute: false },
 ];
 
-const info = { default_sink_name: sinks[0].name, default_source_name: sources.at(-3).name };
+const statePath = process.env.FAKE_PACTL_STATE;
+let state = {};
+if (statePath) {
+  try {
+    state = JSON.parse(readFileSync(statePath, 'utf8'));
+  } catch {
+    state = {};
+  }
+}
+const absent = new Set(state.absent ?? []);
+const presentSinks = sinks.filter((s) => !absent.has(s.name));
+const presentSources = sources.filter((s) => !absent.has(s.name));
+
+const info = {
+  default_sink_name: state.defaultSink ?? sinks[0].name,
+  default_source_name: state.defaultSource ?? sources.at(-3).name,
+};
+
+function save() {
+  if (statePath) writeFileSync(statePath, JSON.stringify(state));
+}
 
 const joined = args.join(' ');
 if (joined === '-f json info') process.stdout.write(JSON.stringify(info));
-else if (joined === '-f json list sinks') process.stdout.write(JSON.stringify(sinks));
-else if (joined === '-f json list sources') process.stdout.write(JSON.stringify(sources));
+else if (joined === '-f json list sinks') process.stdout.write(JSON.stringify(presentSinks));
+else if (joined === '-f json list sources') process.stdout.write(JSON.stringify(presentSources));
+else if (joined === '-f json list sink-inputs') process.stdout.write('[]');
 else if (joined === 'subscribe') setInterval(() => undefined, 1 << 30);
 else if (joined === 'get-default-sink') process.stdout.write(info.default_sink_name + '\n');
-else {
+else if (statePath && args[0] === 'set-default-sink' && args.length === 2) {
+  const target = presentSinks.find((s) => s.name === args[1]);
+  if (!target) {
+    process.stderr.write('Failure: No such entity\n');
+    process.exit(1);
+  }
+  const port = target.ports.find((p) => p.name === target.active_port);
+  if (port?.availability !== 'not available') {
+    state.defaultSink = target.name;
+    save();
+  }
+} else {
   process.stderr.write(`fake-pactl: unsupported: ${joined}\n`);
   process.exit(1);
 }
