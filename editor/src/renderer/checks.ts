@@ -150,7 +150,12 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     await new Promise((r) => setTimeout(r, 400));
   }
   const selectIndex = new URLSearchParams(window.location.search).get('selectKey');
-  if (selectIndex !== null) (document.querySelectorAll<HTMLButtonElement>('.key')[Number(selectIndex)])?.click();
+  // "3" selects one key; "3,4,5" Ctrl+clicks the rest in (B3's multi-select).
+  const selectIndices = selectIndex === null ? [] : selectIndex.split(',').map(Number);
+  for (const [n, index] of selectIndices.entries()) {
+    document.querySelectorAll<HTMLButtonElement>('.key')[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: n > 0 }));
+    await new Promise((r) => setTimeout(r, 50));
+  }
   if (new URLSearchParams(window.location.search).get('selectTab') === 'icon') {
     await new Promise((r) => setTimeout(r, 200));
     [...document.querySelectorAll<HTMLButtonElement>('.inspector-tab')].find((b) => b.textContent === 'Icon')?.click();
@@ -170,6 +175,12 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   const open = new URLSearchParams(window.location.search).get('open');
   if (open === 'newprofile') {
     await openAddMenu('New profile');
+  } else if (open === 'keymenu' && selectIndices.length > 0) {
+    // B3's right-click menu, on the last selected key.
+    const key = document.querySelectorAll<HTMLButtonElement>('.key')[selectIndices[selectIndices.length - 1]];
+    const rect = key.getBoundingClientRect();
+    key.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2 }));
+    await new Promise((r) => setTimeout(r, 200));
   } else if (open === 'delete') {
     const shown = document.querySelector('.tab-selected')?.getAttribute('data-tab');
     if (shown) await openTabMenu(shown, 'Delete page');
@@ -976,6 +987,144 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * M4 phase B3: bulk operations through the real UI, against two fake decks of
+ * the real shapes. The Node side (scripts/check-bulk.mjs) checks the saved file.
+ */
+async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const key = (index: number) => document.querySelectorAll<HTMLButtonElement>('.key')[index];
+  const selected = () =>
+    [...document.querySelectorAll('.key')].flatMap((k, i) => (k.classList.contains('key-selected') ? [i] : []));
+  const title = () => document.querySelector('.inspector-title')?.textContent ?? null;
+  const click = (index: number, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
+    key(index).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mods }));
+  const rightClick = (index: number) => {
+    const rect = key(index).getBoundingClientRect();
+    key(index).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + 5, clientY: rect.y + 5 }));
+  };
+  const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>('.key-menu-item')];
+  const menuItem = (label: string) => menuItems().find((b) => b.querySelector('span')?.textContent === label);
+  /** A key event where a real one lands: the focused element, bubbling up to window. */
+  const press = (code: string, mods: { ctrlKey?: boolean } = {}, target: EventTarget = document.activeElement ?? document.body) =>
+    target.dispatchEvent(new KeyboardEvent('keydown', { code, key: code, bubbles: true, cancelable: true, ...mods }));
+  const buttons = async (page = 'main') => {
+    const s = (await api.snapshot()).store;
+    if (!s.open) return null;
+    const layout = s.state.config.profiles.default.layouts['BULK-XL'];
+    return layout.pages[page]?.buttons ?? null;
+  };
+  const savedKeys = async () => Object.keys((await buttons()) ?? {}).map(Number).sort((a, b) => a - b);
+  const status = () => document.querySelector('.bulk-status')?.textContent ?? '';
+
+  await until(() => document.querySelectorAll('.key').length === 32);
+
+  // 1. Click, then Ctrl+click: two keys, and the inspector says so.
+  click(0);
+  await until(() => selected().join() === '0');
+  click(1, { ctrlKey: true });
+  await until(() => title() === '2 keys selected');
+  out.ctrlClick = { selected: selected(), title: title() };
+
+  // 2. Ctrl+D: each copy in the next empty key, and the copies become the selection.
+  press('KeyD', { ctrlKey: true });
+  await until(async () => (await savedKeys()).includes(4));
+  await until(() => selected().join() === '3,4');
+  out.duplicate = { keys: await savedKeys(), selected: selected(), copied: (await buttons())?.['3'] };
+
+  // 3. Shift+click a run, copy it, paste at key 16 (row 2, column 0).
+  click(0);
+  await until(() => selected().join() === '0');
+  click(2, { shiftKey: true });
+  await until(() => selected().join() === '0,1,2');
+  press('KeyC', { ctrlKey: true });
+  await until(() => status().includes('Clipboard'));
+  out.clipboardLine = status();
+  click(16);
+  // Wait for the selection to render: the shortcut reads the selection React last rendered.
+  await until(() => selected().join() === '16');
+  press('KeyV', { ctrlKey: true });
+  await until(async () => (await savedKeys()).includes(18));
+  await until(() => selected().join() === '16,17,18');
+  out.paste = { keys: await savedKeys(), selected: selected(), pastedNav: (await buttons())?.['18'], message: status() };
+
+  // 4. Right-click inside the selection: the menu acts on all three. Clear them.
+  await until(() => selected().join() === '16,17,18');
+  rightClick(17);
+  await until(() => menuItems().length > 0);
+  out.menuLabels = menuItems().map((b) => b.querySelector('span')?.textContent);
+  menuItem('Clear 3 buttons')!.click();
+  await until(async () => !(await savedKeys()).includes(16));
+  out.afterMenuClear = await savedKeys();
+
+  // 5. Right-click outside the selection selects that key alone first.
+  click(0);
+  await until(() => selected().join() === '0');
+  click(1, { ctrlKey: true });
+  await until(() => selected().length === 2);
+  rightClick(4);
+  await until(() => menuItems().length > 0);
+  out.rightClickOutside = { selected: selected(), firstItem: menuItems()[0]?.textContent };
+  press('Escape');
+  await until(() => menuItems().length === 0);
+  out.escapeClosedMenuOnly = { menuGone: menuItems().length === 0, selected: selected() };
+
+  // 6. Delete clears the selected key.
+  press('Delete');
+  await until(async () => !(await savedKeys()).includes(4));
+  out.afterDelete = await savedKeys();
+
+  // 7. Shortcuts do nothing while typing in a field: Delete in the label field of key 3.
+  click(3);
+  await until(() => title() === 'Key 4');
+  const label = document.querySelector<HTMLInputElement>('.inspector input[aria-label="Label"]') ?? document.querySelector<HTMLInputElement>('.inspector input');
+  out.labelFieldFound = label !== null;
+  if (label) {
+    label.focus();
+    press('Delete', {}, label);
+    press('KeyD', { ctrlKey: true }, label);
+    await sleep(700);
+  }
+  out.afterTypingShortcuts = await savedKeys();
+  (document.activeElement as HTMLElement | null)?.blur();
+
+  // 8. And nothing while the hotkey inspector is recording: Delete is recorded as the combo, not a clear.
+  const record = [...document.querySelectorAll<HTMLButtonElement>('.inspector button')].find((b) => b.textContent === 'Re-record');
+  out.recordFound = record !== undefined;
+  record?.click();
+  await until(() => document.querySelector('.listening') !== null);
+  press('Delete');
+  out.recordedDelete = await until(async () => (await buttons())?.['3']?.action?.keys === 'delete');
+  out.keyThreeAfterRecording = (await buttons())?.['3'] ?? null;
+  // Again with the key sent to window itself, where listener order differed
+  // (check:hotkey dispatches this way): Escape is recorded and the selection stays.
+  await until(() => document.querySelector('.listening') === null);
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector button')].find((b) => b.textContent === 'Re-record')?.click();
+  await until(() => document.querySelector('.listening') !== null);
+  press('Escape', {}, window);
+  out.recordedEscAtWindow = await until(async () => (await buttons())?.['3']?.action?.keys === 'esc');
+  out.selectionAfterEscAtWindow = selected();
+
+  // 9. Ctrl+A selects every key; Escape selects none.
+  press('KeyA', { ctrlKey: true });
+  await until(() => selected().length === 32);
+  out.selectAll = selected().length;
+  press('Escape');
+  await until(() => selected().length === 0);
+  out.afterEscape = selected().length;
+
+  await sleep(700); // past the autosave
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
@@ -987,6 +1136,15 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'panes') api.reportCheck(name, await panes(api));
     else if (name === 'structure') api.reportCheck(name, await structure(api));
     else if (name === 'navigate') api.reportCheck(name, await navigate(api));
+    else if (name === 'bulk') {
+      // Reports how far it got, so a failure part-way through can be diagnosed.
+      const progress: Record<string, unknown> = {};
+      try {
+        api.reportCheck(name, await bulk(api, progress));
+      } catch (err) {
+        api.reportCheck(name, { ...progress, error: (err as Error).stack ?? String(err) });
+      }
+    }
     else api.reportCheck(name, { error: `unknown check "${name}"` });
   } catch (err) {
     api.reportCheck(name, { error: (err as Error).stack ?? String(err) });

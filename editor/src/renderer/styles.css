@@ -1599,3 +1599,107 @@ button:disabled {
   width: 150px;
   color: var(--text);
 }
+
+/* Bulk operations (M4 phase B3): multi-select, the key menu, the status line */
+
+.key {
+  /* Shift+click selects a run of keys; without this it also selects label text. */
+  user-select: none;
+}
+
+.key-menu {
+  /* Rendered into document.body (KeyMenu.tsx): inside a glass pane, whose
+     backdrop-filter makes it the containing block, "fixed" was not fixed. */
+  position: fixed;
+  z-index: 50;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  min-width: 210px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: #14141c;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.key-menu-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 10px;
+  color: var(--text);
+}
+
+.key-menu-item:hover:not(:disabled) {
+  background: rgba(91, 110, 232, 0.18);
+}
+
+.key-menu-item:disabled {
+  color: var(--text-muted);
+}
+
+.key-menu-item.danger {
+  color: var(--red);
+}
+
+.key-menu-shortcut,
+.bulk-actions kbd {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.key-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bulk-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.bulk-actions button {
+  /* The inspector's own button look (.button-row button), full width. */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 6px 11px;
+}
+
+.bulk-actions button.danger {
+  border-color: rgba(232, 90, 110, 0.45);
+  color: #f2a0ac;
+  background: transparent;
+}
+
+.bulk-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.bulk-status p {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bulk-message .link-button,
+.bulk-clipboard .link-button {
+  margin-left: auto;
+}

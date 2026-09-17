@@ -11,8 +11,11 @@ interface Props {
   page: PageDef;
   /** Icon path → its file's stamp (src/main/icon-files.ts), so a changed file is fetched again. */
   iconStamps: Record<string, string>;
-  selectedKey: number | null;
-  onSelectKey: (index: number) => void;
+  selectedKeys: number[];
+  /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
+  onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
+  /** A right-click, at window coordinates, for the bulk menu. */
+  onKeyMenu: (index: number, x: number, y: number) => void;
 }
 
 /**
@@ -20,7 +23,7 @@ interface Props {
  * and column the deck reports, never an assumed row-major order (scope §7,
  * "decks"). Key faces are a CSS approximation; the deck is the truth (§10).
  */
-export function DeckGrid({ config, geometry, page, iconStamps, selectedKey, onSelectKey }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu }: Props) {
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -41,8 +44,9 @@ export function DeckGrid({ config, geometry, page, iconStamps, selectedKey, onSe
           iconSize={geometry.iconSize}
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
-          selected={selectedKey === k.index}
-          onSelect={() => onSelectKey(k.index)}
+          selected={selectedKeys.includes(k.index)}
+          onClick={(modifiers) => onClickKey(k.index, modifiers)}
+          onMenu={(x, y) => onKeyMenu(k.index, x, y)}
         />
       ))}
     </div>
@@ -59,10 +63,11 @@ interface KeyProps {
   button: ButtonDef | undefined;
   iconStamps: Record<string, string>;
   selected: boolean;
-  onSelect: () => void;
+  onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
+  onMenu: (x: number, y: number) => void;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onSelect }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onClick, onMenu }: KeyProps) {
   const kind = keyKind(button);
   const face = keyFace(config, button, iconSize);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
@@ -81,7 +86,11 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
       title={title}
       aria-label={title}
       aria-pressed={selected}
-      onClick={onSelect}
+      onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(e.clientX, e.clientY);
+      }}
     >
       {face.icon && !iconMissing && (
         <img

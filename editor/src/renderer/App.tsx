@@ -6,6 +6,7 @@ import { Inspector } from './Inspector.js';
 import { Library } from './Library.js';
 import {
   canSwitchDeck,
+  clickKeys,
   deckForProfile,
   followDeck,
   geometryFor,
@@ -19,10 +20,13 @@ import {
   reconcileSelection,
   type Selection,
 } from './model.js';
+import { BulkStatus, KeyMenu } from './KeyMenu.js';
 import { Notices } from './Notices.js';
 import { PaneDivider } from './PaneDivider.js';
 import { DEFAULT_PANE_WIDTHS, paneColumns, widthWhileDragging, type PaneName, type PaneWidths } from './panes.js';
 import { Toolbar, type AddPageResult, type AddProfileResult } from './Toolbar.js';
+import { keyCapture } from './key-capture.js';
+import { useBulk } from './useBulk.js';
 import { useEditor } from './useEditor.js';
 
 export function App() {
@@ -94,7 +98,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
       const profile = change.profile;
       const serial = deckForProfile(config, daemon, profile, selection.serial);
       const layout = layoutFor(config, profile, serial);
-      setSelection(reconcileSelection(config, daemon, { profile, serial, page: layout ? startPageOf(layout) : '', key: null }));
+      setSelection(reconcileSelection(config, daemon, { profile, serial, page: layout ? startPageOf(layout) : '', key: null, keys: [] }));
       if (daemon.connected) {
         void sendSwitch(
           () => window.deckhand.switchProfile(profile),
@@ -105,14 +109,14 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
     }
     if (change.serial !== undefined && change.serial !== selection.serial) {
       // Choosing a device opens whatever that deck is showing; nothing is sent.
-      setSelection(followDeck(config, daemon, { ...selection, serial: change.serial, key: null }));
+      setSelection(followDeck(config, daemon, { ...selection, serial: change.serial, key: null, keys: [] }));
       return;
     }
     if (change.page !== undefined && change.page !== selection.page) {
       // Live switching: choosing a page shows it on the deck being edited.
       const page = change.page;
       const serial = selection.serial;
-      setSelection(reconcileSelection(config, daemon, { ...selection, page, key: null }));
+      setSelection(reconcileSelection(config, daemon, { ...selection, page, key: null, keys: [] }));
       if (canSwitchDeck(daemon, serial)) {
         void sendSwitch(
           () => window.deckhand.showPage(serial, page),
@@ -126,6 +130,22 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   const layout = layoutFor(config, selection.profile, selection.serial);
   const page = layout?.pages[selection.page];
   const geometry = geometryFor(daemon, selection.serial);
+
+  // Bulk operations over the selected keys (M4 phase B3).
+  const selectKeys = (keys: number[]) =>
+    setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
+  const bulk = useBulk({ config, selection, layout, page, geometry, editingBlocked, selectKeys });
+  const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
+  useBulkShortcuts({
+    enabled: page !== undefined && geometry !== null && !editingBlocked,
+    hasSelection: selection.keys.length > 0,
+    onCopy: bulk.copy,
+    onPaste: () => void bulk.paste(),
+    onDuplicate: () => void bulk.duplicate(),
+    onClear: () => void bulk.clear(),
+    onSelectAll: () => geometry && selectKeys(geometry.keys.map((k) => k.index)),
+    onSelectNone: () => selectKeys([]),
+  });
 
   // Pane widths (scope §10): dragged by the dividers, and deliberately not
   // persisted — a fresh editor opens at the defaults (the maintainer, 2026-09-15).
@@ -171,7 +191,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
    * config has arrived and the follow effect reconciles it onto the right page.
    */
   const selectNewProfile = (profile: string) => {
-    setSelection((current) => ({ ...current, profile, page: '', key: null }));
+    setSelection((current) => ({ ...current, profile, page: '', key: null, keys: [] }));
     if (daemon.connected) {
       void sendSwitch(
         () => window.deckhand.switchProfile(profile),
@@ -236,7 +256,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
         <Library
-          onPick={(type) => selection.key !== null && setPick((current) => ({ type, token: (current?.token ?? 0) + 1 }))}
+          onPick={(type) => selection.keys.length === 1 && setPick((current) => ({ type, token: (current?.token ?? 0) + 1 }))}
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
@@ -262,9 +282,17 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
                 geometry={geometry}
                 page={page}
                 iconStamps={iconStamps}
-                selectedKey={selection.key}
-                onSelectKey={(key) => setSelection((s) => ({ ...s, key }))}
+                selectedKeys={selection.keys}
+                onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
+                onKeyMenu={(index, x, y) => {
+                  // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
+                  if (!selection.keys.includes(index)) selectKeys([index]);
+                  if (!editingBlocked) setKeyMenu({ x, y });
+                }}
               />
+            )}
+            {keyMenu && (
+              <KeyMenu x={keyMenu.x} y={keyMenu.y} count={selection.keys.length} bulk={bulk} onClose={() => setKeyMenu(null)} />
             )}
             {layout && deletion && pendingDelete !== null && (
               <DeletePage
@@ -276,9 +304,12 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
               />
             )}
           </div>
+          <BulkStatus bulk={bulk} />
         </main>
         <PaneDivider pane="inspector" width={paneWidths.inspector} onResize={resizePane} label="Resize the inspector" />
         <Inspector
+          selectedCount={selection.keys.length}
+          bulk={bulk}
           at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
           editingBlocked={editingBlocked}
@@ -363,4 +394,50 @@ function DeletePage({
       </div>
     </div>
   );
+}
+
+/**
+ * Ctrl+C, Ctrl+V, Ctrl+D, Delete, Ctrl+A and Escape on the grid (scope §10).
+ *
+ * Never while typing in a field — Ctrl+C there copies text — and never while
+ * the hotkey inspector is recording, when Escape or Delete is the combo being
+ * recorded. That is an explicit flag (key-capture.ts) rather than trust in
+ * listener order; check:bulk sends keys both to the focused element and to
+ * window itself, where the order differed.
+ */
+function useBulkShortcuts(handlers: {
+  enabled: boolean;
+  hasSelection: boolean;
+  onCopy: () => void;
+  onPaste: () => void;
+  onDuplicate: () => void;
+  onClear: () => void;
+  onSelectAll: () => void;
+  onSelectNone: () => void;
+}) {
+  // The latest handlers, so the listener is added once rather than every render.
+  const latest = useRef(handlers);
+  latest.current = handlers;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const h = latest.current;
+      if (!h.enabled || keyCapture.active || event.defaultPrevented || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      const ctrl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+      const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+      let handled = true;
+      if (ctrl && event.code === 'KeyV') h.onPaste();
+      else if (ctrl && event.code === 'KeyA') h.onSelectAll();
+      else if (!h.hasSelection) handled = false;
+      else if (ctrl && event.code === 'KeyC') h.onCopy();
+      else if (ctrl && event.code === 'KeyD') h.onDuplicate();
+      else if (plain && event.code === 'Delete') h.onClear();
+      else if (plain && event.code === 'Escape') h.onSelectNone();
+      else handled = false;
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 }

@@ -9,6 +9,7 @@ import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
+import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
 export type DeckGeometryWithSerial = DecksResult[number];
@@ -17,8 +18,16 @@ export interface Selection {
   profile: string;
   serial: string;
   page: string;
-  /** Selected key index, or null. */
+  /**
+   * The key the inspector shows, or null. With several keys selected it is
+   * the anchor: the last key clicked, where a Shift+click range starts.
+   */
   key: number | null;
+  /**
+   * Every selected key, `key` included (M4 phase B3, multi-select). Empty
+   * exactly when `key` is null.
+   */
+  keys: number[];
 }
 
 export interface Choice {
@@ -157,7 +166,7 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
     page = keepPage ? current!.page : startPageOf(layout);
   }
   const samePage = current && current.profile === profile && current.serial === serial && current.page === page;
-  return { profile, serial, page, key: samePage ? current!.key : null };
+  return samePage ? { profile, serial, page, key: current!.key, keys: current!.keys } : { profile, serial, page, key: null, keys: [] };
 }
 
 /**
@@ -171,7 +180,7 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
   const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === current.serial) : undefined;
   if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
     const moved = deck.profile !== current.profile || deck.page !== current.page;
-    return reconcileSelection(config, daemon, { ...current, profile: deck.profile, page: deck.page, key: moved ? null : current.key });
+    return reconcileSelection(config, daemon, { ...current, profile: deck.profile, page: deck.page, ...(moved ? { key: null, keys: [] } : {}) });
   }
   return reconcileSelection(config, daemon, current);
 }
@@ -186,6 +195,66 @@ export function deckForProfile(config: Config, daemon: DaemonView, profile: stri
   if (layoutFor(config, profile, preferred)) return preferred;
   const choices = deckChoices(config, profile, daemon);
   return (choices.find((d) => d.connected && d.hasLayout) ?? choices.find((d) => d.hasLayout))?.id ?? preferred;
+}
+
+/**
+ * The keys selected after clicking one (M4 phase B3), the way a file manager
+ * selects icons:
+ * - a plain click selects that key alone;
+ * - Ctrl+click adds it, or takes it out if it was selected;
+ * - Shift+click selects the run from the anchor (`key`) to it, in reading
+ *   order, and keeps the anchor so the next Shift+click starts from the same
+ *   place.
+ */
+export function clickKeys(
+  grid: KeyGrid,
+  current: Pick<Selection, 'key' | 'keys'>,
+  index: number,
+  modifiers: { ctrl: boolean; shift: boolean },
+): Pick<Selection, 'key' | 'keys'> {
+  if (modifiers.shift && current.key !== null) {
+    return { key: current.key, keys: rangeSelection(grid, current.key, index) };
+  }
+  if (modifiers.ctrl) {
+    if (!current.keys.includes(index)) return { key: index, keys: [...current.keys, index] };
+    const keys = current.keys.filter((k) => k !== index);
+    return { key: current.key === index ? (keys[keys.length - 1] ?? null) : current.key, keys };
+  }
+  return { key: index, keys: [index] };
+}
+
+/** "3 keys (“Jump”, “Sprint” and key 7)" — what the clipboard holds, for the line under the grid. */
+export function clipboardSummary(clip: Clipboard): string {
+  const names = clip.keys.map((k) => keyName(k.button, k.sourceIndex));
+  const count = clip.keys.length === 1 ? '1 key' : `${clip.keys.length} keys`;
+  const shown = names.length <= 3 ? joinNames(names) : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  return `${count} (${shown})`;
+}
+
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * What a paste or copy did, in words — the status line has to name what was
+ * skipped and what lost its navigation (the maintainer, 2026-09-16), because neither is
+ * visible on the grid being looked at.
+ */
+export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string): string {
+  const written = placement.writes.length;
+  const parts: string[] = [];
+  if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
+  else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
+  if (written > 0 && placement.skipped.length > 0) {
+    const names = joinNames(placement.skipped.map((k) => keyName(k.button, k.sourceIndex)));
+    parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} no place on that deck.`);
+  }
+  if (placement.lostNavigation.length > 0) {
+    const names = joinNames(placement.lostNavigation.map((l) => keyName(l.key.button, l.index)));
+    const one = placement.lostNavigation.length === 1;
+    parts.push(`${names} lost ${one ? 'its' : 'their'} Go to page: that page is not on this deck, so ${one ? 'it needs' : 'they need'} a new target.`);
+  }
+  return parts.join(' ');
 }
 
 /** Whether a selection change can be shown on the deck right now. */

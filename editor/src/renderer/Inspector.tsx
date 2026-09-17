@@ -5,9 +5,14 @@ import type { ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../shared/keys.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
-import { actionEditable, describeAction, keyKind, type Choice } from './model.js';
+import { actionEditable, clipboardSummary, describeAction, keyKind, type Choice } from './model.js';
+import { keyCapture } from './key-capture.js';
+import type { Bulk } from './useBulk.js';
 
 interface Props {
+  /** How many keys are selected. With more than one, the inspector offers the bulk operations instead of one key's fields. */
+  selectedCount: number;
+  bulk: Bulk;
   at: ButtonLocation | null;
   button: ButtonDef | undefined;
   editingBlocked: boolean;
@@ -40,7 +45,7 @@ type Mode =
  * label. Other action types are shown read-only in phase A, label still
  * editable.
  */
-export function Inspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -51,10 +56,14 @@ export function Inspector({ at, button, editingBlocked, pick, pages, profiles, c
     if ((pick?.token ?? 0) !== firstToken.current) setTab('key');
   }, [pick?.token]);
 
+  if (selectedCount > 1) {
+    return <SeveralKeys count={selectedCount} bulk={bulk} editingBlocked={editingBlocked} />;
+  }
   if (at === null) {
     return (
       <aside className="inspector glass">
         <p className="muted">Select a key to see what it does.</p>
+        <p className="muted small">{SELECTING_SEVERAL}</p>
       </aside>
     );
   }
@@ -80,7 +89,46 @@ export function Inspector({ at, button, editingBlocked, pick, pages, profiles, c
   );
 }
 
-interface KeyInspectorProps extends Props {
+/**
+ * How to select several keys, said where someone looking at the inspector will
+ * read it. Multi-select is a gesture, so it is written down rather than left
+ * for someone to already know (scope §10: capabilities cannot hide).
+ */
+const SELECTING_SEVERAL = 'Ctrl+click adds a key to the selection, Shift+click selects a run of keys, and right-click shows what you can do with them.';
+
+/**
+ * Several keys selected (M4 phase B3). No fields: editing one label across ten
+ * keys is not a B3 operation. The same operations as the right-click menu,
+ * with their shortcuts, so they can be found without right-clicking.
+ */
+function SeveralKeys({ count, bulk, editingBlocked }: { count: number; bulk: Bulk; editingBlocked: boolean }) {
+  return (
+    <aside className="inspector glass" aria-label="Inspector">
+      <h2 className="inspector-title">{count} keys selected</h2>
+      <p className="muted small">{SELECTING_SEVERAL}</p>
+      <div className="bulk-actions">
+        <button disabled={editingBlocked} onClick={() => void bulk.duplicate()}>
+          Duplicate <kbd>Ctrl+D</kbd>
+        </button>
+        <button disabled={editingBlocked} onClick={bulk.copy}>
+          Copy <kbd>Ctrl+C</kbd>
+        </button>
+        <button
+          disabled={editingBlocked || bulk.clipboard === null}
+          title={bulk.clipboard === null ? 'Nothing copied yet' : `Paste ${clipboardSummary(bulk.clipboard)}`}
+          onClick={() => void bulk.paste()}
+        >
+          Paste <kbd>Ctrl+V</kbd>
+        </button>
+        <button className="danger" disabled={editingBlocked} onClick={() => void bulk.clear()}>
+          Clear {count} buttons <kbd>Del</kbd>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   at: ButtonLocation;
   tab: Tab;
   onTab: (tab: Tab) => void;
@@ -177,7 +225,10 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     };
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('keyup', onKey, true);
+    // The grid's bulk shortcuts stand down while this records (key-capture.ts).
+    keyCapture.active = true;
     return () => {
+      keyCapture.active = false;
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('keyup', onKey, true);
     };
