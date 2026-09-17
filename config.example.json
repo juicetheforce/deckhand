@@ -205,8 +205,14 @@
                   "action": {
                     "type": "audio.cycle",
                     "devices": [
-                      { "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks", "label": "REPLACE-WITH-ITS-LABEL" },
-                      { "node": "REPLACE-WITH-ANOTHER-NODE-FROM-deckhand-sinks", "label": "REPLACE-WITH-ITS-LABEL" }
+                      {
+                        "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks",
+                        "label": "REPLACE-WITH-ITS-LABEL"
+                      },
+                      {
+                        "node": "REPLACE-WITH-ANOTHER-NODE-FROM-deckhand-sinks",
+                        "label": "REPLACE-WITH-ITS-LABEL"
+                      }
                     ]
                   }
                 },
