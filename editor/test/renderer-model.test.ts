@@ -12,6 +12,7 @@ import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
 import { BUILTIN_ICONS } from '../../src/default-icons.js';
 import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue } from '../src/renderer/catalogue.js';
+import { STEP_TYPES, multiTotal, stepEditable, stepSummary } from '../src/renderer/steps.js';
 import {
   canSwitchDeck,
   deckChoices,
@@ -102,7 +103,9 @@ await check('the library enables exactly the actions with a form, and greys the 
   const editable = entries.filter((e) => e.editable).map((e) => e.type);
   // C2 piece 4 adds the forms that need no device, text or list; piece 5 the device pickers.
   // Piece 6: text, command, Press/Release.
-  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'noop', 'page', 'profile', 'text']);
+  // Piece 7: Multi action — every action in the catalogue now has a form.
+  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text']);
+  assert.equal(entries.filter((e) => !e.editable).length, 0, 'C2 exit: every §6 action can be configured'); 
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
 });
@@ -306,6 +309,25 @@ await check('"not set up": an action missing the setting it cannot run without �
   ];
   for (const action of complete) assert.equal(actionIncomplete(action), false, JSON.stringify(action));
   assert.equal(actionIncomplete(undefined), false);
+});
+
+await check('Multi action steps: which can be edited, what each row says, and the total in both figures', () => {
+  assert.equal(stepEditable({ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }), true, 'the delay is the step list\'s, not the form\'s');
+  assert.equal(stepEditable({ type: 'hotkey', keys: ['a', 'b'] }), false, 'a sequence has no form');
+  assert.equal(stepEditable({ type: 'keyHold', keys: 'f24', state: 'down' }), false, 'no release in a step');
+  assert.equal(stepEditable({ type: 'multi', steps: [] }), false, 'no nesting');
+  for (const type of ['clock', 'noop', 'media.info', 'keyHold', 'multi']) assert.ok(!STEP_TYPES.includes(type), type);
+  for (const type of STEP_TYPES) assert.ok(hasForm(type), type);
+  const pages = [{ id: 'pg_1', label: 'Jobs' }];
+  assert.equal(stepSummary({ type: 'hotkey', keys: 'ctrl+1' }, pages, []), 'Ctrl+1');
+  assert.equal(stepSummary({ type: 'page', to: 'pg_1' }, pages, []), 'to Jobs');
+  assert.equal(stepSummary({ type: 'text', text: 'gg wp' }, pages, []), '“gg wp”');
+  assert.equal(stepSummary({ type: 'audio.sink' }, pages, []), 'not set up');
+  // Ctrl+1 is 141.5 ms, "gg" 45 ms, and 200 ms of delay: 386.5 ms, shown to 5 ms.
+  assert.equal(multiTotal([{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }, { type: 'text', text: 'gg' }]), 'delays 200 ms · about 385 ms total');
+  assert.equal(multiTotal([{ type: 'hotkey', keys: 'f24' }]), 'about 15 ms total');
+  // A step missing its setting marks the whole key.
+  assert.equal(actionIncomplete({ type: 'multi', steps: [{ type: 'hotkey', keys: 'f24' }, { type: 'audio.sink' }] }), true);
 });
 
 await check('profileCoverage names the decks a profile changes, and the connected ones it leaves out', () => {

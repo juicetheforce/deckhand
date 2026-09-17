@@ -1586,6 +1586,110 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* Multi action (inspector/MultiForm.tsx). */
+.step-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step {
+  border-radius: 9px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.step-open {
+  border-color: var(--accent);
+}
+
+.step-dragging {
+  opacity: 0.45;
+}
+
+.step-drop-target {
+  border: 1px dashed var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+
+.step-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  user-select: none;
+  touch-action: none;
+  padding: 0 2px;
+}
+
+.step-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px auto 1fr;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 2px 0;
+}
+
+.step-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.step-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.step-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-delay {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.inspector .step-delay .size-input {
+  width: 62px;
+}
+
+.step-remove {
+  padding: 2px 6px;
+}
+
+.step-form {
+  padding: 0 10px 8px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.step-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-total {
+  margin-top: 8px;
+}
+
 .pair-icons {
   margin-top: 6px;
 }

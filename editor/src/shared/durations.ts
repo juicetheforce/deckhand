@@ -38,6 +38,26 @@ export function comboTapMs(combo: string): number | null {
   }
 }
 
+/** hotkey's own pause between repeats and between a sequence's combos (src/actions/keyboard.ts). */
+const HOTKEY_GAP_MS = 30;
+
+/**
+ * About how long one action takes to run, not counting a Multi step's delay.
+ * Only input actions are estimated, from the measurements above. Every other
+ * action — switching an output, a page, a media key — counts as 0:
+ * `[inference]` short beside a combo's 141 ms, and not measured.
+ */
+export function actionDurationMs(action: { type: string; [k: string]: unknown }): number {
+  if (action.type === 'text') return typeof action.text === 'string' ? (textDurationMs(action.text) ?? 0) : 0;
+  if (action.type !== 'hotkey') return 0;
+  const combos = Array.isArray(action.keys) ? action.keys.map(String) : typeof action.keys === 'string' ? [action.keys] : [];
+  if (combos.length === 0) return 0;
+  const holdMs = typeof action.holdMs === 'number' ? action.holdMs : 0;
+  const repeat = typeof action.repeat === 'number' ? Math.max(1, action.repeat) : 1;
+  const once = combos.reduce((ms, combo) => ms + (holdMs > 0 ? holdMs : (comboTapMs(combo) ?? 0)), 0) + (combos.length > 1 ? combos.length * HOTKEY_GAP_MS : 0);
+  return once * repeat + (repeat - 1) * HOTKEY_GAP_MS;
+}
+
 /** "0.5 s", "1.2 s", "85 ms" — rounded so it does not look more precise than it is. */
 export function formatDuration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms / 5) * 5} ms` : `${(ms / 1000).toFixed(1)} s`;

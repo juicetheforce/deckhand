@@ -1656,6 +1656,84 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await selectKey(17);
   out.oddPairReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
 
+  // Multi action.
+  const multiWrites: unknown[] = [];
+  const stepRow = (i: number) => document.querySelector<HTMLElement>(`.inspector .step[data-step-index="${i}"]`);
+  const openStep = async (i: number) => {
+    if (!stepRow(i)?.classList.contains('step-open')) stepRow(i)!.querySelector<HTMLButtonElement>('.step-main')!.click();
+    await until(() => stepRow(i)?.classList.contains('step-open') === true);
+  };
+  const addStep = async (type: string) => {
+    await clickButton('Add a step');
+    await until(() => document.querySelector(`.inspector [data-step-type="${type}"]`) !== null);
+    document.querySelector<HTMLButtonElement>(`.inspector [data-step-type="${type}"]`)!.click();
+  };
+  await selectKey(18);
+  libraryClick('multi');
+  await until(() => headings().includes('Multi action'));
+  await sleep(500);
+  multiWrites.push((await buttons())?.['18']?.action ?? null);
+  await addStep('hotkey');
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey' }] }));
+  const markWhileEmpty = (await until(() => document.querySelectorAll('.key')[18].querySelector('.key-mark')?.textContent === 'not set up')) ? 'not set up' : null;
+  // The step's own hotkey form, typed manually.
+  await openStep(0);
+  stepRow(0)!.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.textContent === 'Type manually' && b.click());
+  await until(() => stepRow(0)!.querySelector('input[aria-label="Key combination"]') !== null);
+  const combo = stepRow(0)!.querySelector<HTMLInputElement>('input[aria-label="Key combination"]')!;
+  typeInto(combo, 'ctrl+1');
+  combo.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1' }] }));
+  typeInto(stepRow(0)!.querySelector<HTMLInputElement>('input[aria-label="Delay after step 1"]')!, '200');
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] }));
+  await addStep('text');
+  await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }, { type: 'text' }] });
+  await openStep(1);
+  const stepText = stepRow(1)!.querySelector<HTMLTextAreaElement>('textarea')!;
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(stepText, 'gg');
+  stepText.dispatchEvent(new Event('input', { bubbles: true }));
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }, { type: 'text', text: 'gg' }] }));
+  await until(() => document.querySelector('.inspector .step-total')?.textContent?.includes('delays') === true);
+  const total = document.querySelector('.inspector .step-total')?.textContent;
+  const summaries = [...document.querySelectorAll('.inspector .step-summary')].map((n) => n.textContent);
+  // Drag step 2 by its handle onto step 1.
+  const handle = stepRow(1)!.querySelector<HTMLElement>('.step-handle')!.getBoundingClientRect();
+  const target = stepRow(0)!.querySelector<HTMLElement>('.step-main')!.getBoundingClientRect();
+  const pointerAt = (type: string, x: number, y: number) =>
+    (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 9, button: 0, isPrimary: true }));
+  pointerAt('pointerdown', handle.x + handle.width / 2, handle.y + handle.height / 2);
+  pointerAt('pointermove', target.x + 10, target.y + target.height / 2);
+  pointerAt('pointerup', target.x + 10, target.y + target.height / 2);
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'text', text: 'gg' }, { type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] }));
+  await until(() => stepRow(0)?.querySelector('.step-name')?.textContent === 'Type text');
+  stepRow(0)!.querySelector<HTMLButtonElement>('.step-remove')!.click();
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] }));
+  // Editing a step that has a delay keeps the delay.
+  await openStep(0);
+  stepRow(0)!.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.textContent === 'Type manually' && b.click());
+  await until(() => stepRow(0)!.querySelector('input[aria-label="Key combination"]') !== null);
+  const recombo = stepRow(0)!.querySelector<HTMLInputElement>('input[aria-label="Key combination"]')!;
+  typeInto(recombo, 'ctrl+2');
+  recombo.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  multiWrites.push(await actionAs(18, { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] }));
+  // Test run: a countdown, then it is sent.
+  await clickButton('Test run');
+  const clickedAt = Date.now();
+  const countdownShown = await until(() => document.querySelector('.inspector .test-countdown') !== null, 2000);
+  await until(() => document.querySelector('.inspector .test-result') !== null, 8000);
+  // Scope §10: it arms rather than fires — nothing is sent for the whole countdown.
+  const testAfterMs = Date.now() - clickedAt;
+  out.multi = { writes: multiWrites, markWhileEmpty, total, summaries, countdownShown, testAfterMs, testResult: document.querySelector('.inspector .test-result')?.textContent ?? null };
+
+  // A multi with a step the editor has no form for.
+  await selectKey(19);
+  await until(() => stepRow(0) !== null);
+  await openStep(0);
+  const json = stepRow(0)!.querySelector('.json') !== null;
+  typeInto(stepRow(0)!.querySelector<HTMLInputElement>('input[aria-label="Delay after step 1"]')!, '75');
+  const afterDelay = await actionAs(19, { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] });
+  out.multiReadOnly = { json, afterDelay };
+
   // A mute key with its own icon.
   await selectKey(8);
   await until(() => pairValue('iconMuted') !== null);

@@ -1,7 +1,7 @@
 // The duration estimates (src/shared/durations.ts) against the measurements
 // they come from (docs/code-state.md, "Cost of the combo timing on text").
 import assert from 'node:assert/strict';
-import { COMBO_TAP_MS, SINGLE_TAP_MS, comboTapMs, formatDuration, textDurationMs } from '../src/shared/durations.js';
+import { COMBO_TAP_MS, SINGLE_TAP_MS, actionDurationMs, comboTapMs, formatDuration, textDurationMs } from '../src/shared/durations.js';
 
 let failures = 0;
 async function check(name: string, fn: () => void | Promise<void>): Promise<void> {
@@ -36,6 +36,16 @@ await check('a combo with a modifier takes the held timing; a bare key the tap',
   assert.equal(comboTapMs('ctrl+1'), COMBO_TAP_MS);
   assert.equal(comboTapMs('f24'), SINGLE_TAP_MS);
   assert.equal(comboTapMs('ctrl+nosuchkey'), null);
+});
+
+await check('hotkey estimates follow src/actions/keyboard.ts: hold replaces the tap, repeats and sequences add its 30 ms gap; other actions count 0', () => {
+  assert.equal(actionDurationMs({ type: 'hotkey', keys: 'ctrl+1' }), COMBO_TAP_MS);
+  assert.equal(actionDurationMs({ type: 'hotkey', keys: 'f24', holdMs: 400 }), 400);
+  assert.equal(actionDurationMs({ type: 'hotkey', keys: 'f24', repeat: 3 }), 3 * SINGLE_TAP_MS + 2 * 30);
+  assert.equal(actionDurationMs({ type: 'hotkey', keys: ['ctrl+c', 'ctrl+v'] }), 2 * COMBO_TAP_MS + 2 * 30);
+  assert.equal(actionDurationMs({ type: 'text', text: 'gg' }), textDurationMs('gg'));
+  assert.equal(actionDurationMs({ type: 'audio.sink', node: 'x' }), 0);
+  assert.equal(actionDurationMs({ type: 'hotkey' }), 0);
 });
 
 await check('durations read as estimates', () => {

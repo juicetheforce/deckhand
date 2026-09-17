@@ -34,7 +34,7 @@ export function VolumeForm({ at, button, disabled, run }: FormProps) {
 }
 
 /** audio.micMute and audio.mute: the same settings; mic mute also turns the key red while muted. */
-export function MuteForm({ type, at, button, disabled, run, onChooseIcon }: FormProps & { type: 'audio.micMute' | 'audio.mute'; onChooseIcon: (field: PairIconField) => void }) {
+export function MuteForm({ type, at, button, disabled, run, onChooseIcon }: FormProps & { type: 'audio.micMute' | 'audio.mute'; onChooseIcon?: (field: PairIconField) => void }) {
   const action = actionOf(type, button);
   const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction(type, button, patch) });
   const text = (field: 'labelMuted' | 'labelUnmuted') => (typeof action?.[field] === 'string' ? (action[field] as string) : '');
@@ -46,7 +46,7 @@ export function MuteForm({ type, at, button, disabled, run, onChooseIcon }: Form
           ? 'Toggles the default input. The key shows whether it is muted, and turns red while it is.'
           : 'Toggles the default output. The key shows whether it is muted.'}
       </p>
-      <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />
+      {onChooseIcon && <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />}
       <Row name="Muted label">
         <TextSetting label="Label while muted" value={text('labelMuted')} placeholder="The key's label" disabled={disabled} onSave={(v) => write({ labelMuted: v === '' ? undefined : v })} />
       </Row>

@@ -66,7 +66,7 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', editable: true, aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
       { type: 'text', name: 'Type text', description: 'Type a string, US layout', editable: true, aliases: ['phrase', 'paste', 'autotype', 'macro'] },
       { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', editable: true, aliases: ['momentary', 'ptt', 'push to talk'] },
-      { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', editable: false, pending: 'inspector', aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
+      { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', editable: true, aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
     ],
   },
   {

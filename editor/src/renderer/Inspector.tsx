@@ -3,18 +3,12 @@ import type { ButtonDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit } from '../shared/edits.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
-import { HotkeyForm, PressReleaseForm } from './inspector/HotkeyForm.js';
-import { CommandForm, TextForm } from './inspector/TextCommandForms.js';
 import { IconState } from './inspector/IconState.js';
 import { LabelField, LabelStyle } from './inspector/LabelFields.js';
-import { PageAction } from './inspector/PageAction.js';
-import { ProfileAction } from './inspector/ProfileAction.js';
 import { pairIconFields, type PairIconField } from '../shared/icons.js';
-import { MuteForm, VolumeForm } from './inspector/AudioForms.js';
-import { CycleForm, InputForm, OutputForm, type AudioLists } from './inspector/DeviceForms.js';
+import { ActionForm } from './inspector/ActionForm.js';
+import type { AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
-import { MediaControlForm, MediaInfoForm } from './inspector/MediaForms.js';
-import { BrightnessForm, ClockForm, NoopForm } from './inspector/SystemForms.js';
 import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, type Choice } from './model.js';
 import type { Bulk } from './useBulk.js';
 
@@ -235,38 +229,24 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         <IconPicker key={slot ?? 'key'} at={at} button={button} slot={slot} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
       )}
 
-      {tab === 'key' && editable && type === 'page' && (
-        <PageAction at={at} action={button?.action} pages={pages} disabled={editingBlocked} run={run} />
+      {tab === 'key' && editable && (
+        <ActionForm
+          type={type}
+          at={at}
+          button={button}
+          disabled={editingBlocked}
+          run={run}
+          pages={pages}
+          profiles={profiles}
+          coverage={coverage}
+          audio={audio}
+          listenRequest={listenRequest}
+          onListening={() => setListenRequest(false)}
+          onChooseIcon={chooseIcon}
+          serial={at.serial}
+          canTestRun={canPreview}
+        />
       )}
-
-      {tab === 'key' && editable && type === 'profile' && (
-        <ProfileAction at={at} action={button?.action} profiles={profiles} coverage={coverage} disabled={editingBlocked} run={run} />
-      )}
-
-      {tab === 'key' && editable && type === 'hotkey' && (
-        <HotkeyForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
-      )}
-
-      {tab === 'key' && editable && type === 'keyHold' && (
-        <PressReleaseForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
-      )}
-      {tab === 'key' && editable && type === 'text' && <TextForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && type === 'command' && <CommandForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && type === 'clock' && <ClockForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && type === 'noop' && <NoopForm />}
-      {tab === 'key' && editable && type === 'brightness' && <BrightnessForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && type === 'media.control' && (
-        <MediaControlForm at={at} button={button} disabled={editingBlocked} run={run} onChooseIcon={chooseIcon} />
-      )}
-      {tab === 'key' && editable && type === 'media.info' && <MediaInfoForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && type === 'audio.volume' && <VolumeForm at={at} button={button} disabled={editingBlocked} run={run} />}
-      {tab === 'key' && editable && (type === 'audio.micMute' || type === 'audio.mute') && (
-        <MuteForm type={type} at={at} button={button} disabled={editingBlocked} run={run} onChooseIcon={chooseIcon} />
-      )}
-
-      {tab === 'key' && editable && type === 'audio.sink' && <OutputForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
-      {tab === 'key' && editable && type === 'audio.source' && <InputForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
-      {tab === 'key' && editable && type === 'audio.cycle' && <CycleForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
 
       {tab === 'key' && !(editable && hasForm(type)) && (
         <section className="inspector-section">

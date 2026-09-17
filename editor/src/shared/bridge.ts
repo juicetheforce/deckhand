@@ -6,7 +6,7 @@
  * direct access to Electron.
  */
 import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
-import type { ButtonDef, Config } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
 
@@ -132,6 +132,12 @@ export interface DeckhandBridge {
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
+  /**
+   * Multi action's Test Run (scope §10): run the action on a deck now — but
+   * refused, code "focused", while the editor's window has focus, so a test
+   * never types into the editor itself.
+   */
+  testRun(serial: string, action: ActionDef): Promise<DaemonResult>;
 
   /**
    * Which action-library sections are collapsed, by group name. Sections

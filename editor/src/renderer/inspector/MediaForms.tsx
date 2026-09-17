@@ -14,7 +14,7 @@ const METHODS = [
 
 type Method = (typeof METHODS)[number]['value'];
 
-export function MediaControlForm({ at, button, disabled, run, onChooseIcon }: FormProps & { onChooseIcon: (field: PairIconField) => void }) {
+export function MediaControlForm({ at, button, disabled, run, onChooseIcon }: FormProps & { onChooseIcon?: (field: PairIconField) => void }) {
   const action = actionOf('media.control', button);
   const raw = String(action?.method ?? 'playpause').toLowerCase();
   const method = (raw === 'prev' ? 'previous' : raw) as Method;
@@ -30,8 +30,8 @@ export function MediaControlForm({ at, button, disabled, run, onChooseIcon }: Fo
         onChoose={(m) => void run({ kind: 'setAction', at, action: nextAction('media.control', button, { method: m === 'playpause' ? undefined : m }) })}
       />
       <p className="muted small">Sent to whichever player is playing.</p>
-      {/* Only play/pause has a pair; pairIconFields decides. */}
-      <PairIcons fields={pairIconFields(button?.action)} button={button} disabled={disabled} onChoose={onChooseIcon} />
+      {/* Only play/pause has a pair; pairIconFields decides. A Multi step has no face, so no icons. */}
+      {onChooseIcon && <PairIcons fields={pairIconFields(button?.action)} button={button} disabled={disabled} onChoose={onChooseIcon} />}
     </section>
   );
 }

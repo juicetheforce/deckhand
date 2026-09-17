@@ -9,7 +9,7 @@ import { STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
-import type { ButtonDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
@@ -143,6 +143,20 @@ async function switchProfile(to: string): Promise<DaemonResult> {
   }
 }
 
+/**
+ * Multi action's Test Run (scope §10: it arms rather than fires). The renderer
+ * counts down while the user clicks into the window the keys should reach;
+ * this refuses if the editor still has focus when the count ends, so a test
+ * never types into the editor. Electron knows its own focus — nothing
+ * compositor-specific.
+ */
+async function testRun(serial: string, action: ActionDef): Promise<DaemonResult> {
+  if (window?.isFocused()) {
+    return { ok: false, code: 'focused', error: 'the editor still had focus, so nothing was sent' };
+  }
+  return daemonCall(() => daemon.runAction(serial, action));
+}
+
 // --- Icon picker (scope §10) -------------------------------------------------
 
 // The editor's own preferences (scope §10), in Electron's userData — never
@@ -250,6 +264,13 @@ function registerIpc(): void {
   ipcMain.handle('previewClear', (event, serial: string, key?: number) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewClear(serial, key)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
+  ipcMain.handle('testRun', (event, serial: unknown, action: unknown) => {
+    const a = action as { type?: unknown } | null;
+    if (!fromOurWindow(event) || typeof serial !== 'string' || typeof a !== 'object' || a === null || typeof a.type !== 'string') {
+      return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    }
+    return testRun(serial, a as ActionDef);
+  });
   ipcMain.handle('findSystemShortcut', (event, combo: unknown) =>
     fromOurWindow(event) && typeof combo === 'string' && combo.length < 200 ? findSystemShortcut(combo) : null,
   );

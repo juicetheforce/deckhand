@@ -372,6 +372,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   command: ['command'],
   // With its release action; see isPressRelease.
   keyHold: ['keys', 'state'],
+  // Each step is checked on its own (MultiForm.tsx); one it cannot edit is shown read-only.
+  multi: ['steps'],
   page: ['to', 'back'],
   profile: ['to'],
   // C2 piece 4 (docs/code-state.md): settings left out here — `player`,
@@ -469,7 +471,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
     case 'profile':
       return typeof action.to !== 'string';
     case 'multi':
-      return !Array.isArray(action.steps) || action.steps.length === 0;
+      // A step missing its setting is refused when the key is pressed, and the rest still run.
+      return !Array.isArray(action.steps) || action.steps.length === 0 || action.steps.some((step) => actionIncomplete(step as ActionDef));
     case 'brightness':
       return typeof action.value !== 'number' && typeof action.delta !== 'number';
     case 'audio.sink':

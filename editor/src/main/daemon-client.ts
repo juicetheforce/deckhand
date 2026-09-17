@@ -1,6 +1,6 @@
 import net from 'node:net';
 import type { AudioList, DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
-import type { ButtonDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 
 export type { DaemonView };
@@ -122,6 +122,15 @@ export class DaemonClient {
    */
   async showPage(serial: string, page: string): Promise<void> {
     await this.request('action.run', { serial, action: { type: 'page', to: page } });
+  }
+
+  /**
+   * Run an action on a deck as if one of its keys were pressed (action.run),
+   * for Multi action's Test Run. Resolves when it has finished; keys it held
+   * are released by the daemon. "busy" while another socket action runs.
+   */
+  async runAction(serial: string, action: ActionDef): Promise<void> {
+    await this.request('action.run', { serial, action });
   }
 
   /** When the daemon last loaded config.json, or null if not known. */

@@ -35,6 +35,10 @@ await fs.writeFile(PACTL_STATE, '{}');
 const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
 await audio.refreshCache();
 const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
+// The fake input helper, started as the daemon starts the real one: Test Run's
+// hotkey steps wait for it to be ready (without this they waited forever).
+const { input } = await import(pathToFileURL(path.join(repoRoot, 'dist/input.js')).href);
+input.start();
 const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
 
 let failures = 0;
@@ -61,6 +65,7 @@ const BUTTONS = {
   12: { action: { type: 'audio.sink', match: 'headset' } },
   14: { action: { type: 'hotkey', keys: 'ctrl+1' } },
   17: { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f23', state: 'up' } },
+  19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 50 }, { type: 'media.control', method: 'next' }] } },
 };
 const CONFIG = {
   decks: { [SERIAL]: {} },
@@ -69,7 +74,7 @@ const CONFIG = {
 };
 await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
 
-const daemon = await startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState() });
+const daemon = await startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState(), releaseSocketKeys: () => input.releaseAllHeldBy('socket') });
 await daemon.attach(SERIAL, new FakeDeck());
 let refusedReloads = 0;
 const stopWatching = watchConfig(async () => {
@@ -87,6 +92,13 @@ const stopWatching = watchConfig(async () => {
 });
 // Which keys the editor put a preview on: a state icon must go on the deck before it is saved.
 const session = daemon.sessions.get(SERIAL);
+// What Test Run sent to the deck.
+const testRuns = [];
+const runFromSocket = session.runFromSocket.bind(session);
+session.runFromSocket = (action) => {
+  testRuns.push(structuredClone(action));
+  return runFromSocket(action);
+};
 const previewed = [];
 const setPreview = session.setPreview.bind(session);
 session.setPreview = (index, button) => {
@@ -221,6 +233,30 @@ if (r && !r.error) {
     assert.deepEqual(r.command, { typed: { type: 'command', command: 'kate ~/notes.md' }, emptied: { type: 'command' }, mark: 'not set up' });
   });
   check('a key holding one key and releasing another is read-only', () => assert.equal(r.oddPairReadOnly, true));
+  check('Multi action: nothing written until a step is added; a step is edited with its own form; its delay, a second step, reordering by the handle and removal write the steps; re-editing a step keeps its delay; the total shows both figures', () => {
+    assert.deepEqual(r.multi.writes, [
+      null,
+      { type: 'multi', steps: [{ type: 'hotkey' }] },
+      { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1' }] },
+      { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] },
+      { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }, { type: 'text', text: 'gg' }] },
+      { type: 'multi', steps: [{ type: 'text', text: 'gg' }, { type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] },
+      { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }] },
+      { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] },
+    ]);
+    assert.deepEqual([r.multi.markWhileEmpty, r.multi.total, r.multi.summaries], ['not set up', 'delays 200 ms · about 385 ms total', ['Ctrl+1', '“gg”']]);
+  });
+  check("Test run counts down for 3 s, then sends the key's action to the deck (the hidden check window never has focus)", () => {
+    assert.deepEqual([r.multi.countdownShown, r.multi.testResult], [true, 'Sent.']);
+    assert.ok(r.multi.testAfterMs >= 2800, `sent ${r.multi.testAfterMs} ms after the click; the countdown is 3 s`);
+    assert.deepEqual(testRuns, [{ type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] }]);
+  });
+  check('a hand-written step with no form is shown read-only, and its delay still edits without touching it', () => {
+    assert.deepEqual(r.multiReadOnly, {
+      json: true,
+      afterDelay: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] },
+    });
+  });
   check("a mute key with its own icon says each state falls back to it, and why it stops swapping", () => {
     assert.deepEqual(r.ownIcon, { iconMuted: "the key's own icon (~/own.png)", iconUnmuted: "the key's own icon (~/own.png)", note: true });
   });
@@ -247,6 +283,8 @@ check('the saved file holds exactly what the forms wrote', () => {
     14: BUTTONS[14],
     16: { action: { type: 'command' } },
     17: BUTTONS[17],
+    18: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] } },
+    19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] } },
   };
   assert.deepEqual(saved, expected);
 });
@@ -257,6 +295,7 @@ check('the daemon took every save', () => {
 
 if (failures > 0) console.log(`\nrenderer report:\n${JSON.stringify(r, null, 2)}`);
 stopWatching();
+input.stop();
 await daemon.stop();
 await fs.rm(scratch, { recursive: true, force: true });
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
