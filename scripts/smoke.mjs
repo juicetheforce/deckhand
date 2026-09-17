@@ -174,6 +174,34 @@ check('deck B still at 40', fakeB.brightness === 40);
 await sessionA.close();
 await sessionB.close();
 
+console.log('multi pauses after each step');
+// scope §6: a step's delayMs is a pause after it runs, not before. Brightness
+// steps are timestamped on the fake deck.
+{
+  const multiLayout = {
+    startPage: 'main',
+    pages: { main: { buttons: { 0: { action: { type: 'multi', steps: [{ type: 'brightness', value: 20, delayMs: 300 }, { type: 'brightness', value: 40 }] } } } } },
+  };
+  const fakeM = new FakeDeck();
+  const sessionM = standaloneSession(fakeM, 'FAKEM', multiLayout, { brightness: 50 });
+  await sessionM.start();
+  const times = [];
+  const setBrightness = fakeM.setBrightness.bind(fakeM);
+  fakeM.setBrightness = async (v) => {
+    times.push({ v, at: Date.now() });
+    return setBrightness(v);
+  };
+  const pressedAt = Date.now();
+  fakeM.press(0);
+  fakeM.release(0);
+  await sleep(700);
+  const first = times.find((t) => t.v === 20);
+  const second = times.find((t) => t.v === 40);
+  check('the first step runs at once, not after its delay', first !== undefined && first.at - pressedAt < 150);
+  check("the next step runs after the first step's delay", first !== undefined && second !== undefined && second.at - first.at >= 280);
+  await sessionM.close();
+}
+
 console.log('tick does not overlap itself');
 // A describe() slower than the 500 ms tick, like a hung pactl call. Without
 // a guard, the next tick starts while the last is still awaiting it, and the

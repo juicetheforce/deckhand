@@ -162,11 +162,11 @@
                       {
                         "type": "audio.sink",
                         "node": "REPLACE-WITH-A-NODE-FROM-deckhand-sinks",
-                        "label": "REPLACE-WITH-ITS-LABEL"
+                        "label": "REPLACE-WITH-ITS-LABEL",
+                        "delayMs": 150
                       },
                       {
-                        "type": "audio.micMute",
-                        "delayMs": 150
+                        "type": "audio.micMute"
                       }
                     ]
                   }

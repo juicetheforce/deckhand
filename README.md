@@ -291,7 +291,7 @@ rows. A button takes `icon`, `iconFit`, `label`, `labelColor`, `labelSize`,
 | `command` | `command: "sh string"` or `exec: ["bin","arg"]`. Detached unless `wait: true` |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `multi` | `steps: [...]`, each optionally with `delayMs` |
+| `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `brightness` | `value` or `delta`; `showLevel: true` shows the level |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |

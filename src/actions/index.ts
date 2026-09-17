@@ -37,9 +37,14 @@ export const registry: Record<string, ActionHandler> = {
  * multi — run several actions in order, with optional pauses.
  *
  *   { "type": "multi", "steps": [
- *       { "type": "audio.sink", "match": "headset" },
- *       { "type": "hotkey", "keys": "ctrl+alt+m", "delayMs": 150 }
+ *       { "type": "audio.sink", "match": "headset", "delayMs": 150 },
+ *       { "type": "hotkey", "keys": "ctrl+alt+m" }
  *   ]}
+ *
+ * A step's `delayMs` is a pause **after** that step runs (docs/scope.md §6,
+ * decided in v0.2; built in M4 phase C2) — how a sequence reads top to
+ * bottom, and how the editor's step list shows it. Above, the output switches,
+ * 150 ms pass, then the hotkey is sent.
  *
  * Defined here rather than in its own file so it can reach the registry
  * without a circular import.
@@ -49,9 +54,9 @@ registry.multi = {
     const steps = Array.isArray(params.steps) ? (params.steps as ActionDef[]) : [];
     if (steps.length === 0) throw new Error('multi action needs a "steps" array');
     for (const step of steps) {
+      await runAction(ctx, step);
       const delay = typeof step.delayMs === 'number' ? step.delayMs : 0;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-      await runAction(ctx, step);
     }
   },
 };
