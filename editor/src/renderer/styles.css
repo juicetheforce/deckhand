@@ -1655,6 +1655,16 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.key-menu-indent {
+  padding-left: 22px;
+}
+
+.key-menu-heading {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .key-menu-separator {
   height: 1px;
   margin: 4px 6px;

@@ -175,12 +175,17 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   const open = new URLSearchParams(window.location.search).get('open');
   if (open === 'newprofile') {
     await openAddMenu('New profile');
-  } else if (open === 'keymenu' && selectIndices.length > 0) {
+  } else if ((open === 'keymenu' || open === 'keymenu-device' || open === 'keymenu-page') && selectIndices.length > 0) {
     // B3's right-click menu, on the last selected key.
     const key = document.querySelectorAll<HTMLButtonElement>('.key')[selectIndices[selectIndices.length - 1]];
     const rect = key.getBoundingClientRect();
     key.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2 }));
     await new Promise((r) => setTimeout(r, 200));
+    const expand = open === 'keymenu-device' ? 'Copy to device' : open === 'keymenu-page' ? 'Copy to page' : null;
+    if (expand) {
+      [...document.querySelectorAll<HTMLButtonElement>('.key-menu-item')].find((b) => b.querySelector('span')?.textContent === expand)?.click();
+      await new Promise((r) => setTimeout(r, 200));
+    }
   } else if (open === 'delete') {
     const shown = document.querySelector('.tab-selected')?.getAttribute('data-tab');
     if (shown) await openTabMenu(shown, 'Delete page');
@@ -1113,7 +1118,54 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   out.recordedEscAtWindow = await until(async () => (await buttons())?.['3']?.action?.keys === 'esc');
   out.selectionAfterEscAtWindow = selected();
 
-  // 9. Ctrl+A selects every key; Escape selects none.
+  // 9. Copy to page: key 1 to "Second", same position; selection and clipboard untouched.
+  const clipboardBefore = document.querySelector('.bulk-clipboard')?.textContent;
+  await until(() => document.querySelector('.listening') === null);
+  click(1);
+  await until(() => selected().join() === '1');
+  rightClick(1);
+  await until(() => menuItems().length > 0);
+  menuItem('Copy to page')!.click();
+  await until(() => document.querySelectorAll('.key-menu-indent').length > 0);
+  const pageItems = [...document.querySelectorAll('.key-menu-indent')].map((b) => b.querySelector('span')?.textContent);
+  [...document.querySelectorAll<HTMLButtonElement>('.key-menu-indent')].find((b) => b.textContent?.startsWith('Second'))!.click();
+  await until(async () => (await buttons('second'))?.['1'] !== undefined);
+  await until(() => document.querySelector('.bulk-message') !== null);
+  out.copyToPage = {
+    pageItems,
+    secondKey1: (await buttons('second'))?.['1'],
+    selected: selected(),
+    clipboardUnchanged: document.querySelector('.bulk-clipboard')?.textContent === clipboardBefore,
+    message: document.querySelector('.bulk-message')?.textContent,
+  };
+
+  // 10. Copy to device: keys 1, 2, 7, 24 to the V2's Main. 7 and 24 have no place there; key 2's page is not on the V2.
+  click(1);
+  await until(() => selected().join() === '1');
+  for (const index of [2, 7, 24]) {
+    click(index, { ctrlKey: true });
+    await until(() => selected().includes(index));
+  }
+  rightClick(2);
+  await until(() => menuItems().length > 0);
+  menuItem('Copy to device')!.click();
+  await until(() => document.querySelectorAll('.key-menu-heading').length > 0);
+  const deviceItems = [...document.querySelectorAll('.key-menu-heading, .key-menu-indent')].map((e) => e.querySelector('span')?.textContent ?? e.textContent);
+  [...document.querySelectorAll<HTMLButtonElement>('.key-menu-indent')].find((b) => b.textContent?.startsWith('Main'))!.click();
+  const v2Buttons = async () => {
+    const s = (await api.snapshot()).store;
+    return s.open ? s.state.config.profiles.default.layouts['BULK-V2'].pages.main.buttons : null;
+  };
+  await until(async () => Object.keys((await v2Buttons()) ?? {}).length === 2);
+  await until(() => document.querySelector('.bulk-message')?.textContent?.startsWith('Copied 2') ?? false);
+  out.copyToDevice = {
+    items: deviceItems,
+    v2Buttons: await v2Buttons(),
+    message: document.querySelector('.bulk-message')?.textContent,
+    deckStayed: document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value === 'BULK-XL' && document.querySelectorAll('.key').length === 32,
+  };
+
+  // 11. Ctrl+A selects every key; Escape selects none.
   press('KeyA', { ctrlKey: true });
   await until(() => selected().length === 32);
   out.selectAll = selected().length;

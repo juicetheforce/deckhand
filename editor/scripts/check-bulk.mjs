@@ -36,6 +36,9 @@ const V2 = 'BULK-V2';
 const JUMP = { label: 'Jump', icon: '~/icons/jump.png', action: { type: 'hotkey', keys: 'ctrl+1' } };
 const SPRINT = { label: 'Sprint', action: { type: 'hotkey', keys: 'ctrl+2' } };
 const TO_SECOND = { label: 'To second', action: { type: 'page', to: 'second' } };
+// Row 0, column 7 and row 3, column 0: neither has a place on a 5×3 Original V2.
+const FAR = { label: 'Far', action: { type: 'hotkey', keys: 'f7' } };
+const LOW = { label: 'Low', action: { type: 'hotkey', keys: 'f8' } };
 const CONFIG = {
   decks: { [XL]: { name: 'Big deck' }, [V2]: { name: 'Little deck' } },
   startProfile: 'default',
@@ -46,7 +49,7 @@ const CONFIG = {
         [XL]: {
           startPage: 'main',
           pages: {
-            main: { name: 'Main', buttons: { 0: JUMP, 1: SPRINT, 2: TO_SECOND } },
+            main: { name: 'Main', buttons: { 0: JUMP, 1: SPRINT, 2: TO_SECOND, 7: FAR, 24: LOW } },
             second: { name: 'Second', buttons: { 0: { label: 'Home', action: { type: 'page', to: 'main' } } } },
           },
         },
@@ -89,7 +92,7 @@ if (r && !r.error) {
   });
 
   check('Ctrl+D duplicates each key into the next empty key, and selects the copies', () => {
-    assert.deepEqual(r.duplicate.keys, [0, 1, 2, 3, 4]);
+    assert.deepEqual(r.duplicate.keys, [0, 1, 2, 3, 4, 7, 24]);
     assert.deepEqual(r.duplicate.selected, [3, 4]);
     assert.deepEqual(r.duplicate.copied, JUMP, 'the copy is the whole button');
   });
@@ -99,15 +102,15 @@ if (r && !r.error) {
   });
 
   check('Ctrl+V pastes at the selected key by position, keeps same-layout navigation, and selects what landed', () => {
-    assert.deepEqual(r.paste.keys, [0, 1, 2, 3, 4, 16, 17, 18]);
+    assert.deepEqual(r.paste.keys, [0, 1, 2, 3, 4, 7, 16, 17, 18, 24]);
     assert.deepEqual(r.paste.selected, [16, 17, 18]);
     assert.deepEqual(r.paste.pastedNav, TO_SECOND);
     assert.match(r.paste.message, /Pasted 3 keys to “Main”\./);
   });
 
   check('the right-click menu names how many keys it acts on, and clears them', () => {
-    assert.deepEqual(r.menuLabels, ['Duplicate 3 keys', 'Copy 3 keys', 'Paste', 'Clear 3 buttons']);
-    assert.deepEqual(r.afterMenuClear, [0, 1, 2, 3, 4]);
+    assert.deepEqual(r.menuLabels, ['Duplicate 3 keys', 'Copy 3 keys', 'Paste', 'Copy to page', 'Copy to device', 'Clear 3 buttons']);
+    assert.deepEqual(r.afterMenuClear, [0, 1, 2, 3, 4, 7, 24]);
   });
 
   check('right-clicking a key outside the selection acts on that key alone; Escape closes only the menu', () => {
@@ -117,12 +120,12 @@ if (r && !r.error) {
   });
 
   check('Delete clears the selected key', () => {
-    assert.deepEqual(r.afterDelete, [0, 1, 2, 3]);
+    assert.deepEqual(r.afterDelete, [0, 1, 2, 3, 7, 24]);
   });
 
   check('shortcuts do nothing while typing in a field', () => {
     assert.equal(r.labelFieldFound, true);
-    assert.deepEqual(r.afterTypingShortcuts, [0, 1, 2, 3], 'Delete or Ctrl+D in the label field acted on the key');
+    assert.deepEqual(r.afterTypingShortcuts, [0, 1, 2, 3, 7, 24], 'Delete or Ctrl+D in the label field acted on the key');
   });
 
   check('shortcuts do nothing while a hotkey is being recorded: Delete is recorded, the key stays', () => {
@@ -131,6 +134,24 @@ if (r && !r.error) {
     assert.deepEqual(r.keyThreeAfterRecording, { ...JUMP, action: { type: 'hotkey', keys: 'delete' } });
     assert.equal(r.recordedEscAtWindow, true, 'Escape sent to window was not recorded');
     assert.deepEqual(r.selectionAfterEscAtWindow, [3], 'Escape sent to window was recorded and also cleared the selection');
+  });
+
+  check('Copy to page puts the key at the same position on the other page, and leaves the selection and clipboard alone', () => {
+    assert.deepEqual(r.copyToPage.pageItems, ['Second']);
+    assert.deepEqual(r.copyToPage.secondKey1, SPRINT);
+    assert.deepEqual(r.copyToPage.selected, [1]);
+    assert.equal(r.copyToPage.clipboardUnchanged, true);
+    assert.match(r.copyToPage.message, /^Copied 1 key to “Second”\.✕/);
+  });
+
+  check('Copy to device lists the other deck, places by row and column, skips and names what has no place, and drops dead navigation', () => {
+    assert.deepEqual(r.copyToDevice.items, ['Little deck', 'Main']);
+    assert.deepEqual(r.copyToDevice.v2Buttons, { 1: SPRINT, 2: { label: 'To second' } });
+    assert.match(
+      r.copyToDevice.message,
+      /Copied 2 keys to Little deck › “Main”\. Skipped “Far” \(key 8\) and “Low” \(key 25\): they have no place on that deck\. “To second” \(key 3\) lost its Go to page/,
+    );
+    assert.equal(r.copyToDevice.deckStayed, true, 'copying to a deck switched the editor to it');
   });
 
   check('Ctrl+A selects every key on the deck, and Escape selects none', () => {
@@ -147,7 +168,11 @@ check('the saved file holds exactly what the operations produced, and nothing el
     1: SPRINT,
     2: TO_SECOND,
     3: { ...JUMP, action: { type: 'hotkey', keys: 'esc' } },
+    7: FAR,
+    24: LOW,
   };
+  expected.profiles.default.layouts[XL].pages.second.buttons[1] = SPRINT;
+  expected.profiles.default.layouts[V2].pages.main.buttons = { 1: SPRINT, 2: { label: 'To second' } };
   assert.deepEqual(saved, JSON.parse(JSON.stringify(expected)));
 });
 

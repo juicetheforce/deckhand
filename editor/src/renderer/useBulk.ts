@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Config, LayoutDef, PageDef } from '../../../src/types.js';
+import type { DaemonView } from '../shared/bridge.js';
 import {
   clearKeys,
   copyKeys,
@@ -9,10 +10,11 @@ import {
   type ButtonWrite,
   type Clipboard,
 } from '../shared/bulk.js';
-import { pageLabel, placementMessage, type DeckGeometryWithSerial, type Selection } from './model.js';
+import { deckChoices, geometryFor, layoutFor, pageLabel, placementMessage, type DeckGeometryWithSerial, type Selection } from './model.js';
 
 interface BulkContext {
   config: Config;
+  daemon: DaemonView;
   selection: Selection;
   layout: LayoutDef | null;
   page: PageDef | undefined;
@@ -32,6 +34,8 @@ export interface Bulk {
   paste: () => Promise<void>;
   duplicate: () => Promise<void>;
   clear: () => Promise<void>;
+  /** Copy the selected keys to the same positions on another page, of this deck or another in this profile. */
+  copyTo: (serial: string, page: string) => Promise<void>;
 }
 
 /**
@@ -42,7 +46,7 @@ export interface Bulk {
  * The clipboard is this renderer's memory: not the system clipboard, and not
  * saved, so it is gone when the editor closes (scope §10, "transient").
  */
-export function useBulk({ config, selection, layout, page, geometry, editingBlocked, selectKeys }: BulkContext): Bulk {
+export function useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys }: BulkContext): Bulk {
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -51,15 +55,9 @@ export function useBulk({ config, selection, layout, page, geometry, editingBloc
 
   const ready = !editingBlocked && layout !== null && page !== undefined && geometry !== null;
 
-  const put = async (writes: ButtonWrite[]): Promise<string | null> => {
+  const put = async (writes: ButtonWrite[], serial = selection.serial, pageId = selection.page): Promise<string | null> => {
     if (writes.length === 0) return null;
-    const result = await window.deckhand.apply({
-      kind: 'putButtons',
-      profile: selection.profile,
-      serial: selection.serial,
-      page: selection.page,
-      writes,
-    });
+    const result = await window.deckhand.apply({ kind: 'putButtons', profile: selection.profile, serial, page: pageId, writes });
     return result.ok ? null : result.error;
   };
 
@@ -109,6 +107,33 @@ export function useBulk({ config, selection, layout, page, geometry, editingBloc
       // The copy is what gets edited next — a new icon, a new keybind — so it
       // becomes the selection (§2: duplicate-and-edit is the FFXIV workload).
       selectKeys(duplication.created);
+    },
+
+    copyTo: async (serial, pageId) => {
+      if (!ready || selection.keys.length === 0) return;
+      const targetLayout = layoutFor(config, selection.profile, serial);
+      const targetGeometry = geometryFor(daemon, serial);
+      if (targetLayout === null || !Object.prototype.hasOwnProperty.call(targetLayout.pages, pageId)) return;
+      if (targetGeometry === null) {
+        setMessage('That deck is not connected, so where the keys would land cannot be worked out. Plug it in to copy to it.');
+        return;
+      }
+      const clip = copyKeys(page, geometry, selection.keys);
+      if (clip === null) {
+        setMessage('Nothing copied: the selected keys are empty.');
+        return;
+      }
+      // Same positions as the originals: this is not a paste, so there is no anchor.
+      const placement = placeClipboard(clip, clip.origin, targetGeometry, targetLayout);
+      const failure = await put(placement.writes, serial, pageId);
+      if (failure !== null) {
+        setMessage(`Could not copy: ${failure}`);
+        return;
+      }
+      const pageName = `“${pageLabel(targetLayout, pageId)}”`;
+      const deckName = deckChoices(config, selection.profile, daemon).find((d) => d.id === serial)?.label ?? serial;
+      // The selection, the clipboard and the decks stay as they were: nothing here is shown until you go and look.
+      setMessage(placementMessage('Copied', placement, serial === selection.serial ? pageName : `${deckName} › ${pageName}`));
     },
 
     clear: async () => {

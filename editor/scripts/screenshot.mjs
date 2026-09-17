@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...]
 //
 // --tab icon opens the inspector's Icon tab, which lists real folders under
 // your home directory (read-only) for any ~/ icon path in the config.
@@ -68,7 +68,8 @@ const { values } = parseArgs({
     disconnected: { type: 'string' },
     tab: { type: 'string' },
     // 'newprofile' or 'delete': open one of B1's panels before capturing;
-    // 'keymenu': B3's right-click menu on the last --select key.
+    // 'keymenu': B3's right-click menu on the last --select key;
+    // 'keymenu-page' / 'keymenu-device' with that section opened.
     open: { type: 'string' },
     // Select a page tab by its label before anything else.
     page: { type: 'string' },

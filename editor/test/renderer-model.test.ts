@@ -27,6 +27,7 @@ import {
   clickKeys,
   clipboardSummary,
   placementMessage,
+  deviceTargets,
 } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
@@ -503,6 +504,17 @@ await check('a paste message names what was skipped and what lost its navigation
     'Copied 1 key to Little deck › Main. Skipped “Wide” (key 7): it has no place on that deck. “Combat” (key 1) lost its Go to page: that page is not on this deck, so it needs a new target.',
   );
   assert.match(placementMessage('Pasted', { writes: [], skipped: [wide], lostNavigation: [] }, '“Main”'), /^Nothing pasted: no copied key has a place on “Main”\.$/);
+});
+
+await check('Copy to device offers the other decks this profile covers, with their pages, and says which are not connected', () => {
+  const selection = { profile: 'default', serial: XL, page: 'main', key: 0, keys: [0] };
+  const targets = deviceTargets(EXAMPLE, daemonView([XL]), selection);
+  assert.deepEqual(
+    targets.map((t) => [t.serial, t.connected, t.pages.map((p) => p.id)]),
+    [[V2, false, ['main']]],
+    'the deck being edited is not a target, and a disconnected deck is listed as such',
+  );
+  assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL, V2]), selection)[0].connected, true);
 });
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

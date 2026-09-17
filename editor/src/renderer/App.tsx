@@ -8,6 +8,7 @@ import {
   canSwitchDeck,
   clickKeys,
   deckForProfile,
+  deviceTargets,
   followDeck,
   geometryFor,
   layoutFor,
@@ -134,7 +135,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   // Bulk operations over the selected keys (M4 phase B3).
   const selectKeys = (keys: number[]) =>
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
-  const bulk = useBulk({ config, selection, layout, page, geometry, editingBlocked, selectKeys });
+  const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
   useBulkShortcuts({
     enabled: page !== undefined && geometry !== null && !editingBlocked,
@@ -292,7 +293,16 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
               />
             )}
             {keyMenu && (
-              <KeyMenu x={keyMenu.x} y={keyMenu.y} count={selection.keys.length} bulk={bulk} onClose={() => setKeyMenu(null)} />
+              <KeyMenu
+                x={keyMenu.x}
+                y={keyMenu.y}
+                count={selection.keys.length}
+                bulk={bulk}
+                serial={selection.serial}
+                otherPages={layout ? pageChoices(layout).filter((p) => p.id !== selection.page) : []}
+                devices={deviceTargets(config, daemon, selection)}
+                onClose={() => setKeyMenu(null)}
+              />
             )}
             {layout && deletion && pendingDelete !== null && (
               <DeletePage

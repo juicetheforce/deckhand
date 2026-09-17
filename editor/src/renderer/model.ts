@@ -257,6 +257,32 @@ export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement
   return parts.join(' ');
 }
 
+/** A deck keys can be copied to, with its pages (M4 phase B3, Copy to device). */
+export interface DeviceTarget {
+  serial: string;
+  label: string;
+  /** Keys land by row and column, so a deck whose geometry the editor cannot see cannot be copied to. */
+  connected: boolean;
+  pages: Choice[];
+}
+
+/**
+ * Where "Copy to device" can send keys: every other deck the profile being
+ * edited has a layout for, in the Device dropdown's order. Another profile's
+ * decks are reached with Copy, a profile switch and Paste — a copy that reached
+ * into a profile you are not looking at would be one you cannot see land.
+ */
+export function deviceTargets(config: Config, daemon: DaemonView, selection: Selection): DeviceTarget[] {
+  return deckChoices(config, selection.profile, daemon)
+    .filter((deck) => deck.hasLayout && deck.id !== selection.serial)
+    .map((deck) => ({
+      serial: deck.id,
+      label: deck.label,
+      connected: deck.connected,
+      pages: pageChoices(layoutFor(config, selection.profile, deck.id)!),
+    }));
+}
+
 /** Whether a selection change can be shown on the deck right now. */
 export function canSwitchDeck(daemon: DaemonView, serial: string): boolean {
   return daemon.connected && (daemon.status?.decks.some((d) => d.serial === serial && d.connected && d.page !== undefined) ?? false);
