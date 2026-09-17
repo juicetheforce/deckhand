@@ -1527,6 +1527,66 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await selectKey(7);
   out.playerReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
 
+  // Output device, on an empty key: nothing until a device is picked.
+  const device = (node: string) => document.querySelector<HTMLButtonElement>(`.inspector .target[data-node="${node}"]`);
+  const deviceList = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('.inspector .target-list .target')].map((t) => `${t.querySelector('.target-name')?.textContent}|${t.querySelector('.target-note')?.textContent}`);
+  await selectKey(9);
+  libraryClick('audio.sink');
+  await until(() => deviceList().length > 0);
+  await sleep(500);
+  const outputWrites: unknown[] = [(await buttons())?.['9'] ?? null];
+  const outputList = deviceList();
+  device('alsa_output.usb-Example_Headset-00.mono-chat')!.click();
+  outputWrites.push(await actionAs(9, { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono' }));
+  await until(() => document.querySelector('.inspector .form-check input') !== null);
+  document.querySelector<HTMLInputElement>('.inspector .form-check input')!.click();
+  outputWrites.push(await actionAs(9, { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono', moveStreams: false }));
+  out.output = { list: outputList, writes: outputWrites };
+
+  // Input device: the stored one is unplugged while the form is open.
+  await selectKey(10);
+  await until(() => device('alsa_input.pci-0000_00_1f.3.HiFi__Mic__source')?.classList.contains('target-selected') === true);
+  const before = document.querySelector('.inspector .target-selected')?.getAttribute('data-node');
+  const serial = (await api.snapshot()).daemon.decks?.[0]?.serial ?? '';
+  await api.previewSet(serial, 31, { label: 'unplug' });
+  const missingShown = await until(
+    () => (document.querySelector('.inspector .target-selected .target-note')?.textContent?.includes('not present now') ?? false) && (document.querySelector('.inspector .warning-text')?.textContent?.includes('not present now') ?? false),
+  );
+  await api.previewClear(serial, 31);
+  device('alsa_input.usb-Example_Headset-00.mono-fallback')!.click();
+  const picked = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' });
+  out.input = { before, missingShown, picked };
+
+  // Cycle outputs.
+  const mark = (index: number) => document.querySelectorAll('.key')[index].querySelector('.key-mark')?.textContent ?? null;
+  const cycleNodes = async () => ((await buttons())?.['11']?.action?.devices as Array<{ node: string }> | undefined)?.map((d) => d.node) ?? [];
+  const add = async (node: string, count: number) => {
+    await until(() => device(node) !== null);
+    device(node)!.click();
+    await until(async () => (await cycleNodes()).length === count);
+  };
+  await selectKey(11);
+  libraryClick('audio.cycle');
+  await add('alsa_output.usb-Example_Headset-00.analog-stereo', 1);
+  const markWithOne = (await until(() => mark(11) === 'not set up')) ? mark(11) : null;
+  await add('alsa_output.pci-0000_00_1f.3.HiFi__Headphones__sink', 2);
+  await add('alsa_output.usb-Example_Headset-00.mono-chat', 3);
+  const cycleButton = (label: string) => document.querySelector<HTMLButtonElement>(`.inspector .cycle-controls button[aria-label="${label}"]`)!;
+  cycleButton('Move Example Headset Mono up').click();
+  await until(async () => (await cycleNodes())[1] === 'alsa_output.usb-Example_Headset-00.mono-chat');
+  cycleButton('Remove Example Headset Analog Stereo').click();
+  await until(async () => (await cycleNodes()).length === 2);
+  const order = await cycleNodes();
+  const markWithTwo = (await until(() => mark(11) === null)) ? null : mark(11);
+  const nameToggle = [...document.querySelectorAll<HTMLLabelElement>('.inspector .form-check')].find((l) => l.textContent?.includes('name'))!.querySelector('input')!;
+  nameToggle.click();
+  await until(async () => (await buttons())?.['11']?.action?.showCurrent === false);
+  out.cycle = { markWithOne, order, markWithTwo, final: (await buttons())?.['11']?.action };
+
+  await selectKey(12);
+  out.matchReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
+
   // A mute key with its own icon.
   await selectKey(8);
   await until(() => pairValue('iconMuted') !== null);

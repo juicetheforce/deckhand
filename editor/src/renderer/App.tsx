@@ -358,6 +358,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
           coverage={(profile) => profileCoverage(config, daemon, profile)}
           labelDefaults={labelDefaults(config)}
           canPreview={canSwitchDeck(daemon, selection.serial)}
+          audio={daemon.audio}
           apply={async (edit) => {
             const result = await window.deckhand.apply(edit);
             return result.ok ? null : result.error;

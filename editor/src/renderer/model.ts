@@ -378,6 +378,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'audio.mute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
   'media.control': ['method', 'iconPlaying', 'iconPaused'],
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
+  // `match` / `matches` are hand-edited config only (scope §3): a key using them stays read-only.
+  'audio.sink': ['node', 'label', 'moveStreams'],
+  'audio.source': ['node', 'label'],
+  'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */

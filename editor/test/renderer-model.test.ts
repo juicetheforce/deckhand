@@ -100,8 +100,8 @@ await check('the library enables exactly the actions with a form, and greys the 
   const entries = CATALOGUE.flatMap((g) => g.entries);
   for (const e of entries) assert.equal(e.editable, hasForm(e.type), e.type);
   const editable = entries.filter((e) => e.editable).map((e) => e.type);
-  // C2 piece 4 adds the forms that need no device, text or list.
-  assert.deepEqual(editable.sort(), ['audio.micMute', 'audio.mute', 'audio.volume', 'brightness', 'clock', 'hotkey', 'media.control', 'media.info', 'noop', 'page', 'profile']);
+  // C2 piece 4 adds the forms that need no device, text or list; piece 5 the device pickers.
+  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'hotkey', 'media.control', 'media.info', 'noop', 'page', 'profile']);
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
 });

@@ -5,7 +5,7 @@
  * the API) and the renderer (which calls it). The renderer has no Node and no
  * direct access to Electron.
  */
-import type { DecksResult, StatusResult } from '../../../src/control/protocol.js';
+import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -44,6 +44,13 @@ export interface DaemonView {
   status: StatusResult | null;
   /** Geometry of the connected decks. */
   decks: DecksResult | null;
+  /**
+   * The daemon's live device lists (`audio.sinks` / `audio.sources`, kept
+   * current by the "audio" event), which the audio forms pick from — the
+   * editor writes a node from here, never a match string (scope §3). Absent
+   * or null until the daemon has read its audio state.
+   */
+  audio?: { sinks: AudioList; sources: AudioList } | null;
 }
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };

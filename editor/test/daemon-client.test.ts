@@ -209,6 +209,41 @@ await check('a socket that accepts but never answers: the handshake times out an
   await fs.rm(silentDir, { recursive: true, force: true });
 });
 
+await check('audio device lists: null until the daemon has read them, then kept current by the audio event, and read again on connecting', async () => {
+  const audioDir: string = await scratchDir();
+  let state: unknown = null;
+  const device = (name: string, description: string, extra: Record<string, unknown> = {}) => ({ name, description, flags: ['HARDWARE'], monitorSource: '', portAvailability: 'available', ...extra });
+  const withAudio = await startDaemon(audioDir, CONFIG, { audioState: () => state });
+  const first = newClient(withAudio.socket);
+  first.client.start();
+  let v = await until(first.views, first.client, (x) => x.connected);
+  assert.equal(v.audio, null, 'the daemon answers "internal" before it has read audio state');
+  state = {
+    sinks: [],
+    defaultSink: 'out.a',
+    defaultSinkVolume: null,
+    defaultSinkMuted: false,
+    defaultSourceMuted: false,
+    sinkDevices: [device('out.a', 'Speakers', { monitorSource: 'out.a.monitor' }), device('out.net', 'Network', { flags: ['NETWORK'], monitorSource: 'out.net.monitor' })],
+    sourceDevices: [device('in.a', 'Desk mic'), device('out.a.monitor', 'Monitor of Speakers', { monitorSource: 'out.a' })],
+    defaultSource: 'in.a',
+  };
+  withAudio.events.audio();
+  v = await until(first.views, first.client, (x) => (x.audio?.sinks.devices.length ?? 0) > 0);
+  assert.deepEqual(v.audio, {
+    sinks: { default: 'out.a', devices: [{ node: 'out.a', label: 'Speakers', available: 'yes' }] },
+    sources: { default: 'in.a', devices: [{ node: 'in.a', label: 'Desk mic', available: 'yes' }] },
+  });
+  first.client.stop();
+  const second = newClient(withAudio.socket);
+  second.client.start();
+  v = await until(second.views, second.client, (x) => x.connected);
+  assert.equal(v.audio?.sinks.devices[0]?.node, 'out.a', 'read at connect');
+  second.client.stop();
+  await withAudio.stop();
+  await fs.rm(audioDir, { recursive: true, force: true });
+});
+
 await daemon.stop();
 await fs.rm(dir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

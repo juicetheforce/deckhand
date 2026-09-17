@@ -10,6 +10,7 @@ import { PageAction } from './inspector/PageAction.js';
 import { ProfileAction } from './inspector/ProfileAction.js';
 import { pairIconFields, type PairIconField } from '../shared/icons.js';
 import { MuteForm, VolumeForm } from './inspector/AudioForms.js';
+import { CycleForm, InputForm, OutputForm, type AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
 import { MediaControlForm, MediaInfoForm } from './inspector/MediaForms.js';
 import { BrightnessForm, ClockForm, NoopForm } from './inspector/SystemForms.js';
@@ -35,6 +36,8 @@ interface Props {
   labelDefaults: { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number };
   /** The daemon is connected and the deck attached, so the icon picker can preview on it. */
   canPreview: boolean;
+  /** The daemon's live audio device lists, for the device forms. */
+  audio: AudioLists;
   apply: (edit: Edit) => Promise<string | null>;
 }
 
@@ -56,7 +59,7 @@ export interface Pick {
  * inspector/), its label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -91,6 +94,7 @@ export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pic
       coverage={coverage}
       labelDefaults={labelDefaults}
       canPreview={canPreview}
+      audio={audio}
       apply={apply}
       tab={tab}
       onTab={setTab}
@@ -147,7 +151,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -253,6 +257,10 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
       {tab === 'key' && editable && (type === 'audio.micMute' || type === 'audio.mute') && (
         <MuteForm type={type} at={at} button={button} disabled={editingBlocked} run={run} onChooseIcon={chooseIcon} />
       )}
+
+      {tab === 'key' && editable && type === 'audio.sink' && <OutputForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
+      {tab === 'key' && editable && type === 'audio.source' && <InputForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
+      {tab === 'key' && editable && type === 'audio.cycle' && <CycleForm at={at} button={button} disabled={editingBlocked} run={run} audio={audio} />}
 
       {tab === 'key' && !(editable && hasForm(type)) && (
         <section className="inspector-section">

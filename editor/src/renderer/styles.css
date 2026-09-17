@@ -1514,6 +1514,45 @@ button:disabled {
   margin-top: 6px;
 }
 
+.form-subheading {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cycle-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cycle-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 6px;
+}
+
+.cycle-entry .target-note {
+  grid-column: 1;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.cycle-controls {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.cycle-controls button {
+  padding: 2px 6px;
+}
+
 .pair-icons {
   margin-top: 6px;
 }

@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
+import type { AudioList, DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 
@@ -13,9 +13,11 @@ export type { DaemonView };
  * shows previews, and never controls the daemon's lifecycle. Config reaches
  * the daemon only through config.json (config-store.ts), never this socket.
  *
- * - Subscribes to "state" and "config" events and keeps a view of the
- *   daemon: status, and the geometry of connected decks, re-read when the set
- *   of connected decks changes.
+ * - Subscribes to "state", "config" and "audio" events and keeps a view of
+ *   the daemon: status, the geometry of connected decks (re-read when the set
+ *   of connected decks changes), and the audio device lists the audio forms
+ *   pick from. The daemon answers those from its cache, never by running
+ *   pactl, so asking costs it nothing.
  * - Reconnects on its own when the daemon goes away (a restart, an update),
  *   retrying after 1 s, doubling to at most 10 s, while disconnected only.
  *   The daemon clears a connection's previews when it closes, so the editor
@@ -61,7 +63,7 @@ export class DaemonClient {
   /** The reason from the latest socket error, reported by the 'close' that follows it. */
   private lastError: string | null = null;
   private reloadWaiters = new Set<{ since: string | null; resolve: (result: ReloadResult | null) => void; timer: NodeJS.Timeout }>();
-  private current: DaemonView = { connected: false, problem: 'connecting…', status: null, decks: null };
+  private current: DaemonView = { connected: false, problem: 'connecting…', status: null, decks: null, audio: null };
 
   private readonly socketPath: string | null;
   private readonly onChange: (view: DaemonView) => void;
@@ -90,7 +92,7 @@ export class DaemonClient {
     const socket = this.socket;
     this.socket = null; // before destroy(), so its 'close' is ignored as a stale socket's
     socket?.destroy();
-    this.update({ connected: false, problem: 'disconnected', status: null, decks: null });
+    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null });
   }
 
   view(): DaemonView {
@@ -161,7 +163,7 @@ export class DaemonClient {
   private connect(): void {
     if (this.stopped) return;
     if (this.socketPath === null) {
-      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null });
+      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null });
       return; // nothing to retry: the path will not appear
     }
     const socket = net.connect(this.socketPath);
@@ -185,12 +187,13 @@ export class DaemonClient {
 
   private async handshake(socket: net.Socket): Promise<void> {
     try {
-      await this.request('subscribe', { events: ['state', 'config'] });
+      await this.request('subscribe', { events: ['state', 'config', 'audio'] });
       const status = (await this.request('status')) as StatusResult;
       const decks = (await this.request('decks')) as DecksResult;
+      const audio = await this.readAudio();
       if (socket !== this.socket) return;
       this.retryMs = this.retryInitialMs;
-      this.update({ connected: true, problem: null, status, decks });
+      this.update({ connected: true, problem: null, status, decks, audio });
     } catch (err) {
       if (socket !== this.socket) return;
       this.update({ connected: false, problem: `the daemon did not answer: ${(err as Error).message}` });
@@ -211,6 +214,7 @@ export class DaemonClient {
       problem: this.lastError ?? this.current.problem ?? 'the connection to the daemon closed',
       status: null,
       decks: null,
+      audio: null,
     });
     this.lastError = null;
     if (this.stopped) return;
@@ -281,6 +285,24 @@ export class DaemonClient {
       if (connected !== known) void this.refreshDecks();
     } else if (name === 'config') {
       this.update({ status: { ...status, config: { ...status.config, lastReload: data as ReloadResult } } });
+    } else if (name === 'audio') {
+      this.update({ audio: data as { sinks: AudioList; sources: AudioList } });
+    }
+  }
+
+  /**
+   * Both device lists, or null if the daemon has not read its audio state yet
+   * (it answers "internal" then). The "audio" event fills them in later, when
+   * the state first changes.
+   */
+  private async readAudio(): Promise<{ sinks: AudioList; sources: AudioList } | null> {
+    try {
+      const sinks = (await this.request('audio.sinks')) as AudioList;
+      const sources = (await this.request('audio.sources')) as AudioList;
+      return { sinks, sources };
+    } catch (err) {
+      if (err instanceof DaemonError && err.code === 'internal') return null;
+      throw err;
     }
   }
 

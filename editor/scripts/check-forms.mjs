@@ -25,6 +25,15 @@ await fs.mkdir(path.join(home, 'Pictures'), { recursive: true });
 process.env.DECKHAND_CONFIG_DIR = configDir;
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
 process.env.HOME = home;
+// The fake pactl, for the device forms' lists; FAKE_PACTL_STATE lets the check take a device away.
+const PACTL_STATE = path.join(scratch, 'pactl-state.json');
+await fs.mkdir(path.join(scratch, 'bin'));
+await fs.symlink(path.join(repoRoot, 'scripts/test/fake-pactl.mjs'), path.join(scratch, 'bin', 'pactl'));
+process.env.PATH = `${path.join(scratch, 'bin')}:${process.env.PATH}`;
+process.env.FAKE_PACTL_STATE = PACTL_STATE;
+await fs.writeFile(PACTL_STATE, '{}');
+const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
+await audio.refreshCache();
 const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
 
@@ -48,6 +57,8 @@ const BUTTONS = {
   6: { action: { type: 'noop' } },
   7: { action: { type: 'media.control', player: 'tidal' } },
   8: { icon: '~/own.png', action: { type: 'audio.mute' } },
+  10: { action: { type: 'audio.source', node: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source', label: 'Built-in Microphone' } },
+  12: { action: { type: 'audio.sink', match: 'headset' } },
 };
 const CONFIG = {
   decks: { [SERIAL]: {} },
@@ -56,7 +67,7 @@ const CONFIG = {
 };
 await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
 
-const daemon = await startDaemon(scratch, CONFIG);
+const daemon = await startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState() });
 await daemon.attach(SERIAL, new FakeDeck());
 let refusedReloads = 0;
 const stopWatching = watchConfig(async () => {
@@ -81,7 +92,18 @@ session.setPreview = (index, button) => {
   return setPreview(index, button);
 };
 
+// The handshake: a preview on key 31 means "unplug the built-in microphone now".
+let unplugged = false;
+const unplugTimer = setInterval(async () => {
+  if (unplugged || !session.previewKeys().includes(31)) return;
+  unplugged = true;
+  await fs.writeFile(PACTL_STATE, JSON.stringify({ absent: ['alsa_input.pci-0000_00_1f.3.HiFi__Mic__source'] }));
+  await audio.refreshCache();
+  daemon.events.audio();
+}, 50);
+
 const output = await runElectronCheck('forms', { configDir, stateDir: path.join(scratch, 'state'), socket: daemon.socket }, 120_000, { HOME: home });
+clearInterval(unplugTimer);
 const r = output.report?.renderer;
 
 check('electron ran the check', () => {
@@ -136,6 +158,44 @@ if (r && !r.error) {
   check('Nothing has a form and no JSON; a media key with a setting the form lacks (player) is read-only', () => {
     assert.deepEqual([r.noopForm, r.noopJson, r.playerReadOnly], [true, false, true]);
   });
+  check('Output device: nothing written until a device is picked; the list is the daemon\'s (network sink left out, an unplugged jack and a mangled name as reported); node and label written; moving streams off writes moveStreams', () => {
+    assert.deepEqual(r.output.list, [
+      'Example Headset Analog Stereo|alsa_output.usb-Example_Headset-00.analog-stereo — in use now',
+      'Example Headset Mono|alsa_output.usb-Example_Headset-00.mono-chat',
+      'Built-in Headphones|alsa_output.pci-0000_00_1f.3.HiFi__Headphones__sink — nothing plugged in',
+      'alsa_output.usb-Accented_Device-00.analog-stereo|alsa_output.usb-Accented_Device-00.analog-stereo',
+    ]);
+    assert.deepEqual(r.output.writes, [
+      null,
+      { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono' },
+      { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono', moveStreams: false },
+    ]);
+  });
+  check('Input device: a stored device that is unplugged stays chosen and says so, from the audio event; picking another writes it', () => {
+    assert.equal(unplugged, true, 'the renderer never signalled');
+    assert.deepEqual(r.input, {
+      before: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source',
+      missingShown: true,
+      picked: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' },
+    });
+  });
+  check('Cycle outputs: add, reorder and remove write the ordered devices; fewer than two is marked "not set up"; the name toggle writes showCurrent', () => {
+    assert.deepEqual(r.cycle, {
+      markWithOne: 'not set up',
+      // Added analog stereo, headphones, mono; mono moved above headphones; analog stereo removed.
+      order: ['alsa_output.usb-Example_Headset-00.mono-chat', 'alsa_output.pci-0000_00_1f.3.HiFi__Headphones__sink'],
+      markWithTwo: null,
+      final: {
+        type: 'audio.cycle',
+        devices: [
+          { node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono' },
+          { node: 'alsa_output.pci-0000_00_1f.3.HiFi__Headphones__sink', label: 'Built-in Headphones' },
+        ],
+        showCurrent: false,
+      },
+    });
+  });
+  check('a hand-edited output key using match is read-only', () => assert.equal(r.matchReadOnly, true));
   check("a mute key with its own icon says each state falls back to it, and why it stops swapping", () => {
     assert.deepEqual(r.ownIcon, { iconMuted: "the key's own icon (~/own.png)", iconUnmuted: "the key's own icon (~/own.png)", note: true });
   });
@@ -154,6 +214,10 @@ check('the saved file holds exactly what the forms wrote', () => {
     6: BUTTONS[6],
     7: BUTTONS[7],
     8: BUTTONS[8],
+    9: { action: { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono', moveStreams: false } },
+    10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' } },
+    11: r?.cycle?.final ? { action: r.cycle.final } : '(cycle not reached)',
+    12: BUTTONS[12],
   };
   assert.deepEqual(saved, expected);
 });

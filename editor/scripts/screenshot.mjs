@@ -3,7 +3,10 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...] [--fake-audio]
+//
+// --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
+// audio device forms; without it the daemon has no audio state to list.
 //
 // --tab icon opens the inspector's Icon tab, which lists real folders under
 // your home directory (read-only) for any ~/ icon path in the config.
@@ -78,6 +81,7 @@ const { values } = parseArgs({
     // Start with every library section collapsed, to show search reaching into them.
     collapse: { type: 'boolean' },
     recent: { type: 'string', multiple: true },
+    'fake-audio': { type: 'boolean' },
   },
 });
 if (!values.out) {
@@ -92,7 +96,16 @@ const configDir = path.join(scratch, 'config');
 await fs.mkdir(configDir);
 await fs.writeFile(path.join(configDir, 'config.json'), text);
 
-const daemon = await startDaemon(scratch, config);
+let audioDeps = {};
+if (values['fake-audio']) {
+  await fs.mkdir(path.join(scratch, 'bin'));
+  await fs.symlink(path.join(repoRoot, 'scripts/test/fake-pactl.mjs'), path.join(scratch, 'bin', 'pactl'));
+  process.env.PATH = `${path.join(scratch, 'bin')}:${process.env.PATH}`;
+  const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
+  await audio.refreshCache();
+  audioDeps = { audioState: () => audio.cachedState() };
+}
+const daemon = await startDaemon(scratch, config, audioDeps);
 const serials = new Set(Object.values(config.profiles).flatMap((p) => Object.keys(p.layouts)));
 for (const serial of serials) {
   if (serial === values.disconnected) continue; // left unattached, to show a disconnected deck
