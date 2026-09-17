@@ -217,7 +217,9 @@ set. Three ways to write `icon`:
   instead, which survives updates in a way a path into the install directory
   would not.
 
-Clocks and now-playing keys show the time and the track rather than an icon.
+Clocks and now-playing keys show the time and the track rather than an icon;
+an idle now-playing key draws the now-playing icon with no label
+(`"idleLabel": "No music"` puts one back).
 Volume and brightness keys draw their icon without the level; add
 `"showLevel": true` to put the level back. An icon that cannot be drawn —
 a missing file, or an unknown `builtin:` name — shows a dashed "missing" icon.
