@@ -5,6 +5,7 @@
  * Types only, importing nothing that touches Node: the renderer imports this.
  */
 import type { ActionDef } from '../../../src/types.js';
+import type { ButtonWrite } from './bulk.js';
 
 export interface ButtonLocation {
   profile: string;
@@ -35,6 +36,14 @@ export type Edit =
     }
   /** "Clear button": remove the whole key — an empty, dark slot. */
   | { kind: 'clearButton'; at: ButtonLocation }
+  /**
+   * Write whole buttons into slots on one page, or (null) empty them — every
+   * bulk operation of phase B3: paste, copy to page or device, duplicate,
+   * clear and swap (src/shared/bulk.ts decides what to write). One edit, so a
+   * paste of ten keys is validated, saved and reloaded once, and a refused one
+   * changes nothing at all.
+   */
+  | { kind: 'putButtons'; profile: string; serial: string; page: string; writes: ButtonWrite[] }
   /** Bare "add page" (scope §7, phase A): a new, empty, named page in one layout. */
   | { kind: 'addPage'; profile: string; serial: string; name: string }
   /**

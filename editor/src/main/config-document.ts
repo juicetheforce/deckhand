@@ -218,6 +218,20 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       delete pageAt(config, edit.at).buttons[String(edit.at.index)];
       return {};
     }
+    case 'putButtons': {
+      const page = pageAt(config, { profile: edit.profile, serial: edit.serial, page: edit.page, index: 0 });
+      const seen = new Set<number>();
+      for (const { index, button } of edit.writes) {
+        if (!Number.isInteger(index) || index < 0) throw new EditError(`key index ${index} is not a valid index`);
+        // Two writes to one slot would make the result depend on their order.
+        if (seen.has(index)) throw new EditError(`key ${index + 1} is written twice in one edit`);
+        seen.add(index);
+        // {} is an empty slot anyway, so it is written as one — as removeField does.
+        if (button === null || Object.keys(button).length === 0) delete page.buttons[String(index)];
+        else page.buttons[String(index)] = structuredClone(button);
+      }
+      return {};
+    }
     case 'addPage': {
       const layout = layoutAt(config, edit.profile, edit.serial);
       const name = edit.name.trim();

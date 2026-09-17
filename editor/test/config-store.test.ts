@@ -1024,6 +1024,60 @@ await check('a symlinked config.json is refused — and the daemon really does n
   assert.equal(reloads, 0, 'the daemon saw a write through the symlink, so the refusal is unnecessary');
 });
 
+console.log('putButtons — every bulk operation (M4 phase B3)');
+
+await check('putButtons writes and empties exactly the slots it names, and the diff shows only those', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const before = await fs.readFile(file, 'utf8');
+  const copied = structuredClone(xlMain(JSON.parse(EXAMPLE))['0']);
+  const result = store.apply({
+    kind: 'putButtons',
+    profile: 'default',
+    serial: XL_SERIAL,
+    page: 'main',
+    writes: [
+      { index: 3, button: copied }, // an empty slot gets a copy of key 0
+      { index: 1, button: null }, // an occupied slot is emptied
+      { index: 4, button: {} }, // {} is an empty slot, and 4 was already empty
+    ],
+  });
+  assert.deepEqual(result, { ok: true, result: {} });
+  await store.flush();
+  const after = await fs.readFile(file, 'utf8');
+  assert.equal(
+    after,
+    expected((c) => {
+      xlMain(c)['3'] = structuredClone(xlMain(c)['0']);
+      delete xlMain(c)['1'];
+    }),
+  );
+  const changed = await diff(before, after);
+  assert.equal(changed.removedLines.length, changed.removed);
+  store.close();
+});
+
+await check('a refused putButtons changes nothing — not even the writes before the bad one', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const where = { kind: 'putButtons' as const, profile: 'default', serial: XL_SERIAL, page: 'main' };
+  const twice = store.apply({ ...where, writes: [{ index: 3, button: { label: 'a' } }, { index: 3, button: { label: 'b' } }] });
+  assert.equal(twice.ok, false, 'one slot written twice');
+  assert.equal(store.apply({ ...where, writes: [{ index: 3, button: { label: 'a' } }, { index: -1, button: null }] }).ok, false, 'a bad index');
+  assert.equal(store.apply({ ...where, page: 'nope', writes: [{ index: 3, button: { label: 'a' } }] }).ok, false, 'an unknown page');
+  assert.equal(store.state().dirty, false);
+  assert.equal(xlMain(store.state().config)['3'], undefined, 'key 3 was not written by the refused edits');
+  store.close();
+});
+
+await check('the button written is a copy: changing the edit object afterwards does not reach the config', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const button = { label: 'mine' };
+  store.apply({ kind: 'putButtons', profile: 'default', serial: XL_SERIAL, page: 'main', writes: [{ index: 3, button }] });
+  button.label = 'changed';
+  assert.equal(xlMain(store.state().config)['3'].label, 'mine');
+  store.close();
+});
+
 await fs.rm(TMP, { recursive: true, force: true });
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

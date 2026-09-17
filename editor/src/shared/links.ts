@@ -62,6 +62,30 @@ export function pageLinks(layout: LayoutDef, pageId: string): PageLink[] {
 }
 
 /**
+ * An action with its navigation that goes nowhere *in this layout* taken out
+ * (docs/scope.md §7, B3): a key copied to another deck keeps its icon and label
+ * but loses a `page` action whose target does not resolve there, the same
+ * treatment as page delete (the maintainer, 2026-09-16). A `multi` loses only the steps
+ * that go nowhere, and is removed if none are left.
+ *
+ * `back: true` names no page, so it always stays; a target that does resolve
+ * in the new layout stays too — the daemon resolves it there by the same rule.
+ *
+ * Returns the action to keep (undefined if none) and whether anything was
+ * dropped. The action passed in is not modified.
+ */
+export function keepResolvableNavigation(action: ActionDef, layout: LayoutDef): { action: ActionDef | undefined; dropped: boolean } {
+  const goesNowhere = (a: ActionDef) => a.type === 'page' && typeof a.to === 'string' && resolvePage(layout, a.to) === null;
+  if (goesNowhere(action)) return { action: undefined, dropped: true };
+  const steps = multiSteps(action);
+  if (steps === null) return { action, dropped: false };
+  const kept = steps.filter((step) => !goesNowhere(step));
+  if (kept.length === steps.length) return { action, dropped: false };
+  if (kept.length === 0) return { action: undefined, dropped: true };
+  return { action: { ...action, steps: kept }, dropped: true };
+}
+
+/**
  * Whether an action can move the deck off the page it fired from.
  *
  * - `page` with `to` counts only when the target **resolves in this layout**:
