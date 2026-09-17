@@ -1738,6 +1738,27 @@ button:disabled {
   opacity: 0.4;
 }
 
+/* An action being dragged from the library (useActionDrag.ts). */
+.action-drag {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px 4px 6px;
+  border-radius: 8px;
+  background: rgba(30, 32, 48, 0.95);
+  border: 1px solid var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.action-drag img {
+  width: 20px;
+  height: 20px;
+}
+
 .key.key-drop-target {
   border: 2px dashed var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);

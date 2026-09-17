@@ -8,7 +8,7 @@
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import { defaultIconFor } from '../../../src/default-icons.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
-import type { ButtonDef, Config, LayoutDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { builtinRef } from '../shared/icons.js';
 import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
@@ -368,21 +368,69 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
 };
 
 /**
- * Whether the inspector may edit this key's action as `type`. True for a key
- * with no action at all — it can become anything — and for an action already
- * of that type carrying only fields the inspector knows about. Anything with
- * onRelease is read-only: that is a two-phase key, which is phase C.
+ * Whether the inspector may edit this key's action as `type`. Only a type with
+ * a form. True for a key with no action — it can become anything — and for a
+ * key with **another** action: a library pick retargets it, and the form
+ * writes the new action once its setting is chosen, keeping icon and label
+ * (C2 call 3). For an action already of that type, only if it carries fields
+ * the form has a control for, so editing cannot silently drop one. Anything
+ * with onRelease is read-only: a two-phase key has no form yet.
  */
 export function actionEditable(button: ButtonDef | undefined, type: string): boolean {
+  const fields = EDITABLE_FIELDS[type];
+  if (!fields) return false;
   if (button?.onRelease) return false;
   const action = button?.action;
   if (!action) return true;
-  if (action.type !== type) return false;
-  const fields = EDITABLE_FIELDS[type];
-  if (!fields) return false;
-  // A hotkey sequence is an array; phase A edits single combos only.
-  if (type === 'hotkey' && typeof action.keys !== 'string') return false;
+  if (action.type !== type) return true;
+  // A hotkey sequence is an array; the form edits single combos only. No keys
+  // at all is a hotkey dropped from the library, waiting to be recorded.
+  if (type === 'hotkey' && action.keys !== undefined && typeof action.keys !== 'string') return false;
   return Object.keys(action).every((k) => k === 'type' || fields.includes(k));
+}
+
+const nonEmpty = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '';
+
+/**
+ * Whether an action lacks a setting it cannot run without — what an action
+ * dragged from the library has until its form is filled in. The grid marks
+ * such a key "not set up" (C2 call 7): it shows its default icon and looks
+ * placed, while a press only logs an error.
+ *
+ * Mirrors the refusals in the daemon's src/actions/ — a copy, so
+ * test/renderer-model.test.ts runs the daemon's own handler on each case here
+ * and checks it refuses. A setting that is present but wrong (a device not
+ * plugged in, a page that is gone) is not "not set up": other warnings cover
+ * those.
+ */
+export function actionIncomplete(action: ActionDef | undefined): boolean {
+  if (!action) return false;
+  switch (action.type) {
+    case 'hotkey':
+      return Array.isArray(action.keys) ? action.keys.length === 0 || !nonEmpty(action.keys[0]) : !nonEmpty(action.keys);
+    case 'keyHold':
+      return !nonEmpty(action.keys);
+    case 'text':
+      return typeof action.text !== 'string';
+    case 'command':
+      return !nonEmpty(action.command) && !(Array.isArray(action.exec) && nonEmpty(action.exec[0]));
+    case 'page':
+      return action.back !== true && typeof action.to !== 'string';
+    case 'profile':
+      return typeof action.to !== 'string';
+    case 'multi':
+      return !Array.isArray(action.steps) || action.steps.length === 0;
+    case 'brightness':
+      return typeof action.value !== 'number' && typeof action.delta !== 'number';
+    case 'audio.sink':
+      return !nonEmpty(action.node) && !nonEmpty(action.match);
+    case 'audio.source':
+      return !nonEmpty(action.node);
+    case 'audio.cycle':
+      return !(Array.isArray(action.devices) && action.devices.length >= 2) && !(Array.isArray(action.matches) && action.matches.length >= 2);
+    default:
+      return false;
+  }
 }
 
 /** Kept for phase A's call sites and tests: hotkey is just one editable type. */

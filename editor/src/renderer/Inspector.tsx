@@ -19,7 +19,7 @@ interface Props {
   button: ButtonDef | undefined;
   editingBlocked: boolean;
   /** Bumped when a library entry is clicked: configure the key as that action. */
-  pick: { type: string; token: number } | null;
+  pick: Pick | null;
   /** Pages in the layout being edited, as "Go to page" targets. */
   pages: Choice[];
   /** Every profile, as "Switch profile" targets. */
@@ -34,6 +34,17 @@ interface Props {
 }
 
 type Tab = 'key' | 'icon';
+
+/**
+ * An action taken from the library for the selected key: a click (`listen`
+ * true — a Hotkey pick starts recording) or a drop, which has already written
+ * the action and only needs its form shown.
+ */
+export interface Pick {
+  type: string;
+  token: number;
+  listen: boolean;
+}
 
 /**
  * The selected key (scope §10): a form for its action (one file per action in
@@ -154,7 +165,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     if (!actionEditable(button, pick.type)) return;
     setChosen(pick.type);
     // Hotkey is the one that starts doing something at once: it listens.
-    if (pick.type === 'hotkey') setListenRequest(true);
+    if (pick.type === 'hotkey' && pick.listen) setListenRequest(true);
   }, [pick?.token]);
 
   const run = async (edit: Edit) => {

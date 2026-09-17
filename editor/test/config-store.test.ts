@@ -195,6 +195,23 @@ await check('a built-in is stored as builtin:<name>, as is; a name the checkout 
   store.close();
 });
 
+await check('assignAction (a library drop) replaces the action and clears icon, label and release action; background and label style stay', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const where = at(0); // { label, icon, action: audio.sink }
+  const key = () => store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons['0'];
+  assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelColor', value: '#ff0000' }).ok, true);
+  assert.ok(key().icon !== undefined && key().label !== undefined, 'the fixture starts with an icon and a label');
+  const before = { ...key(), onRelease: { type: 'keyHold', keys: 'f24', state: 'up' }, background: '#223344' };
+  assert.equal(store.apply({ kind: 'putButtons', profile: 'default', serial: XL.serial, page: 'main', writes: [{ index: 0, button: before }] }).ok, true);
+  assert.equal(store.apply({ kind: 'assignAction', at: where, action: { type: 'page' } }).ok, true);
+  assert.deepEqual(key(), { labelColor: '#ff0000', background: '#223344', action: { type: 'page' } });
+  // Onto an empty slot: just the action.
+  assert.equal(store.apply({ kind: 'assignAction', at: at(30), action: { type: 'hotkey' } }).ok, true);
+  assert.deepEqual(store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons['30'], { action: { type: 'hotkey' } });
+  store.close();
+});
+
 await check('an edit that changes nothing writes nothing', async () => {
   const file = await configFile(EXAMPLE);
   const inode = (await fs.stat(file)).ino;

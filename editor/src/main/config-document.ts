@@ -165,6 +165,15 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       buttonFor(pageAt(config, edit.at), edit.at.index).action = edit.action;
       return {};
     }
+    case 'assignAction': {
+      const page = pageAt(config, edit.at);
+      const button = buttonFor(page, edit.at.index);
+      button.action = edit.action;
+      delete button.onRelease;
+      delete button.icon;
+      delete button.label;
+      return {};
+    }
     case 'removeAction': {
       removeField(pageAt(config, edit.at), edit.at.index, 'action');
       return {};

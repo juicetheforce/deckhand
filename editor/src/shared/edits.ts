@@ -17,6 +17,14 @@ export interface ButtonLocation {
 export type Edit =
   /** Set the key's press action, keeping icon, label and anything else on it. */
   | { kind: 'setAction'; at: ButtonLocation; action: ActionDef }
+  /**
+   * An action dragged from the library onto a key — authoring (scope §10, the maintainer
+   * 2026-09-16): a button *is* its action, icon and label, so the drop replaces
+   * the action, removes any release action with it, and clears the icon and
+   * the label, whatever was there. The action's default icon then renders.
+   * Other fields (background, label style) stay.
+   */
+  | { kind: 'assignAction'; at: ButtonLocation; action: ActionDef }
   /** "Clear hotkey": remove the press action, keeping icon and label. */
   | { kind: 'removeAction'; at: ButtonLocation }
   /** Set the key's icon to one of its three states. */

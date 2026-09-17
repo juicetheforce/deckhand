@@ -179,6 +179,31 @@ if (r && !r.error) {
     assert.equal(r.emptyNotDragged, true);
   });
 
+  check('an action dragged from the library onto an occupied key replaces the action, clears icon and label, draws its default marked "not set up", and opens its form', () => {
+    assert.deepEqual(r.actionDropOccupied, {
+      whileDragging: { target: [10], label: 'Go to page' },
+      key10: { action: { type: 'page' } },
+      selected: [10],
+      form: true,
+      face: true,
+      mark: 'not set up',
+      labelShown: false,
+      ghostGone: true,
+    });
+  });
+  check('choosing its setting completes it and the mark goes', () => {
+    assert.deepEqual(r.actionCompleted, { key10: { action: { type: 'page', to: 'second' } }, mark: true });
+  });
+  check('a hotkey dropped on an empty key is written at once, marked, and does not start listening', () => {
+    assert.deepEqual(r.actionDropEmpty, { key12: { action: { type: 'hotkey' } }, listening: false, recordButton: true, mark: 'not set up' });
+  });
+  check('Escape cancels a library drag: nothing written, the selection kept', () => {
+    assert.deepEqual(r.actionEscapeCancels, { unchanged: true, selected: [12], ghostGone: true });
+  });
+  check('clicking an action retargets the selected key once its setting is chosen, keeping the label', () => {
+    assert.deepEqual(r.clickRetargets, { unchangedUntilChosen: true, key24: { label: 'Low', action: { type: 'profile', to: 'default' } } });
+  });
+
   check('Ctrl+A selects every key on the deck, and Escape selects none', () => {
     assert.equal(r.selectAll, 32);
     assert.equal(r.afterEscape, 0);
@@ -193,8 +218,9 @@ check('the saved file holds exactly what the operations produced, and nothing el
     2: TO_SECOND,
     3: { ...JUMP, action: { type: 'hotkey', keys: 'esc' } },
     7: FAR,
-    10: JUMP,
-    24: LOW,
+    10: { action: { type: 'page', to: 'second' } }, // Jump, then Go to page dropped from the library
+    12: { action: { type: 'hotkey' } }, // Hotkey dropped, never recorded
+    24: { ...LOW, action: { type: 'profile', to: 'default' } }, // retargeted by a library click
   };
   expected.profiles.default.layouts[XL].pages.second.buttons[1] = SPRINT;
   expected.profiles.default.layouts[V2].pages.main.buttons = { 1: SPRINT, 2: { label: 'To second' } };

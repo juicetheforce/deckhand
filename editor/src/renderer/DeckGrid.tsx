@@ -3,7 +3,7 @@ import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
-import { describeAction, keyFace, keyKind, type DeckGeometryWithSerial } from './model.js';
+import { actionIncomplete, describeAction, keyFace, keyKind, type DeckGeometryWithSerial } from './model.js';
 
 interface Props {
   config: Config;
@@ -18,6 +18,8 @@ interface Props {
   onKeyMenu: (index: number, x: number, y: number) => void;
   /** A key dropped on another key: move it, swapping with whatever is there. Null when editing is blocked. */
   onMoveKey: ((from: number, to: number) => void) | null;
+  /** The key an action from the library is being dragged over (useActionDrag), drawn as the drop target. */
+  actionDropTarget: number | null;
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
@@ -113,7 +115,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu, onMoveKey }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
   const keyDrag = useKeyDrag(onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -142,7 +144,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onC
           onMenu={(x, y) => onKeyMenu(k.index, x, y)}
           onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.index, occupied, e)}
           dragging={keyDrag.drag?.from === k.index}
-          dropTarget={keyDrag.drag !== null && keyDrag.drag.over === k.index && keyDrag.drag.from !== k.index}
+          dropTarget={(keyDrag.drag !== null && keyDrag.drag.over === k.index && keyDrag.drag.from !== k.index) || actionDropTarget === k.index}
         />
       ))}
     </div>
@@ -170,6 +172,7 @@ interface KeyProps {
 
 function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
+  const incomplete = actionIncomplete(button?.action);
   const face = keyFace(config, button, iconSize);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
   // Which icon failed to load, by path and stamp, so a changed path — or the
@@ -184,6 +187,7 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
     hasScreen ? '' : 'key-no-screen',
     dragging ? 'key-dragging' : '',
     dropTarget ? 'key-drop-target' : '',
+    incomplete ? 'key-incomplete' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -230,6 +234,11 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
       {!face.icon && !face.label && button?.action && (
         // A live face (now playing, clock) is not drawn here; name the action so the key is not blank.
         <span className="key-caption">{actionName(button.action.type)}</span>
+      )}
+      {incomplete && (
+        <span className="key-mark" title="Its action is missing a setting, so pressing it does nothing yet">
+          not set up
+        </span>
       )}
       {kind === 'unbound' && (
         <span className="key-mark" title="Shows something, but does nothing when pressed">

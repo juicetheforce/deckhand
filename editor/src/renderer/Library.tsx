@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { builtinRef, iconUrl } from '../shared/icons.js';
 import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue, type CatalogueEntry } from './catalogue.js';
 
@@ -26,7 +26,14 @@ import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue, type CatalogueE
  *   clearing it restores exactly the collapse state you had, because that
  *   state is never touched while searching.
  */
-export function Library({ onPick }: { onPick: (type: string) => void }) {
+export function Library({
+  onPick,
+  onDragStart,
+}: {
+  onPick: (type: string) => void;
+  /** A press on a row that may become a drag onto a key (useActionDrag); null while editing is blocked. */
+  onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
+}) {
   // Starts expanded and stays that way until the saved state arrives, so a
   // slow read can never flash sections shut.
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -70,7 +77,7 @@ export function Library({ onPick }: { onPick: (type: string) => void }) {
           <ul>
             {matches.map(({ group, entry }) => (
               <li key={entry.type}>
-                <Entry entry={entry} tone={group.tone} onPick={onPick} />
+                <Entry entry={entry} tone={group.tone} onPick={onPick} onDragStart={onDragStart} />
                 {/* Matches come from every section, so each says where it lives. */}
                 <span className="library-result-group">{group.name}</span>
               </li>
@@ -101,7 +108,7 @@ export function Library({ onPick }: { onPick: (type: string) => void }) {
               <ul>
                 {group.entries.map((entry) => (
                   <li key={entry.type}>
-                    <Entry entry={entry} tone={group.tone} onPick={onPick} />
+                    <Entry entry={entry} tone={group.tone} onPick={onPick} onDragStart={onDragStart} />
                   </li>
                 ))}
               </ul>
@@ -114,13 +121,29 @@ export function Library({ onPick }: { onPick: (type: string) => void }) {
   );
 }
 
-function Entry({ entry, tone, onPick }: { entry: CatalogueEntry; tone: string; onPick: (type: string) => void }) {
+function Entry({
+  entry,
+  tone,
+  onPick,
+  onDragStart,
+}: {
+  entry: CatalogueEntry;
+  tone: string;
+  onPick: (type: string) => void;
+  onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
+}) {
   const icon = libraryIcon(entry.type);
   return (
     <button
       className={`library-entry tone-${tone}${entry.editable ? '' : ' library-entry-later'}`}
-      title={entry.editable ? `${entry.description} — select a key, then click` : `${entry.description}\n\n${pendingReason(entry)}`}
+      title={
+        entry.editable
+          ? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`
+          : `${entry.description}\n\n${pendingReason(entry)}`
+      }
       disabled={!entry.editable}
+      data-action-type={entry.type}
+      onPointerDown={(e) => entry.editable && onDragStart?.(entry.type, e)}
       onClick={() => onPick(entry.type)}
     >
       {/* The same built-in the deck draws for a key with no icon of its own (scope §10). */}

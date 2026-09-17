@@ -1287,6 +1287,72 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   await sleep(600);
   out.emptyNotDragged = JSON.stringify(await buttons()) === keysBeforeCancel;
 
+  // 11g. An action from the library onto a key (C2): authoring — a new button.
+  const libraryRow = (type: string) => document.querySelector<HTMLButtonElement>(`.library-entry[data-action-type="${type}"]`)!;
+  const dragAction = async (type: string, to: number, before?: () => void) => {
+    const r = libraryRow(type).getBoundingClientRect();
+    const a = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    const b = centre(to);
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await sleep(50);
+    before?.();
+    pointer('pointerup', b.x, b.y);
+  };
+  const keyImage = (index: number) => decodeURIComponent(key(index).querySelector<HTMLImageElement>('img.key-icon')?.src ?? '');
+  const marked = (index: number) => key(index).querySelector('.key-mark')?.textContent ?? null;
+  const heading = () => [...document.querySelectorAll('.inspector .section-heading')].map((h) => h.textContent);
+
+  // a. Onto an occupied key (Jump: icon, label, hotkey): the action is replaced, icon and label cleared.
+  let whileActionDragging: unknown = null;
+  await dragAction('page', 10, () => (whileActionDragging = { target: drawn().target, label: document.querySelector('.action-drag')?.textContent }));
+  await until(async () => (await buttons())?.['10']?.action?.type === 'page');
+  await until(() => selected().join() === '10' && heading().includes('Go to page'));
+  await until(() => keyImage(10).includes('path=builtin:forward'));
+  out.actionDropOccupied = {
+    whileDragging: whileActionDragging,
+    key10: (await buttons())?.['10'],
+    selected: selected(),
+    form: heading().includes('Go to page'),
+    face: keyImage(10).includes('path=builtin:forward'),
+    mark: marked(10),
+    labelShown: key(10).querySelector('.key-label') !== null,
+    ghostGone: document.querySelector('.action-drag') === null,
+  };
+  // b. Choosing the page completes it, and the mark goes.
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector .target')].find((b) => b.textContent?.startsWith('Second'))!.click();
+  await until(async () => (await buttons())?.['10']?.action?.to === 'second');
+  out.actionCompleted = { key10: (await buttons())?.['10'], mark: (await until(() => marked(10) === null)) };
+
+  // c. Hotkey onto an empty key: written at once, not listening (a drop is not a click).
+  await dragAction('hotkey', 12);
+  await until(async () => (await buttons())?.['12'] !== undefined);
+  await until(() => selected().join() === '12' && heading().includes('Hotkey'));
+  await sleep(200);
+  out.actionDropEmpty = {
+    key12: (await buttons())?.['12'],
+    listening: document.querySelector('.listening') !== null,
+    recordButton: [...document.querySelectorAll('.inspector button')].some((b) => b.textContent === 'Record hotkey'),
+    mark: marked(12),
+  };
+
+  // d. Escape during a library drag cancels it: nothing written, selection kept.
+  const beforeActionCancel = JSON.stringify(await buttons());
+  await dragAction('profile', 13, () => press('Escape'));
+  await sleep(600);
+  out.actionEscapeCancels = { unchanged: JSON.stringify(await buttons()) === beforeActionCancel, selected: selected(), ghostGone: document.querySelector('.action-drag') === null };
+
+  // e. Clicking an action retargets the selected key and keeps icon and label (C2 call 3).
+  click(24);
+  await until(() => selected().join() === '24' && title() === 'Key 25');
+  libraryRow('profile').click();
+  await until(() => heading().includes('Switch profile'));
+  const unchangedUntilChosen = (await buttons())?.['24']?.action?.type === 'hotkey';
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector .target')].find((b) => b.textContent?.startsWith('Default'))!.click();
+  await until(async () => (await buttons())?.['24']?.action?.type === 'profile');
+  out.clickRetargets = { unchangedUntilChosen, key24: (await buttons())?.['24'] };
+
   // 12. Ctrl+A selects every key; Escape selects none.
   press('KeyA', { ctrlKey: true });
   await until(() => selected().length === 32);

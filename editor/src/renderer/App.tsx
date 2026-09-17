@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
-import { Inspector } from './Inspector.js';
+import { Inspector, type Pick } from './Inspector.js';
 import { Library } from './Library.js';
+import { actionName, libraryIcon } from './catalogue.js';
+import { builtinRef, iconUrl } from '../shared/icons.js';
+import { useActionDrag, type ActionDrag } from './useActionDrag.js';
 import {
   canSwitchDeck,
   clickKeys,
@@ -57,7 +61,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
   const [inFlight, setInFlight] = useState(0);
   const [switchError, setSwitchError] = useState<string | null>(null);
   /** The action last picked from the library, for the inspector to configure. */
-  const [pick, setPick] = useState<{ type: string; token: number } | null>(null);
+  const [pick, setPick] = useState<Pick | null>(null);
 
   // Follow the decks (scope §10): any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
@@ -138,6 +142,23 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
   const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // An action dragged from the library onto a key: a new button there (scope
+  // §10). Written first, then the key is selected and its form shown — the
+  // pick comes after the write so the inspector sees the new action.
+  const actionDrag = useActionDrag((type, index) => {
+    if (editingBlocked || !page) return;
+    const at = { profile: selection.profile, serial: selection.serial, page: selection.page, index };
+    selectKeys([index]);
+    void window.deckhand.apply({ kind: 'assignAction', at, action: { type } }).then((result) => {
+      if (!result.ok) {
+        setSwitchError(`Could not put ${actionName(type)} on key ${index + 1}: ${result.error}`);
+        return;
+      }
+      setSwitchError(null);
+      setPick((current) => ({ type, token: (current?.token ?? 0) + 1, listen: false }));
+    });
+  });
   useBulkShortcuts({
     enabled: page !== undefined && geometry !== null && !editingBlocked,
     hasSelection: selection.keys.length > 0,
@@ -259,7 +280,11 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
         <Library
-          onPick={(type) => selection.keys.length === 1 && setPick((current) => ({ type, token: (current?.token ?? 0) + 1 }))}
+          onPick={(type) => {
+            if (actionDrag.takeSuppressedClick()) return;
+            if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, listen: true }));
+          }}
+          onDragStart={editingBlocked || !page || !geometry ? null : actionDrag.start}
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
@@ -288,6 +313,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
                 selectedKeys={selection.keys}
                 onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
                 onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}
+                actionDropTarget={actionDrag.drag?.over ?? null}
                 onKeyMenu={(index, x, y) => {
                   // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
                   if (!selection.keys.includes(index)) selectKeys([index]);
@@ -338,7 +364,24 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
           }}
         />
       </div>
+      {actionDrag.drag && <DragLabel drag={actionDrag.drag} />}
     </div>
+  );
+}
+
+/**
+ * What is being dragged, following the pointer. Rendered into document.body:
+ * inside a glass pane, `backdrop-filter` makes the pane the containing block
+ * for `position: fixed` (the key menu hit this).
+ */
+function DragLabel({ drag }: { drag: ActionDrag }) {
+  const icon = libraryIcon(drag.type);
+  return createPortal(
+    <div className="action-drag" style={{ left: drag.x + 14, top: drag.y + 14 }} aria-hidden="true">
+      {icon && <img src={iconUrl(builtinRef(icon))} alt="" draggable={false} />}
+      {actionName(drag.type)}
+    </div>,
+    document.body,
   );
 }
 

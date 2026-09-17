@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { Config } from '../../src/types.js';
+import type { ActionDef, Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
@@ -22,6 +22,7 @@ import {
   keyKind,
   knownDecks,
   actionEditable,
+  actionIncomplete,
   profileCoverage,
   pageDeletion,
   reconcileSelection,
@@ -221,18 +222,78 @@ await check('an action is editable only when the inspector knows every field on 
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'page'), true);
   assert.equal(actionEditable({ action: { type: 'page', back: true } }, 'page'), true);
   assert.equal(actionEditable({ action: { type: 'profile', to: 'x' } }, 'profile'), true);
-  // The wrong type.
-  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'profile'), false);
+  // Another type: a library pick retargets the key (C2 call 3) — but only to a type with a form.
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'profile'), true);
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'clock'), false);
+  assert.equal(actionEditable(undefined, 'clock'), false, 'no form, nothing to edit it with');
+  // A hotkey dropped from the library has no keys yet, and is waiting to be recorded.
+  assert.equal(actionEditable({ action: { type: 'hotkey' } }, 'hotkey'), true);
   // A field the inspector would silently drop.
   assert.equal(actionEditable({ action: { type: 'page', to: 'x', unknownThing: 1 } }, 'page'), false);
   // onRelease makes it a two-phase key, which is phase C.
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' }, onRelease: { type: 'noop' } }, 'page'), false);
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'f24' }, onRelease: { type: 'noop' } }, 'page'), false, 'not even to retarget');
   // hotkey keeps phase A's rule: single combos only, never a sequence.
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1' } }, 'hotkey'), true);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2 } }, 'hotkey'), false);
   // A type with no inspector is never editable.
   assert.equal(actionEditable({ action: { type: 'clock' } }, 'clock'), false);
+});
+
+await check('"not set up": an action missing the setting it cannot run without — and the daemon refuses every one of them', async () => {
+  const incomplete: ActionDef[] = [
+    { type: 'hotkey' },
+    { type: 'hotkey', keys: '' },
+    { type: 'hotkey', keys: [] },
+    { type: 'keyHold', state: 'down' },
+    { type: 'text' },
+    { type: 'command' },
+    { type: 'command', command: '  ' },
+    { type: 'command', exec: [] },
+    { type: 'page' },
+    { type: 'profile' },
+    { type: 'multi' },
+    { type: 'multi', steps: [] },
+    { type: 'brightness' },
+    { type: 'audio.sink' },
+    { type: 'audio.source' },
+    { type: 'audio.cycle' },
+    { type: 'audio.cycle', devices: [{ node: 'a', label: 'A' }] },
+  ];
+  for (const action of incomplete) {
+    assert.equal(actionIncomplete(action), true, JSON.stringify(action));
+    // The copy agrees with the daemon: its handler refuses before doing anything.
+    await assert.rejects(registry[action.type].execute({ log: () => {} }, action), JSON.stringify(action));
+  }
+  const complete: ActionDef[] = [
+    { type: 'hotkey', keys: 'ctrl+1' },
+    { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] },
+    { type: 'keyHold', keys: 'f24', state: 'down' },
+    { type: 'text', text: '' },
+    { type: 'command', command: 'kate' },
+    { type: 'command', exec: ['kate'] },
+    { type: 'page', to: 'main' },
+    { type: 'page', back: true },
+    { type: 'profile', to: 'p' },
+    { type: 'multi', steps: [{ type: 'noop' }] },
+    { type: 'brightness', value: 40 },
+    { type: 'brightness', delta: -10 },
+    { type: 'audio.sink', node: 'n' },
+    { type: 'audio.sink', match: 'headset' },
+    { type: 'audio.source', node: 'n' },
+    { type: 'audio.cycle', devices: [{ node: 'a' }, { node: 'b' }] },
+    { type: 'audio.cycle', matches: ['a', 'b'] },
+    { type: 'media.control' },
+    { type: 'media.info' },
+    { type: 'clock' },
+    { type: 'noop' },
+    { type: 'audio.micMute' },
+    { type: 'audio.mute' },
+    { type: 'audio.volume' },
+  ];
+  for (const action of complete) assert.equal(actionIncomplete(action), false, JSON.stringify(action));
+  assert.equal(actionIncomplete(undefined), false);
 });
 
 await check('profileCoverage names the decks a profile changes, and the connected ones it leaves out', () => {
