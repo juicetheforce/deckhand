@@ -101,7 +101,8 @@ await check('the library enables exactly the actions with a form, and greys the 
   for (const e of entries) assert.equal(e.editable, hasForm(e.type), e.type);
   const editable = entries.filter((e) => e.editable).map((e) => e.type);
   // C2 piece 4 adds the forms that need no device, text or list; piece 5 the device pickers.
-  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'hotkey', 'media.control', 'media.info', 'noop', 'page', 'profile']);
+  // Piece 6: text, command, Press/Release.
+  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'noop', 'page', 'profile', 'text']);
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
 });
@@ -237,7 +238,15 @@ await check('an action is editable only when the inspector knows every field on 
   // hotkey keeps phase A's rule: single combos only, never a sequence.
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1' } }, 'hotkey'), true);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
-  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2 } }, 'hotkey'), false);
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2, holdMs: 300 } }, 'hotkey'), true, 'hold and repeat have controls (C2)');
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', gapMs: 50 } }, 'hotkey'), false, 'gapMs has none');
+  // Press/Release: only the exact pair its form writes.
+  const pair = { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } };
+  assert.equal(actionEditable(pair, 'keyHold'), true);
+  assert.equal(actionEditable(pair, 'hotkey'), false, 'not retargeted by a click: the release action would be left behind');
+  assert.equal(actionEditable({ ...pair, onRelease: { type: 'keyHold', keys: 'f23', state: 'up' } }, 'keyHold'), false, 'different keys');
+  assert.equal(actionEditable({ ...pair, onRelease: { type: 'noop' } }, 'keyHold'), false);
+  assert.equal(actionEditable({ action: { type: 'keyHold', keys: 'f24', state: 'down' } }, 'keyHold'), true, 'a press with no release can be fixed by recording');
   // A type with no inspector is never editable.
   assert.equal(actionEditable({ action: { type: 'x-no-form' } }, 'x-no-form'), false);
   // A form's setting it does not show keeps a hand-edited key read-only.

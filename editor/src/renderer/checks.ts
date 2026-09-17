@@ -1467,7 +1467,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await selectKey(4);
   await until(() => headings().includes('Mic mute'));
   typeInto(input('Label while muted'), 'MUTED');
-  input('Label while muted').dispatchEvent(new FocusEvent('blur'));
+  input('Label while muted').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); // saves at once, as leaving the field does
   await actionAs(4, { type: 'audio.micMute', labelMuted: 'MUTED' });
   typeInto(input('Label while unmuted'), 'live');
   out.micLabels = await actionAs(4, { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' });
@@ -1586,6 +1586,75 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   await selectKey(12);
   out.matchReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
+
+  // Type text.
+  const textarea = () => document.querySelector<HTMLTextAreaElement>('.inspector textarea[aria-label="Text to type"]')!;
+  const typeText = (value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), value);
+    textarea().dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  await selectKey(13);
+  libraryClick('text');
+  await until(() => document.querySelector('.inspector textarea') !== null);
+  // A hidden window delivers no focus events for focus()/blur(), and React's
+  // onFocus/onBlur listen for focusin/focusout: dispatch those (a break that
+  // wrote on blur first passed because focus() and blur() did nothing).
+  textarea().dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  textarea().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  await sleep(600);
+  const afterBlur = (await buttons())?.['13'] ?? null;
+  typeText('Hi!\nok');
+  const typed = await actionAs(13, { type: 'text', text: 'Hi!\nok' });
+  const estimate = document.querySelector('.inspector .inspector-section')?.textContent?.includes('About') ?? false;
+  typeText('café');
+  const refusedShown = await until(() => document.querySelector('.inspector .field-error')?.textContent?.includes('cannot type') === true);
+  await sleep(700);
+  const refusedNotSaved = (await buttons())?.['13']?.action ?? null;
+  typeText('Hi!\nok');
+  await sleep(600);
+  out.text = { afterBlur, typed, estimate, refusedShown, refusedNotSaved };
+
+  // Hotkey hold and repeat.
+  await selectKey(14);
+  await until(() => document.querySelector('.inspector input[aria-label="Hold for"]') !== null);
+  const hotkeyExtras = [];
+  typeInto(input('Hold for'), '250');
+  hotkeyExtras.push(await actionAs(14, { type: 'hotkey', keys: 'ctrl+1', holdMs: 250 }));
+  typeInto(input('Repeat'), '3');
+  hotkeyExtras.push(await actionAs(14, { type: 'hotkey', keys: 'ctrl+1', holdMs: 250, repeat: 3 }));
+  typeInto(input('Hold for'), '0');
+  hotkeyExtras.push(await actionAs(14, { type: 'hotkey', keys: 'ctrl+1', repeat: 3 }));
+  typeInto(input('Repeat'), '1');
+  hotkeyExtras.push(await actionAs(14, { type: 'hotkey', keys: 'ctrl+1' }));
+  out.hotkeyExtras = hotkeyExtras;
+
+  // Press/Release: listens on a library click, like Hotkey.
+  await selectKey(15);
+  libraryClick('keyHold');
+  const listening = await until(() => document.querySelector('.listening') !== null);
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'F24', key: 'F24', bubbles: true, cancelable: true }));
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'F24', key: 'F24', bubbles: true, cancelable: true }));
+  const pair = { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } };
+  const pressSaved = await savedAs(15, pair);
+  await until(() => document.querySelectorAll('.inspector .phase').length === 2 && !document.querySelector('.inspector .phase .muted'));
+  const phases = [...document.querySelectorAll('.inspector .phase')].map((p) => p.textContent);
+  await clickButton('Clear');
+  const pressCleared = await savedAs(15, null);
+  out.pressRelease = { listening, saved: pressSaved, phases, cleared: pressCleared };
+
+  // Run command.
+  await selectKey(16);
+  libraryClick('command');
+  await until(() => document.querySelector('.inspector input[aria-label="Command"]') !== null);
+  typeInto(input('Command'), 'kate ~/notes.md');
+  const commandTyped = await actionAs(16, { type: 'command', command: 'kate ~/notes.md' });
+  typeInto(input('Command'), '');
+  const commandEmptied = await actionAs(16, { type: 'command' });
+  await until(() => document.querySelectorAll('.key')[16].querySelector('.key-mark')?.textContent === 'not set up');
+  out.command = { typed: commandTyped, emptied: commandEmptied, mark: document.querySelectorAll('.key')[16].querySelector('.key-mark')?.textContent ?? null };
+
+  await selectKey(17);
+  out.oddPairReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
 
   // A mute key with its own icon.
   await selectKey(8);

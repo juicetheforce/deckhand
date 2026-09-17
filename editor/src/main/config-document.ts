@@ -185,6 +185,19 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       delete button.label;
       return {};
     }
+    case 'setPressRelease': {
+      const page = pageAt(config, edit.at);
+      if (edit.keys === null) {
+        removeField(page, edit.at.index, 'action');
+        removeField(page, edit.at.index, 'onRelease');
+        return {};
+      }
+      if (edit.keys.trim() === '') throw new EditError('Press/Release needs a key');
+      const button = buttonFor(page, edit.at.index);
+      button.action = { type: 'keyHold', keys: edit.keys, state: 'down' };
+      button.onRelease = { type: 'keyHold', keys: edit.keys, state: 'up' };
+      return {};
+    }
     case 'removeAction': {
       removeField(pageAt(config, edit.at), edit.at.index, 'action');
       return {};

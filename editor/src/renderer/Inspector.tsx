@@ -3,7 +3,8 @@ import type { ButtonDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit } from '../shared/edits.js';
 import { actionName } from './catalogue.js';
 import { EMPTY_PLACE, IconPicker, type PickerPlace } from './IconPicker.js';
-import { HotkeyForm } from './inspector/HotkeyForm.js';
+import { HotkeyForm, PressReleaseForm } from './inspector/HotkeyForm.js';
+import { CommandForm, TextForm } from './inspector/TextCommandForms.js';
 import { IconState } from './inspector/IconState.js';
 import { LabelField, LabelStyle } from './inspector/LabelFields.js';
 import { PageAction } from './inspector/PageAction.js';
@@ -184,8 +185,8 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     if (!actionEditable(button, pick.type)) return;
     setChosen(pick.type);
     if (!pick.click) return;
-    // Hotkey is the one that starts doing something at once: it listens.
-    if (pick.type === 'hotkey') setListenRequest(true);
+    // Hotkey and Press/Release start doing something at once: they listen.
+    if (pick.type === 'hotkey' || pick.type === 'keyHold') setListenRequest(true);
     // An action with nothing to choose (Clock, Mic mute, …) is complete as it
     // is, so a click writes it — keeping icon and label (C2 call 3). One that
     // needs a setting is written when the setting is chosen.
@@ -246,6 +247,11 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         <HotkeyForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
       )}
 
+      {tab === 'key' && editable && type === 'keyHold' && (
+        <PressReleaseForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
+      )}
+      {tab === 'key' && editable && type === 'text' && <TextForm at={at} button={button} disabled={editingBlocked} run={run} />}
+      {tab === 'key' && editable && type === 'command' && <CommandForm at={at} button={button} disabled={editingBlocked} run={run} />}
       {tab === 'key' && editable && type === 'clock' && <ClockForm at={at} button={button} disabled={editingBlocked} run={run} />}
       {tab === 'key' && editable && type === 'noop' && <NoopForm />}
       {tab === 'key' && editable && type === 'brightness' && <BrightnessForm at={at} button={button} disabled={editingBlocked} run={run} />}

@@ -1,7 +1,8 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import type { ButtonDef } from '../../../../src/types.js';
 import type { SystemShortcut } from '../../shared/bridge.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
+import { NumberSetting, Row, nextAction } from './controls.js';
 import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../../shared/keys.js';
 import { keyCapture } from '../key-capture.js';
 
@@ -11,35 +12,82 @@ type Mode =
   | { kind: 'typing'; text: string; error: string | null }
   | { kind: 'confirm'; combo: string; shortcut: SystemShortcut };
 
+interface ListenProps {
+  /** Start listening: set by a library pick, handed back with `onListening` once taken. */
+  listenRequest: boolean;
+  onListening: () => void;
+}
+
 /**
  * The hotkey inspector (scope §10): record by pressing the combo, Type
- * manually, Re-record and Clear hotkey.
+ * manually, Re-record and Clear hotkey — plus hold and repeat (C2). A hotkey
+ * sequence (`keys` as a list) and `gapMs` stay read-only: Multi action does
+ * sequences.
+ */
+export function HotkeyForm({ at, button, editingBlocked, run, listenRequest, onListening }: { at: ButtonLocation; button: ButtonDef | undefined; editingBlocked: boolean; run: (edit: Edit) => Promise<boolean> } & ListenProps) {
+  const action = button?.action?.type === 'hotkey' ? button.action : undefined;
+  const combo = typeof action?.keys === 'string' ? action.keys : null;
+  const write = (patch: Record<string, unknown>) => run({ kind: 'setAction', at, action: nextAction('hotkey', button, patch) });
+  return (
+    <ComboCapture
+      heading="Hotkey"
+      combo={combo}
+      editingBlocked={editingBlocked}
+      save={(keys) => write({ keys })}
+      clear={() => void run({ kind: 'removeAction', at })}
+      clearLabel="Clear hotkey"
+      listenRequest={listenRequest}
+      onListening={onListening}
+    >
+      {combo && (
+        <>
+          <Row name="Hold for">
+            <NumberSetting label="Hold for" value={typeof action?.holdMs === 'number' ? action.holdMs : 0} min={0} max={10000} disabled={editingBlocked} onSave={(n) => void write({ holdMs: n === 0 ? undefined : n })} />
+            <span className="form-value">ms (0: a normal press)</span>
+          </Row>
+          <Row name="Repeat">
+            <NumberSetting label="Repeat" value={typeof action?.repeat === 'number' ? action.repeat : 1} min={1} max={50} disabled={editingBlocked} onSave={(n) => void write({ repeat: n === 1 ? undefined : n })} />
+            <span className="form-value">times</span>
+          </Row>
+        </>
+      )}
+    </ComboCapture>
+  );
+}
+
+/**
+ * Recording one key combo: press it, or Type manually; KDE-shortcut and layout
+ * warnings. Used by the hotkey and Press/Release forms, which say what saving
+ * and clearing write.
  *
  * Mounted only while the Key tab shows, so listening — which swallows every
  * key — can never carry on out of sight on another tab: leaving the tab
  * unmounts this, and the listening effect's cleanup stands the capture down.
- *
- * `listenRequest` starts listening: set by a library pick of Hotkey, and
- * handed back with `onListening` once taken, so remounting (coming back from
+ * `listenRequest` is handed back once taken, so remounting (coming back from
  * the Icon tab) does not start listening again.
  */
-export function HotkeyForm({
-  at,
-  button,
+export function ComboCapture({
+  heading,
+  combo,
   editingBlocked,
-  run,
+  save,
+  clear,
+  clearLabel,
   listenRequest,
   onListening,
+  children,
 }: {
-  at: ButtonLocation;
-  button: ButtonDef | undefined;
+  heading: string;
+  combo: string | null;
   editingBlocked: boolean;
-  run: (edit: Edit) => Promise<boolean>;
-  listenRequest: boolean;
-  onListening: () => void;
-}) {
+  /** Write the combo; resolves false if the edit was refused. */
+  save: (combo: string) => Promise<boolean>;
+  clear: () => void;
+  clearLabel: string;
+  /** Shown under the buttons while not recording. */
+  children?: ReactNode;
+} & ListenProps) {
   const [mode, setMode] = useState<Mode>({ kind: 'view' });
-  const combo = button?.action?.type === 'hotkey' && typeof button.action.keys === 'string' ? button.action.keys : null;
 
   useEffect(() => {
     if (!listenRequest) return;
@@ -67,7 +115,7 @@ export function HotkeyForm({
         return;
       }
     }
-    if (await run({ kind: 'setAction', at, action: { type: 'hotkey', keys: next } })) setMode({ kind: 'view' });
+    if (await save(next)) setMode({ kind: 'view' });
   };
 
   // Listening: every key event is read and swallowed before anything else sees it.
@@ -123,7 +171,7 @@ export function HotkeyForm({
 
   return (
     <section className="inspector-section">
-      <h3 className="section-heading">Hotkey</h3>
+      <h3 className="section-heading">{heading}</h3>
 
       {mode.kind === 'view' && (
         <>
@@ -142,11 +190,12 @@ export function HotkeyForm({
               Type manually
             </button>
             {combo && (
-              <button disabled={editingBlocked} onClick={() => void run({ kind: 'removeAction', at })}>
-                Clear hotkey
+              <button disabled={editingBlocked} onClick={clear}>
+                {clearLabel}
               </button>
             )}
           </div>
+          {children}
         </>
       )}
 
@@ -222,4 +271,37 @@ function Keycaps({ combo }: { combo: string }) {
 function RemapNote({ combo }: { combo: string }) {
   const key = keycaps(combo).pop();
   return <p className="muted small">{key} may not reach the game: the keyboard layout can turn it into another key.</p>;
+}
+
+/**
+ * Press/Release (scope §10): the key held while the deck key is held. Written
+ * as a pair — `keyHold` down as the press action, `keyHold` up with the same
+ * keys as the release action — which is what the daemon runs (a hand-written
+ * `keyHold` down with no release would hold the key forever).
+ */
+export function PressReleaseForm({ at, button, editingBlocked, run, listenRequest, onListening }: { at: ButtonLocation; button: ButtonDef | undefined; editingBlocked: boolean; run: (edit: Edit) => Promise<boolean> } & ListenProps) {
+  const combo = button?.action?.type === 'keyHold' && typeof button.action.keys === 'string' && button.action.keys !== '' ? button.action.keys : null;
+  return (
+    <ComboCapture
+      heading="Press / Release"
+      combo={combo}
+      editingBlocked={editingBlocked}
+      save={(keys) => run({ kind: 'setPressRelease', at, keys })}
+      clear={() => void run({ kind: 'setPressRelease', at, keys: null })}
+      clearLabel="Clear"
+      listenRequest={listenRequest}
+      onListening={onListening}
+    >
+      <div className="phases">
+        <div className="phase">
+          <span className="phase-name">On press</span>
+          {combo ? <span>hold {keycaps(combo).join('+')} down</span> : <span className="muted">nothing yet</span>}
+        </div>
+        <div className="phase">
+          <span className="phase-name">On release</span>
+          {combo ? <span>let {keycaps(combo).join('+')} go</span> : <span className="muted">nothing yet</span>}
+        </div>
+      </div>
+    </ComboCapture>
+  );
 }

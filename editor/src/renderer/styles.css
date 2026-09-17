@@ -1553,6 +1553,39 @@ button:disabled {
   padding: 2px 6px;
 }
 
+.inspector .text-input {
+  width: 100%;
+  margin-top: 6px;
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+}
+
+.phases {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.phase {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  font-size: 12px;
+}
+
+.phase-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .pair-icons {
   margin-top: 6px;
 }

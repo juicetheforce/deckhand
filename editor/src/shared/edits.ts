@@ -26,6 +26,12 @@ export type Edit =
    * Other fields (background, label style) stay.
    */
   | { kind: 'assignAction'; at: ButtonLocation; action: ActionDef }
+  /**
+   * Press/Release (scope §10): `keyHold` down with these keys as the press
+   * action and `keyHold` up with the same keys as the release action, together.
+   * null removes both, keeping icon and label, like Clear hotkey.
+   */
+  | { kind: 'setPressRelease'; at: ButtonLocation; keys: string | null }
   /** "Clear hotkey": remove the press action, keeping icon and label. */
   | { kind: 'removeAction'; at: ButtonLocation }
   /** Set the key's icon to one of its three states. */

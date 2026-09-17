@@ -64,8 +64,8 @@ export const CATALOGUE: CatalogueGroup[] = [
     tone: 'accent',
     entries: [
       { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', editable: true, aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
-      { type: 'text', name: 'Type text', description: 'Type a string, US layout', editable: false, pending: 'inspector', aliases: ['phrase', 'paste', 'autotype', 'macro'] },
-      { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', editable: false, pending: 'inspector', aliases: ['momentary', 'ptt', 'push to talk'] },
+      { type: 'text', name: 'Type text', description: 'Type a string, US layout', editable: true, aliases: ['phrase', 'paste', 'autotype', 'macro'] },
+      { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', editable: true, aliases: ['momentary', 'ptt', 'push to talk'] },
       { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', editable: false, pending: 'inspector', aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
     ],
   },
@@ -101,7 +101,7 @@ export const CATALOGUE: CatalogueGroup[] = [
     name: 'System',
     tone: 'neutral',
     entries: [
-      { type: 'command', name: 'Run command', description: 'Start a program or shell command', editable: false, pending: 'inspector', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
+      { type: 'command', name: 'Run command', description: 'Start a program or shell command', editable: true, aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
       { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", editable: true, aliases: ['dim', 'backlight', 'screen'] },
       { type: 'clock', name: 'Clock', description: 'The time on the key', editable: true, aliases: ['watch', 'hour', 'date'] },
       { type: 'noop', name: 'Nothing', description: 'A key that does nothing', editable: true, aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },

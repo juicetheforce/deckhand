@@ -365,7 +365,13 @@ export function keyFace(config: Config, button: ButtonDef | undefined, iconSize:
  * extended to page and profile in phase B).
  */
 const EDITABLE_FIELDS: Record<string, readonly string[]> = {
-  hotkey: ['keys'],
+  // A sequence (keys as a list) and gapMs stay read-only: Multi action does sequences.
+  hotkey: ['keys', 'holdMs', 'repeat'],
+  text: ['text'],
+  // `exec` and `wait` are hand-edited only.
+  command: ['command'],
+  // With its release action; see isPressRelease.
+  keyHold: ['keys', 'state'],
   page: ['to', 'back'],
   profile: ['to'],
   // C2 piece 4 (docs/code-state.md): settings left out here — `player`,
@@ -401,7 +407,8 @@ export function hasForm(type: string): boolean {
 export function actionEditable(button: ButtonDef | undefined, type: string): boolean {
   const fields = EDITABLE_FIELDS[type];
   if (!fields) return false;
-  if (button?.onRelease) return false;
+  // A release action belongs to Press/Release alone, and only as the pair it writes.
+  if (button?.onRelease) return type === 'keyHold' && isPressRelease(button);
   const action = button?.action;
   if (!action) return true;
   if (action.type !== type) return true;
@@ -409,6 +416,27 @@ export function actionEditable(button: ButtonDef | undefined, type: string): boo
   // at all is a hotkey dropped from the library, waiting to be recorded.
   if (type === 'hotkey' && action.keys !== undefined && typeof action.keys !== 'string') return false;
   return Object.keys(action).every((k) => k === 'type' || fields.includes(k));
+}
+
+/**
+ * Whether a key is exactly what the Press/Release form writes: `keyHold` down
+ * on press and `keyHold` up with the same keys on release, and nothing else on
+ * either. Any other release action is read-only here.
+ */
+export function isPressRelease(button: ButtonDef | undefined): boolean {
+  const press = button?.action;
+  const release = button?.onRelease;
+  const only = (a: ActionDef) => Object.keys(a).every((k) => k === 'type' || k === 'keys' || k === 'state');
+  return (
+    press?.type === 'keyHold' &&
+    release?.type === 'keyHold' &&
+    typeof press.keys === 'string' &&
+    press.keys === release.keys &&
+    press.state !== 'up' &&
+    release.state === 'up' &&
+    only(press) &&
+    only(release)
+  );
 }
 
 const nonEmpty = (value: unknown): boolean => typeof value === 'string' && value.trim() !== '';

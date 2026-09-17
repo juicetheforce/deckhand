@@ -59,6 +59,8 @@ const BUTTONS = {
   8: { icon: '~/own.png', action: { type: 'audio.mute' } },
   10: { action: { type: 'audio.source', node: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source', label: 'Built-in Microphone' } },
   12: { action: { type: 'audio.sink', match: 'headset' } },
+  14: { action: { type: 'hotkey', keys: 'ctrl+1' } },
+  17: { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f23', state: 'up' } },
 };
 const CONFIG = {
   decks: { [SERIAL]: {} },
@@ -196,6 +198,29 @@ if (r && !r.error) {
     });
   });
   check('a hand-edited output key using match is read-only', () => assert.equal(r.matchReadOnly, true));
+  check('Type text: nothing written by focusing and leaving; typed text written with an estimate; a character the layout cannot type is refused and not saved', () => {
+    assert.deepEqual(r.text, { afterBlur: null, typed: { type: 'text', text: 'Hi!\nok' }, estimate: true, refusedShown: true, refusedNotSaved: { type: 'text', text: 'Hi!\nok' } });
+  });
+  check('Hotkey hold and repeat write holdMs and repeat; back to 0 and 1 removes them', () => {
+    assert.deepEqual(r.hotkeyExtras, [
+      { type: 'hotkey', keys: 'ctrl+1', holdMs: 250 },
+      { type: 'hotkey', keys: 'ctrl+1', holdMs: 250, repeat: 3 },
+      { type: 'hotkey', keys: 'ctrl+1', repeat: 3 },
+      { type: 'hotkey', keys: 'ctrl+1' },
+    ]);
+  });
+  check('Press/Release: a library click listens; the pressed key is written as keyHold down and up; the phases say so; Clear removes both', () => {
+    assert.deepEqual(r.pressRelease, {
+      listening: true,
+      saved: { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } },
+      phases: ['On presshold F24 down', 'On releaselet F24 go'],
+      cleared: null,
+    });
+  });
+  check('Run command: the command is written; emptied, the setting goes and the key is marked "not set up"', () => {
+    assert.deepEqual(r.command, { typed: { type: 'command', command: 'kate ~/notes.md' }, emptied: { type: 'command' }, mark: 'not set up' });
+  });
+  check('a key holding one key and releasing another is read-only', () => assert.equal(r.oddPairReadOnly, true));
   check("a mute key with its own icon says each state falls back to it, and why it stops swapping", () => {
     assert.deepEqual(r.ownIcon, { iconMuted: "the key's own icon (~/own.png)", iconUnmuted: "the key's own icon (~/own.png)", note: true });
   });
@@ -218,6 +243,10 @@ check('the saved file holds exactly what the forms wrote', () => {
     10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' } },
     11: r?.cycle?.final ? { action: r.cycle.final } : '(cycle not reached)',
     12: BUTTONS[12],
+    13: { action: { type: 'text', text: 'Hi!\nok' } },
+    14: BUTTONS[14],
+    16: { action: { type: 'command' } },
+    17: BUTTONS[17],
   };
   assert.deepEqual(saved, expected);
 });

@@ -234,6 +234,18 @@ await check('setActionIcon writes one icon of a state pair on the action — a b
   store.close();
 });
 
+await check('setPressRelease writes keyHold down and up as a pair, keeping icon and label; null removes both; an empty key is refused', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const key = () => store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons['0'];
+  const { label, icon } = key();
+  assert.equal(store.apply({ kind: 'setPressRelease', at: at(0), keys: 'f24' }).ok, true);
+  assert.deepEqual(key(), { label, icon, action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } });
+  assert.equal(store.apply({ kind: 'setPressRelease', at: at(0), keys: ' ' }).ok, false);
+  assert.equal(store.apply({ kind: 'setPressRelease', at: at(0), keys: null }).ok, true);
+  assert.deepEqual(key(), { label, icon });
+  store.close();
+});
+
 await check('an edit that changes nothing writes nothing', async () => {
   const file = await configFile(EXAMPLE);
   const inode = (await fs.stat(file)).ino;
