@@ -1,0 +1,170 @@
+// M4 phase C2: the action forms, end to end in real Electron — each form's
+// controls write exactly the settings they name, and nothing else.
+//
+// The renderer drives the forms through the UI (src/renderer/checks.ts,
+// "forms"); this script checks the saved config.json, that the daemon took
+// every save, and that the state icons chosen on the Icon tab were put on the
+// deck first. HOME is a scratch directory, so the icon picker never lists the
+// real one.
+//
+// Usage: npm run check:forms   (builds first)
+
+import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { runElectronCheck } from './lib/run-electron-check.mjs';
+
+const repoRoot = path.join(import.meta.dirname, '..', '..');
+const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-forms-'));
+const configDir = path.join(scratch, 'config');
+const home = path.join(scratch, 'home');
+await fs.mkdir(configDir);
+await fs.mkdir(path.join(home, 'Pictures'), { recursive: true });
+process.env.DECKHAND_CONFIG_DIR = configDir;
+process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
+process.env.HOME = home;
+const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
+const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+
+let failures = 0;
+function check(name, fn) {
+  try {
+    fn();
+    console.log(`PASS  ${name}`);
+  } catch (err) {
+    failures++;
+    console.log(`FAIL  ${name}\n      ${err.message.split('\n').join('\n      ')}`);
+  }
+}
+
+const SERIAL = 'FORMS-XL';
+const BUTTONS = {
+  1: { label: 'Vol', icon: 'builtin:headset', action: { type: 'hotkey', keys: 'ctrl+1' } },
+  3: { action: { type: 'media.control' } },
+  4: { action: { type: 'audio.micMute' } },
+  5: { action: { type: 'media.info' } },
+  6: { action: { type: 'noop' } },
+  7: { action: { type: 'media.control', player: 'tidal' } },
+  8: { icon: '~/own.png', action: { type: 'audio.mute' } },
+};
+const CONFIG = {
+  decks: { [SERIAL]: {} },
+  startProfile: 'default',
+  profiles: { default: { name: 'Default', layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: BUTTONS } } } } } },
+};
+await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
+
+const daemon = await startDaemon(scratch, CONFIG);
+await daemon.attach(SERIAL, new FakeDeck());
+let refusedReloads = 0;
+const stopWatching = watchConfig(async () => {
+  try {
+    const { config } = await loadConfig();
+    daemon.state.config = config;
+    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
+    daemon.events.config();
+    await daemon.profiles.applyReload(config, daemon.sessions);
+  } catch (err) {
+    refusedReloads++;
+    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
+    daemon.events.config();
+  }
+});
+// Which keys the editor put a preview on: a state icon must go on the deck before it is saved.
+const session = daemon.sessions.get(SERIAL);
+const previewed = [];
+const setPreview = session.setPreview.bind(session);
+session.setPreview = (index, button) => {
+  previewed.push({ index, button: structuredClone(button) });
+  return setPreview(index, button);
+};
+
+const output = await runElectronCheck('forms', { configDir, stateDir: path.join(scratch, 'state'), socket: daemon.socket }, 120_000, { HOME: home });
+const r = output.report?.renderer;
+
+check('electron ran the check', () => {
+  assert.equal(output.code, 0, `exit code ${output.code}\nstderr:\n${output.stderr.slice(-3000)}`);
+  assert.ok(r, `no report\nstdout:\n${output.stdout.slice(-3000)}`);
+  assert.equal(r.error, undefined, r.error);
+});
+
+if (r && !r.error) {
+  check('Clock: a library click on an empty key writes it at once; the format writes format, and the default removes it', () => {
+    assert.deepEqual(r.clock, [{ type: 'clock' }, { type: 'clock', format: 'HH:mm:ss' }, { type: 'clock' }]);
+  });
+  check('Volume: a click retargets a hotkey key at once, keeping label and icon; direction, step and level write delta and showLevel', () => {
+    assert.deepEqual(r.volume, [
+      { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume' } },
+      { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume', delta: -5 } },
+      { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume', delta: -10 } },
+      { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume', delta: -10, showLevel: true } },
+    ]);
+  });
+  check('Brightness: nothing is written until a choice, then delta or value — never both', () => {
+    assert.deepEqual(r.brightness, [null, { type: 'brightness', delta: -10 }, { type: 'brightness', value: 50 }, { type: 'brightness', value: 30 }]);
+  });
+  check('Media control: the method writes method, play/pause removes it; the state icons show only for play/pause', () => {
+    assert.deepEqual(r.mediaControl, {
+      next: { type: 'media.control', method: 'next' },
+      pairShownForNext: false,
+      back: { type: 'media.control' },
+      pairShownForPlayPause: ['While playing', 'While paused'],
+    });
+  });
+  check('Mic mute: the labels write labelMuted/labelUnmuted; "Choose…" opens the Icon tab on that state', () => {
+    assert.deepEqual(r.micLabels, { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' });
+    assert.deepEqual(r.slotOpened, { tab: 'Icon', slot: 'While muted' });
+  });
+  check('a state icon chosen from Built-in is written on the action by name — the key icon untouched — and put on the deck first, without the action', () => {
+    assert.deepEqual(r.micIcons, {
+      afterMuted: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconMuted: 'builtin:speaker-muted' } },
+      afterUnmuted: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconMuted: 'builtin:speaker-muted', iconUnmuted: 'builtin:headset' } },
+      gridShowsUnmuted: true,
+      formSays: { iconMuted: 'Built-in: speaker-muted', iconUnmuted: 'Built-in: headset' },
+      keySlotCurrent: [],
+      cleared: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconUnmuted: 'builtin:headset' } },
+    });
+    const muted = previewed.find((p) => p.index === 4 && p.button.icon === 'builtin:speaker-muted');
+    assert.ok(muted, `no preview of the muted icon on key 4: ${JSON.stringify(previewed)}`);
+    assert.equal(muted.button.action, undefined, 'previewed with the action, which would draw the current state instead');
+  });
+  check('Now playing: shows, art, pressing and idle label each write their one setting', () => {
+    assert.deepEqual(r.mediaInfo, { type: 'media.info', show: 'title', showArt: false, pressAction: 'none', idleLabel: 'Quiet' });
+  });
+  check('Nothing has a form and no JSON; a media key with a setting the form lacks (player) is read-only', () => {
+    assert.deepEqual([r.noopForm, r.noopJson, r.playerReadOnly], [true, false, true]);
+  });
+  check("a mute key with its own icon says each state falls back to it, and why it stops swapping", () => {
+    assert.deepEqual(r.ownIcon, { iconMuted: "the key's own icon (~/own.png)", iconUnmuted: "the key's own icon (~/own.png)", note: true });
+  });
+}
+
+const saved = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
+check('the saved file holds exactly what the forms wrote', () => {
+  const expected = structuredClone(CONFIG);
+  expected.profiles.default.layouts[SERIAL].pages.main.buttons = {
+    0: { action: { type: 'clock' } },
+    1: { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume', delta: -10, showLevel: true } },
+    2: { action: { type: 'brightness', value: 30 } },
+    3: { action: { type: 'media.control' } },
+    4: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconUnmuted: 'builtin:headset' } },
+    5: { action: { type: 'media.info', show: 'title', showArt: false, pressAction: 'none', idleLabel: 'Quiet' } },
+    6: BUTTONS[6],
+    7: BUTTONS[7],
+    8: BUTTONS[8],
+  };
+  assert.deepEqual(saved, expected);
+});
+check('the daemon took every save', () => {
+  assert.equal(refusedReloads, 0);
+  assert.deepEqual(daemon.state.config, saved);
+});
+
+if (failures > 0) console.log(`\nrenderer report:\n${JSON.stringify(r, null, 2)}`);
+stopWatching();
+await daemon.stop();
+await fs.rm(scratch, { recursive: true, force: true });
+console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
+process.exit(failures === 0 ? 0 : 1);

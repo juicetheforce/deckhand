@@ -20,7 +20,8 @@
     "check:structure": "npm run build && node scripts/check-structure.mjs",
     "check:navigate": "npm run build && node scripts/check-navigate.mjs",
     "test": "node scripts/run-tests.mjs",
-    "check:bulk": "npm run build && node scripts/check-bulk.mjs"
+    "check:bulk": "npm run build && node scripts/check-bulk.mjs",
+    "check:forms": "npm run build && node scripts/check-forms.mjs"
   },
   "engines": {
     "node": ">=22.12"

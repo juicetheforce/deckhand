@@ -23,6 +23,7 @@ import {
   knownDecks,
   actionEditable,
   actionIncomplete,
+  hasForm,
   profileCoverage,
   pageDeletion,
   reconcileSelection,
@@ -95,9 +96,12 @@ await check("every action in the daemon's registry is in the catalogue (scope §
   assert.deepEqual(Object.keys(registry).filter((type) => !listed.has(type)), []);
 });
 
-await check('phase B: hotkey, page and profile are editable; the rest wait for phase C', () => {
-  const editable = CATALOGUE.flatMap((g) => g.entries.filter((e) => e.editable).map((e) => e.type));
-  assert.deepEqual(editable, ['hotkey', 'page', 'profile']);
+await check('the library enables exactly the actions with a form, and greys the rest', () => {
+  const entries = CATALOGUE.flatMap((g) => g.entries);
+  for (const e of entries) assert.equal(e.editable, hasForm(e.type), e.type);
+  const editable = entries.filter((e) => e.editable).map((e) => e.type);
+  // C2 piece 4 adds the forms that need no device, text or list.
+  assert.deepEqual(editable.sort(), ['audio.micMute', 'audio.mute', 'audio.volume', 'brightness', 'clock', 'hotkey', 'media.control', 'media.info', 'noop', 'page', 'profile']);
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
 });
@@ -195,8 +199,9 @@ await check('aliases add only what the name and description do not already say',
 });
 
 await check('every greyed library entry says why, and daemon-blocked ones say so differently', () => {
+  // Greyed entries shrink to none as C2 adds forms, so the reasons are also
+  // checked on made-up entries rather than on whichever are still greyed.
   const later = CATALOGUE.flatMap((g) => g.entries.filter((e) => !e.editable));
-  assert.ok(later.length > 0);
   for (const entry of later) {
     assert.ok(entry.pending, `${entry.type} is greyed with no reason`);
     assert.match(pendingReason(entry), /\S/);
@@ -204,14 +209,10 @@ await check('every greyed library entry says why, and daemon-blocked ones say so
   // Nothing is blocked on daemon work any more: audio.sink and audio.cycle
   // left with C1 piece 1 (node + label), audio.mute with piece 3 (its face).
   // The daemon reason stays for whatever needs daemon work next.
-  const daemon = later.filter((e) => e.pending === 'daemon').map((e) => e.type).sort();
-  assert.deepEqual(daemon, []);
-  const byType = (t: string) => later.find((e) => e.type === t)!;
-  assert.match(pendingReason({ ...byType('audio.mute'), pending: 'daemon' }), /daemon work/);
-  // Everything else works today if hand-written; command is not special.
-  assert.match(pendingReason(byType('command')), /by hand/);
-  assert.match(pendingReason(byType('clock')), /by hand/);
-  assert.equal(pendingReason(byType('command')), pendingReason(byType('clock')));
+  assert.deepEqual(later.filter((e) => e.pending === 'daemon').map((e) => e.type), []);
+  const entry = { type: 'x', name: 'X', description: 'x', editable: false } as const;
+  assert.match(pendingReason({ ...entry, pending: 'daemon' }), /daemon work/);
+  assert.match(pendingReason({ ...entry, pending: 'inspector' }), /by hand/);
 });
 
 await check('an action is editable only when the inspector knows every field on it', () => {
@@ -224,8 +225,8 @@ await check('an action is editable only when the inspector knows every field on 
   assert.equal(actionEditable({ action: { type: 'profile', to: 'x' } }, 'profile'), true);
   // Another type: a library pick retargets the key (C2 call 3) — but only to a type with a form.
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'profile'), true);
-  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'clock'), false);
-  assert.equal(actionEditable(undefined, 'clock'), false, 'no form, nothing to edit it with');
+  assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'x-no-form'), false);
+  assert.equal(actionEditable(undefined, 'x-no-form'), false, 'no form, nothing to edit it with');
   // A hotkey dropped from the library has no keys yet, and is waiting to be recorded.
   assert.equal(actionEditable({ action: { type: 'hotkey' } }, 'hotkey'), true);
   // A field the inspector would silently drop.
@@ -238,7 +239,9 @@ await check('an action is editable only when the inspector knows every field on 
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2 } }, 'hotkey'), false);
   // A type with no inspector is never editable.
-  assert.equal(actionEditable({ action: { type: 'clock' } }, 'clock'), false);
+  assert.equal(actionEditable({ action: { type: 'x-no-form' } }, 'x-no-form'), false);
+  // A form's setting it does not show keeps a hand-edited key read-only.
+  assert.equal(actionEditable({ action: { type: 'media.control', player: 'tidal' } }, 'media.control'), false);
 });
 
 await check('"not set up": an action missing the setting it cannot run without — and the daemon refuses every one of them', async () => {
@@ -352,6 +355,11 @@ await check("key faces draw the action's default when no icon is set, as the dec
   assert.equal(icon({ action: { type: 'media.info' } }), 'builtin:now-playing', 'shown as idle');
   assert.equal(icon({ action: { type: 'clock' } }), null, 'the time is the face');
   assert.equal(icon({ action: { type: 'noop' } }), null, 'a spacer');
+  // A state pair's own icon comes before the key's own, as on the deck; the grid shows the resting half.
+  assert.equal(icon({ icon: '~/own.png', action: { type: 'audio.micMute', iconUnmuted: '~/on.png', iconMuted: '~/off.png' } }), '~/on.png');
+  assert.equal(icon({ action: { type: 'audio.mute', iconMuted: 'builtin:speaker-muted' } }), 'builtin:speaker', 'only the muted half set: the resting half falls to the default');
+  assert.equal(icon({ action: { type: 'media.control', iconPaused: 'builtin:stop', iconPlaying: 'builtin:pause' } }), 'builtin:stop');
+  assert.equal(icon({ action: { type: 'media.control', method: 'next', iconPaused: 'builtin:stop' } }), 'builtin:next', 'not a play/pause key: no pair');
 });
 
 await check('library rows show default icons: every action but Nothing has one, and each is a shipped built-in', () => {

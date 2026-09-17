@@ -12,7 +12,7 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
-import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl } from '../shared/icons.js';
+import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
@@ -192,9 +192,14 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
  * so a key on a second deck can show its old icon until the first deck's full
  * repaint has finished. Ordering confirmed; duration not measured.
  */
-async function commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null): Promise<ApplyResult> {
+async function commitIcon(
+  at: ButtonLocation,
+  icon: IconChoice,
+  preview: { serial: string; key: number } | null,
+  slot: PairIconField | null,
+): Promise<ApplyResult> {
   if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
-  const result = store.apply({ kind: 'setIcon', at, icon });
+  const result = store.apply(slot === null ? { kind: 'setIcon', at, icon } : { kind: 'setActionIcon', at, field: slot, icon });
   if (!result.ok) return result;
   const before = daemon.lastReloadAt();
   const wrote = await store.flush();
@@ -202,6 +207,9 @@ async function commitIcon(at: ButtonLocation, icon: IconChoice, preview: { seria
   if (preview) await daemonCall(() => daemon.previewClear(preview.serial, preview.key));
   return result;
 }
+
+/** Every pair icon field (src/shared/icons.ts), for checking what the renderer sends. */
+const PAIR_ICON_FIELDS: readonly unknown[] = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused'] satisfies PairIconField[];
 
 function isIconChoice(value: unknown): value is IconChoice {
   const v = value as IconChoice;
@@ -302,11 +310,12 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || typeof folder !== 'string') return [];
     return existingFolders(await bookmarks.remove(folder), os.homedir(), true);
   });
-  ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown) => {
+  ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown, slot: unknown) => {
     if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
+    if (slot !== null && !PAIR_ICON_FIELDS.includes(slot as PairIconField)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
     const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
-    return commitIcon(at, icon, target);
+    return commitIcon(at, icon, target, slot as PairIconField | null);
   });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;

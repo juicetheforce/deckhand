@@ -8,6 +8,7 @@
 import type { DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
+import type { PairIconField } from './icons.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 export interface Conflict {
@@ -159,11 +160,12 @@ export interface DeckhandBridge {
   /** The system folder dialog; null if cancelled. */
   chooseIconFolder(current: string | null): Promise<string | null>;
   /**
-   * Set a key's icon to one of its three states (scope §10), save, and once the daemon has
+   * Set a key's icon to one of its three states (scope §10) — or, with `slot`,
+   * one icon of its action's state pair (C2) — save, and once the daemon has
    * reloaded, clear the preview on that key — so the key shows the saved icon
    * and responds to presses again. Remembers the icon's folder as recent.
    */
-  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null): Promise<ApplyResult>;
+  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null, slot: PairIconField | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
   /** Called on every store change; returns a function that stops the calls. */
   onStore(callback: (view: StoreView) => void): () => void;

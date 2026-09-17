@@ -8,7 +8,12 @@ import { IconState } from './inspector/IconState.js';
 import { LabelField, LabelStyle } from './inspector/LabelFields.js';
 import { PageAction } from './inspector/PageAction.js';
 import { ProfileAction } from './inspector/ProfileAction.js';
-import { actionEditable, clipboardSummary, describeAction, keyKind, type Choice } from './model.js';
+import { pairIconFields, type PairIconField } from '../shared/icons.js';
+import { MuteForm, VolumeForm } from './inspector/AudioForms.js';
+import { pairLabel } from './inspector/controls.js';
+import { MediaControlForm, MediaInfoForm } from './inspector/MediaForms.js';
+import { BrightnessForm, ClockForm, NoopForm } from './inspector/SystemForms.js';
+import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, type Choice } from './model.js';
 import type { Bulk } from './useBulk.js';
 
 interface Props {
@@ -36,14 +41,14 @@ interface Props {
 type Tab = 'key' | 'icon';
 
 /**
- * An action taken from the library for the selected key: a click (`listen`
- * true — a Hotkey pick starts recording) or a drop, which has already written
- * the action and only needs its form shown.
+ * An action taken from the library for the selected key: a click, or a drop,
+ * which has already written the action and only needs its form shown.
  */
 export interface Pick {
   type: string;
   token: number;
-  listen: boolean;
+  /** A click: a Hotkey pick starts recording, and an action needing no setting is written at once. */
+  click: boolean;
 }
 
 /**
@@ -157,6 +162,16 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   const editable = actionEditable(button, type);
   // A library pick of Hotkey asks the hotkey form to start listening.
   const [listenRequest, setListenRequest] = useState(false);
+  // Which icon the Icon tab chooses: the key's own (null), or one of its
+  // action's state pair (C2 call 4). A pair field the action no longer has
+  // falls back to the key's own.
+  const pairFields = pairIconFields(button?.action);
+  const [slotChosen, setSlot] = useState<PairIconField | null>(null);
+  const slot = slotChosen !== null && pairFields.includes(slotChosen) ? slotChosen : null;
+  const chooseIcon = (field: PairIconField) => {
+    setSlot(field);
+    onTab('icon');
+  };
 
   // A library pick configures the key as that action (not on first render).
   const firstToken = useRef(pick?.token ?? 0);
@@ -164,8 +179,15 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     if (pick === null || pick.token === firstToken.current || editingBlocked) return;
     if (!actionEditable(button, pick.type)) return;
     setChosen(pick.type);
+    if (!pick.click) return;
     // Hotkey is the one that starts doing something at once: it listens.
-    if (pick.type === 'hotkey' && pick.listen) setListenRequest(true);
+    if (pick.type === 'hotkey') setListenRequest(true);
+    // An action with nothing to choose (Clock, Mic mute, …) is complete as it
+    // is, so a click writes it — keeping icon and label (C2 call 3). One that
+    // needs a setting is written when the setting is chosen.
+    else if (button?.action?.type !== pick.type && !actionIncomplete({ type: pick.type })) {
+      void run({ kind: 'setAction', at, action: { type: pick.type } });
+    }
   }, [pick?.token]);
 
   const run = async (edit: Edit) => {
@@ -186,8 +208,26 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         </button>
       </div>
 
+      {tab === 'icon' && pairFields.length > 0 && (
+        <div className="icon-slots">
+          <div className="segmented segmented-wrap" role="group" aria-label="Which icon">
+            {[null, ...pairFields].map((field) => (
+              <button
+                key={field ?? 'key'}
+                className={field === slot ? 'segment segment-selected' : 'segment'}
+                aria-pressed={field === slot}
+                onClick={() => setSlot(field)}
+              >
+                {field === null ? 'Key icon' : pairLabel(field)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {tab === 'icon' && (
-        <IconPicker at={at} button={button} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
+        // Keyed by slot: the picker's saving state belongs to one icon.
+        <IconPicker key={slot ?? 'key'} at={at} button={button} slot={slot} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
       )}
 
       {tab === 'key' && editable && type === 'page' && (
@@ -202,7 +242,19 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         <HotkeyForm at={at} button={button} editingBlocked={editingBlocked} run={run} listenRequest={listenRequest} onListening={() => setListenRequest(false)} />
       )}
 
-      {tab === 'key' && !(editable && FORMS.has(type)) && (
+      {tab === 'key' && editable && type === 'clock' && <ClockForm at={at} button={button} disabled={editingBlocked} run={run} />}
+      {tab === 'key' && editable && type === 'noop' && <NoopForm />}
+      {tab === 'key' && editable && type === 'brightness' && <BrightnessForm at={at} button={button} disabled={editingBlocked} run={run} />}
+      {tab === 'key' && editable && type === 'media.control' && (
+        <MediaControlForm at={at} button={button} disabled={editingBlocked} run={run} onChooseIcon={chooseIcon} />
+      )}
+      {tab === 'key' && editable && type === 'media.info' && <MediaInfoForm at={at} button={button} disabled={editingBlocked} run={run} />}
+      {tab === 'key' && editable && type === 'audio.volume' && <VolumeForm at={at} button={button} disabled={editingBlocked} run={run} />}
+      {tab === 'key' && editable && (type === 'audio.micMute' || type === 'audio.mute') && (
+        <MuteForm type={type} at={at} button={button} disabled={editingBlocked} run={run} onChooseIcon={chooseIcon} />
+      )}
+
+      {tab === 'key' && !(editable && hasForm(type)) && (
         <section className="inspector-section">
           <h3 className="section-heading">Action</h3>
           <dl className="facts">
@@ -248,5 +300,3 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   );
 }
 
-/** Action types with a form in inspector/. Anything else is shown read-only, as saved. */
-const FORMS: ReadonlySet<string> = new Set(['hotkey', 'page', 'profile']);

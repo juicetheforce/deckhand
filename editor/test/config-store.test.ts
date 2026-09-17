@@ -212,6 +212,28 @@ await check('assignAction (a library drop) replaces the action and clears icon, 
   store.close();
 });
 
+await check('setActionIcon writes one icon of a state pair on the action — a built-in by name, a file as ~/ — and default removes it; refused where the action has no such pair', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const action = (i: number) => store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons[String(i)]?.action;
+  assert.equal(store.apply({ kind: 'assignAction', at: at(30), action: { type: 'audio.micMute' } }).ok, true);
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconMuted', icon: { kind: 'file', path: 'builtin:mic-muted' } }).ok, true);
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconUnmuted', icon: { kind: 'file', path: `${HOME}/Pictures/on.png` } }).ok, true);
+  assert.deepEqual(action(30), { type: 'audio.micMute', iconMuted: 'builtin:mic-muted', iconUnmuted: '~/Pictures/on.png' });
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconMuted', icon: { kind: 'default' } }).ok, true);
+  assert.deepEqual(action(30), { type: 'audio.micMute', iconUnmuted: '~/Pictures/on.png' });
+  for (const refused of [
+    { field: 'iconPlaying', icon: { kind: 'file', path: 'builtin:play' } },
+    { field: 'iconMuted', icon: { kind: 'none' } },
+    { field: 'iconMuted', icon: { kind: 'file', path: 'builtin:nope' } },
+  ] as const) {
+    assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), ...refused }).ok, false, JSON.stringify(refused));
+  }
+  assert.equal(store.apply({ kind: 'assignAction', at: at(31), action: { type: 'media.control', method: 'next' } }).ok, true);
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(31), field: 'iconPaused', icon: { kind: 'file', path: 'builtin:stop' } }).ok, false, 'next has no play/pause pair');
+  store.close();
+});
+
 await check('an edit that changes nothing writes nothing', async () => {
   const file = await configFile(EXAMPLE);
   const inode = (await fs.stat(file)).ino;

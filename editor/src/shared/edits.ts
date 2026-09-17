@@ -6,6 +6,7 @@
  */
 import type { ActionDef } from '../../../src/types.js';
 import type { ButtonWrite } from './bulk.js';
+import type { PairIconField } from './icons.js';
 
 export interface ButtonLocation {
   profile: string;
@@ -29,6 +30,12 @@ export type Edit =
   | { kind: 'removeAction'; at: ButtonLocation }
   /** Set the key's icon to one of its three states. */
   | { kind: 'setIcon'; at: ButtonLocation; icon: IconChoice }
+  /**
+   * One icon of a state pair, on the action (C2 call 4; `pairIconFields`). A
+   * file or built-in sets it; `default` removes it. No `none`: the daemon has
+   * no deliberately blank half.
+   */
+  | { kind: 'setActionIcon'; at: ButtonLocation; field: PairIconField; icon: IconChoice }
   /** Set or (null or "") remove the label. */
   | { kind: 'setLabel'; at: ButtonLocation; label: string | null }
   /**

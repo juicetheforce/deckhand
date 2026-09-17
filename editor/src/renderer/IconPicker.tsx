@@ -3,7 +3,7 @@ import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef } from '../../../src/types.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
 import type { IconChoice, ButtonLocation } from '../shared/edits.js';
-import { BUILTIN_FOLDER, iconUrl } from '../shared/icons.js';
+import { BUILTIN_FOLDER, iconUrl, type PairIconField } from '../shared/icons.js';
 import { MAX_BOOKMARKS } from '../shared/bridge.js';
 import { bookmarkLabel, elideCrumbs, folderCrumbs, moveCursor, parentFolder, type GridKey } from './picker-model.js';
 
@@ -24,6 +24,11 @@ export const EMPTY_PLACE: PickerPlace = { folder: null, query: '', past: [], fut
 interface Props {
   at: ButtonLocation;
   button: ButtonDef | undefined;
+  /**
+   * Which icon is being chosen: the key's own (null), or one of its action's
+   * state pair (C2 call 4), written with setActionIcon.
+   */
+  slot: PairIconField | null;
   editingBlocked: boolean;
   /** The daemon is connected and this deck is attached, so previews can show. */
   canPreview: boolean;
@@ -57,8 +62,11 @@ const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
  * Assign: it only resolved a disagreement this picker used to create. The one
  * action left is Clear icon.
  */
-export function IconPicker({ at, button, editingBlocked, canPreview, place, onPlace }: Props) {
+export function IconPicker({ at, button, slot, editingBlocked, canPreview, place, onPlace }: Props) {
   const { folder, query } = place;
+  // The icon this picker is choosing, as it is stored now.
+  const slotValue = slot === null ? undefined : button?.action?.[slot];
+  const currentIcon: string | null | undefined = slot === null ? button?.icon : typeof slotValue === 'string' ? slotValue : undefined;
   const [listing, setListing] = useState<IconFolderListing | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState<{ matches: IconSearchMatch[]; truncated: boolean } | null>(null);
@@ -85,7 +93,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
 
   // Open somewhere: the key's icon's folder, a recent folder, Pictures, home.
   useEffect(() => {
-    if (folder === null) void window.deckhand.iconStartFolder(button?.icon ?? null).then((f) => onPlace({ ...place, folder: f, query: '' }));
+    if (folder === null) void window.deckhand.iconStartFolder(currentIcon ?? null).then((f) => onPlace({ ...place, folder: f, query: '' }));
   }, [folder]);
 
   useEffect(() => {
@@ -148,7 +156,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     ? search.matches.map((entry) => ({ kind: 'image', entry }))
     : [...(listing?.folders ?? []).map((entry): Item => ({ kind: 'folder', entry })), ...(listing?.images ?? []).map((entry): Item => ({ kind: 'image', entry }))];
   const cursorItem = items.find((i) => i.entry.path === cursor);
-  const isCurrent = (entry: IconFolderEntry) => button?.icon !== undefined && (entry.configPath === button.icon || entry.path === button.icon);
+  const isCurrent = (entry: IconFolderEntry) => typeof currentIcon === 'string' && (entry.configPath === currentIcon || entry.path === currentIcon);
 
   const openFolder = (path: string) => {
     if (path === folder) return;
@@ -202,7 +210,10 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
           // clearing a key with no preview is harmless. (A check that left
           // mid-flight found this.)
           previewing.current = true;
-          const shown = await window.deckhand.previewSet(at.serial, at.index, { ...(button ?? {}), icon: choice.path });
+          // A state icon is previewed as the key's icon, without the action:
+          // the action would draw whichever of its pair matches the state now.
+          const previewed = slot === null ? { ...(button ?? {}), icon: choice.path } : { ...(button ?? {}), icon: choice.path, action: undefined, onRelease: undefined };
+          const shown = await window.deckhand.previewSet(at.serial, at.index, previewed);
           if (!shown.ok) {
             if (shown.code === 'render_failed') setRefused((s) => new Set(s).add(choice.path));
             if (latest.current === choice.path) {
@@ -213,7 +224,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
           }
           if (wanted.current !== null) continue; // replaced while it was being shown
         }
-        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null);
+        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null, slot);
         previewing.current = false;
         if (!result.ok) setMessage(result.error);
       }
@@ -463,10 +474,10 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
               a deliberately blank, label-only key is None on the Key tab, a
               separate state (scope §10). "Clear icon", not a bare "Clear", beside
               the Key tab's Clear hotkey and Clear button. */}
-          {button?.icon !== undefined && (
+          {currentIcon !== undefined && (
             <button
               disabled={editingBlocked}
-              title="Remove this key's icon, so its action's default icon is drawn"
+              title={slot === null ? "Remove this key's icon, so its action's default icon is drawn" : 'Remove this state icon, so the key falls back to its own icon or the default'}
               onClick={() => {
                 setCursor(null);
                 latest.current = null;

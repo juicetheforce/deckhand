@@ -156,7 +156,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
         return;
       }
       setSwitchError(null);
-      setPick((current) => ({ type, token: (current?.token ?? 0) + 1, listen: false }));
+      setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: false }));
     });
   });
   useBulkShortcuts({
@@ -282,7 +282,7 @@ function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
         <Library
           onPick={(type) => {
             if (actionDrag.takeSuppressedClick()) return;
-            if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, listen: true }));
+            if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: true }));
           }}
           onDragStart={editingBlocked || !page || !geometry ? null : actionDrag.start}
         />

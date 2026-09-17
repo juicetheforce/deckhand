@@ -4,10 +4,9 @@
  * Every type here is checked against the daemon's registry by
  * test/renderer-model.test.ts.
  *
- * `editable` is what the inspector can configure so far. Phase A: hotkey.
- * Phase B adds page and profile, which is what the exit needs — navigating
- * between pages from the decks, and one key switching the whole layout. The
- * rest arrive in phase C (§7).
+ * `editable` is what the inspector can configure so far: every type with a
+ * form (model.ts `hasForm`, which a test holds this to). Phase A: hotkey;
+ * phase B: page and profile; phase C2 the rest, piece by piece (§7).
  */
 
 import { defaultIconFor, type BuiltinIcon } from '../../../src/default-icons.js';
@@ -82,8 +81,8 @@ export const CATALOGUE: CatalogueGroup[] = [
     name: 'Media',
     tone: 'media',
     entries: [
-      { type: 'media.control', name: 'Media control', description: 'Play/pause, next, previous', editable: false, pending: 'inspector', aliases: ['skip', 'track', 'transport', 'music'] },
-      { type: 'media.info', name: 'Now playing', description: 'Track and album art on the key', editable: false, pending: 'inspector', aliases: ['song', 'artist', 'music'] },
+      { type: 'media.control', name: 'Media control', description: 'Play/pause, next, previous', editable: true, aliases: ['skip', 'track', 'transport', 'music'] },
+      { type: 'media.info', name: 'Now playing', description: 'Track and album art on the key', editable: true, aliases: ['song', 'artist', 'music'] },
     ],
   },
   {
@@ -93,9 +92,9 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: false, pending: 'inspector', aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
       { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: false, pending: 'inspector', aliases: ['swap', 'headphones', 'speakers', 'next output'] },
       { type: 'audio.source', name: 'Input device', description: 'Switch the default input', editable: false, pending: 'inspector', aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
-      { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: false, pending: 'inspector', aliases: ['microphone', 'unmute', 'talk'] },
-      { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: false, pending: 'inspector', aliases: ['louder', 'quieter', 'gain'] },
-      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', editable: false, pending: 'inspector', aliases: ['silence', 'speakers'] },
+      { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: true, aliases: ['microphone', 'unmute', 'talk'] },
+      { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: true, aliases: ['louder', 'quieter', 'gain'] },
+      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', editable: true, aliases: ['silence', 'speakers'] },
     ],
   },
   {
@@ -103,9 +102,9 @@ export const CATALOGUE: CatalogueGroup[] = [
     tone: 'neutral',
     entries: [
       { type: 'command', name: 'Run command', description: 'Start a program or shell command', editable: false, pending: 'inspector', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
-      { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", editable: false, pending: 'inspector', aliases: ['dim', 'backlight', 'screen'] },
-      { type: 'clock', name: 'Clock', description: 'The time on the key', editable: false, pending: 'inspector', aliases: ['watch', 'hour', 'date'] },
-      { type: 'noop', name: 'Nothing', description: 'A key that does nothing', editable: false, pending: 'inspector', aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
+      { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", editable: true, aliases: ['dim', 'backlight', 'screen'] },
+      { type: 'clock', name: 'Clock', description: 'The time on the key', editable: true, aliases: ['watch', 'hour', 'date'] },
+      { type: 'noop', name: 'Nothing', description: 'A key that does nothing', editable: true, aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
     ],
   },
 ];

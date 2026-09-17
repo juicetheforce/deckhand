@@ -1365,6 +1365,181 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   return out;
 }
 
+/** C2: each action form writes exactly the settings it names (scripts/check-forms.mjs). */
+async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const buttons = async () => {
+    const s = (await api.snapshot()).store;
+    return s.open && !s.state.dirty ? s.state.config.profiles.default.layouts['FORMS-XL'].pages.main.buttons : null;
+  };
+  /** Wait until the saved key matches, and return what was saved either way. */
+  const savedAs = async (index: number, expected: unknown) => {
+    const want = JSON.stringify(expected);
+    await until(async () => JSON.stringify((await buttons())?.[String(index)] ?? null) === want);
+    return (await buttons())?.[String(index)] ?? null;
+  };
+  const actionAs = async (index: number, expected: unknown) => {
+    const want = JSON.stringify(expected);
+    await until(async () => JSON.stringify((await buttons())?.[String(index)]?.action ?? null) === want);
+    return (await buttons())?.[String(index)]?.action ?? null;
+  };
+  const selectKey = async (index: number) => {
+    await until(() => document.querySelectorAll('.key').length > index);
+    document.querySelectorAll<HTMLButtonElement>('.key')[index].click();
+    await until(() => document.querySelector('.inspector-title')?.textContent === `Key ${index + 1}`);
+  };
+  const libraryClick = (type: string) => document.querySelector<HTMLButtonElement>(`.library-entry[data-action-type="${type}"]`)!.click();
+  const inspectorButton = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('.inspector button')].find((b) => b.textContent?.trim() === text);
+  const clickButton = async (text: string) => {
+    if (!(await until(() => inspectorButton(text) !== undefined && !inspectorButton(text)!.disabled))) throw new Error(`no enabled button "${text}"`);
+    inspectorButton(text)!.click();
+  };
+  const input = (label: string) => document.querySelector<HTMLInputElement>(`.inspector input[aria-label="${label}"]`)!;
+  const typeInto = (el: HTMLInputElement, value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const headings = () => [...document.querySelectorAll('.inspector .section-heading')].map((h) => h.textContent);
+  const pairRows = () => [...document.querySelectorAll('.pair-icons .form-name')].map((n) => n.textContent);
+  const pairValue = (field: string) => document.querySelector(`.pair-icons [data-pair="${field}"]`)?.textContent ?? null;
+
+  await until(() => document.querySelector('.grid') !== null);
+
+  // Clock, on an empty key: a click writes it (nothing to choose).
+  await selectKey(0);
+  libraryClick('clock');
+  const clock = [await actionAs(0, { type: 'clock' })];
+  await clickButton('14:05:09');
+  clock.push(await actionAs(0, { type: 'clock', format: 'HH:mm:ss' }));
+  await clickButton('14:05');
+  clock.push(await actionAs(0, { type: 'clock' }));
+  out.clock = clock;
+
+  // Volume, retargeting a hotkey key: written at once, label and icon kept.
+  await selectKey(1);
+  libraryClick('audio.volume');
+  const vol = { label: 'Vol', icon: 'builtin:headset' };
+  const volume = [await savedAs(1, { ...vol, action: { type: 'audio.volume' } })];
+  await clickButton('Quieter');
+  volume.push(await savedAs(1, { ...vol, action: { type: 'audio.volume', delta: -5 } }));
+  typeInto(input('Volume step'), '10');
+  volume.push(await savedAs(1, { ...vol, action: { type: 'audio.volume', delta: -10 } }));
+  document.querySelector<HTMLInputElement>('.inspector .form-check input')!.click();
+  volume.push(await savedAs(1, { ...vol, action: { type: 'audio.volume', delta: -10, showLevel: true } }));
+  out.volume = volume;
+
+  // Brightness on an empty key: it needs a choice first.
+  await selectKey(2);
+  libraryClick('brightness');
+  await until(() => headings().includes('Brightness'));
+  await sleep(500);
+  const brightness: unknown[] = [(await buttons())?.['2'] ?? null];
+  await clickButton('Dimmer');
+  brightness.push(await actionAs(2, { type: 'brightness', delta: -10 }));
+  await clickButton('Set to');
+  brightness.push(await actionAs(2, { type: 'brightness', value: 50 }));
+  typeInto(input('Brightness level'), '30');
+  brightness.push(await actionAs(2, { type: 'brightness', value: 30 }));
+  out.brightness = brightness;
+
+  // Media control.
+  await selectKey(3);
+  await until(() => headings().includes('Media control'));
+  await clickButton('Next');
+  const next = await actionAs(3, { type: 'media.control', method: 'next' });
+  await sleep(100);
+  const pairShownForNext = pairRows().length > 0;
+  await clickButton('Play / pause');
+  const back = await actionAs(3, { type: 'media.control' });
+  await until(() => pairRows().length === 2);
+  out.mediaControl = { next, pairShownForNext, back, pairShownForPlayPause: pairRows() };
+
+  // Mic mute: labels, then its state icons from the Built-in section.
+  await selectKey(4);
+  await until(() => headings().includes('Mic mute'));
+  typeInto(input('Label while muted'), 'MUTED');
+  input('Label while muted').dispatchEvent(new FocusEvent('blur'));
+  await actionAs(4, { type: 'audio.micMute', labelMuted: 'MUTED' });
+  typeInto(input('Label while unmuted'), 'live');
+  out.micLabels = await actionAs(4, { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' });
+  const labels = { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' };
+  [...document.querySelectorAll<HTMLButtonElement>('.pair-icons .form-row')].find((row) => row.textContent?.includes('While muted'))!.querySelector('button')!.click();
+  await until(() => document.querySelector('.picker') !== null);
+  out.slotOpened = {
+    tab: document.querySelector('.inspector-tab-selected')?.textContent,
+    slot: document.querySelector('.icon-slots .segment-selected')?.textContent,
+  };
+  const pickerItem = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.picker-item')].find((i) => i.querySelector('.picker-name')?.textContent === name);
+  const chooseBuiltin = async (name: string) => {
+    document.querySelector<HTMLButtonElement>('.chip-builtin')!.click();
+    await until(() => pickerItem(name) !== undefined);
+    pickerItem(name)!.click();
+  };
+  await chooseBuiltin('speaker-muted');
+  const afterMuted = await savedAs(4, { action: { ...labels, iconMuted: 'builtin:speaker-muted' } });
+  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === 'While unmuted')!.click();
+  await sleep(100);
+  await chooseBuiltin('headset');
+  const afterUnmuted = await savedAs(4, { action: { ...labels, iconMuted: 'builtin:speaker-muted', iconUnmuted: 'builtin:headset' } });
+  const gridShowsUnmuted = await until(() =>
+    decodeURIComponent(document.querySelectorAll('.key')[4].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '').includes('path=builtin:headset'),
+  );
+  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === 'Key icon')!.click();
+  await sleep(200);
+  const keySlotCurrent = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  await until(() => pairValue('iconMuted') !== null);
+  const formSays = { iconMuted: pairValue('iconMuted'), iconUnmuted: pairValue('iconUnmuted') };
+  // Clearing a state icon removes only that one.
+  [...document.querySelectorAll<HTMLButtonElement>('.pair-icons .form-row')].find((row) => row.textContent?.includes('While muted'))!.querySelector('button')!.click();
+  await until(() => document.querySelector('.picker') !== null);
+  const clear = [...document.querySelectorAll<HTMLButtonElement>('.picker-actions button')].find((b) => b.textContent === 'Clear icon');
+  clear?.click();
+  const cleared = await savedAs(4, { action: { ...labels, iconUnmuted: 'builtin:headset' } });
+  out.micIcons = { afterMuted, afterUnmuted, gridShowsUnmuted, formSays, keySlotCurrent, cleared };
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+
+  // Now playing.
+  await selectKey(5);
+  await until(() => headings().includes('Now playing'));
+  await clickButton('Title');
+  await actionAs(5, { type: 'media.info', show: 'title' });
+  document.querySelector<HTMLInputElement>('.inspector .form-check input')!.click();
+  await actionAs(5, { type: 'media.info', show: 'title', showArt: false });
+  await clickButton('Does nothing');
+  await actionAs(5, { type: 'media.info', show: 'title', showArt: false, pressAction: 'none' });
+  typeInto(input('Label when nothing plays'), 'Quiet');
+  out.mediaInfo = await actionAs(5, { type: 'media.info', show: 'title', showArt: false, pressAction: 'none', idleLabel: 'Quiet' });
+
+  // Nothing; and a key the form cannot show all of.
+  await selectKey(6);
+  out.noopForm = await until(() => headings().includes('Nothing'));
+  out.noopJson = document.querySelector('.inspector .json') !== null;
+  await selectKey(7);
+  out.playerReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
+
+  // A mute key with its own icon.
+  await selectKey(8);
+  await until(() => pairValue('iconMuted') !== null);
+  out.ownIcon = {
+    iconMuted: pairValue('iconMuted'),
+    iconUnmuted: pairValue('iconUnmuted'),
+    note: document.querySelector('.pair-icons')?.textContent?.includes('instead of swapping') ?? false,
+  };
+
+  await sleep(700); // past the autosave
+  return out;
+}
+
 export async function runCheck(name: string, api: DeckhandBridge): Promise<void> {
   try {
     if (name === 'shared') api.reportCheck(name, sharedImports());
@@ -1376,6 +1551,7 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'panes') api.reportCheck(name, await panes(api));
     else if (name === 'structure') api.reportCheck(name, await structure(api));
     else if (name === 'navigate') api.reportCheck(name, await navigate(api));
+    else if (name === 'forms') api.reportCheck(name, await forms(api));
     else if (name === 'bulk') {
       // Reports how far it got, so a failure part-way through can be diagnosed.
       const progress: Record<string, unknown> = {};

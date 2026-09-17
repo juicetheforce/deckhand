@@ -2,7 +2,7 @@ import path from 'node:path';
 import { resolvePage } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
-import { BUILTIN_PREFIX, builtinName } from '../shared/icons.js';
+import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage } from '../shared/links.js';
 
 export type { ButtonLocation, Edit, EditResult };
@@ -99,6 +99,17 @@ function removeField(page: PageDef, index: number, field: keyof ButtonDef): void
   if (Object.keys(button).length === 0) delete page.buttons[key];
 }
 
+/**
+ * An icon as it is written: a built-in as its name, never a path into the app
+ * directory (scope §3) — refused if the checkout does not ship it — and a file
+ * under the home directory as ~/...
+ */
+function storedIcon(iconPath: string, env: EditEnvironment): string {
+  if (!iconPath.startsWith(BUILTIN_PREFIX)) return toConfigPath(iconPath, env.homeDir);
+  if (builtinName(iconPath) === null) throw new EditError(`"${iconPath}" is not a built-in icon`);
+  return iconPath;
+}
+
 /** The button at a location, created empty if the slot is empty. */
 function buttonFor(page: PageDef, index: number): ButtonDef {
   const key = String(index);
@@ -190,15 +201,17 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
           buttonFor(page, edit.at.index).icon = null;
           break;
         case 'file':
-          // A built-in is a name, never a path into the app directory (scope §3).
-          if (edit.icon.path.startsWith(BUILTIN_PREFIX)) {
-            if (builtinName(edit.icon.path) === null) throw new EditError(`"${edit.icon.path}" is not a built-in icon`);
-            buttonFor(page, edit.at.index).icon = edit.icon.path;
-          } else {
-            buttonFor(page, edit.at.index).icon = toConfigPath(edit.icon.path, env.homeDir);
-          }
+          buttonFor(page, edit.at.index).icon = storedIcon(edit.icon.path, env);
           break;
       }
+      return {};
+    }
+    case 'setActionIcon': {
+      const action = pageAt(config, edit.at).buttons[String(edit.at.index)]?.action;
+      if (!action || !pairIconFields(action).includes(edit.field)) throw new EditError(`this key's action has no ${edit.field}`);
+      if (edit.icon.kind === 'none') throw new EditError('a state icon is a file, a built-in, or the default — not "none"');
+      if (edit.icon.kind === 'default') delete action[edit.field];
+      else action[edit.field] = storedIcon(edit.icon.path, env);
       return {};
     }
     case 'setLabel': {

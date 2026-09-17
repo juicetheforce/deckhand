@@ -10,7 +10,7 @@ import { defaultIconFor } from '../../../src/default-icons.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
-import { builtinRef } from '../shared/icons.js';
+import { builtinRef, pairIconFields } from '../shared/icons.js';
 import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
@@ -330,8 +330,11 @@ export interface KeyFace {
 export function faceIcon(button: ButtonDef | undefined): string | null {
   if (!button) return null;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
-  if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
   const action = button.action;
+  // A state pair's own icon comes first on the deck (src/deck.ts); the grid shows the resting half's.
+  const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : undefined;
+  if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
+  if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
   const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : {});
   return name === null ? null : builtinRef(name);
 }
@@ -365,7 +368,22 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   hotkey: ['keys'],
   page: ['to', 'back'],
   profile: ['to'],
+  // C2 piece 4 (docs/code-state.md): settings left out here — `player`,
+  // `maxChars`, the mute backgrounds — keep a hand-edited key read-only.
+  clock: ['format'],
+  noop: [],
+  brightness: ['delta', 'value', 'showLevel'],
+  'audio.volume': ['delta', 'showLevel'],
+  'audio.micMute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
+  'audio.mute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
+  'media.control': ['method', 'iconPlaying', 'iconPaused'],
+  'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
 };
+
+/** Whether the inspector has a form for this action type (src/renderer/inspector/). */
+export function hasForm(type: string): boolean {
+  return Object.prototype.hasOwnProperty.call(EDITABLE_FIELDS, type);
+}
 
 /**
  * Whether the inspector may edit this key's action as `type`. Only a type with

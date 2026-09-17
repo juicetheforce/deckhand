@@ -1470,6 +1470,58 @@ button:disabled {
   background: rgba(0, 0, 0, 0.32);
 }
 
+/* Form rows (renderer/inspector/controls.tsx). */
+.form-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.form-name {
+  flex: 0 0 84px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.form-row > input:not([type]),
+.form-row > input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-value {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.inspector .form-check input {
+  width: auto;
+}
+
+.segmented-wrap {
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.pair-icons {
+  margin-top: 6px;
+}
+
+.icon-slots {
+  margin-bottom: 8px;
+}
+
 .segment {
   background: transparent;
   border: none;

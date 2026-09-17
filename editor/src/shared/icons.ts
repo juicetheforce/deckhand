@@ -17,6 +17,22 @@ export const BUILTIN_PREFIX = 'builtin:';
  */
 export const BUILTIN_FOLDER = BUILTIN_PREFIX;
 
+/**
+ * The icons of a state pair, kept on the action (C2 call 4): `audio.micMute`
+ * and `audio.mute` swap between muted and unmuted, a play/pause
+ * `media.control` between playing and paused. The daemon draws whichever
+ * matches the state, and falls back to the key's own icon, then the default.
+ */
+export type PairIconField = 'iconMuted' | 'iconUnmuted' | 'iconPlaying' | 'iconPaused';
+
+/** Which pair icons an action has; none for every other action. */
+export function pairIconFields(action: { type: string; method?: unknown } | undefined): readonly PairIconField[] {
+  if (!action) return [];
+  if (action.type === 'audio.micMute' || action.type === 'audio.mute') return ['iconMuted', 'iconUnmuted'];
+  if (action.type === 'media.control' && String(action.method ?? 'playpause').toLowerCase() === 'playpause') return ['iconPlaying', 'iconPaused'];
+  return [];
+}
+
 export function builtinRef(name: BuiltinIcon): string {
   return `${BUILTIN_PREFIX}${name}`;
 }
