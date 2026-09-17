@@ -818,6 +818,11 @@ button:disabled {
   margin-right: 2px;
 }
 
+/* The pinned Built-in section: a chip like the bookmarks, marked as the app's own. */
+.chip-builtin {
+  border-color: rgba(143, 156, 240, 0.35);
+}
+
 .chip-add {
   border-style: dashed;
   border-color: rgba(255, 255, 255, 0.15);

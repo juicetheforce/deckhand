@@ -12,10 +12,10 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
-import { iconUrl } from '../shared/icons.js';
+import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl } from '../shared/icons.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
-import { existingFolders, FolderWatcher, listFolder, searchFolder, startFolder } from './icon-browser.js';
+import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
 import { Bookmarks, Preferences } from './preferences.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
@@ -155,6 +155,11 @@ const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps
 let searchGeneration = 0;
 
 async function listIconFolder(folder: string): Promise<IconFolderResult> {
+  // The pinned Built-in section: listed from the checkout, nothing to watch.
+  if (folder === BUILTIN_FOLDER) {
+    folderWatcher.close();
+    return { ok: true, listing: await listBuiltinFolder() };
+  }
   try {
     const listing = await listFolder(folder, os.homedir());
     folderWatcher.watch(folder);
@@ -167,6 +172,7 @@ async function listIconFolder(folder: string): Promise<IconFolderResult> {
 
 async function searchIcons(folder: string, query: string): Promise<IconSearchResult> {
   const mine = ++searchGeneration;
+  if (folder === BUILTIN_FOLDER) return { ok: true, matches: await searchBuiltins(query), truncated: false };
   try {
     const outcome = await searchFolder(folder, query, os.homedir(), () => mine === searchGeneration);
     if (outcome.cancelled || mine !== searchGeneration) return { ok: false, superseded: true };
@@ -251,6 +257,8 @@ function registerIpc(): void {
   });
   ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown) => {
     if (!fromOurWindow(event)) return os.homedir();
+    // A key showing a built-in opens on the Built-in section, as a file opens on its folder.
+    if (typeof currentIcon === 'string' && currentIcon.startsWith(BUILTIN_PREFIX)) return BUILTIN_FOLDER;
     const icon = typeof currentIcon === 'string' && currentIcon !== '' ? expandPath(currentIcon) : null;
     // Newest bookmark first: the list is kept oldest-first for the row's order.
     const saved = [...(await bookmarks.list())].reverse();

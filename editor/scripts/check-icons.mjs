@@ -188,7 +188,7 @@ if (r && !r.error) {
   check('choices faster than saves: the last wins, even going back to the icon the key already had', () => assert.equal(r.lastChoiceWins, true));
   check('the bookmarks row is seeded from the old recents file, oldest first, each chip named for its folder alone', () => {
     // The folder's own name, nothing else (the maintainer): the full path is the tooltip.
-    assert.deepEqual(r.bookmarksSeeded, ['★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
+    assert.deepEqual(r.bookmarksSeeded, ['Built-in', '★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
   });
   check('"+ Bookmark this folder" keeps the open folder, and turns into a way to remove it', () => {
     assert.deepEqual([r.bookmarkAdded, r.bookmarkButtonTurnsIntoRemove], [true, true]);
@@ -235,6 +235,20 @@ if (r && !r.error) {
     assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
     assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
   });
+  check('Built-in is the first chip and opens like a folder: its own crumb, no Up, every icon but missing, no bookmark button', () => {
+    assert.equal(r.builtinChipFirst, 'Built-in');
+    assert.deepEqual([r.builtinCrumbs, r.builtinChipSelected, r.builtinUpDisabled, r.builtinNoBookmarkButton], ['Built-in', true, true, true]);
+    assert.equal(r.builtinNames.length, 30, JSON.stringify(r.builtinNames));
+    assert.ok(!r.builtinNames.includes('missing') && r.builtinNames.includes('press-release'), JSON.stringify(r.builtinNames));
+    assert.equal(r.builtinStatus, '30 built-in icons');
+  });
+  check('choosing a built-in: the filter narrows it, it is saved as builtin:<name>, drawn in the grid, marked current, named on the Key tab; Back leaves', () => {
+    assert.deepEqual(
+      [r.builtinFilter, r.builtinSaved, r.builtinInGrid, r.builtinPreviewCleared, r.builtinKeyTab, r.builtinCurrentMarked, r.builtinBackLeaves],
+      [true, true, true, true, true, true, true],
+    );
+  });
+  check('a key showing a built-in opens the picker on the Built-in section', () => assert.equal(r.builtinStartFolder, 'builtin:'));
   check('"Clear icon" removes only the icon, the grid falls back to the default, and it is the picker\'s only action', () => {
     assert.deepEqual([r.removeKeepsAction, r.removeButtonGone, r.clearedShowsDefault], [true, true, true]);
     assert.deepEqual(r.pickerButtons, [], 'with no icon set there is nothing to clear, and nothing else');
@@ -259,7 +273,7 @@ const prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8').catch(() => '{}'))
 const configEntries = (await fs.readdir(configDir)).sort();
 check('bookmarks are kept in the editor preferences file, in the editor state directory', () => {
   assert.deepEqual(prefs.bookmarks, [path.join(icons, 'FFXIV'), path.join(icons, 'FFXIV/WOLF')], 'the seeded pair, after the added one was removed again');
-  assert.deepEqual(r?.bookmarksAtEnd, ['★ FFXIV', '★ WOLF']);
+  assert.deepEqual(r?.bookmarksAtEnd, ['Built-in', '★ FFXIV', '★ WOLF']);
 });
 check('nothing but config.json in the config directory', () => assert.deepEqual(configEntries, ['config.json']));
 check('no preview is left on the deck, and key 1 draws its default, like key 0', () => {

@@ -90,7 +90,10 @@ export type Edit =
  * than a second flag that could disagree with the first.
  */
 export type IconChoice =
-  /** This file. Absolute paths under $HOME are stored as ~/... */
+  /**
+   * This file — or a built-in: `path` is `builtin:<name>`, stored as is (scope
+   * §7 C1 call 5). Absolute paths under $HOME are stored as ~/...
+   */
   | { kind: 'file'; path: string }
   /** Deliberately none: writes `"icon": null`, so a label-only button stays label-only after phase C. */
   | { kind: 'none' }

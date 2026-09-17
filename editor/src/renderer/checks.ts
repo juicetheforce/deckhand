@@ -720,6 +720,34 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
   await api.previewClear(serial, 29);
 
+  // 16b. The pinned Built-in section (scope §10): the first chip, then the same
+  //      grid, filter and history as any folder; choosing writes builtin:<name>.
+  await selectKey(1);
+  if (!document.querySelector('.picker')) await click('Icon');
+  out.builtinChipFirst = document.querySelector('.picker-bookmarks .chip')?.textContent?.trim();
+  await click('Built-in');
+  await until(() => crumbs() === 'Built-in' && names().includes('speaker'));
+  out.builtinCrumbs = crumbs();
+  out.builtinChipSelected = document.querySelector('.chip-builtin')?.classList.contains('chip-selected') ?? false;
+  out.builtinUpDisabled = document.querySelector<HTMLButtonElement>('button[aria-label="Up one folder"]')?.disabled ?? false;
+  out.builtinNames = names();
+  out.builtinNoBookmarkButton = button('+ Bookmark this folder') === undefined && button('− Remove bookmark') === undefined;
+  out.builtinStatus = document.querySelector('.picker-status')?.textContent;
+  typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'mic');
+  out.builtinFilter = await until(() => names().join() === 'mic,mic-muted');
+  await clickItem('mic-muted');
+  out.builtinSaved = await until(async () => (await iconOf('1')) === 'builtin:mic-muted');
+  out.builtinInGrid = await until(() => loadedDefault(1, 'mic-muted'));
+  out.builtinPreviewCleared = await until(async () => !(await previews()).includes(1));
+  typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
+  out.builtinStartFolder = await api.iconStartFolder('builtin:mic-muted');
+  await click('Key');
+  out.builtinKeyTab = await until(() => document.querySelector('.inspector .path')?.textContent === 'Built-in: mic-muted');
+  await click('Icon');
+  out.builtinCurrentMarked = await until(() => [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent).join() === 'mic-muted');
+  await click('←');
+  out.builtinBackLeaves = await until(() => crumbs() !== 'Built-in' && crumbs() !== '');
+
   // 17. "Clear icon" removes only the icon (scope §10: it writes the absent state, not None).
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');

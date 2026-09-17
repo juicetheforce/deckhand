@@ -12,14 +12,14 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compareNames, existingFolders, FolderWatcher, listFolder, searchFolder, startFolder } from '../src/main/icon-browser.js';
+import { compareNames, existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from '../src/main/icon-browser.js';
 import { Bookmarks, Preferences } from '../src/main/preferences.js';
 import { BUILTIN_PREFIX as DAEMON_BUILTIN_PREFIX } from '../../src/builtin-icons.js';
 import { BUILTIN_ICONS } from '../../src/default-icons.js';
 import { iconFilePath } from '../src/main/builtin-icons.js';
 import { IconFiles, stamp } from '../src/main/icon-files.js';
 import { MAX_BOOKMARKS } from '../src/shared/bridge.js';
-import { BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon } from '../src/shared/icons.js';
+import { BUILTIN_FOLDER, BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon } from '../src/shared/icons.js';
 import { folderCrumbs, moveCursor, parentFolder } from '../src/renderer/picker-model.js';
 
 let failures = 0;
@@ -278,6 +278,21 @@ await check("built-in icons: builtin:<name> is the checkout's assets/icons/ file
   assert.equal(iconFilePath('/somewhere/x.png'), '/somewhere/x.png');
   assert.match(await stamp('builtin:speaker'), /^\d+-\d+$/);
   assert.equal(await stamp('builtin:nope'), 'missing');
+});
+
+await check('the Built-in section lists every shipped icon but missing, as builtin:<name> — never a path into the checkout — and filters by name', async () => {
+  const listing = await listBuiltinFolder();
+  assert.deepEqual([listing.path, listing.parent, listing.folders], [BUILTIN_FOLDER, null, []]);
+  assert.deepEqual(listing.images.map((i) => i.name), BUILTIN_ICONS.filter((n) => n !== 'missing'));
+  for (const image of listing.images) {
+    assert.equal(image.path, `builtin:${image.name}`);
+    assert.equal(image.configPath, `builtin:${image.name}`);
+    assert.match(String(image.stamp), /^\d+-\d+$/, image.name);
+  }
+  assert.deepEqual((await searchBuiltins('MIC')).map((m) => [m.name, m.folder]), [['mic', ''], ['mic-muted', '']]);
+  assert.deepEqual(await searchBuiltins('  '), []);
+  assert.deepEqual(await searchBuiltins('missing'), [], 'missing is not offered');
+  assert.deepEqual(folderCrumbs(BUILTIN_FOLDER, BUILTIN_FOLDER), [{ label: 'Built-in', path: BUILTIN_FOLDER }]);
 });
 
 await check('icon files: a built-in is watched in assets/icons/; an unknown built-in watches nothing — never "." (the working directory)', async () => {

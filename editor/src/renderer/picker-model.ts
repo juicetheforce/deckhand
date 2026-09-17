@@ -4,6 +4,8 @@
  * Node.
  */
 
+import { BUILTIN_FOLDER } from '../shared/icons.js';
+
 export interface Crumb {
   /** What is shown: "~" for the home directory, then one folder name each. */
   label: string;
@@ -18,6 +20,8 @@ export interface Crumb {
  * replaces is the home directory and becomes one "~" segment.
  */
 export function folderCrumbs(path: string, configPath: string): Crumb[] {
+  // The pinned Built-in section is one place, with nothing above it.
+  if (path === BUILTIN_FOLDER) return [{ label: 'Built-in', path }];
   const crumbs: Crumb[] = [];
   let rest = path;
   let base = '';

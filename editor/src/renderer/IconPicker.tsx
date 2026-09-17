@@ -3,7 +3,7 @@ import missingIconUrl from '../../../assets/icons/missing.svg';
 import type { ButtonDef } from '../../../src/types.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
 import type { IconChoice, ButtonLocation } from '../shared/edits.js';
-import { iconUrl } from '../shared/icons.js';
+import { BUILTIN_FOLDER, iconUrl } from '../shared/icons.js';
 import { MAX_BOOKMARKS } from '../shared/bridge.js';
 import { bookmarkLabel, elideCrumbs, folderCrumbs, moveCursor, parentFolder, type GridKey } from './picker-model.js';
 
@@ -174,6 +174,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
   };
 
   const bookmarked = folder !== null && bookmarks.some((mark) => mark.path === folder);
+  const inBuiltins = folder === BUILTIN_FOLDER;
 
   /**
    * Save choices one at a time, newest first. A file goes on the deck before it
@@ -324,6 +325,16 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
       {/* One row of saved places (mockup 5a): bookmarks, not recents, which drift (the maintainer, 2026-09-15). */}
       <div className="picker-bookmarks" aria-label="Bookmarks">
         <span className="picker-bookmarks-label">BOOKMARKS</span>
+        {/* Pinned first (scope §10): the icons that ship with Deckhand, opened
+            like any folder — a label, not a second browser. Saved as
+            builtin:<name>, so the choice survives updates. */}
+        <button
+          className={`chip chip-builtin ${inBuiltins ? 'chip-selected' : ''}`}
+          title="The icons that come with Deckhand"
+          onClick={() => openFolder(BUILTIN_FOLDER)}
+        >
+          Built-in
+        </button>
         {bookmarks.map((mark) => (
           <button
             key={mark.path}
@@ -335,6 +346,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
           </button>
         ))}
         {folder !== null &&
+          !inBuiltins &&
           (bookmarked ? (
             <button className="chip chip-add" title="Remove this folder from the bookmarks" onClick={() => void window.deckhand.removeBookmark(folder).then(setBookmarks)}>
               − Remove bookmark
@@ -437,7 +449,9 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
               ? 'Searching…'
               : search
                 ? `${search.matches.length} ${search.matches.length === 1 ? 'match' : 'matches'}${search.truncated ? ' — stopped early; type more' : ''}`
-                : listing
+                : listing && inBuiltins
+                  ? `${listing.images.length} built-in icons`
+                  : listing
                   ? `${listing.folders.length} ${listing.folders.length === 1 ? 'folder' : 'folders'} · ${listing.images.length} ${listing.images.length === 1 ? 'image' : 'images'}`
                   : 'Opening…'}
         </p>

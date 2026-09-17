@@ -2,6 +2,7 @@ import path from 'node:path';
 import { resolvePage } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
+import { BUILTIN_PREFIX, builtinName } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage } from '../shared/links.js';
 
 export type { ButtonLocation, Edit, EditResult };
@@ -180,7 +181,13 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
           buttonFor(page, edit.at.index).icon = null;
           break;
         case 'file':
-          buttonFor(page, edit.at.index).icon = toConfigPath(edit.icon.path, env.homeDir);
+          // A built-in is a name, never a path into the app directory (scope §3).
+          if (edit.icon.path.startsWith(BUILTIN_PREFIX)) {
+            if (builtinName(edit.icon.path) === null) throw new EditError(`"${edit.icon.path}" is not a built-in icon`);
+            buttonFor(page, edit.at.index).icon = edit.icon.path;
+          } else {
+            buttonFor(page, edit.at.index).icon = toConfigPath(edit.icon.path, env.homeDir);
+          }
           break;
       }
       return {};

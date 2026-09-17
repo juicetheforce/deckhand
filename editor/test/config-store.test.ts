@@ -183,6 +183,18 @@ await check('icon paths under $HOME are stored as ~/..., others as given', async
   store.close();
 });
 
+await check('a built-in is stored as builtin:<name>, as is; a name the checkout does not ship is refused and changes nothing', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  assert.equal(store.apply({ kind: 'setIcon', at: at(7), icon: { kind: 'file', path: 'builtin:speaker-out' } }).ok, true);
+  const refused = store.apply({ kind: 'setIcon', at: at(7), icon: { kind: 'file', path: 'builtin:nope' } });
+  assert.equal(refused.ok, false);
+  assert.match(refused.ok ? '' : refused.error, /"builtin:nope" is not a built-in icon/);
+  await store.flush();
+  assert.equal(xlMain(JSON.parse(await fs.readFile(file, 'utf8')))['7'].icon, 'builtin:speaker-out');
+  store.close();
+});
+
 await check('an edit that changes nothing writes nothing', async () => {
   const file = await configFile(EXAMPLE);
   const inode = (await fs.stat(file)).ino;

@@ -1,7 +1,8 @@
 import { promises as fs, watch, type Dirent, type FSWatcher } from 'node:fs';
 import path from 'node:path';
+import { BUILTIN_ICONS } from '../../../src/default-icons.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
-import { isShownIcon } from '../shared/icons.js';
+import { BUILTIN_FOLDER, builtinRef, isShownIcon } from '../shared/icons.js';
 import { toConfigPath } from './config-document.js';
 import { stamp } from './icon-files.js';
 
@@ -161,6 +162,30 @@ export async function startFolder(currentIconPath: string | null, recent: string
     }
   }
   return fallbacks[fallbacks.length - 1] ?? '/';
+}
+
+/**
+ * The built-ins the picker offers: every shipped icon but `missing`, which is
+ * what a broken icon looks like, not something to choose. An entry's `path`
+ * and `configPath` are both `builtin:<name>` — what is saved, previewed and
+ * served — never the file inside the checkout, which config.json must not
+ * point into (scope §3).
+ */
+async function builtinEntries(): Promise<IconFolderEntry[]> {
+  const names = BUILTIN_ICONS.filter((name) => name !== 'missing');
+  return Promise.all(names.map(async (name) => ({ name, path: builtinRef(name), configPath: builtinRef(name), stamp: await stamp(builtinRef(name)) })));
+}
+
+/** The Built-in section as a folder listing: images only, and nowhere up to go. */
+export async function listBuiltinFolder(): Promise<IconFolderListing> {
+  return { path: BUILTIN_FOLDER, configPath: BUILTIN_FOLDER, parent: null, folders: [], images: await builtinEntries() };
+}
+
+/** The filter inside the Built-in section: names containing the query, case-insensitively. */
+export async function searchBuiltins(query: string): Promise<IconSearchMatch[]> {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') return [];
+  return (await builtinEntries()).filter((e) => e.name.includes(needle)).map((e) => ({ ...e, folder: '' }));
 }
 
 /**

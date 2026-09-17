@@ -10,6 +10,13 @@ export const ICON_SCHEME = 'deckhand-icon';
  */
 export const BUILTIN_PREFIX = 'builtin:';
 
+/**
+ * The icon picker's pinned "Built-in" section (scope §10), as a folder: the
+ * picker's place, history and listing carry this in place of a path. A label,
+ * not a second browser — the same grid, filter and navigation as any folder.
+ */
+export const BUILTIN_FOLDER = BUILTIN_PREFIX;
+
 export function builtinRef(name: BuiltinIcon): string {
   return `${BUILTIN_PREFIX}${name}`;
 }
