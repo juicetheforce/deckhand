@@ -206,7 +206,7 @@ picks up the change, because the render cache keys on mtime.
 `iconFit` is `cover` (crop to fill, the default) or `contain` (letterbox).
 
 **Leave `icon` out and the key draws its action's built-in icon** — a keycap for
-a hotkey, a speaker for an output, play or pause for play/pause (swapping as
+a hotkey, a speaker and a headset for an output device, play or pause for play/pause (swapping as
 the player does), a mic that turns red when muted. Nothing is written to the
 config for that: the icons ship with Deckhand and are drawn when no icon is
 set. Three ways to write `icon`:

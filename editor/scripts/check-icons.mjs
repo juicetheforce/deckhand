@@ -38,6 +38,9 @@ await fs.mkdir(path.join(home, '.config'), { recursive: true });
 await fs.writeFile(path.join(home, '.config', 'user-dirs.dirs'), 'XDG_PICTURES_DIR="$HOME/Pictures"\n');
 const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+const { BUILTIN_ICONS } = await import(pathToFileURL(path.join(repoRoot, 'dist/default-icons.js')).href);
+// Every shipped icon but `missing`, which is what a broken icon looks like.
+const PICKABLE_BUILTINS = BUILTIN_ICONS.filter((name) => name !== 'missing');
 // The daemon's own sharp, only to make real PNGs for the tree.
 const sharp = createRequire(path.join(repoRoot, 'package.json'))('sharp');
 
@@ -238,9 +241,8 @@ if (r && !r.error) {
   check('Built-in is the first chip and opens like a folder: its own crumb, no Up, every icon but missing, no bookmark button', () => {
     assert.equal(r.builtinChipFirst, 'Built-in');
     assert.deepEqual([r.builtinCrumbs, r.builtinChipSelected, r.builtinUpDisabled, r.builtinNoBookmarkButton], ['Built-in', true, true, true]);
-    assert.equal(r.builtinNames.length, 30, JSON.stringify(r.builtinNames));
-    assert.ok(!r.builtinNames.includes('missing') && r.builtinNames.includes('press-release'), JSON.stringify(r.builtinNames));
-    assert.equal(r.builtinStatus, '30 built-in icons');
+    assert.deepEqual(r.builtinNames, PICKABLE_BUILTINS, 'every shipped icon but missing, in order');
+    assert.equal(r.builtinStatus, `${PICKABLE_BUILTINS.length} built-in icons`);
   });
   check('choosing a built-in: the filter narrows it, it is saved as builtin:<name>, drawn in the grid, marked current, named on the Key tab; Back leaves', () => {
     assert.deepEqual(

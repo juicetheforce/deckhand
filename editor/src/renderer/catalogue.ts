@@ -53,15 +53,12 @@ export function pendingReason(entry: CatalogueEntry): string {
 
 export interface CatalogueGroup {
   name: string;
-  /** Colour family from the mockups: navigation amber, media green. */
-  tone: 'accent' | 'navigation' | 'media' | 'neutral';
   entries: CatalogueEntry[];
 }
 
 export const CATALOGUE: CatalogueGroup[] = [
   {
     name: 'Keyboard',
-    tone: 'accent',
     entries: [
       { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', editable: true, aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
       { type: 'text', name: 'Type text', description: 'Type a string, US layout', editable: true, aliases: ['phrase', 'paste', 'autotype', 'macro'] },
@@ -71,7 +68,6 @@ export const CATALOGUE: CatalogueGroup[] = [
   },
   {
     name: 'Navigation',
-    tone: 'navigation',
     entries: [
       { type: 'page', name: 'Go to page', description: 'Show another page on this deck, or go back', editable: true, aliases: ['navigate', 'navigation', 'folder', 'menu', 'forward'] },
       { type: 'profile', name: 'Switch profile', description: 'Change what every deck shows at once', editable: true, aliases: ['layout', 'mode', 'game', 'set'] },
@@ -79,7 +75,6 @@ export const CATALOGUE: CatalogueGroup[] = [
   },
   {
     name: 'Media',
-    tone: 'media',
     entries: [
       { type: 'media.control', name: 'Media control', description: 'Play/pause, next, previous', editable: true, aliases: ['skip', 'track', 'transport', 'music'] },
       { type: 'media.info', name: 'Now playing', description: 'Track and album art on the key', editable: true, aliases: ['song', 'artist', 'music'] },
@@ -87,7 +82,6 @@ export const CATALOGUE: CatalogueGroup[] = [
   },
   {
     name: 'Audio',
-    tone: 'neutral',
     entries: [
       { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: true, aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
       { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: true, aliases: ['swap', 'headphones', 'speakers', 'next output'] },
@@ -99,7 +93,6 @@ export const CATALOGUE: CatalogueGroup[] = [
   },
   {
     name: 'System',
-    tone: 'neutral',
     entries: [
       { type: 'command', name: 'Run command', description: 'Start a program or shell command', editable: true, aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
       { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", editable: true, aliases: ['dim', 'backlight', 'screen'] },

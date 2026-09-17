@@ -48,7 +48,7 @@ console.log('the mapping');
     [{ type: 'media.info' }, { idle: false }, null],
     [{ type: 'media.info' }, { idle: true }, 'now-playing'],
     [{ type: 'noop' }, {}, null],
-    [{ type: 'audio.sink', node: 'n' }, {}, 'speaker'],
+    [{ type: 'audio.sink', node: 'n' }, {}, 'output-select'],
     [{ type: 'audio.cycle', devices: [] }, {}, 'io-select'],
     [{ type: 'audio.source', node: 'n' }, {}, 'input-select'],
     [{ type: 'audio.micMute' }, { muted: false }, 'mic'],

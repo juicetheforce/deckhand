@@ -308,7 +308,6 @@ button:disabled {
   padding: 6px 9px;
   border: 0;
   border-radius: 9px;
-  border-left: 3px solid transparent;
   background: transparent;
   text-align: left;
 }
@@ -319,19 +318,6 @@ button:disabled {
 
 .library-entry:disabled {
   cursor: default;
-}
-
-.library-entry.tone-accent {
-  border-left-color: var(--accent);
-}
-.library-entry.tone-navigation {
-  border-left-color: var(--amber);
-}
-.library-entry.tone-media {
-  border-left-color: var(--green);
-}
-.library-entry.tone-neutral {
-  border-left-color: rgba(255, 255, 255, 0.18);
 }
 
 .library-entry-later {

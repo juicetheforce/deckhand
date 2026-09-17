@@ -34,6 +34,7 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
+  'output-select',
   'pause',
   'play',
   'press-release',
@@ -115,7 +116,9 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     case 'noop': // a spacer (call 6)
       return null;
     case 'audio.sink':
-      return 'speaker';
+      // the maintainer drew this for it, 2026-09-17, replacing `speaker` (§7): a speaker
+      // and a headset, one of which the key picks.
+      return 'output-select';
     case 'audio.cycle':
       return 'io-select';
     case 'audio.source':

@@ -10,8 +10,10 @@ import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue, type CatalogueE
  * StreamController because nothing surfaced them:
  *
  * - **One action per row**, not a grid of tiles. In a 230 px pane two columns
- *   leave no room for a readable name beside an icon, and phase C adds the
- *   default icons. Legibility over density (the maintainer, 2026-09-16).
+ *   leave no room for a readable name beside an icon. Legibility over density
+ *   (the maintainer, 2026-09-16). Each row carries its action's default icon (C2); the
+ *   coloured rail each group used to have is gone with them — **the icons say
+ *   what the colour did** (the maintainer, 2026-09-17).
  * - **Entries with no inspector are greyed with a reason, never hidden**
  *   (the maintainer, 2026-09-16) — the same call as showing unrenderable files in the
  *   icon picker. The tooltip distinguishes "needs daemon work" from "works by
@@ -77,7 +79,7 @@ export function Library({
           <ul>
             {matches.map(({ group, entry }) => (
               <li key={entry.type}>
-                <Entry entry={entry} tone={group.tone} onPick={onPick} onDragStart={onDragStart} />
+                <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} />
                 {/* Matches come from every section, so each says where it lives. */}
                 <span className="library-result-group">{group.name}</span>
               </li>
@@ -108,7 +110,7 @@ export function Library({
               <ul>
                 {group.entries.map((entry) => (
                   <li key={entry.type}>
-                    <Entry entry={entry} tone={group.tone} onPick={onPick} onDragStart={onDragStart} />
+                    <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} />
                   </li>
                 ))}
               </ul>
@@ -123,19 +125,17 @@ export function Library({
 
 function Entry({
   entry,
-  tone,
   onPick,
   onDragStart,
 }: {
   entry: CatalogueEntry;
-  tone: string;
   onPick: (type: string) => void;
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
 }) {
   const icon = libraryIcon(entry.type);
   return (
     <button
-      className={`library-entry tone-${tone}${entry.editable ? '' : ' library-entry-later'}`}
+      className={`library-entry${entry.editable ? '' : ' library-entry-later'}`}
       title={
         entry.editable
           ? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`
