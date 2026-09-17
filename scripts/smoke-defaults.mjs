@@ -45,6 +45,8 @@ console.log('the mapping');
     [{ type: 'brightness', value: 40 }, {}, null],
     [{ type: 'clock' }, {}, null],
     [{ type: 'media.info' }, {}, null],
+    [{ type: 'media.info' }, { idle: false }, null],
+    [{ type: 'media.info' }, { idle: true }, 'now-playing'],
     [{ type: 'noop' }, {}, null],
     [{ type: 'audio.sink', node: 'n' }, {}, 'speaker'],
     [{ type: 'audio.cycle', devices: [] }, {}, 'io-select'],
@@ -132,6 +134,8 @@ const buttons = {
   19: { label: 'FFXIV', action: { type: 'profile', to: 'p' } },
   20: { icon: 'builtin:pause' },
   21: { icon: null, label: 'Only a label', action: { type: 'hotkey', keys: 'ctrl+2' } },
+  22: { action: { type: 'media.info' } },
+  23: { action: { type: 'media.info', idleLabel: 'Quiet' } },
 };
 const daemon = await startDaemon(TMP, {
   profiles: { p: { layouts: { XL1: { startPage: 'main', pages: { main: { buttons } } } } } },
@@ -165,7 +169,9 @@ console.log('which icon a key draws');
   check('output mute, unmuted: speaker', same(key(14), await expected(icon('speaker'))));
   check('media next draws next', same(key(15), await expected(icon('next'))));
   check('play/pause with nothing playing draws play', same(key(16), await expected(icon('play'))));
-  check('an idle now-playing key keeps its own icon (was wiped)', same(key(17), await renderButton(display({ icon: GOOD, label: 'No music' }), 96)));
+  check('an idle now-playing key keeps its own icon (was wiped), with no label', same(key(17), await expected(GOOD)));
+  check('an idle now-playing key with no icon draws now-playing and no label', same(key(22), await expected(icon('now-playing'))));
+  check('idleLabel puts a label back over it', same(key(23), await renderButton(display({ icon: icon('now-playing'), label: 'Quiet' }), 96)));
   check('an action whose icon is not drawn yet draws no icon, not missing', same(key(18), bare));
   check('...and keeps its label alone', same(key(19), await renderButton(display({ label: 'FFXIV' }), 96)));
   check('builtin:<name> on a key with no action draws too', same(key(20), await expected(icon('pause'))));

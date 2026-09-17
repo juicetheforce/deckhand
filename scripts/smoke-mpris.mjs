@@ -71,7 +71,8 @@ await sleep(200);
 console.log('no players');
 {
   check('no player: nothing cached', mpris.cachedTrackInfo() === null);
-  check('no player: now-playing shows the idle label', (await describe(info))?.label === 'No music');
+  check('no player: now-playing adds no label', (await describe(info)) === null);
+  check('...and its icon state is idle', registry['media.info'].iconState(info).idle === true);
 }
 
 console.log('a player appears and changes');
@@ -84,6 +85,7 @@ const a = await startFakePlayer('fakeA', { status: 'Paused', track: { title: 'Fi
   check('paused: play/pause shows iconPaused', (await describe(control))?.icon === '/icons/play.svg');
   check('...and the default icon state says not playing', registry['media.control'].iconState({ type: 'media.control', method: 'playpause' }).playing === false);
   check('now-playing shows title and artist', (await describe(info))?.label === 'First\nBand');
+  check('...and its icon state is not idle', registry['media.info'].iconState(info).idle === false);
 
   const before = changes;
   a.set({ status: 'Playing' });
@@ -181,7 +183,7 @@ const b = await startFakePlayer('chromium.instance1', { status: 'Paused', track:
   check('a player that leaves is dropped', await until(() => mpris.cachedTrackInfo()?.player === 'fakeA'));
   await a.stop();
   check('with every player gone, nothing is cached', await until(() => mpris.cachedTrackInfo() === null));
-  check('...and now-playing is idle again', (await describe(info))?.label === 'No music');
+  check('...and now-playing is idle again', (await describe(info)) === null && registry['media.info'].iconState(info).idle === true);
 
   const again = await startFakePlayer('fakeA', { status: 'Playing', track: { title: 'Back', artist: 'Band' } });
   check('a player that comes back is read fresh', await until(() => mpris.cachedTrackInfo()?.title === 'Back'));

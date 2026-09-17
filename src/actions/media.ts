@@ -55,15 +55,26 @@ export const control: ActionHandler = {
   },
 };
 
+/** No player, or one with neither title nor artist: what media.info calls idle. */
+function isIdle(track: mpris.TrackInfo | null): boolean {
+  return !track || (!track.title && !track.artist);
+}
+
 /**
  * media.info — a live now-playing button. Pressing it toggles playback.
  *
  *   { "type": "media.info", "showArt": true, "show": "title+artist" }
+ *   { "type": "media.info", "idleLabel": "No music" }
  *
  * showArt uses the album art from MPRIS metadata as the button image,
- * downloading remote art to a temp cache once per URL.
+ * downloading remote art to a temp cache once per URL. Idle, the key draws the
+ * `now-playing` icon and no label (the maintainer, 2026-09-16); `idleLabel` puts a label
+ * back.
  */
 export const info: ActionHandler = {
+  // Cached: no D-Bus call on a render.
+  iconState: (params) => ({ idle: isIdle(mpris.cachedTrackInfo(params.player ? String(params.player) : undefined)) }),
+
   async execute(ctx, params: ActionDef) {
     if (params.pressAction === 'none') return;
     await mpris.call('PlayPause', params.player ? String(params.player) : undefined);
@@ -74,9 +85,10 @@ export const info: ActionHandler = {
     // From the player state cache: no D-Bus call and no art download on a refresh.
     const track = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
 
-    if (!track || (!track.title && !track.artist)) {
-      // No `icon` here: `icon: undefined` used to wipe the key's own icon while idle.
-      return { label: String(params.idleLabel ?? 'No music') };
+    if (!track || isIdle(track)) {
+      // No `icon` here: `icon: undefined` used to wipe the key's own icon while
+      // idle. With no icon of its own the key gets `now-playing` (iconState).
+      return params.idleLabel !== undefined ? { label: String(params.idleLabel) } : null;
     }
 
     const mode = String(params.show ?? 'title+artist');

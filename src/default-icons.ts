@@ -52,6 +52,8 @@ export interface IconState {
   muted?: boolean;
   /** media.control playpause: the chosen player is playing. */
   playing?: boolean;
+  /** media.info: no player, or nothing with a title or artist. */
+  idle?: boolean;
 }
 
 const MEDIA_METHODS: Record<string, BuiltinIcon> = {
@@ -72,7 +74,8 @@ const MEDIA_METHODS: Record<string, BuiltinIcon> = {
  * Null for three different reasons, kept apart in the comments below:
  *   - the icon has not been drawn yet — never `missing`, which would put a
  *     broken-looking icon on keys that look fine today (§7 C1);
- *   - the face is its own content: `clock`'s time, `media.info`'s track (call 4);
+ *   - the face is its own content: `clock`'s time, `media.info`'s track while
+ *     one plays (call 4);
  *   - `noop`, a deliberate spacer (call 6).
  */
 export function defaultIconFor(action: ActionDef | undefined, state: IconState = {}): BuiltinIcon | null {
@@ -93,8 +96,11 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     case 'brightness':
       if (typeof action.delta === 'number') return action.delta < 0 ? 'brightness-down' : 'brightness-up';
       return null; // set brightness (`value`): to be drawn (the maintainer)
+    case 'media.info':
+      // The track and its art are the face while something plays (call 4);
+      // idle, the icon alone, with no "No music" label (the maintainer, 2026-09-16).
+      return state.idle ? 'now-playing' : null;
     case 'clock': // the time is the face (call 4)
-    case 'media.info': // the track and its art are the face (call 4)
     case 'noop': // a spacer (call 6)
       return null;
     case 'audio.sink':
