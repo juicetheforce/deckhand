@@ -175,11 +175,12 @@ if (r && !r.error) {
     assert.deepEqual(r.blmItems, ['Shared_Actions', 'Bolt_III.png', 'Flame_IV.png']);
     assert.deepEqual(r.currentMarked, ['Bolt_III.png']);
   });
-  check('selecting an image previews it on the deck and saves nothing', () => assert.deepEqual([r.previewShown, r.previewNotSaved], [true, true]));
-  check('arrow keys move the selection', () => assert.deepEqual([r.arrowLeft, r.arrowRight], [true, true]));
-  check('Assign saves ~/..., clears the preview after the reload, and is disabled on the current icon', () => {
-    assert.deepEqual([r.usedSaved, r.previewClearedOnUse, r.useDisabledOnCurrent], [true, true, true]);
+  check('selecting an image chooses it: saved as ~/..., shown in the grid, the deck preview cleared after the reload; no Assign or Cancel', () => {
+    assert.deepEqual([r.selectSaved, r.gridAgrees, r.previewClearedAfterSave, r.noAssign], [true, true, true, true]);
+    assert.ok(previewRequests.includes(1), 'the choice never went on the deck first, so a file the deck cannot draw would not be caught');
   });
+  check('arrow keys move the selection, and choose', () => assert.deepEqual([r.arrowLeft, r.arrowRight], [true, true]));
+  check('choices faster than saves: the last wins, even going back to the icon the key already had', () => assert.equal(r.lastChoiceWins, true));
   check('the bookmarks row is seeded from the old recents file, oldest first, each chip named for its folder alone', () => {
     // The folder's own name, nothing else (the maintainer): the full path is the tooltip.
     assert.deepEqual(r.bookmarksSeeded, ['★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
@@ -203,7 +204,6 @@ if (r && !r.error) {
   check('a subfolder tile says how many items it holds — the number on the tile, the words in its tooltip', () => {
     assert.deepEqual(r.folderCounts, ['BEAR=4/4 items', 'WOLF=1/1 item']);
   });
-  check('double-click chooses', () => assert.equal(r.doubleClickSaved, true));
   check('a file added to the open folder appears without a refresh', () => {
     assert.equal(wroteNewFile, true, 'the renderer never signalled');
     assert.deepEqual([r.newFileAbsentBefore, r.watcherShowedNewFile], [true, true]);
@@ -217,20 +217,23 @@ if (r && !r.error) {
   check('the filter searches the whole tree below and says where a match lives; clicking that opens it', () => {
     assert.deepEqual([r.filterFound, r.filterWhere, r.whereOpens], [true, 'FFXIV/BEAR/Shared_Actions', true]);
   });
-  check('Enter chooses; a path with spaces and parentheses is stored as is', () => assert.equal(r.enterSaved, true));
-  check('a file the deck cannot draw is refused, cannot be chosen, and its thumbnail is the missing icon', () => {
-    assert.deepEqual([r.corruptRefused, r.useDisabledForRefused, r.corruptThumbMissing], [true, true, true]);
+  check('selecting a filter match chooses it; a path with spaces and parentheses is stored as is', () => assert.equal(r.matchSaved, true));
+  check('a file the deck cannot draw is refused, never saved, and its thumbnail is the missing icon', () => {
+    assert.deepEqual([r.corruptRefused, r.corruptNotSaved, r.corruptThumbMissing], [true, true, true]);
   });
-  check('leaving the Icon tab, selecting another key, or changing page ends the preview; the folder is kept across keys', () => {
-    assert.deepEqual([r.tabClears, r.keyChangeClears, r.placeKept, r.pageChangeClears], [true, true, true, true]);
+  check('choosing and at once leaving the tab, the key or the page still saves, and leaves no preview; the folder is kept across keys', () => {
+    assert.deepEqual([r.tabLeftSaved, r.tabClears, r.keyChangeSaved, r.keyChangeClears, r.placeKept, r.pageChangeClears, r.pageChangeSaved, r.keyZeroCleared], [true, true, true, true, true, true, true, true]);
     assert.ok(previewRequests.includes(0), 'no preview on key 0 ever reached the daemon, so its clearing proves nothing');
-    assert.equal(r.keyTabShowsPath, '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png');
+    assert.equal(r.keyTabShowsPath, '~/Pictures/icons/back ground.png');
   });
   check("a key's icon file renamed away, and put back, reaches the grid with no navigation", () => {
     assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
     assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
   });
-  check('"Use the default" removes only the icon', () => assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]));
+  check('"Clear icon" removes only the icon, and is the picker\'s only action', () => {
+    assert.deepEqual([r.removeKeepsAction, r.removeButtonGone], [true, true]);
+    assert.deepEqual(r.pickerButtons, [], 'with no icon set there is nothing to clear, and nothing else');
+  });
   check('with the deck connected there is no "not connected" note', () => assert.equal(r.notConnectedNoteShown, false));
   check('the picker is five bands — 5a\'s four with the filter given its own field — and the actions are below the grid', () => {
     assert.deepEqual(r.bands, ['picker-bar', 'picker-bookmarks', 'picker-filter', 'picker-grid', 'picker-bottom']);

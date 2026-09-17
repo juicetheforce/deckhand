@@ -535,33 +535,36 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.blmItems = names();
   out.currentMarked = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
 
-  // 4. Selecting an image previews it on the deck and saves nothing.
+  // 4. Selecting an image chooses it (the maintainer, 2026-09-16): saved as ~/..., the
+  //    grid shows it, and the deck's preview is cleared once the daemon has
+  //    reloaded — so the deck, the grid and the file agree. No Assign.
+  const gridIcon = (index: number) => document.querySelectorAll('.key')[index]?.querySelector<HTMLImageElement>('img.key-icon')?.src ?? '';
   await clickItem('Flame_IV.png');
-  out.previewShown = await until(async () => (await previews()).includes(1));
-  out.previewNotSaved = (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Bolt_III.png';
+  out.selectSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
+  out.gridAgrees = await until(() => decodeURIComponent(gridIcon(1)).includes('Flame_IV.png'));
+  out.previewClearedAfterSave = await until(async () => !(await previews()).includes(1));
+  out.noAssign = button('Assign') === undefined && button('Cancel') === undefined;
 
-  // 5. Arrow keys move the selection (and the preview).
+  // 5. Arrow keys move the selection, and so choose.
   gridKey('ArrowLeft');
-  out.arrowLeft = await until(() => selectedName() === 'Bolt_III.png');
+  out.arrowLeft = await until(async () => selectedName() === 'Bolt_III.png' && (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Bolt_III.png');
   gridKey('ArrowRight');
-  out.arrowRight = await until(() => selectedName() === 'Flame_IV.png');
-
-  // 6. Use this icon saves the path as ~/..., clears the preview after the reload, and remembers the folder.
-  await click('Assign');
-  out.usedSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
-  out.previewClearedOnUse = await until(async () => !(await previews()).includes(1));
+  out.arrowRight = await until(async () => selectedName() === 'Flame_IV.png' && (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
   out.bookmarksSeeded = [...document.querySelectorAll('.picker-bookmarks .chip')].map((c) => c.textContent?.trim());
-  out.useDisabledOnCurrent = await until(() => button('Assign')?.disabled === true);
 
   // 6b. Bookmarks (mockup 5a): the open folder can be kept, and removed again.
   await click('+ Bookmark this folder');
   out.bookmarkAdded = await until(() => [...document.querySelectorAll('.picker-bookmarks .chip')].some((c) => c.textContent?.includes('BEAR')));
   out.bookmarkButtonTurnsIntoRemove = button('− Remove bookmark') !== undefined && button('+ Bookmark this folder') === undefined;
 
-  // 7. Double-click chooses.
-  await until(() => item('Bolt_III.png') !== undefined);
-  item('Bolt_III.png')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-  out.doubleClickSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Bolt_III.png');
+  // 7. Choices faster than saves: the last one wins, including going back to
+  //    the key's own icon before another choice has saved (which an early
+  //    "already the current icon" skip got wrong).
+  await sleep(700);
+  item('Bolt_III.png')!.click();
+  item('Flame_IV.png')!.click();
+  await sleep(1500);
+  out.lastChoiceWins = (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png';
 
   // 8. The open folder is watched: ask the script to add a file (signal: a preview on key 31), and it appears.
   out.newFileAbsentBefore = !names().includes('Frost.png');
@@ -637,39 +640,35 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // Opening a folder from a match clears the filter.
   out.whereOpens = await until(() => crumbs().endsWith('Shared_Actions') && document.querySelector<HTMLInputElement>('.picker-filter')!.value === '');
 
-  // 11. Enter chooses; a path with spaces and parentheses is stored as it is.
+  // 11. A filter match is chosen by selecting it; a path with spaces and parentheses is stored as it is.
   await openCrumb('icons');
   await until(() => crumbs().endsWith('icons'));
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, 'halo');
   await clickItem('Halo (Area).png');
-  await until(async () => (await previews()).includes(1));
-  gridKey('Enter');
-  out.enterSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png');
+  out.matchSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png');
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
   await until(() => names().includes('corrupt.png'));
 
-  // 12. A file the deck cannot draw: refused by the daemon, marked, cannot be chosen; its thumbnail is the missing icon.
-  // Wait for the picker to be idle first: while the previous choice is still
-  // settling every button is disabled, which would pass this check for the
-  // wrong reason (a deliberate break found that).
-  await until(() => button('Use the default')?.disabled === false);
+  // 12. A file the deck cannot draw: refused by the daemon, marked, never saved; its thumbnail is the missing icon.
+  await until(async () => !(await previews()).includes(1)); // the previous choice has finished saving
   await clickItem('corrupt.png');
   out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
-  out.useDisabledForRefused = button('Assign')?.disabled === true && button('Use the default')?.disabled === false;
+  await sleep(700);
+  out.corruptNotSaved = (await iconOf('1')) === '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png';
   out.corruptThumbMissing = await until(() => item('corrupt.png')?.querySelector('img')?.src.includes('missing') === true);
 
-  // 13. Leaving the tab ends the preview.
+  // 13. Leaving the tab straight after choosing: the choice is still saved, and no preview is left.
   await clickItem('back ground.png');
-  await until(async () => (await previews()).includes(1));
   await click('Key');
+  out.tabLeftSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
   out.tabClears = await until(async () => !(await previews()).includes(1));
   out.keyTabShowsPath = document.querySelector('.inspector .path')?.textContent;
 
-  // 14. Selecting another key ends the preview; the picker stays in the same folder.
+  // 14. Selecting another key straight after choosing: saved on the key it was chosen for; the picker stays in the same folder.
   await click('Icon');
   await clickItem('fishing.png');
-  await until(async () => (await previews()).includes(1));
   await selectKey(0);
+  out.keyChangeSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/fishing.png');
   out.keyChangeClears = await until(async () => !(await previews()).includes(1));
   out.placeKept = await until(() => crumbs().endsWith('icons') && names().includes('fishing.png'));
 
@@ -681,8 +680,14 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
   await sleep(500);
   out.pageChangeClears = await until(async () => !(await previews()).includes(0));
+  out.pageChangeSaved = await until(async () => (await iconOf('0')) === '~/Pictures/icons/fishing.png');
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
   await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
+  // Key 0 back to no icon, as it started.
+  await selectKey(0);
+  if (!document.querySelector('.picker')) await click('Icon');
+  await click('Clear icon');
+  out.keyZeroCleared = await until(async () => (await saved())?.['0'] !== undefined && (await iconOf('0')) === undefined);
 
   // 16. A key's icon file renamed away, then back, reaches the grid with no
   // navigation at all (the maintainer saw the stale icon on the real decks). The script
@@ -691,9 +696,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const iconIsMissing = () => keyIcon()?.src.includes('missing') === true && keyIcon()?.classList.contains('key-icon-missing') === true;
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
-  await until(() => button('Use the default')?.disabled === false);
   await clickItem('back ground.png');
-  await click('Assign');
   await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
   out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
   await api.previewSet(serial, 30, { label: 'RENAME-AWAY' });
@@ -703,15 +706,16 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
   await api.previewClear(serial, 29);
 
-  // 17. "Use the default" removes only the icon (scope §10: it writes the absent state).
+  // 17. "Clear icon" removes only the icon (scope §10: it writes the absent state, not None).
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
-  await click('Use the default');
+  await click('Clear icon');
   out.removeKeepsAction = await until(async () => {
     const b = (await saved())?.['1'];
     return b !== undefined && b.icon === undefined && b.action?.keys === 'ctrl+2';
   });
-  out.removeButtonGone = await until(() => button('Use the default') === undefined);
+  out.removeButtonGone = await until(() => button('Clear icon') === undefined);
+  out.pickerButtons = [...document.querySelectorAll('.picker-actions button')].map((b) => b.textContent);
   out.bands = [...(document.querySelector('.picker')?.children ?? [])].map((c) => c.className.split(' ')[0]);
   out.actionsBelowGrid = (() => {
     const kids = [...(document.querySelector('.picker')?.children ?? [])];

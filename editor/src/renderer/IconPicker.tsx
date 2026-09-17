@@ -49,9 +49,13 @@ const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
  * is what makes a tree of hundreds of icons usable and a glyph inside another
  * control hid it (the maintainer, 2026-09-15). The path field is still a control rather
  * than a line of text: fixed height, so it cannot wrap — a long path loses its
- * middle, and the ellipsis opens it out. Selecting an image shows it on the
- * deck (preview.set); choosing it — Assign, double-click, or Enter — saves it.
- * Config stores the plain path (scope §3).
+ * middle, and the ellipsis opens it out. Config stores the plain path (scope §3).
+ *
+ * **Selecting an icon is choosing it** (the maintainer, 2026-09-16). It goes on the deck
+ * (preview.set, which is also how a file the daemon cannot draw is found out)
+ * and is saved at once, so the deck and the grid never disagree. There is no
+ * Assign: it only resolved a disagreement this picker used to create. The one
+ * action left is Clear icon.
  */
 export function IconPicker({ at, button, editingBlocked, canPreview, place, onPlace }: Props) {
   const { folder, query } = place;
@@ -70,7 +74,9 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
   /** Images the editor could not show as a thumbnail: drawn with the missing icon. */
   const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  /** The newest choice not yet saved. Choices made while one is saving replace each other; only the last is saved. */
+  const wanted = useRef<IconChoice | null>(null);
+  const saving = useRef(false);
   /** A preview this picker set on the key and has not cleared. */
   const previewing = useRef(false);
   /** The most recent selection, so a slow preview reply for an earlier one does not overwrite the message. */
@@ -142,7 +148,6 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     ? search.matches.map((entry) => ({ kind: 'image', entry }))
     : [...(listing?.folders ?? []).map((entry): Item => ({ kind: 'folder', entry })), ...(listing?.images ?? []).map((entry): Item => ({ kind: 'image', entry }))];
   const cursorItem = items.find((i) => i.entry.path === cursor);
-  const selectedImage = cursorItem?.kind === 'image' ? cursorItem.entry : null;
   const isCurrent = (entry: IconFolderEntry) => button?.icon !== undefined && (entry.configPath === button.icon || entry.path === button.icon);
 
   const openFolder = (path: string) => {
@@ -170,48 +175,81 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
 
   const bookmarked = folder !== null && bookmarks.some((mark) => mark.path === folder);
 
-  const moveTo = async (item: Item) => {
+  /**
+   * Save choices one at a time, newest first. A file goes on the deck before it
+   * is saved: the deck shows it at once, and a file the daemon refuses to draw
+   * (render_failed) is marked and never saved (scope §10). commitIcon then
+   * saves, waits for the daemon's reload and clears the preview, so the key
+   * goes straight from the preview to the saved icon.
+   *
+   * A choice replaced while its preview is in flight is not saved at all, so
+   * arrowing through a folder does not write config.json for every icon passed.
+   * Carries on if the picker closes mid-save: what was selected was chosen, for
+   * the key it was selected on.
+   */
+  const save = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    try {
+      while (wanted.current !== null) {
+        const choice = wanted.current;
+        wanted.current = null;
+        if (choice.kind === 'file' && canPreview) {
+          // Marked before the request goes out: leaving the key while it is in
+          // flight must still clear it. The daemon records a preview as soon as
+          // the request arrives, so a clear sent after it always removes it;
+          // clearing a key with no preview is harmless. (A check that left
+          // mid-flight found this.)
+          previewing.current = true;
+          const shown = await window.deckhand.previewSet(at.serial, at.index, { ...(button ?? {}), icon: choice.path });
+          if (!shown.ok) {
+            if (shown.code === 'render_failed') setRefused((s) => new Set(s).add(choice.path));
+            if (latest.current === choice.path) {
+              const name = choice.path.split('/').pop();
+              setMessage(shown.code === 'render_failed' ? `The deck cannot draw ${name}, so it was not chosen.` : `Not shown on the deck: ${shown.error}`);
+            }
+            if (shown.code === 'render_failed') continue;
+          }
+          if (wanted.current !== null) continue; // replaced while it was being shown
+        }
+        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null);
+        previewing.current = false;
+        if (!result.ok) setMessage(result.error);
+      }
+    } finally {
+      saving.current = false;
+    }
+  };
+
+  const choose = (choice: IconChoice) => {
+    if (editingBlocked) return;
+    if (choice.kind === 'file' && refused.has(choice.path)) return;
+    wanted.current = choice;
+    void save();
+  };
+
+  const moveTo = (item: Item) => {
     setCursor(item.entry.path);
     latest.current = item.entry.path;
     setMessage(null);
     gridRef.current?.querySelector(`[data-path="${CSS.escape(item.entry.path)}"]`)?.scrollIntoView({ block: 'nearest' });
-    if (item.kind === 'folder') {
-      if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
-      previewing.current = false;
+    // A folder is somewhere to go, not a choice: the key keeps what it has.
+    if (item.kind === 'folder') return;
+    if (refused.has(item.entry.path)) {
+      setMessage(`The deck cannot draw ${item.entry.name}, so it cannot be chosen.`);
       return;
     }
-    if (!canPreview) return;
-    // Marked before the request goes out: leaving the key while it is in flight
-    // must still clear it. The daemon records a preview as soon as the request
-    // arrives, so a clear sent after it always removes it; clearing a key with
-    // no preview is harmless. (A check that left mid-flight found this.)
-    previewing.current = true;
-    const result = await window.deckhand.previewSet(at.serial, at.index, { ...(button ?? {}), icon: item.entry.path });
-    if (result.ok) return;
-    if (result.code === 'render_failed') setRefused((s) => new Set(s).add(item.entry.path));
-    if (latest.current !== item.entry.path) return;
-    setMessage(result.code === 'render_failed' ? `The deck cannot draw ${item.entry.name}.` : `Not shown on the deck: ${result.error}`);
+    // Not skipped when it is the key's icon already: picking another and coming
+    // back before the first has saved must still end on this one. Saving the
+    // icon a key already has writes nothing.
+    choose({ kind: 'file', path: item.entry.path });
   };
-
-  const commit = async (choice: IconChoice) => {
-    if (editingBlocked || busy || (choice.kind === 'file' && refused.has(choice.path))) return;
-    setBusy(true);
-    const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null);
-    setBusy(false);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
-    }
-    previewing.current = false;
-    setMessage(null);
-  };
-
-  const activate = (item: Item) => (item.kind === 'folder' ? openFolder(item.entry.path) : void commit({ kind: 'file', path: item.entry.path }));
 
   const onGridKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter') {
+      // Selecting an image already chose it; Enter opens a folder.
       event.preventDefault();
-      if (cursorItem) activate(cursorItem);
+      if (cursorItem?.kind === 'folder') openFolder(cursorItem.entry.path);
       return;
     }
     if (!GRID_KEYS.has(event.key)) return;
@@ -219,7 +257,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
     const columns = gridRef.current ? getComputedStyle(gridRef.current).gridTemplateColumns.split(' ').length : 1;
     const index = items.findIndex((i) => i.entry.path === cursor);
     const next = items[moveCursor(items.length, columns, index, event.key as GridKey)];
-    if (next) void moveTo(next);
+    if (next) moveTo(next);
   };
 
   const crumbs = listing ? folderCrumbs(listing.path, listing.configPath) : [];
@@ -347,8 +385,7 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
               aria-selected={entry.path === cursor}
               title={entry.configPath}
               tabIndex={-1}
-              onClick={() => (item.kind === 'folder' ? openFolder(entry.path) : void moveTo(item))}
-              onDoubleClick={() => item.kind === 'image' && void commit({ kind: 'file', path: entry.path })}
+              onClick={() => (item.kind === 'folder' ? openFolder(entry.path) : moveTo(item))}
             >
               {item.kind === 'folder' ? (
                 <span className="picker-folder-glyph" aria-hidden>
@@ -407,19 +444,22 @@ export function IconPicker({ at, button, editingBlocked, canPreview, place, onPl
         {message && <p className="field-error">{message}</p>}
         {!canPreview && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
         <div className="button-row picker-actions">
-          <button
-            className="primary"
-            disabled={editingBlocked || busy || !selectedImage || refused.has(selectedImage.path) || isCurrent(selectedImage)}
-            onClick={() => selectedImage && void commit({ kind: 'file', path: selectedImage.path })}
-          >
-            Assign
-          </button>
-          {/* Named for the state it writes (scope §10): removing the key is what
-              makes the action's built-in default render, so this is not
-              "remove". The Key tab's control shows all three states. */}
+          {/* The one action (the maintainer, 2026-09-16). It removes the icon path, so the
+              action's built-in default renders (phase C) — it is not "no icon":
+              a deliberately blank, label-only key is None on the Key tab, a
+              separate state (scope §10). "Clear icon", not a bare "Clear", beside
+              the Key tab's Clear hotkey and Clear button. */}
           {button?.icon !== undefined && (
-            <button disabled={editingBlocked || busy} onClick={() => void commit({ kind: 'default' })}>
-              Use the default
+            <button
+              disabled={editingBlocked}
+              title="Remove this key's icon, so its action's default icon is drawn"
+              onClick={() => {
+                setCursor(null);
+                latest.current = null;
+                choose({ kind: 'default' });
+              }}
+            >
+              Clear icon
             </button>
           )}
         </div>
