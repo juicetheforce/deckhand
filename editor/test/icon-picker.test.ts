@@ -210,12 +210,17 @@ await check('bookmarks: kept in order, capped, seeded from the old recents file,
   assert.equal(storedAfterMany.length, MAX_BOOKMARKS, 'the file itself must not grow past the cap');
 
   // No recents file: an empty row, not a crash.
-  const fresh = new Bookmarks(new Preferences(path.join(dir, 'other.json'), 10), path.join(dir, 'no-such.json'));
+  const freshPrefs = new Preferences(path.join(dir, 'other.json'), 10);
+  const fresh = new Bookmarks(freshPrefs, path.join(dir, 'no-such.json'));
   assert.deepEqual(await fresh.list(), []);
 
   // Rubbish in either file is an empty list.
   await fs.writeFile(prefsFile, 'not json');
-  assert.deepEqual(await new Bookmarks(new Preferences(prefsFile, 10), path.join(dir, 'no-such.json')).list(), []);
+  const rubbishPrefs = new Preferences(prefsFile, 10);
+  assert.deepEqual(await new Bookmarks(rubbishPrefs, path.join(dir, 'no-such.json')).list(), []);
+  // Seeding schedules a write 10 ms on; removing the directory under it failed
+  // now and then with ENOTEMPTY (seen in Ship, 2026-09-18). Write first.
+  await Promise.all([freshPrefs.flush(), rubbishPrefs.flush()]);
   await fs.rm(dir, { recursive: true, force: true });
 });
 
