@@ -279,11 +279,18 @@ async function reload(): Promise<void> {
     config = next;
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
-    events?.config();
     clearRenderCache();
-    console.log('[main] config reloaded');
 
+    const applyStarted = Date.now();
     await profiles?.applyReload(next, sessions);
+    // Announced only once every deck has the new layout. The editor takes this
+    // event as "saved and on the decks" and clears its preview on it; sent
+    // before applyReload, a cleared key was redrawn from the old layout and
+    // flashed its old icon until its deck's turn came (Ship, 2026-09-18).
+    // Tests mirror this order: scripts/test/control-harness.mjs
+    // reloadLikeTheDaemon().
+    events?.config();
+    console.log(`[main] config reloaded, on ${sessions.size} deck(s) in ${Date.now() - applyStarted} ms`);
     // Picks up decks that were connected but previously unconfigured.
     await requestScan();
   } catch (err) {

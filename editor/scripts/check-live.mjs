@@ -2,7 +2,7 @@
 //
 // The harness daemon (real DeckSessions on a fake deck, real ControlServer)
 // is wired to reload the scratch config.json the way src/index.ts reload()
-// does — `config` event first, then Profiles.applyReload() — so a page added
+// does — Profiles.applyReload(), then the `config` event — so a page added
 // in the editor really has to be saved and reloaded before it can be shown.
 // The renderer drives the UI (src/renderer/checks.ts, "live"); this script
 // moves the deck once by itself, standing in for a deck press, and checks
@@ -24,8 +24,7 @@ await fs.mkdir(configDir);
 // Before importing anything from the daemon: config.js reads these when imported.
 process.env.DECKHAND_CONFIG_DIR = configDir;
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
-const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
-const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 
 let failures = 0;
 function check(name, fn) {
@@ -59,27 +58,15 @@ const session = daemon.sessions.get(SERIAL);
 //    reply always jumps back.
 const notify = daemon.control.notify.bind(daemon.control);
 daemon.control.notify = (name, snapshot) => (name === 'state' ? setTimeout(() => notify(name, snapshot), 150) : notify(name, snapshot));
-// 2. The daemon announces a reload before it has applied it to the decks
-//    (src/index.ts reload()). Hold the apply back, so a page shown straight
-//    after the announcement fails unless it is retried.
+// 2. A reload takes the decks time to apply, and the daemon announces it only
+//    once they have it (src/index.ts reload(); before Ship it announced first,
+//    and the editor still retries showing a new page for that reason). Hold
+//    the apply back, so anything acting before the announcement fails.
 const RELOAD_APPLY_DELAY_MS = 300;
 
-// Reload as src/index.ts does: record and announce the reload, then apply it to the decks.
+// Reload as src/index.ts does (the harness's reloadLikeTheDaemon).
 let reloads = 0;
-const stopWatching = watchConfig(async () => {
-  try {
-    const { config } = await loadConfig();
-    daemon.state.config = config;
-    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
-    daemon.events.config();
-    await new Promise((resolve) => setTimeout(resolve, RELOAD_APPLY_DELAY_MS));
-    await daemon.profiles.applyReload(config, daemon.sessions);
-    reloads++;
-  } catch (err) {
-    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
-    daemon.events.config();
-  }
-});
+const stopWatching = await reloadLikeTheDaemon(daemon, { applyDelayMs: RELOAD_APPLY_DELAY_MS, onReload: (ok) => { if (ok) reloads++; } });
 
 // Stand in for a deck press: once the renderer has confirmed the added page
 // and signals with a preview on key 0, move the deck to Main.

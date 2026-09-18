@@ -36,8 +36,7 @@ process.env.HOME = home;
 delete process.env.XDG_CONFIG_HOME;
 await fs.mkdir(path.join(home, '.config'), { recursive: true });
 await fs.writeFile(path.join(home, '.config', 'user-dirs.dirs'), 'XDG_PICTURES_DIR="$HOME/Pictures"\n');
-const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
-const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const { BUILTIN_ICONS } = await import(pathToFileURL(path.join(repoRoot, 'dist/default-icons.js')).href);
 // Every shipped icon but `missing`, which is what a broken icon looks like.
 const PICKABLE_BUILTINS = BUILTIN_ICONS.filter((name) => name !== 'missing');
@@ -96,30 +95,44 @@ const daemon = await startDaemon(scratch, CONFIG);
 const deck = new FakeDeck();
 await daemon.attach(SERIAL, deck);
 
-// Reload as src/index.ts does: announce the reload, then apply it to the decks.
+// Held back so the ordering below is seen every run: with the old order (the
+// `config` event before the decks had the reload), every icon choice cleared
+// its preview while the deck still held the old icon.
+const RELOAD_APPLY_DELAY_MS = 300;
+// Reload as src/index.ts does (the harness's reloadLikeTheDaemon).
 let reloads = 0;
-const stopWatching = watchConfig(async () => {
-  try {
-    const { config } = await loadConfig();
-    daemon.state.config = config;
-    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
-    daemon.events.config();
-    await daemon.profiles.applyReload(config, daemon.sessions);
-    reloads++;
-  } catch (err) {
-    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
-    daemon.events.config();
-  }
-});
+const stopWatching = await reloadLikeTheDaemon(daemon, { applyDelayMs: RELOAD_APPLY_DELAY_MS, onReload: (ok) => { if (ok) reloads++; } });
 
 // Every key a preview was requested for, recorded at the session: step 15 must
 // really have sent a preview on key 0, or its being cleared proves nothing.
 const session = daemon.sessions.get(SERIAL);
 const previewRequests = [];
 const setPreview = session.setPreview.bind(session);
+const previewPage = new Map();
 session.setPreview = (index, button) => {
   previewRequests.push(index);
+  previewPage.set(index, session.currentPage());
   return setPreview(index, button);
+};
+// Every preview cleared while the deck's layout did not yet hold what the
+// preview showed. The editor clears a preview once the daemon announces the
+// save; a clear that arrives before the deck has the saved layout redraws the
+// key from the old one, and it flashes its old icon (Ship, 2026-09-18).
+const clearedEarly = [];
+let clearsSeen = 0;
+const clearPreview = session.clearPreview.bind(session);
+session.clearPreview = (index) => {
+  const previewed = index === undefined ? undefined : session['previews'].get(index);
+  // A clear after the deck moved to another page draws that page's key, which
+  // is right (step 15 switches page mid-save): only the same page can flash.
+  if (previewed && previewPage.get(index) === session.currentPage()) {
+    clearsSeen++;
+    const saved = session['currentButtons']()[String(index)];
+    // The preview carries the absolute path; the saved icon is written with ~.
+    const expand = (icon) => (typeof icon === 'string' && icon.startsWith('~/') ? path.join(home, icon.slice(2)) : icon);
+    if (expand(previewed.icon) !== expand(saved?.icon)) clearedEarly.push({ index, previewed: previewed.icon, saved: saved?.icon ?? null });
+  }
+  return clearPreview(index);
 };
 
 // Handshakes: a preview on key 30 renames the key's icon away, on key 29 puts it back.
@@ -284,6 +297,10 @@ check('nothing but config.json in the config directory', () => assert.deepEqual(
 check('no preview is left on the deck, and key 1 draws its default, like key 0', () => {
   assert.deepEqual(daemon.sessions.get(SERIAL).previewKeys(), []);
   assert.equal(Buffer.compare(deck.images.get(1), deck.images.get(0)), 0);
+});
+check('no preview is cleared before the deck has the saved icon, so no key flashes its old one', () => {
+  assert.ok(clearsSeen >= 3, `only ${clearsSeen} preview(s) were cleared, too few for this to prove anything`);
+  assert.deepEqual(clearedEarly, []);
 });
 
 await daemon.stop();

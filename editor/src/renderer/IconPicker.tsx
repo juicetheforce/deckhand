@@ -100,8 +100,14 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
     void window.deckhand.bookmarks().then(setBookmarks);
     return () => {
       // Leaving the key, the page or the tab ends the preview (scope §10).
-      if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
-      previewing.current = false;
+      // While a choice is still saving, the save carries on without the
+      // picker and clears the preview itself once the daemon has the saved
+      // icon (commitIcon in main), so it is left to that: cleared here, the
+      // key showed its old icon until the save landed (Ship, 2026-09-18).
+      if (!saving.current) {
+        if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
+        previewing.current = false;
+      }
       void window.deckhand.stopIconWatch();
     };
   }, []);

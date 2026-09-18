@@ -114,6 +114,38 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   return { socket, control, events, profiles, sessions, unattached, state, deps, attach, stop };
 }
 
+/**
+ * Reload config.json into a startDaemon() daemon whenever it changes, the way
+ * src/index.ts reload() does and **in the same order**: record the reload,
+ * apply it to the decks, then announce it with the `config` event. The editor
+ * clears a preview on that event, so the order is what stops a key flashing
+ * its old icon (Ship, 2026-09-18). This is the one copy the checks share; keep
+ * it in step with reload().
+ *
+ * `applyDelayMs` holds the apply back, so a check sees what depends on the
+ * order every run rather than by luck. `onReload(ok)` is told after each
+ * reload, good or refused. Import only after DECKHAND_CONFIG_DIR is set:
+ * dist/config.js reads it when first imported. Returns stop().
+ */
+export async function reloadLikeTheDaemon(daemon, { applyDelayMs = 0, onReload = () => undefined } = {}) {
+  const { loadConfig, watchConfig } = await import(dist('config.js'));
+  return watchConfig(async () => {
+    try {
+      const { config } = await loadConfig();
+      daemon.state.config = config;
+      daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
+      if (applyDelayMs > 0) await sleep(applyDelayMs);
+      await daemon.profiles.applyReload(config, daemon.sessions);
+      daemon.events.config();
+      onReload(true);
+    } catch (err) {
+      daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
+      daemon.events.config();
+      onReload(false);
+    }
+  });
+}
+
 let nextRequestId = 1;
 
 /** A socket client: request() resolves with the reply; events collects events. */

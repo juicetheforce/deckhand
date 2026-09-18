@@ -20,8 +20,7 @@ const configDir = path.join(scratch, 'config');
 await fs.mkdir(configDir);
 process.env.DECKHAND_CONFIG_DIR = configDir;
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
-const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
-const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 
 let failures = 0;
 function check(name, fn) {
@@ -61,18 +60,7 @@ const daemon = await startDaemon(scratch, CONFIG);
 const fake = new FakeDeck();
 await daemon.attach(SERIAL, fake);
 
-const stopWatching = watchConfig(async () => {
-  try {
-    const { config } = await loadConfig();
-    daemon.state.config = config;
-    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
-    daemon.events.config();
-    await daemon.profiles.applyReload(config, daemon.sessions);
-  } catch (err) {
-    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
-    daemon.events.config();
-  }
-});
+const stopWatching = await reloadLikeTheDaemon(daemon);
 
 // When the renderer signals with a preview on key 31, press the key it bound —
 // key 2, switch profile. This is the whole point: a key configured in the

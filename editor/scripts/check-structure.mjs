@@ -22,8 +22,7 @@ const configDir = path.join(scratch, 'config');
 await fs.mkdir(configDir);
 process.env.DECKHAND_CONFIG_DIR = configDir;
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
-const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
-const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
+const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 
 let failures = 0;
 function check(name, fn) {
@@ -71,19 +70,8 @@ const daemon = await startDaemon(scratch, CONFIG);
 await daemon.attach(A, new FakeDeck());
 await daemon.attach(B, new FakeDeck());
 
-// Reload the way src/index.ts does: announce, then apply to the decks.
-const stopWatching = watchConfig(async () => {
-  try {
-    const { config } = await loadConfig();
-    daemon.state.config = config;
-    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
-    daemon.events.config();
-    await daemon.profiles.applyReload(config, daemon.sessions);
-  } catch (err) {
-    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
-    daemon.events.config();
-  }
-});
+// Reload as src/index.ts does (the harness's reloadLikeTheDaemon).
+const stopWatching = await reloadLikeTheDaemon(daemon);
 
 // Before the editor starts: put deck A somewhere that is NOT its start page,
 // so "opens on what the decks show" means something.

@@ -34,12 +34,11 @@ process.env.FAKE_PACTL_STATE = PACTL_STATE;
 await fs.writeFile(PACTL_STATE, '{}');
 const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
 await audio.refreshCache();
-const { FakeDeck, startDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
+const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 // The fake input helper, started as the daemon starts the real one: Test Run's
 // hotkey steps wait for it to be ready (without this they waited forever).
 const { input } = await import(pathToFileURL(path.join(repoRoot, 'dist/input.js')).href);
 input.start();
-const { loadConfig, watchConfig } = await import(pathToFileURL(path.join(repoRoot, 'dist/config.js')).href);
 
 let failures = 0;
 function check(name, fn) {
@@ -77,19 +76,7 @@ await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, n
 const daemon = await startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState(), releaseSocketKeys: () => input.releaseAllHeldBy('socket') });
 await daemon.attach(SERIAL, new FakeDeck());
 let refusedReloads = 0;
-const stopWatching = watchConfig(async () => {
-  try {
-    const { config } = await loadConfig();
-    daemon.state.config = config;
-    daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
-    daemon.events.config();
-    await daemon.profiles.applyReload(config, daemon.sessions);
-  } catch (err) {
-    refusedReloads++;
-    daemon.state.lastReload = { ok: false, at: new Date().toISOString(), error: err.message };
-    daemon.events.config();
-  }
-});
+const stopWatching = await reloadLikeTheDaemon(daemon, { onReload: (ok) => { if (!ok) refusedReloads++; } });
 // Which keys the editor put a preview on: a state icon must go on the deck before it is saved.
 const session = daemon.sessions.get(SERIAL);
 // What Test Run sent to the deck.
