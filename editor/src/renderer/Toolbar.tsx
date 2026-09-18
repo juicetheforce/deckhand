@@ -113,6 +113,10 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           ⚠ {uncovered.length === 1 ? `${uncovered[0]} not covered` : `${uncovered.length} decks not covered`}
         </span>
       )}
+      {/* App settings (Ship piece 3): its own window, a child of this one. Left of the pill (the maintainer). */}
+      <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
+        <SettingsGlyph size={18} />
+      </button>
       {/* The selected deck's connection state (scope §10, changed 2026-09-15). */}
       {selectedDeck && (
         <span className={selectedDeck.connected ? 'pill pill-connected' : 'pill pill-disconnected'} role="status">
@@ -120,10 +124,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           {selectedDeck.connected ? 'Connected' : 'Not connected'}
         </span>
       )}
-      {/* App settings (Ship piece 3): its own window, a child of this one. */}
-      <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
-        <SettingsGlyph size={18} />
-      </button>
     </header>
   );
 }

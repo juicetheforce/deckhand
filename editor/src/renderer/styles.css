@@ -2011,7 +2011,7 @@ button:disabled {
   justify-content: center;
   width: 30px;
   height: 30px;
-  margin-left: 6px;
+  margin-right: 8px;
   padding: 0;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.05);
@@ -2079,15 +2079,18 @@ body.settings-body {
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* The same as the toolbar's dropdowns (.crumb select), open list included:
+   without the option background the list is drawn in the system's grey. */
 .settings-select {
-  height: 32px;
   min-width: 170px;
-  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
   border-radius: 9px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 12px;
-  color: #eef0fa;
+  padding: 5px 8px;
+}
+
+.settings-select option {
+  background: #16172a;
 }
 
 .settings-check {
