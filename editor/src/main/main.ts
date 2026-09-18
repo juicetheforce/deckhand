@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import readline from 'node:readline';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
 // The daemon's own modules, imported rather than copied (docs/scope.md §7, M4
@@ -17,6 +18,8 @@ import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
+import { Launcher } from './launcher.js';
+import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
@@ -38,6 +41,17 @@ registerIconScheme(); // before the app is ready
 const CHECK = process.env.DECKHAND_EDITOR_CHECK ?? null;
 // Offscreen frames came back 0×0 with GPU rendering (2026-09-15).
 if (CHECK === 'screenshot') app.disableHardwareAcceleration();
+
+/**
+ * One editor at a time (Ship piece 2): launching it again while it is open or
+ * in the tray brings that one forward ('second-instance', below) rather than
+ * starting another. The lock is per userData directory, so the checks — each
+ * with its own scratch state directory — never meet the maintainer's editor. The other
+ * check modes run without it, as they always have.
+ */
+const USES_LAUNCHER = CHECK === null || CHECK === 'tray';
+const IS_PRIMARY = !USES_LAUNCHER || app.requestSingleInstanceLock();
+if (!IS_PRIMARY) app.quit();
 
 // No application menu: Electron's default one binds Ctrl+W, Ctrl+R, Ctrl+Q
 // and more, which would fire while the hotkey inspector is listening. With
@@ -92,9 +106,11 @@ async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
  * Success is read from the deck's state, not from the reply: a page action
  * for a page the deck does not have yet logs and returns without an error
  * (`DeckSession.goToPage`), so action.run answers ok while nothing moved.
- * That happens after a save, because the daemon reports a reload before it
- * has applied it to the decks (src/index.ts reload()); so after a save, a
- * page that has not appeared is asked for again, for about a second.
+ * Until Ship (2026-09-18) the daemon reported a reload before applying it to
+ * the decks, so a page just saved could be missing; it now reports after
+ * (src/index.ts reload()). The retry is kept for a daemon from before that,
+ * and costs nothing when the page is there: after a save, a page that has not
+ * appeared is asked for again, for about a second.
  */
 async function showPage(serial: string, page: string): Promise<DaemonResult> {
   const before = daemon.lastReloadAt();
@@ -421,7 +437,8 @@ function createWindow(): void {
   if (CHECK === 'screenshot') window.webContents.on('paint', (_e, _dirty, image) => (lastFrame = image));
   window.on('closed', () => (window = null));
   const query: Record<string, string> = {};
-  if (CHECK) query.check = CHECK;
+  // The tray check drives the lifecycle from main; its renderer is the ordinary editor.
+  if (CHECK && CHECK !== 'tray') query.check = CHECK;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_KEY) query.selectKey = process.env.DECKHAND_EDITOR_SELECT_KEY;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_DECK) query.selectDeck = process.env.DECKHAND_EDITOR_SELECT_DECK;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_TAB) query.selectTab = process.env.DECKHAND_EDITOR_SELECT_TAB;
@@ -446,12 +463,90 @@ app.on('before-quit', (event) => {
   });
 });
 
-app.whenReady().then(async () => {
-  handleIconScheme();
-  registerIpc();
-  await openStore();
-  daemon.start();
-  createWindow();
+/**
+ * What closing to the tray hands back (Ship piece 2): unsaved edits and
+ * preferences are written, then config.json's watcher, the daemon socket and
+ * the icon watchers are closed. A closed window runs no React cleanup, so the
+ * icon watchers are closed here rather than left to the renderer.
+ */
+async function release(): Promise<void> {
+  const current = store;
+  store = null;
+  await Promise.allSettled([current?.flush(), preferences.flush()]);
+  current?.close();
+  daemon.stop();
+  folderWatcher.close();
+  iconFiles.close();
+}
+
+let tray: LauncherTray = deadTray();
+
+const launcher = new Launcher({
+  acquire: async () => {
+    await openStore();
+    daemon.start();
+  },
+  release,
+  createWindow: () => {
+    createWindow();
+    const created = window!;
+    return {
+      isDestroyed: () => created.isDestroyed(),
+      isMinimized: () => created.isMinimized(),
+      restore: () => created.restore(),
+      show: () => created.show(),
+      focus: () => created.focus(),
+      onClosed: (listener) => created.on('closed', listener),
+    };
+  },
+  // Scope §7, piece 3 adds the setting; until it is turned off, closing goes to the tray.
+  closeToTray: async () => (await preferences.read()).closeToTray !== false,
+  trayAlive: () => tray.alive(),
+  quit: () => app.quit(),
 });
 
-app.on('window-all-closed', () => app.quit());
+if (IS_PRIMARY && USES_LAUNCHER) app.on('second-instance', () => void launcher.open().then(() => trayCheckReport('second-instance')));
+
+app.whenReady().then(async () => {
+  if (!IS_PRIMARY) return;
+  handleIconScheme();
+  registerIpc();
+  if (USES_LAUNCHER) {
+    tray = createTray({
+      iconPath: path.join(import.meta.dirname, '../icons/tray.png'),
+      open: () => void launcher.open(),
+      quit: () => launcher.quit(),
+    });
+  }
+  await launcher.open();
+  if (CHECK === 'tray') startTrayCheck();
+});
+
+// The window closing is the launcher's to handle (to the tray, or quit), and
+// the check modes quit through it too: with no tray, a closed window quits.
+app.on('window-all-closed', () => undefined);
+
+/**
+ * The tray check (scripts/check-tray.mjs), driven over stdin one command per
+ * line, reporting state on stdout as `DECKHAND_TRAY {json}`. The tray and its
+ * menu are driven through their real handlers; the window is closed as a user
+ * closing it would, so the same 'closed' path runs.
+ */
+function trayCheckReport(event: string, extra: Record<string, unknown> = {}): void {
+  if (CHECK !== 'tray') return;
+  const state = { ...launcher.state(), storeOpen: store !== null, daemonConnected: daemon.view().connected, trayAlive: tray.alive() };
+  console.log(`DECKHAND_TRAY ${JSON.stringify({ event, ...state, ...extra })}`);
+}
+
+function startTrayCheck(): void {
+  trayCheckReport('ready', { menu: tray.handlers().menu.map((item) => item.label) });
+  readline.createInterface({ input: process.stdin }).on('line', (line) => {
+    const [command, ...rest] = line.trim().split(' ');
+    const handlers = tray.handlers();
+    if (command === 'state') trayCheckReport('state');
+    else if (command === 'close') window?.close();
+    else if (command === 'click') handlers.click();
+    else if (command === 'menu') handlers.menu.find((item) => item.label === rest.join(' '))?.click();
+    else if (command === 'edit') trayCheckReport('edited', { result: store?.apply(JSON.parse(rest.join(' ')) as Edit) ?? null });
+  });
+}

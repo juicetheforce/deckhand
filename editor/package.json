@@ -21,7 +21,8 @@
     "check:navigate": "npm run build && node scripts/check-navigate.mjs",
     "test": "node scripts/run-tests.mjs",
     "check:bulk": "npm run build && node scripts/check-bulk.mjs",
-    "check:forms": "npm run build && node scripts/check-forms.mjs"
+    "check:forms": "npm run build && node scripts/check-forms.mjs",
+    "check:tray": "npm run build && node scripts/check-tray.mjs"
   },
   "engines": {
     "node": ">=22.12"

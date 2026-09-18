@@ -218,6 +218,9 @@ build_editor() {
      "$REPO_DIR/editor/tsconfig.main.json" "$REPO_DIR/editor/tsconfig.renderer.json" \
      "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
   cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
+  # The tray icon's PNGs, which the editor build copies into its dist/.
+  mkdir -p "$STAGE_DIR/assets/logo"
+  cp -r "$REPO_DIR/assets/logo/png" "$STAGE_DIR/assets/logo/png"
 
   (
     cd "$editor_dir"
@@ -234,7 +237,7 @@ build_editor() {
     find dist -name '*.map' -delete
   )
   [ -x "$editor_dir/electron/electron" ] || die "the editor's Electron binary is missing from $editor_dir/electron"
-  [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] \
+  [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] && [ -f "$editor_dir/dist/icons/tray.png" ] \
     || die "the editor did not build into $editor_dir/dist"
 }
 
