@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { DaemonView, DeckhandBridge, StoreView } from '../shared/bridge.js';
+import type { AppSettings } from '../shared/settings.js';
 
 // Sandboxed preload: bundled to CommonJS by scripts/build-main.mjs, because a
 // sandboxed preload cannot be an ES module. It only forwards calls; every
@@ -37,6 +38,13 @@ const bridge: DeckhandBridge = {
   chooseIconFolder: (current) => ipcRenderer.invoke('chooseIconFolder', current),
   commitIcon: (at, icon, preview, slot) => ipcRenderer.invoke('commitIcon', at, icon, preview, slot),
   onIconFolderChanged: (callback) => subscribe<string>('iconFolderChanged', callback),
+  appSettings: () => ipcRenderer.invoke('appSettings'),
+  setAppSettings: (patch) => ipcRenderer.invoke('setAppSettings', patch),
+  resetAppSettings: () => ipcRenderer.invoke('resetAppSettings'),
+  settingsDecks: () => ipcRenderer.invoke('settingsDecks'),
+  openSettings: () => ipcRenderer.invoke('openSettings'),
+  closeSettings: () => ipcRenderer.invoke('closeSettings'),
+  onAppSettings: (callback) => subscribe<AppSettings>('appSettings', callback),
   onStore: (callback) => subscribe<StoreView>('store', callback),
   onDaemon: (callback) => subscribe<DaemonView>('daemon', callback),
   reportCheck: (name, report) => ipcRenderer.send('reportCheck', name, report),

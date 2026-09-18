@@ -15,39 +15,14 @@
 // Usage: npm run check:tray   (builds first)
 
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { onPrivateBus, startEditor as startEditorAt, stateOf, until } from './lib/drive-editor.mjs';
 
-if (!process.env.DECKHAND_TRAY_PRIVATE_BUS) {
-  const busConfig = path.join(os.tmpdir(), `deckhand-check-tray-bus-${process.pid}.conf`);
-  await fs.writeFile(
-    busConfig,
-    `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig>
-  <type>session</type>
-  <listen>unix:tmpdir=${os.tmpdir()}</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-</busconfig>
-`,
-  );
-  const rerun = spawnSync('dbus-run-session', [`--config-file=${busConfig}`, '--', process.execPath, ...process.argv.slice(1)], {
-    stdio: 'inherit',
-    env: { ...process.env, DECKHAND_TRAY_PRIVATE_BUS: '1' },
-  });
-  await fs.rm(busConfig, { force: true });
-  process.exit(rerun.status ?? 1);
-}
+await onPrivateBus('DECKHAND_TRAY_PRIVATE_BUS');
 
 const editorRoot = path.join(import.meta.dirname, '..');
 const repoRoot = path.join(editorRoot, '..');
@@ -89,36 +64,7 @@ const env = {
 };
 delete env.ELECTRON_RUN_AS_NODE;
 
-/** Start the editor; its DECKHAND_TRAY reports arrive in `reports`. */
-function startEditor() {
-  const child = spawn(electronPath, [editorRoot], { env, stdio: ['pipe', 'pipe', 'pipe'] });
-  const editor = { child, reports: [], stderr: '', exited: null };
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    if (line.startsWith('DECKHAND_TRAY ')) editor.reports.push(JSON.parse(line.slice('DECKHAND_TRAY '.length)));
-  });
-  child.stderr.on('data', (d) => (editor.stderr += d));
-  child.on('exit', (code) => (editor.exited = { code }));
-  editor.send = (line) => child.stdin.write(`${line}\n`);
-  return editor;
-}
-
-/** Wait until fn() is truthy, up to ms. */
-async function until(fn, ms = 10_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (await fn()) return true;
-    await sleep(50);
-  }
-  return false;
-}
-
-/** Ask for the state and wait for it; the newest report. */
-async function stateOf(editor) {
-  const before = editor.reports.length;
-  editor.send('state');
-  await until(() => editor.reports.length > before, 5000);
-  return editor.reports.at(-1);
-}
+const startEditor = () => startEditorAt(electronPath, editorRoot, env);
 
 /** Every process descended from pid, with its Chromium --type (or "main"). */
 function processTree(pid) {

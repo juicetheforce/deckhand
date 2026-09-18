@@ -5,6 +5,7 @@
  * the API) and the renderer (which calls it). The renderer has no Node and no
  * direct access to Electron.
  */
+import type { AppSettings, DeckOption } from './settings.js';
 import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
@@ -180,6 +181,22 @@ export interface DeckhandBridge {
    */
   commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null, slot: PairIconField | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
+  /**
+   * App settings (Ship piece 3), in the editor's preferences file. Both
+   * windows can read them; only the settings window changes them, and every
+   * change reaches both windows through onAppSettings.
+   */
+  appSettings(): Promise<AppSettings>;
+  setAppSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
+  resetAppSettings(): Promise<AppSettings>;
+  /** The decks the Default deck setting offers (settings window only). */
+  settingsDecks(): Promise<DeckOption[]>;
+  /** Open the settings window, or bring it forward (editor window only). */
+  openSettings(): Promise<void>;
+  /** Close the settings window: its Done button (settings window only). */
+  closeSettings(): Promise<void>;
+  onAppSettings(callback: (settings: AppSettings) => void): () => void;
+
   /** Called on every store change; returns a function that stops the calls. */
   onStore(callback: (view: StoreView) => void): () => void;
   /** Called on every daemon view change; returns a function that stops the calls. */

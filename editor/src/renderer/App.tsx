@@ -37,9 +37,14 @@ import { useEditor } from './useEditor.js';
 
 export function App() {
   const snapshot = useEditor();
-  if (!snapshot) return <div className="app-loading">Loading…</div>;
+  // The app settings, read before the editor mounts: its first selection opens on the Default deck.
+  const [defaultDeck, setDefaultDeck] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    void window.deckhand.appSettings().then((s) => setDefaultDeck(s.defaultDeck));
+  }, []);
+  if (!snapshot || defaultDeck === undefined) return <div className="app-loading">Loading…</div>;
   if (!snapshot.store.open) return <CannotOpen error={snapshot.store.error} />;
-  return <Editor store={snapshot.store.state} daemon={snapshot.daemon} />;
+  return <Editor store={snapshot.store.state} daemon={snapshot.daemon} defaultDeck={defaultDeck} />;
 }
 
 function CannotOpen({ error }: { error: string }) {
@@ -52,9 +57,10 @@ function CannotOpen({ error }: { error: string }) {
   );
 }
 
-function Editor({ store, daemon }: { store: StoreState; daemon: DaemonView }) {
+function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: DaemonView; defaultDeck: string | null }) {
   const config = store.config;
-  const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null)));
+  // Only when the window opens: changing the setting later moves nothing until the next opening.
+  const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null, defaultDeck)));
   // Switches sent to the daemon and not yet answered. While one is in flight
   // the breadcrumb shows what was chosen; state events from before the switch
   // would otherwise pull it back for a moment.

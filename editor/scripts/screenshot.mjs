@@ -82,6 +82,10 @@ const { values } = parseArgs({
     collapse: { type: 'boolean' },
     recent: { type: 'string', multiple: true },
     'fake-audio': { type: 'boolean' },
+    // The settings window's page instead of the editor's (Ship piece 3).
+    settings: { type: 'boolean' },
+    // An accent colour from src/shared/settings.ts ACCENTS, stored as a setting first.
+    accent: { type: 'string' },
   },
 });
 if (!values.out) {
@@ -138,6 +142,19 @@ if (values.recent?.length) {
   const editorState = path.join(scratch, 'state', 'editor');
   await fs.mkdir(editorState, { recursive: true });
   await fs.writeFile(path.join(editorState, 'icon-picker.json'), JSON.stringify({ recentFolders: values.recent.map((f) => path.resolve(f)) }, null, 2) + '\n');
+}
+if (values.settings) process.env.DECKHAND_EDITOR_VIEW = 'settings';
+if (values.accent !== undefined) {
+  const editorState = path.join(scratch, 'state', 'editor');
+  await fs.mkdir(editorState, { recursive: true });
+  const prefsFile = path.join(editorState, 'preferences.json');
+  let prefs = {};
+  try {
+    prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8'));
+  } catch {
+    // None seeded yet.
+  }
+  await fs.writeFile(prefsFile, JSON.stringify({ ...prefs, accent: values.accent }, null, 2) + '\n');
 }
 process.env.DECKHAND_EDITOR_SCREENSHOT = path.resolve(values.out);
 const output = await runElectronCheck('screenshot', {

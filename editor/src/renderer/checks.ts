@@ -132,6 +132,12 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
  * captures the window (scripts/screenshot.mjs).
  */
 async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>> {
+  if (new URLSearchParams(window.location.search).get('view') === 'settings') {
+    const started = Date.now();
+    while (!document.querySelector('.settings-footer') && Date.now() - started < 5000) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 300));
+    return { view: 'settings', accent: document.documentElement.dataset.accent ?? 'blue' };
+  }
   const snap = await api.snapshot();
   await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected && (v.decks?.length ?? 0) > 0);
   const started = Date.now();

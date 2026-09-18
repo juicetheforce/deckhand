@@ -8,7 +8,9 @@
 :root {
   color-scheme: dark;
   --accent: #5b6ee8;
-  --accent-soft: rgba(91, 110, 232, 0.25);
+  /* The accent as r, g, b, for translucent uses: rgba(var(--accent-rgb), a). */
+  --accent-rgb: 91, 110, 232;
+  --accent-soft: rgba(var(--accent-rgb), 0.25);
   --amber: #e8b45a;
   --green: #5bc28a;
   --red: #e85a6e;
@@ -20,6 +22,29 @@
   font-family: 'Noto Sans', system-ui, sans-serif;
   font-size: 13px;
   color: var(--text);
+}
+
+/*
+ * The accent colours (Ship piece 3, scope §10): a closed set, from mockup 6a,
+ * chosen in the settings window (src/shared/settings.ts ACCENTS). Blue above
+ * is the default and needs no attribute. Only the accent changes: the cool
+ * neutrals and the body's blue glow stay, which §10 records as a validated
+ * look (Fleuron: a background hue chosen separately from the accent), not an
+ * oversight — the glow keeps its literal colour on purpose.
+ */
+:root[data-accent='purple'] {
+  --accent: #8b5fd6;
+  --accent-rgb: 139, 95, 214;
+}
+
+:root[data-accent='teal'] {
+  --accent: #2e9e8f;
+  --accent-rgb: 46, 158, 143;
+}
+
+:root[data-accent='sky'] {
+  --accent: #4a8fd9;
+  --accent-rgb: 74, 143, 217;
 }
 
 * {
@@ -538,7 +563,7 @@ button:disabled {
   padding: 12px;
   border-radius: 12px;
   border: 1.5px dashed var(--accent);
-  background: rgba(91, 110, 232, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .listening p,
@@ -845,8 +870,8 @@ button:disabled {
 }
 
 .chip-selected {
-  border-color: rgba(91, 110, 232, 0.35);
-  background: rgba(91, 110, 232, 0.16);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.16);
   color: #ccd2f8;
 }
 
@@ -1869,7 +1894,7 @@ button:disabled {
 }
 
 .key-menu-item:hover:not(:disabled) {
-  background: rgba(91, 110, 232, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 .key-menu-item:disabled {
@@ -1976,4 +2001,149 @@ button:disabled {
 .key.key-drop-target {
   border: 2px dashed var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* --- The settings gear, in the toolbar beside the connection pill (Ship piece 3) --- */
+
+.toolbar-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 6px;
+  padding: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+}
+
+.toolbar-settings:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- The settings window, after mockup 6a (Ship piece 3) --- */
+
+body.settings-body {
+  /* 6a's plane and its glow, which stays blue whatever the accent (see :root above). */
+  background:
+    radial-gradient(400px 280px at 50% -70px, rgba(91, 110, 232, 0.16), transparent 70%),
+    linear-gradient(155deg, #131628, #0e1020);
+  overflow: auto;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px 20px;
+}
+
+.settings-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.settings-heading:not(:first-child) {
+  margin-top: 6px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.settings-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef0fa;
+}
+
+.settings-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.settings-select {
+  height: 32px;
+  min-width: 170px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: #eef0fa;
+}
+
+.settings-check {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-swatches {
+  display: flex;
+  gap: 9px;
+}
+
+.swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 9px;
+  border: 2px solid transparent;
+}
+
+.swatch-selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-note {
+  flex: 1;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.settings-footer button {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12.5px;
+}
+
+.settings-footer button.primary {
+  padding: 0 18px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
 }

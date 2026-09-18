@@ -446,6 +446,20 @@ await check("initial selection: the daemon's active profile, the first connected
   assert.deepEqual([d.profile, d.serial, d.page], ['default', V2, 'main'], 'the connected deck wins over the disconnected XL');
 });
 
+await check('the Default deck setting: opened on that deck, connected or not; Automatic when the profile has no layout for it', () => {
+  // The V2 is connected and would win by the automatic rule; the XL is chosen, though it is not connected.
+  const s = reconcileSelection(EXAMPLE, daemonView([V2]), null, XL);
+  assert.deepEqual([s.profile, s.serial, s.page], ['default', XL, 'main']);
+  // prof_game has no V2 layout: this opening falls back to the rule (its only layout, the XL).
+  const g = reconcileSelection(EXAMPLE, daemonView([V2], 'prof_game'), null, V2);
+  assert.equal(g.serial, XL);
+  // A deck config does not know at all: the rule.
+  assert.equal(reconcileSelection(EXAMPLE, daemonView([V2]), null, 'NOT-A-DECK').serial, V2);
+  // Only an opening uses it: a selection that exists is kept.
+  const current = { profile: 'default', serial: V2, page: 'main', key: null, keys: [] };
+  assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current, XL), current);
+});
+
 await check('a selection that still exists is kept, key included, across config and daemon changes', () => {
   const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current), current);

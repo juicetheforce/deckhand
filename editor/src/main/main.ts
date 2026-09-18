@@ -14,6 +14,7 @@ import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
+import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
@@ -59,6 +60,8 @@ if (!IS_PRIMARY) app.quit();
 Menu.setApplicationMenu(null);
 
 let window: BrowserWindow | null = null;
+/** The settings window (Ship piece 3): a child of `window`, one at a time, closed with it. */
+let settingsWindow: BrowserWindow | null = null;
 /** Screenshot check only: the most recent offscreen frame. */
 let lastFrame: Electron.NativeImage | null = null;
 let store: ConfigStore | null = null;
@@ -258,7 +261,82 @@ function fromOurWindow(event: IpcMainInvokeEvent): boolean {
   return window !== null && event.sender === window.webContents;
 }
 
+/**
+ * The settings window loads the same preload, so it could call anything the
+ * editor can; every editor call answers only the editor's window
+ * (fromOurWindow), and the settings window gets the few below that it needs.
+ */
+function fromSettingsWindow(event: IpcMainInvokeEvent): boolean {
+  return settingsWindow !== null && event.sender === settingsWindow.webContents;
+}
+
+async function appSettings(): Promise<AppSettings> {
+  return readSettings(await preferences.read());
+}
+
+/** Tell both windows the settings changed, so each applies them at once ("Settings apply immediately", 6a). */
+async function broadcastSettings(): Promise<void> {
+  const settings = await appSettings();
+  for (const w of [window, settingsWindow]) if (w && !w.isDestroyed()) w.webContents.send('appSettings', settings);
+}
+
+function openSettings(): void {
+  if (!window) return;
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+  settingsWindow = new BrowserWindow({
+    parent: window,
+    // The content's size, not the frame's: 6a's layout, with nothing below the footer.
+    useContentSize: true,
+    width: 640,
+    height: 384,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: 'Deckhand Settings',
+    backgroundColor: '#0e1020',
+    show: CHECK === null,
+    webPreferences: {
+      preload: path.join(import.meta.dirname, '../preload/preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+  // The window's own title, not the page's, which would otherwise replace it.
+  settingsWindow.on('page-title-updated', (event) => event.preventDefault());
+  settingsWindow.on('closed', () => (settingsWindow = null));
+  void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings' } });
+}
+
 function registerIpc(): void {
+  // --- App settings (Ship piece 3) ---
+  ipcMain.handle('appSettings', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? appSettings() : DEFAULT_SETTINGS));
+  ipcMain.handle('setAppSettings', async (event, patch: unknown) => {
+    if (!fromSettingsWindow(event)) return appSettings();
+    await preferences.set(cleanSettingsPatch(patch));
+    await broadcastSettings();
+    return appSettings();
+  });
+  ipcMain.handle('resetAppSettings', async (event) => {
+    if (!fromSettingsWindow(event)) return appSettings();
+    await preferences.set({ ...DEFAULT_SETTINGS });
+    await broadcastSettings();
+    return appSettings();
+  });
+  ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
+    if (!fromSettingsWindow(event)) return [];
+    return deckOptions(store?.state().config ?? null, daemon.view().decks, (await appSettings()).defaultDeck);
+  });
+  ipcMain.handle('openSettings', (event) => {
+    if (fromOurWindow(event)) openSettings();
+  });
+  ipcMain.handle('closeSettings', (event) => {
+    if (fromSettingsWindow(event)) settingsWindow?.close();
+  });
   ipcMain.handle('snapshot', (event): EditorSnapshot | null =>
     fromOurWindow(event) ? { store: storeView(), daemon: daemon.view() } : null,
   );
@@ -419,9 +497,11 @@ async function finishCheck(rendererReport: unknown): Promise<void> {
 }
 
 function createWindow(): void {
+  // Screenshots only: render the settings window's page in this window, at its size.
+  const settingsShot = CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_VIEW === 'settings';
   window = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: settingsShot ? 640 : 1400,
+    height: settingsShot ? 384 : 900,
     show: CHECK === null,
     webPreferences: {
       preload: path.join(import.meta.dirname, '../preload/preload.cjs'),
@@ -435,6 +515,10 @@ function createWindow(): void {
     },
   });
   if (CHECK === 'screenshot') window.webContents.on('paint', (_e, _dirty, image) => (lastFrame = image));
+  // The settings window goes with it — to the tray or on quitting. Electron 44
+  // already closes a child with its parent here (check:settings passes without
+  // this line); it stays so that does not have to hold on every platform.
+  window.on('close', () => settingsWindow?.close());
   window.on('closed', () => (window = null));
   const query: Record<string, string> = {};
   // The tray check drives the lifecycle from main; its renderer is the ordinary editor.
@@ -445,6 +529,10 @@ function createWindow(): void {
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_OPEN) query.open = process.env.DECKHAND_EDITOR_OPEN;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_PAGE) query.page = process.env.DECKHAND_EDITOR_PAGE;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SEARCH) query.search = process.env.DECKHAND_EDITOR_SEARCH;
+  if (settingsShot) {
+    query.view = 'settings';
+    settingsWindow = window; // so the settings calls answer it
+  }
   void window.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query });
 }
 
@@ -499,8 +587,7 @@ const launcher = new Launcher({
       onClosed: (listener) => created.on('closed', listener),
     };
   },
-  // Scope §7, piece 3 adds the setting; until it is turned off, closing goes to the tray.
-  closeToTray: async () => (await preferences.read()).closeToTray !== false,
+  closeToTray: async () => (await appSettings()).closeToTray,
   trayAlive: () => tray.alive(),
   quit: () => app.quit(),
 });
@@ -534,7 +621,14 @@ app.on('window-all-closed', () => undefined);
  */
 function trayCheckReport(event: string, extra: Record<string, unknown> = {}): void {
   if (CHECK !== 'tray') return;
-  const state = { ...launcher.state(), storeOpen: store !== null, daemonConnected: daemon.view().connected, trayAlive: tray.alive() };
+  const state = {
+    ...launcher.state(),
+    storeOpen: store !== null,
+    daemonConnected: daemon.view().connected,
+    trayAlive: tray.alive(),
+    settingsOpen: settingsWindow !== null && !settingsWindow.isDestroyed(),
+    windows: BrowserWindow.getAllWindows().length,
+  };
   console.log(`DECKHAND_TRAY ${JSON.stringify({ event, ...state, ...extra })}`);
 }
 
@@ -548,5 +642,17 @@ function startTrayCheck(): void {
     else if (command === 'click') handlers.click();
     else if (command === 'menu') handlers.menu.find((item) => item.label === rest.join(' '))?.click();
     else if (command === 'edit') trayCheckReport('edited', { result: store?.apply(JSON.parse(rest.join(' ')) as Edit) ?? null });
+    else if (command === 'settings') openSettings();
+    // Run script in a window's page, as a person clicking there would, and report what it returns.
+    else if (command === 'editor-js' || command === 'settings-js') {
+      const target = command === 'editor-js' ? window : settingsWindow;
+      const script = rest.join(' ');
+      if (!target || target.isDestroyed()) trayCheckReport(command, { error: 'no such window' });
+      else
+        void target.webContents
+          .executeJavaScript(script)
+          .then((result: unknown) => trayCheckReport(command, { result }))
+          .catch((err: unknown) => trayCheckReport(command, { error: err instanceof Error ? err.message : String(err) }));
+    }
   });
 }

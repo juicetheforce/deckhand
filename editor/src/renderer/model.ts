@@ -148,8 +148,12 @@ export function pageChoices(layout: LayoutDef): Choice[] {
  * Keep the selection when it still points at something that exists; otherwise
  * pick a sensible one: the daemon's active profile, the first connected deck
  * with a layout in it, and that layout's start page (the daemon's own rule).
+ *
+ * `preferredDeck` is the Default deck setting (Ship piece 3), passed when a
+ * window opens: that deck if the profile has a layout for it, connected or
+ * not; otherwise the rule above, for this opening only (the maintainer, 2026-09-18).
  */
-export function reconcileSelection(config: Config, daemon: DaemonView, current: Selection | null): Selection {
+export function reconcileSelection(config: Config, daemon: DaemonView, current: Selection | null, preferredDeck: string | null = null): Selection {
   const profiles = Object.keys(config.profiles);
   const active = daemon.status?.activeProfile?.id;
   const profile =
@@ -157,9 +161,10 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
 
   const decks = deckChoices(config, profile, daemon);
   const keepSerial = current && current.profile === profile && decks.some((d) => d.id === current.serial);
+  const preferred = preferredDeck === null ? undefined : decks.find((d) => d.id === preferredDeck && d.hasLayout);
   const serial = keepSerial
     ? current!.serial
-    : (decks.find((d) => d.connected && d.hasLayout) ?? decks.find((d) => d.hasLayout) ?? decks[0])?.id ?? '';
+    : (preferred ?? decks.find((d) => d.connected && d.hasLayout) ?? decks.find((d) => d.hasLayout) ?? decks[0])?.id ?? '';
 
   const layout = layoutFor(config, profile, serial);
   let page = '';
