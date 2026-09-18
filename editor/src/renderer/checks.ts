@@ -1691,6 +1691,54 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const pressCleared = await savedAs(15, null);
   out.pressRelease = { listening, saved: pressSaved, phases, cleared: pressCleared };
 
+  // Press/Release records a modifier on its own when it is let go (Ship,
+  // 2026-09-18: recording Left Shift showed it held and released, and saved
+  // nothing). Each sequence is keydown/keyup by code, as the capture reads it.
+  const keyEvent = (type: 'keydown' | 'keyup', code: string, mods: Partial<Record<'ctrlKey' | 'shiftKey', boolean>> = {}) =>
+    window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true, ...mods }));
+  const holdPair = (keys: string) => ({ action: { type: 'keyHold', keys, state: 'down' }, onRelease: { type: 'keyHold', keys, state: 'up' } });
+  const recordPressRelease = async (events: Array<Parameters<typeof keyEvent>>) => {
+    libraryClick('keyHold');
+    await until(() => document.querySelector('.listening') !== null);
+    for (const e of events) keyEvent(...e);
+  };
+  const lone: Record<string, unknown> = {};
+  await recordPressRelease([['keydown', 'ShiftLeft', { shiftKey: true }], ['keyup', 'ShiftLeft']]);
+  lone.leftShift = await savedAs(15, holdPair('shift'));
+  await clickButton('Clear');
+  await savedAs(15, null);
+  await recordPressRelease([['keydown', 'ShiftRight', { shiftKey: true }], ['keyup', 'ShiftRight']]);
+  lone.rightShift = await savedAs(15, holdPair('rightshift'));
+  await clickButton('Clear');
+  await savedAs(15, null);
+  await recordPressRelease([
+    ['keydown', 'ControlLeft', { ctrlKey: true }],
+    ['keydown', 'ShiftLeft', { ctrlKey: true, shiftKey: true }],
+    ['keyup', 'ShiftLeft', { ctrlKey: true }],
+    ['keyup', 'ControlLeft'],
+  ]);
+  lone.ctrlShift = await savedAs(15, holdPair('ctrl+shift'));
+  await clickButton('Clear');
+  await savedAs(15, null);
+  // Shift then A: shift+a, and letting go of Shift afterwards does not replace it with shift.
+  await recordPressRelease([['keydown', 'ShiftLeft', { shiftKey: true }], ['keydown', 'KeyA', { shiftKey: true }], ['keyup', 'KeyA', { shiftKey: true }], ['keyup', 'ShiftLeft']]);
+  await savedAs(15, holdPair('shift+a'));
+  await sleep(500);
+  lone.shiftThenA = (await buttons())?.['15'] ?? null;
+  await clickButton('Clear');
+  await savedAs(15, null);
+  // Hotkey is unchanged: a lone Shift there keeps listening and saves nothing.
+  await selectKey(14);
+  await clickButton('Re-record');
+  await until(() => document.querySelector('.listening') !== null);
+  keyEvent('keydown', 'ShiftLeft', { shiftKey: true });
+  keyEvent('keyup', 'ShiftLeft');
+  await sleep(500);
+  lone.hotkeyStillListening = document.querySelector('.listening') !== null;
+  lone.hotkeyUnchanged = (await buttons())?.['14']?.action ?? null;
+  await clickButton('Cancel');
+  out.pressReleaseLone = lone;
+
   // Run command.
   await selectKey(16);
   libraryClick('command');

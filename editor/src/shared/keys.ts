@@ -132,6 +132,25 @@ export function canonicalCombo(text: string): string {
   return [...modifiers.map((m) => m.name), ...others].join('+');
 }
 
+/**
+ * The combo for modifier keys pressed and let go with no other key in between,
+ * given their `KeyboardEvent.code`s in the order pressed: a lone Left Shift is
+ * `shift`, a lone Right Shift `rightshift`, Ctrl then Shift `ctrl+shift`.
+ * Null if any code is not a modifier key.
+ *
+ * For Press/Release, where holding a modifier on its own is a real binding
+ * (the maintainer, 2026-09-18, found recording Left Shift). Hotkey capture does not use
+ * it: there a modifier going down is the start of a combo, not the combo.
+ */
+export function loneModifierCombo(codes: readonly string[]): string | null {
+  if (codes.length === 0) return null;
+  if (!codes.every((code) => Object.prototype.hasOwnProperty.call(MODIFIER_CODES, code))) return null;
+  // In the fixed modifier order, so the spelling does not depend on which went
+  // down first (canonicalCombo keeps the last name last, as the key pressed).
+  const ordered = [...codes].sort((a, b) => MODIFIER_ORDER.indexOf(MODIFIER_CODES[a]) - MODIFIER_ORDER.indexOf(MODIFIER_CODES[b]));
+  return canonicalCombo(ordered.map((code) => CODE_TO_KEY[code]).join('+'));
+}
+
 /** Keycap labels for showing a combo: "ctrl+shift+1" → ["Ctrl", "Shift", "1"]. */
 export function keycaps(combo: string): string[] {
   const LABELS: Record<string, string> = {

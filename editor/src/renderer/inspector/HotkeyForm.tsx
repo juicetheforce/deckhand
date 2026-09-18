@@ -3,7 +3,7 @@ import type { ButtonDef } from '../../../../src/types.js';
 import type { SystemShortcut } from '../../shared/bridge.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import { NumberSetting, Row, nextAction } from './controls.js';
-import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, type Modifier } from '../../shared/keys.js';
+import { LAYOUT_REMAPPED_KEYS, MODIFIER_ORDER, canonicalCombo, captureKey, keycaps, loneModifierCombo, type Modifier } from '../../shared/keys.js';
 import { keyCapture } from '../key-capture.js';
 
 type Mode =
@@ -73,6 +73,7 @@ export function ComboCapture({
   save,
   clear,
   clearLabel,
+  recordLoneModifiers = false,
   listenRequest,
   onListening,
   children,
@@ -84,6 +85,13 @@ export function ComboCapture({
   save: (combo: string) => Promise<boolean>;
   clear: () => void;
   clearLabel: string;
+  /**
+   * Modifiers pressed and let go with no other key between them are recorded
+   * as the combo (keys.ts loneModifierCombo). Press/Release only: holding
+   * Shift alone is a real binding there, while for a hotkey a modifier going
+   * down is the start of a combo.
+   */
+  recordLoneModifiers?: boolean;
   /** Shown under the buttons while not recording. */
   children?: ReactNode;
 } & ListenProps) {
@@ -121,6 +129,12 @@ export function ComboCapture({
   // Listening: every key event is read and swallowed before anything else sees it.
   useEffect(() => {
     if (mode.kind !== 'listening') return;
+    // For recordLoneModifiers: the modifier keys pressed since every key was
+    // last up, in order; whether any other key went down among them; and which
+    // keys are down now, by code, so left and right are told apart.
+    let chord: string[] = [];
+    let spoiled = false;
+    const down = new Set<string>();
     const onKey = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -129,19 +143,30 @@ export function ComboCapture({
         if (released.kind === 'modifier') {
           setMode((m) => (m.kind === 'listening' ? { ...m, held: m.held.filter((h) => h !== released.modifier) } : m));
         }
+        down.delete(event.code);
+        if (recordLoneModifiers && down.size === 0) {
+          const lone = spoiled ? null : loneModifierCombo(chord);
+          chord = [];
+          spoiled = false;
+          if (lone) void offer(lone);
+        }
         return;
       }
       if (event.repeat) return;
+      down.add(event.code);
       // Every key records, Esc included — it is a real binding (close a
       // window, open a menu). Only the Cancel button stops listening (the maintainer,
       // 2026-09-15).
       const captured = captureKey(event);
       if (captured.kind === 'modifier') {
+        if (!chord.includes(event.code)) chord.push(event.code);
         // Shown by code: a modifier's own keydown may not carry its flag (Meta's does not, scope §10).
         setMode((m) => (m.kind === 'listening' && !m.held.includes(captured.modifier) ? { ...m, held: [...m.held, captured.modifier] } : m));
       } else if (captured.kind === 'unknown') {
+        spoiled = true;
         setMode((m) => (m.kind === 'listening' ? { ...m, message: `That key (${captured.code}) has no name Deckhand can send. Use Type manually.` } : m));
       } else {
+        spoiled = true;
         void offer(captured.combo);
       }
     };
@@ -209,6 +234,7 @@ export function ComboCapture({
             <span className="listening-dot">listening</span>
           </div>
           {mode.message && <p className="warning-text">{mode.message}</p>}
+          {recordLoneModifiers && <p className="muted small">A modifier on its own — Shift, say — records when you let go of it.</p>}
           <p className="muted small">Every key records, Esc included — click Cancel to stop. Combos KDE uses for itself never arrive here — use Type manually.</p>
           <div className="button-row">
             <button onClick={() => setMode({ kind: 'typing', text: '', error: null })}>Type manually</button>
@@ -289,6 +315,7 @@ export function PressReleaseForm({ at, button, editingBlocked, run, listenReques
       save={(keys) => run({ kind: 'setPressRelease', at, keys })}
       clear={() => void run({ kind: 'setPressRelease', at, keys: null })}
       clearLabel="Clear"
+      recordLoneModifiers
       listenRequest={listenRequest}
       onListening={onListening}
     >

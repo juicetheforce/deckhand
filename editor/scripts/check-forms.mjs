@@ -232,6 +232,17 @@ if (r && !r.error) {
       cleared: null,
     });
   });
+  check('Press/Release records a modifier on its own when let go — left and right apart, several together; Hotkey still does not', () => {
+    const pair = (keys) => ({ action: { type: 'keyHold', keys, state: 'down' }, onRelease: { type: 'keyHold', keys, state: 'up' } });
+    assert.deepEqual(r.pressReleaseLone, {
+      leftShift: pair('shift'),
+      rightShift: pair('rightshift'),
+      ctrlShift: pair('ctrl+shift'),
+      shiftThenA: pair('shift+a'),
+      hotkeyStillListening: true,
+      hotkeyUnchanged: { type: 'hotkey', keys: 'ctrl+1' },
+    });
+  });
   check('Run command: the command is written; emptied, the setting goes and the key is marked "not set up"', () => {
     assert.deepEqual(r.command, { typed: { type: 'command', command: 'kate ~/notes.md' }, emptied: { type: 'command' }, mark: 'not set up' });
   });

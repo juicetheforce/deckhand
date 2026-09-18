@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { KEYS, parseCombo } from '../../src/keymap.js';
-import { CODE_TO_KEY, LAYOUT_REMAPPED_KEYS, MODIFIER_CODES, canonicalCombo, captureKey, keycaps } from '../src/shared/keys.js';
+import { CODE_TO_KEY, LAYOUT_REMAPPED_KEYS, MODIFIER_CODES, canonicalCombo, captureKey, keycaps, loneModifierCombo } from '../src/shared/keys.js';
 
 let failures = 0;
 async function check(name: string, fn: () => void | Promise<void>): Promise<void> {
@@ -54,6 +54,22 @@ await check('a modifier on its own keeps listening, left or right, flags or not'
   for (const [code, modifier] of Object.entries(MODIFIER_CODES)) {
     assert.deepEqual(captureKey(ev(code)), { kind: 'modifier', modifier });
     assert.deepEqual(captureKey(ev(code, { metaKey: true, ctrlKey: true })), { kind: 'modifier', modifier });
+  }
+});
+
+await check('modifiers let go with no other key: the combo Press/Release records, left and right kept apart', () => {
+  assert.equal(loneModifierCombo(['ShiftLeft']), 'shift');
+  assert.equal(loneModifierCombo(['ShiftRight']), 'rightshift');
+  assert.equal(loneModifierCombo(['ControlLeft']), 'ctrl');
+  assert.equal(loneModifierCombo(['MetaLeft']), 'meta');
+  assert.equal(loneModifierCombo(['ShiftLeft', 'ControlLeft']), 'ctrl+shift', 'modifiers in the fixed order, whatever order pressed');
+  assert.equal(loneModifierCombo(['AltRight', 'ControlLeft']), 'ctrl+rightalt');
+  assert.equal(loneModifierCombo([]), null);
+  assert.equal(loneModifierCombo(['ShiftLeft', 'KeyA']), null, 'a combo with a non-modifier is not a lone modifier');
+  assert.equal(loneModifierCombo(['__proto__']), null);
+  // Each is what the daemon holds: the same evdev codes, in any order.
+  for (const [codes, keys] of [[['ShiftLeft'], ['shift']], [['ShiftRight'], ['rightshift']], [['ShiftLeft', 'ControlLeft'], ['ctrl', 'shift']]] as const) {
+    assert.deepEqual([...parseCombo(loneModifierCombo(codes)!)].sort(), keys.map((k) => KEYS[k]).sort());
   }
 });
 
