@@ -105,6 +105,80 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* The window's own title bar (Ship piece 4), after mockup 2a: TitleBar.tsx */
+
+.window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.window-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  height: 44px;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  /* The bar moves the window; its buttons are no-drag, below. */
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar-start {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.titlebar-logo {
+  display: block;
+}
+
+.titlebar-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.titlebar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  /* Or a click on it starts a drag instead. */
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+/* Close lifts to red on hover rather than filling red (Fleuron's treatment). */
+.titlebar-close:hover {
+  color: var(--red);
+}
+
+/* Behind another window the bar recedes, as KDE's own applications do themselves. */
+.titlebar[data-focused='false'] .titlebar-start,
+.titlebar[data-focused='false'] .titlebar-button:not(:hover) {
+  opacity: 0.45;
+}
+
 /* Toolbar and breadcrumb */
 
 .toolbar {

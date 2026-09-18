@@ -23,7 +23,8 @@
     "check:bulk": "npm run build && node scripts/check-bulk.mjs",
     "check:forms": "npm run build && node scripts/check-forms.mjs",
     "check:tray": "npm run build && node scripts/check-tray.mjs",
-    "check:settings": "npm run build && node scripts/check-settings.mjs"
+    "check:settings": "npm run build && node scripts/check-settings.mjs",
+    "check:titlebar": "npm run build && node scripts/check-titlebar.mjs"
   },
   "engines": {
     "node": ">=22.12"

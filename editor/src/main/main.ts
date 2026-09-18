@@ -11,7 +11,7 @@ import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView } from '../shared/bridge.js';
+import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
@@ -270,6 +270,38 @@ function fromSettingsWindow(event: IpcMainInvokeEvent): boolean {
   return settingsWindow !== null && event.sender === settingsWindow.webContents;
 }
 
+/** The window a title bar call came from: the editor's or the settings window, nothing else. */
+function callingWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
+  if (fromOurWindow(event)) return window;
+  if (fromSettingsWindow(event)) return settingsWindow;
+  return null;
+}
+
+function windowState(w: BrowserWindow): WindowState {
+  // A screenshot window is hidden and so never focused; drawn dimmed, the
+  // screenshot would show the bar as it looks behind another window.
+  return { maximised: w.isMaximized(), focused: w.isFocused() || CHECK === 'screenshot' };
+}
+
+/**
+ * Keep a frameless window's title bar in step with it (Ship piece 4). The page
+ * cannot see whether its window is maximised, so it is told, to draw restore
+ * rather than maximise; and it is told about focus because nothing outside the
+ * application dims an inactive window — KDE's own applications do it
+ * themselves, through Qt's inactive palette, and a window drawing its own bar
+ * takes that on (Fleuron, reportFocus). The page also reads the state once when
+ * it mounts (windowState), because a reload is none of these events.
+ */
+function reportWindowState(w: BrowserWindow): void {
+  const send = () => {
+    if (!w.isDestroyed()) w.webContents.send('windowState', windowState(w));
+  };
+  w.on('maximize', send);
+  w.on('unmaximize', send);
+  w.on('focus', send);
+  w.on('blur', send);
+}
+
 async function appSettings(): Promise<AppSettings> {
   return readSettings(await preferences.read());
 }
@@ -336,6 +368,32 @@ function registerIpc(): void {
   });
   ipcMain.handle('closeSettings', (event) => {
     if (fromSettingsWindow(event)) settingsWindow?.close();
+  });
+  // --- The title bar (Ship piece 4) ---
+  ipcMain.handle('windowControl', (event, action: unknown) => {
+    const w = callingWindow(event);
+    if (!w) return;
+    const from = w === window ? 'editor' : 'settings';
+    // close(), not destroy(): destroy() skips the 'close' event, which is where
+    // the settings window is closed with the editor's (createWindow). The
+    // launcher then takes it to the tray, or quits, from 'closed'.
+    if (action === 'close') w.close();
+    // The settings window has a close button only (Ship piece 3).
+    else if (w !== window) return trayCheckReport('windowControl', { action, from, obeyed: false });
+    else if (action === 'minimise') w.minimize();
+    // A toggle, like double-clicking the bar, which Chromium does by itself.
+    else if (action === 'maximise') {
+      if (w.isMaximized()) w.unmaximize();
+      else w.maximize();
+    } else return trayCheckReport('windowControl', { action, from, obeyed: false });
+    // The title bar check reads this rather than isMinimized(): a check window is
+    // never shown, and minimising one that was never mapped only sometimes takes
+    // (1 run in 6, 2026-09-18).
+    trayCheckReport('windowControl', { action, from, obeyed: true });
+  });
+  ipcMain.handle('windowState', (event): WindowState => {
+    const w = callingWindow(event);
+    return w ? windowState(w) : { maximised: false, focused: true };
   });
   ipcMain.handle('snapshot', (event): EditorSnapshot | null =>
     fromOurWindow(event) ? { store: storeView(), daemon: daemon.view() } : null,
@@ -503,6 +561,19 @@ function createWindow(): void {
     width: settingsShot ? 640 : 1400,
     height: settingsShot ? 384 : 900,
     show: CHECK === null,
+    /*
+     * The editor draws its own title bar (Ship piece 4, scope §10): frame:
+     * false, or KWin draws its own above it and there are two. Kept opaque,
+     * with the drop shadow left on — measured on this machine 2026-09-18,
+     * Electron 44.3.0 on Wayland: opaque, transparent and shadowless frameless
+     * windows all resized from every edge and corner, dragged, and opened
+     * KWin's window menu on a right-click of the bar; opaque with the shadow
+     * is the one that looked right.
+     */
+    frame: false,
+    // What shows before the page paints: the body's darkest colour, not
+    // Electron's white, which a frameless window would flash edge to edge.
+    backgroundColor: '#0d0e18',
     webPreferences: {
       preload: path.join(import.meta.dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -520,6 +591,7 @@ function createWindow(): void {
   // this line); it stays so that does not have to hold on every platform.
   window.on('close', () => settingsWindow?.close());
   window.on('closed', () => (window = null));
+  reportWindowState(window);
   const query: Record<string, string> = {};
   // The tray check drives the lifecycle from main; its renderer is the ordinary editor.
   if (CHECK && CHECK !== 'tray') query.check = CHECK;
@@ -628,6 +700,8 @@ function trayCheckReport(event: string, extra: Record<string, unknown> = {}): vo
     trayAlive: tray.alive(),
     settingsOpen: settingsWindow !== null && !settingsWindow.isDestroyed(),
     windows: BrowserWindow.getAllWindows().length,
+    // The editor window as main sees it, for the title bar check.
+    maximised: window && !window.isDestroyed() ? window.isMaximized() : null,
   };
   console.log(`DECKHAND_TRAY ${JSON.stringify({ event, ...state, ...extra })}`);
 }

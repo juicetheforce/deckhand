@@ -118,6 +118,15 @@ export interface SharedImportReport {
   error?: string;
 }
 
+/** What a title bar button asks of its window. Maximise is a toggle: it restores a maximised window. */
+export type WindowAction = 'minimise' | 'maximise' | 'close';
+
+/** What the title bar draws from: restore or maximise, and dimmed while another window is active. */
+export interface WindowState {
+  maximised: boolean;
+  focused: boolean;
+}
+
 export interface DeckhandBridge {
   snapshot(): Promise<EditorSnapshot>;
   apply(edit: Edit): Promise<ApplyResult>;
@@ -196,6 +205,17 @@ export interface DeckhandBridge {
   /** Close the settings window: its Done button (settings window only). */
   closeSettings(): Promise<void>;
   onAppSettings(callback: (settings: AppSettings) => void): () => void;
+
+  /**
+   * The window's own title bar (Ship piece 4): both windows are frameless, so
+   * the page asks the main process to minimise, maximise or close the window
+   * it is in. The settings window may only close.
+   */
+  windowControl(action: WindowAction): Promise<void>;
+  /** Read once when the bar mounts: a reload is not a maximise or focus event. */
+  windowState(): Promise<WindowState>;
+  /** Called when the window is maximised or restored, focused or left. */
+  onWindowState(callback: (state: WindowState) => void): () => void;
 
   /** Called on every store change; returns a function that stops the calls. */
   onStore(callback: (view: StoreView) => void): () => void;
