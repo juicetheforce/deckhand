@@ -218,9 +218,11 @@ build_editor() {
      "$REPO_DIR/editor/tsconfig.main.json" "$REPO_DIR/editor/tsconfig.renderer.json" \
      "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
   cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
-  # The tray icon's PNGs, which the editor build copies into its dist/.
+  # The tray icon's PNGs, which the editor build copies into its dist/, and the
+  # title bar's logo, which Vite bundles into dist/renderer/ (Ship piece 4).
   mkdir -p "$STAGE_DIR/assets/logo"
   cp -r "$REPO_DIR/assets/logo/png" "$STAGE_DIR/assets/logo/png"
+  cp "$REPO_DIR/assets/logo/deckhand-small.svg" "$STAGE_DIR/assets/logo/"
 
   (
     cd "$editor_dir"
