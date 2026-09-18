@@ -388,7 +388,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
   // `match` / `matches` are hand-edited config only (scope §3): a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
-  'audio.source': ['node', 'label'],
+  'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
   'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
 };

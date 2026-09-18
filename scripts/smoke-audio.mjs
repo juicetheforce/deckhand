@@ -207,6 +207,17 @@ console.log('audio.source by node');
   check('another input\'s key shows inactive', (await describe(headsetMic)).background === '#101014');
   check('an explicit activeBackground is used', (await describe({ ...builtinMic, activeBackground: '#123456' })).background === '#123456');
 
+  // Moving recording streams: the same rule as audio.sink and audio.cycleSource
+  // since 2026-09-18 (the maintainer), after Discord was seen following a Cycle inputs press.
+  const movedTo = async () => JSON.parse(await fs.readFile(PACTL_STATE, 'utf8')).movedSourceOutputs ?? {};
+  await serverState({ defaultSource: HEADSET_MIC });
+  await runActionOrThrow(context(), builtinMic);
+  check('every recording stream moves to the chosen input',
+    Object.keys(await movedTo()).length === 2 && Object.values(await movedTo()).every((to) => to === BUILTIN_MIC));
+  await serverState({ defaultSource: HEADSET_MIC });
+  await runActionOrThrow(context(), { ...builtinMic, moveStreams: false });
+  check('moveStreams: false leaves them where they are', Object.keys(await movedTo()).length === 0);
+
   await serverState({ defaultSource: HEADSET_MIC, absent: [BUILTIN_MIC] });
   const before = (await spawns()).length;
   const gone = context();

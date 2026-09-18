@@ -285,17 +285,15 @@ export async function setDefaultSink(sinkName: string, moveStreams = true): Prom
 }
 
 /**
- * Switch the default input.
+ * Switch the default input, and drag recording streams along — the mirror of
+ * setDefaultSink(), including the default.
  *
- * **`moveStreams` has no default on purpose.** Sinks default it to true; the
- * two source actions disagree, and a default here would hide that from anyone
- * reading a call site. `audio.cycleSource` passes true (the maintainer, 2026-09-17:
- * without it the key face changes and the application is still on the old
- * microphone). `audio.source` passes false, which is the behaviour it was
- * confirmed with on hardware — see docs/scope.md §6 for the open question on
- * whether it should follow.
+ * Without moveStreams the key face changes to the new microphone while the
+ * application carries on reading the old one: the input version of "I pressed
+ * the button and nothing happened". `[confirmed]` on hardware 2026-09-17
+ * (the maintainer): Discord followed the switch.
  */
-export async function setDefaultSource(sourceName: string, moveStreams: boolean): Promise<void> {
+export async function setDefaultSource(sourceName: string, moveStreams = true): Promise<void> {
   await pactl(['set-default-source', sourceName]);
   if (moveStreams) await moveAllSourceOutputs(sourceName);
   await refreshCache();

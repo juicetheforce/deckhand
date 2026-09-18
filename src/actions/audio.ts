@@ -216,8 +216,12 @@ export const cycle: ActionHandler = {
  * A mirror of audio.sink, by `node` only: it is new, so there is no
  * hand-edited `match` to keep. A device that is not present logs and does
  * nothing. The key paints `activeBackground` while this input is the default,
- * so "why can nobody hear me" is a glance (§6). Streams already recording are
- * not moved.
+ * so "why can nobody hear me" is a glance (§6).
+ *
+ * **Streams already recording move with it** unless `moveStreams: false`
+ * (the maintainer, 2026-09-18), as audio.sink and audio.cycleSource do. Until then this
+ * action left them behind, which was the one place the four device actions
+ * disagreed.
  */
 export const source: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -227,10 +231,7 @@ export const source: ActionHandler = {
     const found = await audio.findSourceByNode(node);
     if (!found) throw new Error(`input ${nameOf({ node, label })} is not present`);
 
-    // false, deliberately: this is the behaviour audio.source was confirmed
-    // with on hardware 2026-09-17. audio.cycleSource passes true. Whether the
-    // two should agree is open (docs/scope.md §6).
-    await audio.setDefaultSource(found.name, false);
+    await audio.setDefaultSource(found.name, params.moveStreams !== false);
     confirmDefaultSourceIs(found);
     ctx.log(`audio input -> ${found.description}`);
     // micMute shows the default input's mute, which just became another device's.

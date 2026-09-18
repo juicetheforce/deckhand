@@ -63,11 +63,12 @@ function SingleDeviceForm({
   list,
   heading,
   intro,
+  moveStreamsLabel,
   at,
   button,
   disabled,
   run,
-}: FormProps & { type: 'audio.sink' | 'audio.source'; list: AudioList | undefined; heading: string; intro: string }) {
+}: FormProps & { type: 'audio.sink' | 'audio.source'; list: AudioList | undefined; heading: string; intro: string; moveStreamsLabel: string }) {
   const action = actionOf(type, button);
   const stored = refOf(action);
   const listed = list?.devices ?? [];
@@ -102,19 +103,19 @@ function SingleDeviceForm({
       )}
       {storedMissing && <p className="warning-text">“{stored.label || stored.node}” is not present now. The key does nothing until it is back, or pick another.</p>}
       {stored === null && list !== undefined && <p className="muted small">Pick the device this key switches to.</p>}
-      {type === 'audio.sink' && stored !== null && (
-        <Checkbox label="Move sound that is playing to it" checked={action?.moveStreams !== false} disabled={disabled} onChange={(on) => write({ moveStreams: on ? undefined : false })} />
+      {stored !== null && (
+        <Checkbox label={moveStreamsLabel} checked={action?.moveStreams !== false} disabled={disabled} onChange={(on) => write({ moveStreams: on ? undefined : false })} />
       )}
     </section>
   );
 }
 
 export function OutputForm(props: FormProps & { audio: AudioLists }) {
-  return <SingleDeviceForm {...props} type="audio.sink" list={props.audio?.sinks} heading="Output device" intro="Makes this the default output. The key is highlighted while it is." />;
+  return <SingleDeviceForm {...props} type="audio.sink" list={props.audio?.sinks} heading="Output device" intro="Makes this the default output. The key is highlighted while it is." moveStreamsLabel="Move sound that is playing to it" />;
 }
 
 export function InputForm(props: FormProps & { audio: AudioLists }) {
-  return <SingleDeviceForm {...props} type="audio.source" list={props.audio?.sources} heading="Input device" intro="Makes this the default input. The key is highlighted while it is." />;
+  return <SingleDeviceForm {...props} type="audio.source" list={props.audio?.sources} heading="Input device" intro="Makes this the default input. The key is highlighted while it is." moveStreamsLabel="Move what is already recording to it" />;
 }
 
 /**

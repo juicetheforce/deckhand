@@ -191,6 +191,7 @@ if (r && !r.error) {
       before: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source',
       missingShown: true,
       picked: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' },
+      movePref: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic', moveStreams: false },
     });
   });
   check('Cycle outputs: add, reorder and remove write the ordered devices; fewer than two is marked "not set up"; the name toggle writes showCurrent', () => {
@@ -291,7 +292,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     7: BUTTONS[7],
     8: BUTTONS[8],
     9: { action: { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono', moveStreams: false } },
-    10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' } },
+    10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic', moveStreams: false } },
     11: r?.cycle?.final ? { action: r.cycle.final } : '(cycle not reached)',
     20: r?.cycleInputs?.final ? { action: r.cycleInputs.final } : '(cycle inputs not reached)',
     12: BUTTONS[12],

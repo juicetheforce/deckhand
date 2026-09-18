@@ -1556,7 +1556,12 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await api.previewClear(serial, 31);
   device('alsa_input.usb-Example_Headset-00.mono-fallback')!.click();
   const picked = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' });
-  out.input = { before, missingShown, picked };
+  // Input device moves recording streams since 2026-09-18, as Output device
+  // moves playing ones: the checkbox is on both forms now.
+  const inputMove = [...document.querySelectorAll<HTMLLabelElement>('.inspector .form-check')].find((l) => l.textContent?.includes('recording'))!.querySelector('input')!;
+  inputMove.click();
+  const movePref = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic', moveStreams: false });
+  out.input = { before, missingShown, picked, movePref };
 
   // Cycle outputs.
   const mark = (index: number) => document.querySelectorAll('.key')[index].querySelector('.key-mark')?.textContent ?? null;
