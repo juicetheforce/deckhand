@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Deckhand install / update / uninstall — for the daemon only.
+# Deckhand install / update / uninstall — the daemon and the editor.
 #
 #   scripts/install.sh install [--dirty]
 #   scripts/install.sh update  [--dirty]     (same as install)
@@ -10,10 +10,13 @@
 #
 #   $XDG_DATA_HOME/deckhand/                  the app: dist/, node_modules/,
 #                                             helper/deckhand-input,
-#                                             assets/icons/ (built-in icons), ...
+#                                             assets/icons/ (built-in icons),
+#                                             editor/ (the editor, with its own
+#                                             Electron in editor/electron/), ...
 #   $XDG_DATA_HOME/systemd/user/deckhand.service
 #   ~/.local/bin/deckhand                     the CLI: a small wrapper that runs
 #                                             dist/cli.js from the app directory
+#   ~/.local/bin/deckhand-editor              the editor's launcher
 #   /etc/udev/rules.d/60-deckhand.rules       the only file needing sudo
 #   $XDG_CONFIG_HOME/deckhand/                your config — never touched by
 #                                             install; uninstall asks
@@ -46,6 +49,9 @@ START_SETTLE_SECONDS=8
 CLI_DIR="$HOME/.local/bin"
 CLI_FILE="$CLI_DIR/deckhand"
 CLI_MARKER='# deckhand-cli-wrapper'
+# The editor's launcher, recognised the same way.
+EDITOR_LAUNCHER="$CLI_DIR/deckhand-editor"
+EDITOR_MARKER='# deckhand-editor-launcher'
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -99,7 +105,7 @@ preflight() {
   systemctl --user show-environment >/dev/null 2>&1 \
     || die "cannot reach the systemd user manager (systemctl --user). Run this from your desktop session."
 
-  require_command node  "Install Node.js 20 or newer."
+  require_command node  "Install Node.js 22.12 or newer."
   require_command npm   "Install npm."
   require_command make  "Install make."
   require_command cc    "Install gcc."
@@ -112,9 +118,10 @@ preflight() {
   [ "$node_path" = "/usr/bin/node" ] \
     || die "node is at $node_path, but the service runs /usr/bin/node. Install Node.js from your distribution's packages."
 
-  local node_major
-  node_major="$(node -p 'process.versions.node.split(".")[0]')"
-  [ "$node_major" -ge 20 ] || die "Node.js $node_major is too old; Deckhand needs 20 or newer."
+  # 22.12, not the daemon's own 20: building the editor needs it (Electron's
+  # package and the editor's build tools declare >= 22.12).
+  node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)' \
+    || die "Node.js $(node -v) is too old; Deckhand needs 22.12 or newer."
 
   [ -f "$REPO_DIR/package.json" ] && [ -f "$UDEV_RULE_SRC" ] \
     || die "run this script from inside a Deckhand checkout."
@@ -172,6 +179,12 @@ build_and_stage() {
     npm ci                    # dev dependencies too: TypeScript is needed to build
     npm run build:ts
     make -C helper
+  )
+  # Before the daemon's dev dependencies and src/ go: the editor's build
+  # bundles daemon source and resolves its packages from this node_modules.
+  build_editor
+  (
+    cd "$STAGE_DIR"
     # Keep production dependencies only. They are installed on this machine,
     # so the native modules (node-hid, sharp) match this machine's Node.
     # A fresh `npm ci --omit=dev` rather than `npm prune --omit=dev`: in npm
@@ -182,6 +195,47 @@ build_and_stage() {
     npm ci --omit=dev
     rm -rf src tsconfig.json helper/deckhand-input.c helper/Makefile
   )
+}
+
+# The editor goes inside the daemon's app directory, built from the same
+# checkout in the same run (docs/scope.md §7, Ship). It bundles daemon source —
+# config validation, the action registry, the default icons — so an editor
+# installed on its own could silently pair with a daemon from another commit.
+# Here the two are always one commit, and roll back together. Inside the app
+# directory, the editor's built-in icon lookup finds the daemon's
+# assets/icons/ (editor/src/main/builtin-icons.ts).
+#
+# Kept: dist/{main,preload,renderer}/, package.json (Electron reads "main" and
+# "type" from it) and Electron's own runtime, moved to editor/electron/. The
+# editor needs no other package at runtime: esbuild and Vite bundle everything
+# but electron itself.
+build_editor() {
+  say "Building the editor into $STAGE_DIR/editor"
+  local editor_dir="$STAGE_DIR/editor"
+  mkdir -p "$editor_dir/scripts"
+  cp -r "$REPO_DIR/editor/src" "$editor_dir/src"
+  cp "$REPO_DIR/editor/package.json" "$REPO_DIR/editor/package-lock.json" \
+     "$REPO_DIR/editor/tsconfig.main.json" "$REPO_DIR/editor/tsconfig.renderer.json" \
+     "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
+  cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
+
+  (
+    cd "$editor_dir"
+    npm ci
+    # Electron 44 has no install script: its binary is fetched the first time
+    # the package is required. Fetch it now. It is checked against the
+    # package's checksums.json and cached in ~/.cache/electron, so an update
+    # does not download it again.
+    node node_modules/electron/install.js
+    npm run build
+    mv node_modules/electron/dist electron
+    rm -rf node_modules src scripts dist/test package-lock.json \
+           tsconfig.main.json tsconfig.renderer.json vite.config.ts
+    find dist -name '*.map' -delete
+  )
+  [ -x "$editor_dir/electron/electron" ] || die "the editor's Electron binary is missing from $editor_dir/electron"
+  [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] \
+    || die "the editor did not build into $editor_dir/dist"
 }
 
 elgato_hidraw_nodes() {
@@ -322,6 +376,7 @@ cmd_install() {
   # Only after a successful start: a rollback restores an older app that may
   # have no CLI, and the wrapper must not point at one that is not there.
   install_cli
+  install_editor_launcher
   journalctl --user -u deckhand --since "@$started_at" --no-pager -o cat | grep -E 'attached|not in config' || \
     warn "no Stream Deck attached yet — is one plugged in?"
 }
@@ -330,6 +385,10 @@ cmd_install() {
 
 cli_is_ours() {
   [ -f "$CLI_FILE" ] && grep -qxF "$CLI_MARKER" "$CLI_FILE"
+}
+
+editor_launcher_is_ours() {
+  [ -f "$EDITOR_LAUNCHER" ] && grep -qxF "$EDITOR_MARKER" "$EDITOR_LAUNCHER"
 }
 
 # Writes ~/.local/bin/deckhand. The app path is written in as resolved here —
@@ -363,6 +422,44 @@ EOF
     *":$CLI_DIR:"*) ;;
     *) warn "$CLI_DIR is not on PATH in this shell; run $CLI_FILE by its full path, or add $CLI_DIR to PATH." ;;
   esac
+}
+
+# Writes ~/.local/bin/deckhand-editor, the same way as the CLI wrapper: the app
+# path resolved here, a marker line, never over a file Deckhand did not write.
+# ELECTRON_RUN_AS_NODE is cleared because a shell started from VS Code sets it,
+# and it turns Electron into plain Node with no window (CLAUDE.md).
+install_editor_launcher() {
+  case "$APP_DIR" in
+    *"'"*)
+      warn "the app directory contains a single quote; not writing the editor launcher."
+      return
+      ;;
+  esac
+  if [ -e "$EDITOR_LAUNCHER" ] && ! editor_launcher_is_ours; then
+    warn "$EDITOR_LAUNCHER exists and was not written by Deckhand; leaving it alone."
+    warn "The editor can be run as: env -u ELECTRON_RUN_AS_NODE '$APP_DIR/editor/electron/electron' '$APP_DIR/editor'"
+    return
+  fi
+  mkdir -p "$CLI_DIR"
+  local tmp="$EDITOR_LAUNCHER.new.$$"
+  cat > "$tmp" <<EOF
+#!/bin/sh
+$EDITOR_MARKER
+# Written by Deckhand's scripts/install.sh; "scripts/install.sh uninstall" removes it.
+exec env -u ELECTRON_RUN_AS_NODE '$APP_DIR/editor/electron/electron' '$APP_DIR/editor' "\$@"
+EOF
+  chmod 755 "$tmp"
+  mv "$tmp" "$EDITOR_LAUNCHER"
+  say "Editor launcher installed: $EDITOR_LAUNCHER"
+}
+
+remove_editor_launcher() {
+  if editor_launcher_is_ours; then
+    rm -f "$EDITOR_LAUNCHER"
+    say "Removed $EDITOR_LAUNCHER"
+  elif [ -e "$EDITOR_LAUNCHER" ]; then
+    warn "$EDITOR_LAUNCHER was not written by Deckhand; leaving it alone."
+  fi
 }
 
 remove_cli() {
@@ -416,6 +513,7 @@ cmd_uninstall() {
   systemctl --user daemon-reload
 
   remove_cli
+  remove_editor_launcher
 
   say "Removing $APP_DIR"
   rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR" "$LEGACY_BACKUP"

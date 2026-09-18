@@ -16,7 +16,7 @@ import { compareNames, existingFolders, FolderWatcher, listBuiltinFolder, listFo
 import { Bookmarks, Preferences } from '../src/main/preferences.js';
 import { BUILTIN_PREFIX as DAEMON_BUILTIN_PREFIX } from '../../src/builtin-icons.js';
 import { BUILTIN_ICONS } from '../../src/default-icons.js';
-import { iconFilePath } from '../src/main/builtin-icons.js';
+import { builtinIconDir, CHECKOUT_BUILTIN_ICON_DIR, iconFilePath } from '../src/main/builtin-icons.js';
 import { IconFiles, stamp } from '../src/main/icon-files.js';
 import { MAX_BOOKMARKS } from '../src/shared/bridge.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon } from '../src/shared/icons.js';
@@ -33,6 +33,14 @@ async function check(name: string, fn: () => void | Promise<void>): Promise<void
   }
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Bundled into editor/dist/test/, three levels below the repository.
+const REPO = path.resolve(import.meta.dirname, '../../..');
+
+// Built-ins from this checkout, never from an installed daemon: the resolver
+// prefers an installed one (src/main/builtin-icons.ts), and this file must
+// not depend on what is installed. The resolver order has its own check below.
+process.env.DECKHAND_BUILTIN_ICONS = path.join(REPO, 'assets/icons');
 
 // A scratch "home" holding an icon tree.
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-icons-'));
@@ -265,8 +273,29 @@ await check('icon stamps: a file, a missing file, and ~ expanded', async () => {
   assert.equal(iconUrl('~/a b.png'), 'deckhand-icon://icon/?path=~%2Fa%20b.png');
 });
 
-// Bundled into editor/dist/test/, three levels below the repository.
-const REPO = path.resolve(import.meta.dirname, '../../..');
+await check('built-in icon directory: the override, then an installed daemon, then the checkout', async () => {
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-data-'));
+  try {
+    const installed = path.join(data, 'deckhand', 'assets', 'icons');
+    // Nothing installed: the checkout.
+    assert.equal(builtinIconDir({ XDG_DATA_HOME: data, HOME: home }), CHECKOUT_BUILTIN_ICON_DIR);
+    assert.equal(CHECKOUT_BUILTIN_ICON_DIR, path.join(REPO, 'assets/icons'));
+    // A daemon installed: its icons win over the checkout's.
+    await fs.mkdir(installed, { recursive: true });
+    assert.equal(builtinIconDir({ XDG_DATA_HOME: data, HOME: home }), installed);
+    assert.equal(iconFilePath('builtin:speaker', builtinIconDir({ XDG_DATA_HOME: data })), path.join(installed, 'speaker.svg'));
+    // XDG_DATA_HOME unset (or empty, as systemd can leave it): ~/.local/share.
+    const underHome = path.join(home, '.local', 'share', 'deckhand', 'assets', 'icons');
+    await fs.mkdir(underHome, { recursive: true });
+    assert.equal(builtinIconDir({ HOME: home }), underHome);
+    assert.equal(builtinIconDir({ XDG_DATA_HOME: '', HOME: home }), underHome);
+    // The override wins over both.
+    assert.equal(builtinIconDir({ DECKHAND_BUILTIN_ICONS: '/elsewhere', XDG_DATA_HOME: data, HOME: home }), '/elsewhere');
+  } finally {
+    await fs.rm(data, { recursive: true, force: true });
+    await fs.rm(path.join(home, '.local'), { recursive: true, force: true });
+  }
+});
 
 await check("built-in icons: builtin:<name> is the checkout's assets/icons/ file, the prefix agrees with the daemon's, an unknown or malformed name is no file", async () => {
   assert.equal(BUILTIN_PREFIX, DAEMON_BUILTIN_PREFIX);

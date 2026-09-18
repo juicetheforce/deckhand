@@ -7,7 +7,13 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import electronPath from 'electron';
 
-const editorRoot = path.join(import.meta.dirname, '..', '..');
+// DECKHAND_CHECK_INSTALLED_EDITOR=<dir> runs an installed editor instead of
+// this checkout's: <dir> is an app directory's editor/, as scripts/install.sh
+// lays it out, with its own Electron in electron/. Its built-in icons are then
+// left to the editor's own lookup, since that lookup is what is being checked.
+const installedEditor = process.env.DECKHAND_CHECK_INSTALLED_EDITOR;
+const editorRoot = installedEditor ?? path.join(import.meta.dirname, '..', '..');
+const electronBinary = installedEditor ? path.join(installedEditor, 'electron', 'electron') : electronPath;
 
 /**
  * @param {string} check  "shared" or "bridge"
@@ -25,13 +31,16 @@ export async function runElectronCheck(check, { configDir, stateDir, socket }, t
     DECKHAND_STATE_DIR: stateDir,
     DECKHAND_SOCKET: socket,
   };
+  // Built-in icons from this checkout, never from an installed daemon
+  // (src/main/builtin-icons.ts): a check must not depend on what is installed.
+  if (!installedEditor) env.DECKHAND_BUILTIN_ICONS ??= path.join(editorRoot, '..', 'assets', 'icons');
   // VS Code sets ELECTRON_RUN_AS_NODE=1 for processes started from its
   // extension host; it turns the Electron binary into plain Node, with no
   // BrowserWindow. Found when the first run of the shared-import check failed.
   delete env.ELECTRON_RUN_AS_NODE;
 
   const result = await new Promise((resolve, reject) => {
-    const child = spawn(electronPath, [editorRoot], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(electronBinary, [editorRoot], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
