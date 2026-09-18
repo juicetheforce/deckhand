@@ -25,8 +25,8 @@ export const BUILTIN_ICONS = [
   'forward',
   'headset',
   'headset-muted',
+  'input-cycle',
   'input-select',
-  'io-select',
   'key-combo',
   'mic',
   'mic-muted',
@@ -34,6 +34,7 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
+  'output-cycle',
   'output-select',
   'pause',
   'play',
@@ -120,8 +121,14 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       // and a headset, one of which the key picks.
       return 'output-select';
     case 'audio.cycle':
-      return 'io-select';
+      return 'output-cycle';
+    case 'audio.cycleSource':
+      return 'input-cycle';
     case 'audio.source':
+      // the maintainer drew this for it, 2026-09-17 (§10): a desk mic and a headset mic,
+      // one of which the key picks. The old `input-select` — the same two with
+      // swap arrows — was a cycle icon on a select action and is now
+      // `input-cycle`.
       return 'input-select';
     case 'audio.micMute':
       return state.muted ? 'mic-muted' : 'mic';

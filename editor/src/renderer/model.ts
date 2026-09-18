@@ -390,6 +390,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
+  'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -481,6 +482,10 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.node);
     case 'audio.cycle':
       return !(Array.isArray(action.devices) && action.devices.length >= 2) && !(Array.isArray(action.matches) && action.matches.length >= 2);
+    // No `matches` form: audio.cycleSource is new, so there is no hand-edited
+    // config to keep working (scope §6).
+    case 'audio.cycleSource':
+      return !(Array.isArray(action.devices) && action.devices.length >= 2);
     default:
       return false;
   }

@@ -43,20 +43,36 @@ function nameOf(ref: DeviceRef): string {
 }
 
 /**
- * audio.cycle's `devices`, or null if the action does not use them. An entry
+ * A cycle action's `devices`, or null if the action does not use them. An entry
  * without a node throws: a list the editor wrote is never like that, and
- * skipping it silently would make a key that steps through fewer outputs than
- * it shows.
+ * skipping it silently would make a key that steps through fewer devices than
+ * it shows. `type` only names the action in the message — audio.cycle and
+ * audio.cycleSource store the list identically.
  */
-function devicesOf(params: ActionDef): DeviceRef[] | null {
+function devicesOf(params: ActionDef, type: string): DeviceRef[] | null {
   if (!Array.isArray(params.devices)) return null;
   return params.devices.map((entry, i) => {
     const e = entry as Record<string, unknown> | null;
     if (!e || typeof e.node !== 'string' || e.node === '') {
-      throw new Error(`audio.cycle "devices" entry ${i} has no "node"`);
+      throw new Error(`${type} "devices" entry ${i} has no "node"`);
     }
     return { node: e.node, label: typeof e.label === 'string' ? e.label : '' };
   });
+}
+
+/**
+ * confirmDefaultIs() for inputs. The same trap applies: the server can decline
+ * to make a source the default without reporting an error, and the key face
+ * reads the same cache, so it already shows the truth.
+ */
+function confirmDefaultSourceIs(requested: audio.AudioDevice): void {
+  const state = audio.cachedState();
+  if (state && state.defaultSource === requested.name) return;
+  const actual = state?.sourceDevices.find((d) => d.name === state.defaultSource);
+  const actualName = actual?.description ?? state?.defaultSource ?? 'unknown';
+  throw new Error(
+    `switch to "${requested.description}" did not take effect; default input is still "${actualName}"`,
+  );
 }
 
 /**
@@ -138,7 +154,7 @@ export const sink: ActionHandler = {
  */
 export const cycle: ActionHandler = {
   async execute(ctx, params: ActionDef) {
-    const devices = devicesOf(params);
+    const devices = devicesOf(params, 'audio.cycle');
     let available: audio.Sink[];
     if (devices) {
       if (devices.length < 2) throw new Error('audio.cycle needs at least two "devices"');
@@ -176,7 +192,7 @@ export const cycle: ActionHandler = {
     // second, shows nothing rather than logging the same error each time.
     let devices: DeviceRef[] | null;
     try {
-      devices = devicesOf(params);
+      devices = devicesOf(params, 'audio.cycle');
     } catch {
       return null;
     }
@@ -211,12 +227,11 @@ export const source: ActionHandler = {
     const found = await audio.findSourceByNode(node);
     if (!found) throw new Error(`input ${nameOf({ node, label })} is not present`);
 
-    await audio.setDefaultSource(found.name);
-    // As confirmDefaultIs() for outputs: the server can decline without an error.
-    const state = audio.cachedState();
-    if (state?.defaultSource !== found.name) {
-      throw new Error(`switch to ${nameOf({ node, label })} did not take effect; default input is still "${state?.defaultSource ?? 'unknown'}"`);
-    }
+    // false, deliberately: this is the behaviour audio.source was confirmed
+    // with on hardware 2026-09-17. audio.cycleSource passes true. Whether the
+    // two should agree is open (docs/scope.md §6).
+    await audio.setDefaultSource(found.name, false);
+    confirmDefaultSourceIs(found);
     ctx.log(`audio input -> ${found.description}`);
     // micMute shows the default input's mute, which just became another device's.
     ctx.invalidateByType(['audio.source', 'audio.micMute']);
@@ -230,6 +245,73 @@ export const source: ActionHandler = {
     return node === state.defaultSource
       ? { background: String(params.activeBackground ?? '#1d4d2b') }
       : { background: String(params.inactiveBackground ?? '#101014') };
+  },
+};
+
+/**
+ * audio.cycleSource — rotate through a list of inputs with one button. The
+ * mirror of audio.cycle (docs/scope.md §6), added 2026-09-17.
+ *
+ *   { "type": "audio.cycleSource", "devices": [
+ *       { "node": "alsa_input.usb-…mono-fallback", "label": "Headset Mic" },
+ *       { "node": "alsa_input.pci-…analog-stereo", "label": "Desk Mic" } ] }
+ *
+ * Each press moves to the entry after the current default, wrapping round, so
+ * two entries make a toggle; if the default is not in the list it goes to the
+ * first. Entries whose device is not present are skipped, and said so.
+ *
+ * **Recording streams are moved** unless `moveStreams: false` (the maintainer,
+ * 2026-09-17). Without it the key face would change to the new microphone
+ * while the application carried on recording from the old one — the input
+ * version of the complaint audio.sink's moveStreams exists to answer.
+ *
+ * No `matches` fallback: audio.cycle carries one because it predates the
+ * editor and hand-written config used it. This action is new, so there is no
+ * hand-edited form to keep working (as audio.source, §6).
+ */
+export const cycleSource: ActionHandler = {
+  async execute(ctx, params: ActionDef) {
+    const devices = devicesOf(params, 'audio.cycleSource');
+    if (!devices) throw new Error('audio.cycleSource needs a "devices" list');
+    if (devices.length < 2) throw new Error('audio.cycleSource needs at least two "devices"');
+
+    const sources = await audio.listSources();
+    const available: audio.AudioDevice[] = [];
+    for (const ref of devices) {
+      const found = sources.find((d) => d.name === ref.node);
+      if (found) available.push(found);
+      else ctx.log(`audio.cycleSource: skipping input ${nameOf(ref)}, not present`);
+    }
+    if (available.length === 0) throw new Error('none of the listed inputs exist');
+
+    const current = await audio.getDefaultSource();
+    const idx = available.findIndex((d) => d.name === current);
+    const next = available[(idx + 1) % available.length];
+
+    await audio.setDefaultSource(next.name, params.moveStreams !== false);
+    confirmDefaultSourceIs(next);
+    ctx.log(`audio input -> ${next.description}`);
+    // micMute shows the default input's mute, which just became another device's.
+    ctx.invalidateByType(['audio.source', 'audio.cycleSource', 'audio.micMute']);
+  },
+
+  // Reads cached state only — never spawns pactl (see services/audio.ts).
+  async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
+    if (params.showCurrent === false) return null;
+    const state = audio.cachedState();
+    if (!state) return null;
+    // A malformed list is reported by the press; the face, refreshed every
+    // second, shows nothing rather than logging the same error each time.
+    let devices: DeviceRef[] | null;
+    try {
+      devices = devicesOf(params, 'audio.cycleSource');
+    } catch {
+      return null;
+    }
+    if (!devices) return null;
+    const active = devices.find((ref) => ref.node === state.defaultSource);
+    if (!active) return null;
+    return { label: String(params.label ?? (active.label !== '' ? active.label : active.node)) };
   },
 };
 

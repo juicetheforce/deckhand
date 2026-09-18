@@ -138,14 +138,27 @@ export async function findSinkByNode(node: string): Promise<Sink | null> {
 }
 
 /**
+ * Every source (input) pactl reports, including monitors — filtering those out
+ * is pickableDevices()' job, for the editor's list. For presses, which need a
+ * fresh list rather than the cache.
+ */
+export async function listSources(): Promise<AudioDevice[]> {
+  return parseDevices(JSON.parse(await pactl(['-f', 'json', 'list', 'sources'])) as Array<Record<string, unknown>>);
+}
+
+/** The default input's node name, as getDefaultSink() is for outputs. */
+export async function getDefaultSource(): Promise<string> {
+  return (await pactl(['get-default-source'])).trim();
+}
+
+/**
  * The source (input) whose node name is exactly `node`, from a fresh list — or
  * null if it is not present. Like findSinkByNode(), no fallback. Monitor
  * sources are not refused here: the editor offers only real inputs, and a
  * hand-written monitor node is the user's call (docs/scope.md §3).
  */
 export async function findSourceByNode(node: string): Promise<AudioDevice | null> {
-  const sources = JSON.parse(await pactl(['-f', 'json', 'list', 'sources'])) as Array<Record<string, unknown>>;
-  return parseDevices(sources).find((d) => d.name === node) ?? null;
+  return (await listSources()).find((d) => d.name === node) ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +251,24 @@ async function moveAllStreams(sinkName: string): Promise<void> {
   }
 }
 
+/**
+ * Point every recording stream at `sourceName`, as moveAllStreams() does for
+ * playback. Same shape deliberately: a stream that refuses to move is logged
+ * and the rest still move, because one uncooperative application should not
+ * leave the others on the old microphone.
+ */
+async function moveAllSourceOutputs(sourceName: string): Promise<void> {
+  const raw = await pactl(['-f', 'json', 'list', 'source-outputs']);
+  const outputs = JSON.parse(raw) as Array<Record<string, unknown>>;
+  for (const out of outputs) {
+    try {
+      await pactl(['move-source-output', String(out.index), sourceName]);
+    } catch (err) {
+      console.error(`[audio] could not move recording stream ${out.index}: ${(err as Error).message}`);
+    }
+  }
+}
+
 // Every change made by a press re-reads the cache before returning, so the
 // key that was pressed repaints with the new state straight away rather than
 // waiting for the subscribe event to arrive.
@@ -253,9 +284,20 @@ export async function setDefaultSink(sinkName: string, moveStreams = true): Prom
   await refreshCache();
 }
 
-/** Switch the default input. Streams already recording are not moved. */
-export async function setDefaultSource(sourceName: string): Promise<void> {
+/**
+ * Switch the default input.
+ *
+ * **`moveStreams` has no default on purpose.** Sinks default it to true; the
+ * two source actions disagree, and a default here would hide that from anyone
+ * reading a call site. `audio.cycleSource` passes true (the maintainer, 2026-09-17:
+ * without it the key face changes and the application is still on the old
+ * microphone). `audio.source` passes false, which is the behaviour it was
+ * confirmed with on hardware — see docs/scope.md §6 for the open question on
+ * whether it should follow.
+ */
+export async function setDefaultSource(sourceName: string, moveStreams: boolean): Promise<void> {
   await pactl(['set-default-source', sourceName]);
+  if (moveStreams) await moveAllSourceOutputs(sourceName);
   await refreshCache();
 }
 

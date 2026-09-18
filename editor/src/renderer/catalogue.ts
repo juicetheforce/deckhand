@@ -86,6 +86,7 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: true, aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
       { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: true, aliases: ['swap', 'headphones', 'speakers', 'next output'] },
       { type: 'audio.source', name: 'Input device', description: 'Switch the default input', editable: true, aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
+      { type: 'audio.cycleSource', name: 'Cycle inputs', description: 'Step through a list of inputs', editable: true, aliases: ['swap', 'microphone', 'mic', 'next input', 'source'] },
       { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: true, aliases: ['microphone', 'unmute', 'talk'] },
       { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: true, aliases: ['louder', 'quieter', 'gain'] },
       { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', editable: true, aliases: ['silence', 'speakers'] },

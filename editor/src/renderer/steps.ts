@@ -24,6 +24,7 @@ export const STEP_TYPES: readonly string[] = [
   'audio.sink',
   'audio.source',
   'audio.cycle',
+  'audio.cycleSource',
   'audio.micMute',
   'audio.volume',
   'audio.mute',
@@ -65,6 +66,8 @@ export function stepSummary(step: ActionDef, pages: Choice[], profiles: Choice[]
       return String(step.label || step.node || step.match || '');
     case 'audio.cycle':
       return `${Array.isArray(step.devices) ? step.devices.length : Array.isArray(step.matches) ? step.matches.length : 0} outputs`;
+    case 'audio.cycleSource':
+      return `${Array.isArray(step.devices) ? step.devices.length : 0} inputs`;
     case 'audio.volume': {
       const delta = typeof step.delta === 'number' ? step.delta : 5;
       return `${delta > 0 ? '+' : '−'}${Math.abs(delta)}%`;

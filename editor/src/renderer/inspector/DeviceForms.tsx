@@ -117,13 +117,37 @@ export function InputForm(props: FormProps & { audio: AudioLists }) {
   return <SingleDeviceForm {...props} type="audio.source" list={props.audio?.sources} heading="Input device" intro="Makes this the default input. The key is highlighted while it is." />;
 }
 
-/** audio.cycle: an ordered list of outputs, stepped through on each press. */
-export function CycleForm({ at, button, disabled, run, audio }: FormProps & { audio: AudioLists }) {
-  const action = actionOf('audio.cycle', button);
+/**
+ * audio.cycle and audio.cycleSource: an ordered list of devices, stepped
+ * through on each press. Parameterised over the two exactly as
+ * SingleDeviceForm is over audio.sink and audio.source — the stored shape is
+ * identical, only the list it draws from and the words differ.
+ */
+function CycleDeviceForm({
+  type,
+  list,
+  heading,
+  intro,
+  noun,
+  showCurrentLabel,
+  moveStreamsLabel,
+  at,
+  button,
+  disabled,
+  run,
+}: FormProps & {
+  type: 'audio.cycle' | 'audio.cycleSource';
+  list: AudioList | undefined;
+  heading: string;
+  intro: string;
+  noun: string;
+  showCurrentLabel: string;
+  moveStreamsLabel: string;
+}) {
+  const action = actionOf(type, button);
   const entries: DeviceRef[] = Array.isArray(action?.devices) ? action.devices.map(refOf).filter((d): d is DeviceRef => d !== null) : [];
-  const list = audio?.sinks;
   const listed = list?.devices ?? [];
-  const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction('audio.cycle', button, patch) });
+  const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction(type, button, patch) });
   const writeDevices = (next: DeviceRef[]) => write({ devices: next.map((d) => ({ node: d.node, label: d.label })) });
   const move = (i: number, by: number) => {
     const next = [...entries];
@@ -133,8 +157,8 @@ export function CycleForm({ at, button, disabled, run, audio }: FormProps & { au
   const unused = listed.filter((d) => !entries.some((e) => e.node === d.node));
   return (
     <section className="inspector-section">
-      <h3 className="section-heading">Cycle outputs</h3>
-      <p className="muted small">Each press switches to the next output in this list, wrapping round; two make a toggle. The key shows the active one's name.</p>
+      <h3 className="section-heading">{heading}</h3>
+      <p className="muted small">{intro}</p>
       {entries.length > 0 && (
         <ol className="cycle-list">
           {entries.map((e, i) => {
@@ -163,13 +187,13 @@ export function CycleForm({ at, button, disabled, run, audio }: FormProps & { au
           })}
         </ol>
       )}
-      {entries.length < 2 && <p className="muted small">Add at least two outputs.</p>}
+      {entries.length < 2 && <p className="muted small">Add at least two {noun}s.</p>}
       {list === undefined ? (
         <NotRead />
       ) : (
         unused.length > 0 && (
           <>
-            <p className="form-subheading">Add an output</p>
+            <p className="form-subheading">Add an {noun}</p>
             <ul className="target-list">
               {unused.map((d) => (
                 <li key={d.node}>
@@ -182,10 +206,40 @@ export function CycleForm({ at, button, disabled, run, audio }: FormProps & { au
       )}
       {entries.length > 0 && (
         <>
-          <Checkbox label="Show the active output's name on the key" checked={action?.showCurrent !== false} disabled={disabled} onChange={(on) => write({ showCurrent: on ? undefined : false })} />
-          <Checkbox label="Move sound that is playing to it" checked={action?.moveStreams !== false} disabled={disabled} onChange={(on) => write({ moveStreams: on ? undefined : false })} />
+          <Checkbox label={showCurrentLabel} checked={action?.showCurrent !== false} disabled={disabled} onChange={(on) => write({ showCurrent: on ? undefined : false })} />
+          <Checkbox label={moveStreamsLabel} checked={action?.moveStreams !== false} disabled={disabled} onChange={(on) => write({ moveStreams: on ? undefined : false })} />
         </>
       )}
     </section>
+  );
+}
+
+export function CycleForm(props: FormProps & { audio: AudioLists }) {
+  return (
+    <CycleDeviceForm
+      {...props}
+      type="audio.cycle"
+      list={props.audio?.sinks}
+      heading="Cycle outputs"
+      intro="Each press switches to the next output in this list, wrapping round; two make a toggle. The key shows the active one's name."
+      noun="output"
+      showCurrentLabel="Show the active output's name on the key"
+      moveStreamsLabel="Move sound that is playing to it"
+    />
+  );
+}
+
+export function CycleInputsForm(props: FormProps & { audio: AudioLists }) {
+  return (
+    <CycleDeviceForm
+      {...props}
+      type="audio.cycleSource"
+      list={props.audio?.sources}
+      heading="Cycle inputs"
+      intro="Each press switches to the next input in this list, wrapping round; two make a toggle. The key shows the active one's name."
+      noun="input"
+      showCurrentLabel="Show the active input's name on the key"
+      moveStreamsLabel="Move what is already recording to it"
+    />
   );
 }

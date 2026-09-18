@@ -1584,6 +1584,36 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(async () => (await buttons())?.['11']?.action?.showCurrent === false);
   out.cycle = { markWithOne, order, markWithTwo, final: (await buttons())?.['11']?.action };
 
+  // Cycle inputs: the same form over sources, so this checks the list it draws
+  // from is the input list and that "move what is recording" writes moveStreams.
+  const cycleInNodes = async () => ((await buttons())?.['20']?.action?.devices as Array<{ node: string }> | undefined)?.map((d) => d.node) ?? [];
+  const addIn = async (node: string, count: number) => {
+    await until(() => device(node) !== null);
+    device(node)!.click();
+    await until(async () => (await cycleInNodes()).length === count);
+  };
+  await selectKey(20);
+  libraryClick('audio.cycleSource');
+  // A monitor source must never be offered: the daemon filters them out, and
+  // this is the check that the form reads the source list rather than the sinks.
+  // **Not the built-in mic**: the Input device block above unplugs it through
+  // the preview handshake and nothing plugs it back in, so it is gone by here.
+  // Wait for the form before looking: without this every lookup is null and
+  // the check passes its own "no sinks offered" half for the wrong reason.
+  await until(() => document.querySelector('.inspector .target-list') !== null);
+  const offersInputsOnly =
+    device('alsa_input.virtual-portless') !== null &&
+    device('alsa_output.usb-Example_Headset-00.analog-stereo') === null &&
+    device('alsa_output.usb-Example_Headset-00.analog-stereo.monitor') === null;
+  await addIn('alsa_input.usb-Example_Headset-00.mono-fallback', 1);
+  const markInWithOne = (await until(() => mark(20) === 'not set up')) ? mark(20) : null;
+  await addIn('alsa_input.virtual-portless', 2);
+  const markInWithTwo = (await until(() => mark(20) === null)) ? null : mark(20);
+  const moveToggle = [...document.querySelectorAll<HTMLLabelElement>('.inspector .form-check')].find((l) => l.textContent?.includes('recording'))!.querySelector('input')!;
+  moveToggle.click();
+  await until(async () => (await buttons())?.['20']?.action?.moveStreams === false);
+  out.cycleInputs = { offersInputsOnly, markInWithOne, markInWithTwo, final: (await buttons())?.['20']?.action };
+
   await selectKey(12);
   out.matchReadOnly = await until(() => headings().includes('Action') && document.querySelector('.inspector .json') !== null);
 

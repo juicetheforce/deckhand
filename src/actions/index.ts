@@ -25,6 +25,7 @@ export const registry: Record<string, ActionHandler> = {
   'audio.sink': audio.sink,
   'audio.cycle': audio.cycle,
   'audio.source': audio.source,
+  'audio.cycleSource': audio.cycleSource,
   'audio.micMute': audio.micMute,
   'audio.volume': audio.volume,
   'audio.mute': audio.mute,

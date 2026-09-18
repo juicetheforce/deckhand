@@ -209,6 +209,21 @@ if (r && !r.error) {
       },
     });
   });
+  check('Cycle inputs: the form offers inputs only (no sinks, no monitors); fewer than two is "not set up"; the recording toggle writes moveStreams', () => {
+    assert.deepEqual(r.cycleInputs, {
+      offersInputsOnly: true,
+      markInWithOne: 'not set up',
+      markInWithTwo: null,
+      final: {
+        type: 'audio.cycleSource',
+        devices: [
+          { node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' },
+          { node: 'alsa_input.virtual-portless', label: 'Portless Input' },
+        ],
+        moveStreams: false,
+      },
+    });
+  });
   check('a hand-edited output key using match is read-only', () => assert.equal(r.matchReadOnly, true));
   check('Type text: nothing written by focusing and leaving; typed text written with an estimate; a character the layout cannot type is refused and not saved', () => {
     assert.deepEqual(r.text, { afterBlur: null, typed: { type: 'text', text: 'Hi!\nok' }, estimate: true, refusedShown: true, refusedNotSaved: { type: 'text', text: 'Hi!\nok' } });
@@ -278,6 +293,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     9: { action: { type: 'audio.sink', node: 'alsa_output.usb-Example_Headset-00.mono-chat', label: 'Example Headset Mono', moveStreams: false } },
     10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' } },
     11: r?.cycle?.final ? { action: r.cycle.final } : '(cycle not reached)',
+    20: r?.cycleInputs?.final ? { action: r.cycleInputs.final } : '(cycle inputs not reached)',
     12: BUTTONS[12],
     13: { action: { type: 'text', text: 'Hi!\nok' } },
     14: BUTTONS[14],

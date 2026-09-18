@@ -18,6 +18,14 @@
  * @DEFAULT_SOURCE@ toggle` flip `muted[node]`, which the lists report. Without
  * the variable nothing is remembered.
  *
+ * **Recording streams** (`list source-outputs`) are two fixed entries, so
+ * audio.cycleSource's stream moving can be checked: `move-source-output
+ * <index> <node>` records the destination in `movedSourceOutputs[index]`, and
+ * `refuseMove: [indices]` makes one fail the way an uncooperative application
+ * does, so "the rest still move" is testable. Playback streams
+ * (`list sink-inputs`) are still none — audio.sink's moving predates this and
+ * is unchanged.
+ *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
  */
@@ -60,6 +68,13 @@ if (statePath) {
     state = {};
   }
 }
+// Two applications recording, so moving them can be observed. Indices are
+// arbitrary, as pactl's are.
+const sourceOutputs = [
+  { index: 300, source: 0, name: 'Example Recorder' },
+  { index: 301, source: 0, name: 'Example Conference Call' },
+];
+
 const absent = new Set(state.absent ?? []);
 const muted = state.muted ?? {};
 const withMute = (d) => (d.name in muted ? { ...d, mute: muted[d.name] } : d);
@@ -80,8 +95,18 @@ if (joined === '-f json info') process.stdout.write(JSON.stringify(info));
 else if (joined === '-f json list sinks') process.stdout.write(JSON.stringify(presentSinks));
 else if (joined === '-f json list sources') process.stdout.write(JSON.stringify(presentSources));
 else if (joined === '-f json list sink-inputs') process.stdout.write('[]');
+else if (joined === '-f json list source-outputs') process.stdout.write(JSON.stringify(sourceOutputs));
 else if (joined === 'subscribe') setInterval(() => undefined, 1 << 30);
 else if (joined === 'get-default-sink') process.stdout.write(info.default_sink_name + '\n');
+else if (joined === 'get-default-source') process.stdout.write(info.default_source_name + '\n');
+else if (statePath && args[0] === 'move-source-output' && args.length === 3) {
+  if ((state.refuseMove ?? []).includes(Number(args[1]))) {
+    process.stderr.write('Failure: Input/Output error\n');
+    process.exit(1);
+  }
+  state.movedSourceOutputs = { ...(state.movedSourceOutputs ?? {}), [args[1]]: args[2] };
+  save();
+}
 else if (statePath && (args[0] === 'set-default-sink' || args[0] === 'set-default-source') && args.length === 2) {
   const isSink = args[0] === 'set-default-sink';
   const target = (isSink ? presentSinks : presentSources).find((d) => d.name === args[1]);

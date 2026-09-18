@@ -223,6 +223,86 @@ console.log('audio.source by node');
   check('a face with no node shows nothing', (await describe({ type: 'audio.source' })) === null);
 }
 
+console.log('audio.cycleSource by devices');
+{
+  const HEADSET_MIC = 'alsa_input.usb-Example_Headset-00.mono-fallback';
+  const BUILTIN_MIC = 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source';
+  const PORTLESS = 'alsa_input.virtual-portless';
+  const headsetRef = { node: HEADSET_MIC, label: 'Headset Mic' };
+  const builtinRef = { node: BUILTIN_MIC, label: 'Built-in Mic' };
+  const portlessRef = { node: PORTLESS, label: 'Portless Input' };
+  const cycleIn = { type: 'audio.cycleSource', devices: [headsetRef, builtinRef, portlessRef] };
+  const defaultSource = () => audio.cachedState().defaultSource;
+  const movedTo = async () => JSON.parse(await fs.readFile(PACTL_STATE, 'utf8')).movedSourceOutputs ?? {};
+
+  await serverState({ defaultSource: HEADSET_MIC });
+  await runActionOrThrow(context(), cycleIn);
+  check('a press steps to the next input', defaultSource() === BUILTIN_MIC);
+  await runActionOrThrow(context(), cycleIn);
+  check('...and on to the third', defaultSource() === PORTLESS);
+  await runActionOrThrow(context(), cycleIn);
+  check('...and wraps round to the first', defaultSource() === HEADSET_MIC);
+
+  await serverState({ defaultSource: BUILTIN_MIC });
+  const ctx = context();
+  const invalidated = [];
+  ctx.invalidateByType = (types) => invalidated.push(...types);
+  await runActionOrThrow(ctx, cycleIn);
+  check('two entries make a toggle', defaultSource() === PORTLESS);
+  check('...and mic mute keys repaint, now showing another device', invalidated.includes('audio.micMute'));
+
+  // The point of the action (the maintainer, 2026-09-17): the recording application
+  // follows, rather than the face changing while it stays on the old mic.
+  await serverState({ defaultSource: HEADSET_MIC });
+  await runActionOrThrow(context(), cycleIn);
+  check('every recording stream moves to the new input',
+    Object.values(await movedTo()).every((to) => to === BUILTIN_MIC) && Object.keys(await movedTo()).length === 2);
+
+  await serverState({ defaultSource: HEADSET_MIC });
+  await runActionOrThrow(context(), { ...cycleIn, moveStreams: false });
+  check('moveStreams: false leaves them where they are', Object.keys(await movedTo()).length === 0);
+
+  await serverState({ defaultSource: HEADSET_MIC, refuseMove: [300] });
+  const [, errors] = await capturingErrors(() => runActionOrThrow(context(), cycleIn));
+  check('a stream that refuses to move is logged', errors.some((l) => /could not move recording stream 300/.test(l)));
+  check('...and the others still move', (await movedTo())['301'] === BUILTIN_MIC);
+  check('...and the switch itself still counts', defaultSource() === BUILTIN_MIC);
+
+  await serverState({ defaultSource: HEADSET_MIC, absent: [BUILTIN_MIC] });
+  const skipped = context();
+  await runActionOrThrow(skipped, cycleIn);
+  check('an input that is not present is skipped, and said so',
+    skipped.logs.some((l) => /skipping input/.test(l) && l.includes(BUILTIN_MIC)) && defaultSource() === PORTLESS);
+
+  await serverState({ defaultSource: HEADSET_MIC, absent: [BUILTIN_MIC, PORTLESS] });
+  check('none present is a failure', /none of the listed inputs/.test(await refusal({ type: 'audio.cycleSource', devices: [builtinRef, portlessRef] }) ?? ''));
+
+  await serverState({ defaultSource: HEADSET_MIC });
+  check('one device is refused', /at least two/.test(await refusal({ type: 'audio.cycleSource', devices: [headsetRef] }) ?? ''));
+  check('no devices list is refused', /needs a "devices" list/.test(await refusal({ type: 'audio.cycleSource' }) ?? ''));
+  check('an entry with no node is refused, naming this action',
+    /audio\.cycleSource "devices" entry 1 has no "node"/.test(await refusal({ type: 'audio.cycleSource', devices: [headsetRef, { label: 'x' }] }) ?? ''));
+  check('matches is not accepted (a new action, editor-written)',
+    /needs a "devices" list/.test(await refusal({ type: 'audio.cycleSource', matches: ['Mic', 'Headset'] }) ?? ''));
+
+  await serverState({ defaultSource: HEADSET_MIC, refuse: [BUILTIN_MIC] });
+  check('a switch the server declines is a failure', /did not take effect/.test(await refusal(cycleIn) ?? ''));
+
+  await serverState({ defaultSource: BUILTIN_MIC });
+  check('the key shows the active entry\'s stored label', (await describe(cycleIn))?.label === 'Built-in Mic');
+  check('a fixed label wins', (await describe({ ...cycleIn, label: 'IN' }))?.label === 'IN');
+  check('showCurrent: false shows nothing', (await describe({ ...cycleIn, showCurrent: false })) === null);
+  check('a stored label that is empty shows the node',
+    (await describe({ type: 'audio.cycleSource', devices: [{ node: BUILTIN_MIC, label: '' }, headsetRef] }))?.label === BUILTIN_MIC);
+  await serverState({ defaultSource: PORTLESS });
+  check('a default not in the list shows nothing',
+    (await describe({ type: 'audio.cycleSource', devices: [headsetRef, builtinRef] })) === null);
+
+  const before = (await spawns()).length;
+  for (let i = 0; i < 20; i++) await describe(cycleIn);
+  check('20 key-face refreshes spawn no pactl', (await spawns()).length === before);
+}
+
 console.log('audio.mute face (output mute state)');
 {
   const muteKey = { type: 'audio.mute', iconMuted: '/icons/speaker-off.png', iconUnmuted: '/icons/speaker.png', labelMuted: 'Muted', labelUnmuted: 'Sound' };

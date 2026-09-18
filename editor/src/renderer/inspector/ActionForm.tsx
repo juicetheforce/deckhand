@@ -3,7 +3,7 @@ import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import type { PairIconField } from '../../shared/icons.js';
 import type { Choice } from '../model.js';
 import { MuteForm, VolumeForm } from './AudioForms.js';
-import { CycleForm, InputForm, OutputForm, type AudioLists } from './DeviceForms.js';
+import { CycleForm, CycleInputsForm, InputForm, OutputForm, type AudioLists } from './DeviceForms.js';
 import { HotkeyForm, PressReleaseForm } from './HotkeyForm.js';
 import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
@@ -73,6 +73,8 @@ export function ActionForm(p: ActionFormProps) {
       return <InputForm {...common} audio={p.audio} />;
     case 'audio.cycle':
       return <CycleForm {...common} audio={p.audio} />;
+    case 'audio.cycleSource':
+      return <CycleInputsForm {...common} audio={p.audio} />;
     default:
       return null;
   }

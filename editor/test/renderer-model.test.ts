@@ -104,7 +104,8 @@ await check('the library enables exactly the actions with a form, and greys the 
   // C2 piece 4 adds the forms that need no device, text or list; piece 5 the device pickers.
   // Piece 6: text, command, Press/Release.
   // Piece 7: Multi action — every action in the catalogue now has a form.
-  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text']);
+  // 2026-09-17: audio.cycleSource (Cycle inputs), the mirror of audio.cycle (scope §6).
+  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text']);
   assert.equal(entries.filter((e) => !e.editable).length, 0, 'C2 exit: every §6 action can be configured'); 
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
