@@ -265,6 +265,13 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   });
 
   await until(() => document.querySelector('.grid') !== null);
+  // Read "opens on" only once the daemon's status has reached the page: the
+  // selection starts on the deck's start page and follows the deck in an
+  // effect after the status arrives. Read as soon as the grid drew, it raced
+  // that and failed about one run in three (found in Ship, 2026-09-18). Not
+  // waiting for the expected tab, which would make the check unable to fail.
+  await until(() => document.querySelector('.toolbar .pill-connected') !== null);
+  await sleep(100);
   out.opensOn = { tab: selectedTab(), deck: await deck() };
   observer.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
 
@@ -896,6 +903,13 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   };
 
   await until(() => document.querySelector('.grid') !== null);
+  // Read "opens on" only once the daemon's status has reached the page: the
+  // selection starts on the deck's start page and follows the deck in an
+  // effect after the status arrives. Read as soon as the grid drew, it raced
+  // that and failed about one run in three (found in Ship, 2026-09-18). Not
+  // waiting for the expected tab, which would make the check unable to fail.
+  await until(() => document.querySelector('.toolbar .pill-connected') !== null);
+  await sleep(100);
 
   // 1. Opening switches nothing. The script put deck A on its second page
   //    before Electron started, so the breadcrumb must open there, and both
