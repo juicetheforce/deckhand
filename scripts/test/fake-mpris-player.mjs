@@ -75,6 +75,9 @@ function metadataOf({ title, artist, artUrl } = {}) {
  */
 export async function startFakePlayer(name, { status = 'Paused', track = {}, emptyIntrospection = false } = {}) {
   const bus = dbus.sessionBus();
+  // A test that stops the bus under a player (smoke-dbus-restart.mjs) must not
+  // see the fake's own connection error as the daemon's.
+  bus.on('error', () => undefined);
   const player = new Player();
   player.status = status;
   player.metadata = metadataOf(track);

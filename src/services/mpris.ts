@@ -31,9 +31,73 @@ let bus: dbus.MessageBus | null = null;
 /** Bus name of the last player we saw actually playing. */
 let lastActive: string | null = null;
 
+/** Told when the session bus connection is lost: each running subscribe(). */
+const busLostListeners = new Set<() => void>();
+
+/**
+ * The session bus connection, made on first use and again after one is lost.
+ *
+ * **A lost connection is dropped, never reused** (Ship, 2026-09-18). Without
+ * this, dbus-next's `'error'` had no listener: at startup, before index.ts
+ * installs its process handlers, that is a crash; after it, the error is
+ * logged and the dead connection stays in use — now-playing faces frozen and
+ * media presses going nowhere until the daemon restarts.
+ *
+ * Both ways a connection dies are caught. `'error'` covers a failed connect
+ * and a reset. A clean close — the broker shutting the socket — is only an
+ * `'end'` on the underlying connection, which dbus-next 0.10.2's MessageBus
+ * does not forward (`[confirmed]` by reading lib/connection.js and
+ * lib/bus.js), so it is read from the private `_connection`. scripts/
+ * smoke-dbus-restart.mjs fails if a dbus-next update moves it.
+ */
 function getBus(): dbus.MessageBus {
-  if (!bus) bus = dbus.sessionBus();
+  if (!bus) {
+    const created = dbus.sessionBus();
+    bus = created;
+    created.on('error', (err: Error) => busLost(created, err.message));
+    const connection = (created as unknown as { _connection?: NodeJS.EventEmitter })._connection;
+    connection?.on('end', () => busLost(created, 'the bus closed the connection'));
+    // A new connection made for anything — a press, say — also brings back
+    // following players, rather than leaving that to the next retry. Queued,
+    // so the caller has its connection before the restart uses it.
+    if (lostSubscriptions.size > 0) queueMicrotask(retryLostBus);
+  }
   return bus;
+}
+
+/**
+ * Forget a connection that has failed, so the next use makes a new one. An
+ * event from a connection already replaced is ignored.
+ *
+ * `[inference]`, from reading dbus-next: a call already waiting on the lost
+ * connection is never answered or rejected, so a press in flight at that
+ * moment does nothing. Later presses use the new connection.
+ */
+function busLost(lost: dbus.MessageBus, reason: string): void {
+  if (bus !== lost) return;
+  console.error(`[mpris] session bus connection lost: ${reason}`);
+  bus = null;
+  // Proxies belong to the old connection.
+  proxies.clear();
+  try {
+    lost.disconnect();
+  } catch {
+    // Already closed.
+  }
+  for (const listener of busLostListeners) listener();
+}
+
+/** Restart functions of subscriptions whose bus was lost; see retryLostBus(). */
+const lostSubscriptions = new Set<() => void>();
+
+/**
+ * Try again to follow players, for every subscription whose bus was lost and
+ * has not come back. Called from index.ts's 60 s safety-net scan, so a bus
+ * that stays away is retried without a timer of its own (CLAUDE.md, "no
+ * timers at rest"). Does nothing while the bus is fine.
+ */
+export function retryLostBus(): void {
+  for (const restart of [...lostSubscriptions]) restart();
 }
 
 /**
@@ -361,6 +425,15 @@ type SignalSource = {
  */
 export function subscribe(onChange: () => void): () => void {
   let stopped = false;
+  /**
+   * Bumped whenever the bus is lost. Work begun on an older connection checks
+   * it and stops, so a slow reply from before the loss cannot attach a
+   * listener to a connection that is gone.
+   */
+  let generation = 0;
+  /** Whether the next loss gets one quick retry; see onBusLost. */
+  let quickRetryAllowed = true;
+  let quickRetry: NodeJS.Timeout | null = null;
   /** Player bus name -> the PropertiesChanged listener attached to it. */
   const attached = new Map<string, { props: SignalSource; handler: () => void }>();
   let debounce: NodeJS.Timeout | null = null;
@@ -424,6 +497,7 @@ export function subscribe(onChange: () => void): () => void {
 
   const attach = async (name: string) => {
     if (attached.has(name) || stopped) return;
+    const startedIn = generation;
     try {
       // Through proxyFor(), so the player is built from STANDARD_MPRIS_XML.
       // Until C1 this called getProxyObject() without it, so a Chromium
@@ -432,6 +506,7 @@ export function subscribe(onChange: () => void): () => void {
       // fix saying otherwise. With faces reading this cache, a missing
       // listener would mean a key that never updates at all.
       const obj = await proxyFor(name, OBJECT_PATH);
+      if (startedIn !== generation || attached.has(name)) return;
       const props = obj.getInterface(PROPS_IFACE) as unknown as SignalSource;
       const handler = (...args: unknown[]) => onPropertiesChanged(name, args[0], args[1], args[2]);
       props.on('PropertiesChanged', handler);
@@ -473,22 +548,66 @@ export function subscribe(onChange: () => void): () => void {
   };
 
   const start = async () => {
+    const startedIn = generation;
     try {
       // Listen before listing, so a player that appears in between is not missed.
       const dbusObj = await proxyFor('org.freedesktop.DBus', '/org/freedesktop/DBus');
+      if (startedIn !== generation) return;
       const source = dbusObj.getInterface('org.freedesktop.DBus') as unknown as SignalSource;
       source.on('NameOwnerChanged', onNameOwnerChanged);
       busSignals = { source, handler: onNameOwnerChanged };
-      for (const name of await listPlayers()) await attach(name);
+      for (const name of await listPlayers()) {
+        if (startedIn !== generation) return;
+        await attach(name);
+      }
+      // Watching on a working connection: a later loss earns a quick retry again.
+      if (startedIn === generation) quickRetryAllowed = true;
     } catch (err) {
       console.error(`[mpris] cannot watch for players: ${(err as Error).message}`);
     }
   };
 
+  const restart = () => {
+    if (stopped || !lostSubscriptions.has(restart)) return;
+    lostSubscriptions.delete(restart);
+    if (quickRetry) clearTimeout(quickRetry);
+    quickRetry = null;
+    console.log('[mpris] reconnecting to the session bus');
+    void start();
+  };
+
+  /**
+   * The bus connection is gone: drop everything that belonged to it, so faces
+   * show idle rather than a frozen track, and try again.
+   *
+   * One retry 2 s later, for a broker that restarts. If that one fails too,
+   * nothing more is scheduled here: retryLostBus() from the 60 s safety-net
+   * scan keeps trying, and a media key press makes a new connection at once,
+   * which restarts this too (getBus()). So a bus that stays away costs no timer of its own, and a
+   * failing bus cannot spin. A quick retry is earned again only by watching
+   * successfully.
+   */
+  const onBusLost = () => {
+    if (stopped) return;
+    generation++;
+    busSignals = null;
+    for (const name of [...attached.keys()]) detach(name);
+    fire();
+    lostSubscriptions.add(restart);
+    if (quickRetryAllowed && !quickRetry) {
+      quickRetryAllowed = false;
+      quickRetry = setTimeout(restart, 2000);
+    }
+  };
+  busLostListeners.add(onBusLost);
+
   void start();
 
   return () => {
     stopped = true;
+    busLostListeners.delete(onBusLost);
+    lostSubscriptions.delete(restart);
+    if (quickRetry) clearTimeout(quickRetry);
     if (debounce) clearTimeout(debounce);
     busSignals?.source.removeListener('NameOwnerChanged', busSignals.handler);
     for (const name of [...attached.keys()]) detach(name);

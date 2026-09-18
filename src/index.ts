@@ -359,7 +359,12 @@ async function main(): Promise<void> {
   });
 
   await requestScan();
-  const scanner = setInterval(() => void requestScan(), SAFETY_SCAN_INTERVAL_MS);
+  // The same tick retries a lost session bus (mpris.ts retryLostBus), so that
+  // needs no timer of its own; it does nothing while the bus is fine.
+  const scanner = setInterval(() => {
+    void requestScan();
+    mprisService.retryLostBus();
+  }, SAFETY_SCAN_INTERVAL_MS);
 
   // After the decks, and not awaited by anything they need: the socket must
   // never be able to hold up or take down the decks.
