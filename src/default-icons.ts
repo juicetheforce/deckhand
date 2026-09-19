@@ -47,9 +47,11 @@ export const BUILTIN_ICONS = [
   'speaker-out-muted',
   'stop',
   'text-macro',
-  // No action draws this by default: Toggle is M7 (docs/scope.md §7). It can
-  // still be chosen for a key as builtin:toggle.
+  // No action draws these two by default: the latching toggle is M7
+  // (docs/scope.md §6, §7). They can still be chosen for a key as
+  // builtin:toggle and builtin:toggle-off.
   'toggle',
+  'toggle-off',
   'volume-down',
 ] as const;
 
