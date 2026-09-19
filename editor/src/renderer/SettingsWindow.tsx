@@ -64,7 +64,7 @@ export function SettingsWindow() {
             Close to system tray
           </label>
           {/* Not 6a's "Keeps keys active": the daemon runs the keys whatever the editor does (scope §7). */}
-          <span className="settings-sub">Closing the editor leaves Deckhand in the system tray, one click away</span>
+          <span className="settings-sub">Closing the editor leaves Deckhand in the system tray</span>
         </div>
         <input
           id="settings-close-to-tray"
@@ -137,7 +137,7 @@ function ExportRow() {
       <div className="settings-row">
         <div className="settings-text">
           <span className="settings-title">Export configuration</span>
-          <span className="settings-sub">Everything in one .zip, to keep through a reinstall</span>
+          <span className="settings-sub">Export entire configuration to a zip file</span>
         </div>
         <div className="settings-export">
           <label className="settings-inline-check">
