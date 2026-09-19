@@ -125,7 +125,7 @@ await check('the review facts: built-ins this version lacks, other strings namin
   const plan = await planImport(readImport(await exportFromOldHome(CONFIG)));
   assert.deepEqual(plan.builtinsMissing, ['not-drawn-yet']);
   assert.deepEqual(plan.oldHomeElsewhere, [`${oldHome}/bin/launch-game`]);
-  assert.equal(plan.config.profiles.ffxiv.layouts.SERIAL.pages.main.buttons[5].action.command, `${oldHome}/bin/launch-game`, 'listed, not rewritten');
+  assert.equal(plan.config.profiles.ffxiv.layouts.SERIAL.pages.main.buttons[5].action?.command, `${oldHome}/bin/launch-game`, 'listed, not rewritten');
   assert.deepEqual(plan.profiles, ['FFXIV']);
   assert.deepEqual(plan.decks, [{ serial: 'SERIAL', name: null }]);
   assert.equal(plan.exportedHome, oldHome);
