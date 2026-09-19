@@ -5,6 +5,7 @@
  * the API) and the renderer (which calls it). The renderer has no Node and no
  * direct access to Electron.
  */
+import type { ExportResult } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
 import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
@@ -200,6 +201,11 @@ export interface DeckhandBridge {
   resetAppSettings(): Promise<AppSettings>;
   /** The decks the Default deck setting offers (settings window only). */
   settingsDecks(): Promise<DeckOption[]>;
+  /**
+   * Export the whole configuration as a .zip (M5 piece 1; settings window
+   * only): with every icon file it names, or config only. Asks where to save.
+   */
+  exportConfig(includeIcons: boolean): Promise<ExportResult>;
   /** Open the settings window, or bring it forward (editor window only). */
   openSettings(): Promise<void>;
   /** Close the settings window: its Done button (settings window only). */

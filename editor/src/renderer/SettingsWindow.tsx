@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import type { ExportResult } from '../shared/backup.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 
 /**
  * The settings window (Ship piece 3, scope §7), after mockup 6a: DEVICES,
- * BEHAVIOR and APPEARANCE, one card per setting, and a footer. Every change is
+ * BEHAVIOR and APPEARANCE, one card per setting, and a footer. BACKUP (M5)
+ * is not in 6a: export and import of the whole configuration. Every change is
  * saved at once and reaches the editor behind it at once — there is nothing to
  * apply — so Done only closes the window.
  *
@@ -96,6 +98,9 @@ export function SettingsWindow() {
         </div>
       </div>
 
+      <span className="settings-heading">BACKUP</span>
+      <ExportRow />
+
       <div className="settings-footer">
         <span className="settings-note">Settings apply immediately</span>
         <button onClick={() => void window.deckhand.resetAppSettings().then(setSettings)}>Reset to defaults</button>
@@ -105,6 +110,79 @@ export function SettingsWindow() {
       </div>
     </main>
   );
+}
+
+/**
+ * Export (M5 piece 1, scope §5). With icons is the default, and is not
+ * remembered: a config-only restore onto a fresh install is a deck of blank
+ * buttons, so each export starts from the safe choice.
+ */
+function ExportRow() {
+  const [includeIcons, setIncludeIcons] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ExportResult | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult(await window.deckhand.exportConfig(includeIcons));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-text">
+          <span className="settings-title">Export configuration</span>
+          <span className="settings-sub">Everything in one .zip, to keep through a reinstall</span>
+        </div>
+        <div className="settings-export">
+          <label className="settings-inline-check">
+            <input type="checkbox" className="settings-check" checked={includeIcons} onChange={(e) => setIncludeIcons(e.target.checked)} />
+            Include icons
+          </label>
+          <button className="settings-button" disabled={busy} onClick={() => void run()}>
+            {busy ? 'Exporting…' : 'Export…'}
+          </button>
+        </div>
+      </div>
+      <ExportStatus result={result} />
+    </>
+  );
+}
+
+function ExportStatus({ result }: { result: ExportResult | null }) {
+  if (!result || (!result.ok && result.cancelled)) return null;
+  if (!result.ok) {
+    return (
+      <p className="settings-status settings-status-error" role="status">
+        Export failed: {result.error}
+      </p>
+    );
+  }
+  const what = result.includesIcons ? `${result.iconFiles} icon file${result.iconFiles === 1 ? '' : 's'}, ${megabytes(result.bytes)}` : `config only, ${megabytes(result.bytes)}`;
+  const shown = result.missing.slice(0, 3).map((m) => `${m.path} (${m.reason})`);
+  const more = result.missing.length - shown.length;
+  return (
+    <p className="settings-status" role="status">
+      Exported to {result.path} — {what}.
+      {result.missing.length > 0 && (
+        <span className="settings-status-warn">
+          {' '}
+          {result.missing.length === 1 ? 'One icon' : `${result.missing.length} icons`} could not be read and {result.missing.length === 1 ? 'is' : 'are'} not in it: {shown.join(', ')}
+          {more > 0 ? `, and ${more} more` : ''}.
+        </span>
+      )}
+      {result.unsavedLeftOut && <span className="settings-status-warn"> Edits the editor could not save are not in it.</span>}
+    </p>
+  );
+}
+
+function megabytes(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** the maintainer's settings.svg from the mockups (screen 6a and the icon set), drawn inline. */

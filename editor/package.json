@@ -25,6 +25,7 @@
     "check:forms": "npm run build && node scripts/check-forms.mjs",
     "check:tray": "npm run build && node scripts/check-tray.mjs",
     "check:settings": "npm run build && node scripts/check-settings.mjs",
+    "check:backup": "npm run build && node scripts/check-backup.mjs",
     "check:titlebar": "npm run build && node scripts/check-titlebar.mjs",
     "check:failures": "npm run build && node scripts/check-failures.mjs"
   },
@@ -32,6 +33,7 @@
     "node": ">=22.12"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

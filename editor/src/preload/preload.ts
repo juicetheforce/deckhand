@@ -42,6 +42,7 @@ const bridge: DeckhandBridge = {
   setAppSettings: (patch) => ipcRenderer.invoke('setAppSettings', patch),
   resetAppSettings: () => ipcRenderer.invoke('resetAppSettings'),
   settingsDecks: () => ipcRenderer.invoke('settingsDecks'),
+  exportConfig: (includeIcons) => ipcRenderer.invoke('exportConfig', includeIcons),
   openSettings: () => ipcRenderer.invoke('openSettings'),
   closeSettings: () => ipcRenderer.invoke('closeSettings'),
   onAppSettings: (callback) => subscribe<AppSettings>('appSettings', callback),

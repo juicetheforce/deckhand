@@ -12,11 +12,13 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
+import type { ExportResult } from '../shared/backup.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
+import { buildExport, suggestedExportName, writeExport } from './export-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
 import { Launcher } from './launcher.js';
@@ -327,9 +329,11 @@ function openSettings(): void {
     // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
     // 6a's layout, with nothing below the footer: its 32 px title bar
-    // (TitleBar.tsx) and 384 px of settings. Frameless, so the content is the window.
+    // (TitleBar.tsx) and 384 px of settings — plus 144 px for BACKUP (M5),
+    // which 6a does not have, with room for two lines of export result.
+    // Frameless, so the content is the window.
     width: 640,
-    height: 416,
+    height: SETTINGS_HEIGHT,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -386,6 +390,57 @@ function closeSettingsOnFocus(): void {
   closing.close();
 }
 
+/** The settings window's height (openSettings). */
+const SETTINGS_HEIGHT = 560;
+
+/** The home directory as `~`, for showing a path. */
+function tildePath(file: string): string {
+  const home = os.homedir();
+  return file === home || file.startsWith(`${home}/`) ? `~${file.slice(home.length)}` : file;
+}
+
+/**
+ * Export the configuration as it is on disk (M5 piece 1, docs/scope.md §5):
+ * unsaved edits are saved first; any that cannot be (a conflict, a reformat
+ * not yet allowed) are left out, and the result says so. The destination is
+ * the system save dialog's — or, for checks only, DECKHAND_CHECK_EXPORT_PATH.
+ */
+async function exportConfig(includeIcons: boolean): Promise<ExportResult> {
+  await store?.flush();
+  const unsavedLeftOut = store?.state().dirty ?? false;
+  let text: string;
+  try {
+    text = await fs.readFile(CONFIG_PATH, 'utf8');
+  } catch (err) {
+    return { ok: false, error: `cannot read config.json: ${(err as Error).message}` };
+  }
+
+  let destination: string;
+  const checkPath = CHECK === null ? undefined : process.env.DECKHAND_CHECK_EXPORT_PATH;
+  if (checkPath) {
+    destination = checkPath;
+  } else {
+    const parent = settingsWindow ?? window;
+    const options = {
+      title: 'Export Deckhand configuration',
+      defaultPath: path.join(os.homedir(), suggestedExportName(includeIcons)),
+      filters: [{ name: 'Deckhand export', extensions: ['zip'] }],
+    };
+    const picked = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
+    // A name typed without an extension gets one; any other extension is kept as typed.
+    destination = path.extname(picked.filePath) === '' ? `${picked.filePath}.zip` : picked.filePath;
+  }
+
+  try {
+    const { zip, manifest, iconFiles } = await buildExport(text, includeIcons);
+    await writeExport(destination, zip);
+    return { ok: true, path: tildePath(destination), includesIcons: includeIcons, iconFiles, bytes: zip.length, missing: manifest.missing, unsavedLeftOut };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 function registerIpc(): void {
   // --- App settings (Ship piece 3) ---
   ipcMain.handle('appSettings', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? appSettings() : DEFAULT_SETTINGS));
@@ -404,6 +459,11 @@ function registerIpc(): void {
   ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
     if (!fromSettingsWindow(event)) return [];
     return deckOptions(store?.state().config ?? null, daemon.view().decks, (await appSettings()).defaultDeck);
+  });
+  // --- Export (M5 piece 1) ---
+  ipcMain.handle('exportConfig', async (event, includeIcons: unknown): Promise<ExportResult> => {
+    if (!fromSettingsWindow(event) || typeof includeIcons !== 'boolean') return { ok: false, error: 'not allowed' };
+    return exportConfig(includeIcons);
   });
   ipcMain.handle('openSettings', (event) => {
     if (fromOurWindow(event)) openSettings();
@@ -601,7 +661,7 @@ function createWindow(): void {
   const settingsShot = CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_VIEW === 'settings';
   window = new BrowserWindow({
     width: settingsShot ? 640 : 1400,
-    height: settingsShot ? 416 : 900,
+    height: settingsShot ? SETTINGS_HEIGHT : 900,
     show: CHECK === null,
     /*
      * The editor draws its own title bar (Ship piece 4, scope §10): frame:

@@ -2233,6 +2233,53 @@ body.settings-body {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.settings-export {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.settings-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+/* The footer's secondary button, in a row. */
+.settings-button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef0fa;
+  font-size: 12px;
+}
+
+.settings-button:disabled {
+  opacity: 0.55;
+}
+
+.settings-status {
+  margin: -2px 4px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.6);
+  overflow-wrap: anywhere;
+}
+
+.settings-status-warn {
+  color: #f0c77a;
+}
+
+.settings-status-error {
+  color: #f19a9a;
+}
+
 .settings-footer {
   display: flex;
   align-items: center;
