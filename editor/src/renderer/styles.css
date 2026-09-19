@@ -128,11 +128,10 @@ button:disabled {
   padding: 0 4px 0 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   /*
-   * Active: faintly tinted. Inactive, below: flat. The glow's blue, not the
-   * accent: the bar is background, and the background keeps its colour
-   * whatever the accent (see :root). Teal here read as wrong (the maintainer, 2026-09-18).
+   * No background of its own: the bar is the window's background. A tint when
+   * focused was tried and dropped — accent or blue, a bar a different colour
+   * from the rest of the app looked wrong (the maintainer, 2026-09-18).
    */
-  background: rgba(91, 110, 232, 0.2);
   /* The bar moves the window; its buttons are no-drag, below. */
   -webkit-app-region: drag;
   user-select: none;
@@ -182,13 +181,9 @@ button:disabled {
 
 /*
  * Behind another window the bar recedes, as KDE's own applications do
- * themselves: the tint goes and the logo and buttons fade. The toolbar below is
- * left alone — dimmed, its controls read as disabled (tried 2026-09-18).
+ * themselves: the logo and buttons fade. The toolbar below is left alone —
+ * dimmed, its controls read as disabled (tried 2026-09-18).
  */
-.titlebar[data-focused='false'] {
-  background: transparent;
-}
-
 .titlebar[data-focused='false'] .titlebar-start,
 .titlebar[data-focused='false'] .titlebar-button:not(:hover) {
   opacity: 0.3;
