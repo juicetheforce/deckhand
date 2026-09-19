@@ -166,6 +166,41 @@ export class ConfigStore {
     return this.enqueue(() => this.writeNow());
   }
 
+  /**
+   * Replace the whole config (M5 import). In the queue, so no save or
+   * external read interleaves: reads the text being replaced and hands it to
+   * `keep` first — if that fails, nothing is written — then writes the new
+   * config. Unsaved edits, a conflict and a pending reformat all go: the file
+   * is being replaced, which the import's review says before confirming.
+   * Resolves with the replaced text (null if there was no file); throws if
+   * the config is invalid or the write fails.
+   */
+  replace(config: Config, keep: (replacedText: string | null) => Promise<void>): Promise<string | null> {
+    validateConfig(structuredClone(config));
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    return this.enqueue(async () => {
+      let replaced: string | null;
+      try {
+        replaced = await this.readFileText();
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        replaced = null;
+      }
+      await keep(replaced);
+      this.config = structuredClone(config);
+      this.conflict = null;
+      this.fileError = null;
+      this.reformatPending = false;
+      this.dirty = true;
+      // writeNow() compares the file with baseText before writing; it is what
+      // was just read and kept.
+      this.baseText = replaced ?? '';
+      if (!(await this.writeNow())) throw new Error(this.saveError ?? 'config.json was not written');
+      return replaced;
+    });
+  }
+
   /** Stop watching and cancel pending work. Does not write: flush() first. */
   close(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);

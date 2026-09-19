@@ -59,3 +59,79 @@ export type ExportResult =
     }
   | { ok: false; cancelled: true }
   | { ok: false; cancelled?: false; error: string };
+
+/** The folder, under home, that an icon from outside home is restored into. */
+export const RESTORED_FOLDER = '~/Deckhand icons (restored)';
+
+/**
+ * Limits on a bundle, checked against what the zip declares before anything
+ * is unzipped: fflate allocates each entry at its declared size (docs/
+ * code-state.md, M5 piece 2). Generous for real use — the maintainer's export is 31
+ * files and 4.6 MB.
+ */
+export const IMPORT_LIMITS = { entries: 5000, entryBytes: 50 * 1024 * 1024, totalBytes: 500 * 1024 * 1024 } as const;
+
+/**
+ * What happens to one icon path in an import. A file already at the path is
+ * always the one used; the bundle's copy only ever fills an empty place.
+ * - write: the bundle's file is written to `to`, where nothing is now;
+ * - same: the file at `to` is already identical;
+ * - kept: something different is at `to`; it is kept, never overwritten;
+ * - here: a file is at `to`, and there is nothing to compare it with (a bare
+ *   .json has no hashes);
+ * - absent: nothing in the bundle and nothing at `to` — the key will show
+ *   the missing icon;
+ * - refused: not an image file the picker shows, so never written;
+ * - missing-at-export: the export could not read it either.
+ */
+export type ImportIconOutcome = 'write' | 'same' | 'kept' | 'here' | 'absent' | 'refused' | 'missing-at-export';
+
+export interface ImportIcon {
+  /** The path as the imported config wrote it. */
+  from: string;
+  /** The path the config will hold: remapped to `~/`, or relocated. */
+  to: string;
+  /** Moved from outside home into RESTORED_FOLDER; the review lists every one. */
+  relocated: boolean;
+  outcome: ImportIconOutcome;
+  /** Why, for kept and refused. */
+  reason?: string;
+}
+
+/** Everything the review shows, before anything is written. Held by main with the plan; the renderer only sees this. */
+export interface ImportReview {
+  id: string;
+  /** A Deckhand export, or a bare config file: config only, paths used as they are. */
+  kind: 'bundle' | 'json';
+  /** The chosen file, `~/` for home. */
+  source: string;
+  exportedAt: string | null;
+  /** The exporting home, when the bundle says (bundles only). */
+  exportedHome: string | null;
+  includesIcons: boolean;
+  profiles: string[];
+  decks: Array<{ serial: string; name: string | null; connected: boolean }>;
+  icons: ImportIcon[];
+  /** Built-in names the config uses that this version of Deckhand does not ship. */
+  builtinsMissing: string[];
+  /** Strings outside the icon fields that name the exporting home — a command, say. Not rewritten. */
+  oldHomeElsewhere: string[];
+  /** The editor holds edits the import will replace. */
+  unsavedDiscarded: boolean;
+  /** Where the replaced config.json will be kept, `~/` for home. */
+  backupFolder: string;
+}
+
+export type ImportChoice = { ok: true; review: ImportReview } | { ok: false; cancelled: true } | { ok: false; cancelled?: false; error: string };
+
+export type ImportResult =
+  | {
+      ok: true;
+      /** Icon files written. */
+      written: number;
+      /** Files that appeared at a destination between the review and now: not written, kept. */
+      appeared: string[];
+      /** The replaced config, `~/` for home; null if there was no config.json to keep. */
+      backup: string | null;
+    }
+  | { ok: false; error: string };
