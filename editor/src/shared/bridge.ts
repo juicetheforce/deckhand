@@ -5,7 +5,7 @@
  * the API) and the renderer (which calls it). The renderer has no Node and no
  * direct access to Electron.
  */
-import type { ExportResult } from './backup.js';
+import type { ExportResult, ImportChoice, ImportResult } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
 import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
@@ -206,6 +206,14 @@ export interface DeckhandBridge {
    * only): with every icon file it names, or config only. Asks where to save.
    */
   exportConfig(includeIcons: boolean): Promise<ExportResult>;
+  /**
+   * Choose an export or a config file and plan its import (M5 piece 2;
+   * settings window only). Writes nothing: the review says what would happen.
+   */
+  chooseImport(): Promise<ImportChoice>;
+  /** Carry out the import the review with this id described. */
+  confirmImport(id: string): Promise<ImportResult>;
+  cancelImport(id: string): Promise<void>;
   /** Open the settings window, or bring it forward (editor window only). */
   openSettings(): Promise<void>;
   /** Close the settings window: its Done button (settings window only). */

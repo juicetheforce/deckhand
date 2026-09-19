@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { ExportResult } from '../shared/backup.js';
+import { RESTORED_FOLDER, type ExportResult, type ImportIcon, type ImportResult, type ImportReview } from '../shared/backup.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 
 /**
  * The settings window (Ship piece 3, scope §7), after mockup 6a: DEVICES,
  * BEHAVIOR and APPEARANCE, one card per setting, and a footer. BACKUP (M5)
- * is not in 6a: export and import of the whole configuration. Every change is
+ * is not in 6a: export and import of the whole configuration. Everything
+ * else applies at once; an import alone waits for its review to be confirmed. Every change is
  * saved at once and reaches the editor behind it at once — there is nothing to
  * apply — so Done only closes the window.
  *
@@ -100,6 +101,7 @@ export function SettingsWindow() {
 
       <span className="settings-heading">BACKUP</span>
       <ExportRow />
+      <ImportRow />
 
       <div className="settings-footer">
         <span className="settings-note">Settings apply immediately</span>
@@ -158,7 +160,7 @@ function ExportStatus({ result }: { result: ExportResult | null }) {
   if (!result || (!result.ok && result.cancelled)) return null;
   if (!result.ok) {
     return (
-      <p className="settings-status settings-status-error" role="status">
+      <p className="settings-status settings-status-error" role="status" data-status="export">
         Export failed: {result.error}
       </p>
     );
@@ -167,7 +169,7 @@ function ExportStatus({ result }: { result: ExportResult | null }) {
   const shown = result.missing.slice(0, 3).map((m) => `${m.path} (${m.reason})`);
   const more = result.missing.length - shown.length;
   return (
-    <p className="settings-status" role="status">
+    <p className="settings-status" role="status" data-status="export">
       Exported to {result.path} — {what}.
       {result.missing.length > 0 && (
         <span className="settings-status-warn">
@@ -178,6 +180,175 @@ function ExportStatus({ result }: { result: ExportResult | null }) {
       )}
       {result.unsavedLeftOut && <span className="settings-status-warn"> Edits the editor could not save are not in it.</span>}
     </p>
+  );
+}
+
+/**
+ * Import (M5 piece 2, scope §5). Choosing a file writes nothing: main plans
+ * the import and this shows the review — every relocated icon and where it
+ * will go included — until Replace configuration or Cancel.
+ */
+function ImportRow() {
+  const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<ImportReview | null>(null);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+
+  const choose = async () => {
+    setBusy(true);
+    setMessage(null);
+    setReview(null);
+    try {
+      const choice = await window.deckhand.chooseImport();
+      if (choice.ok) setReview(choice.review);
+      else if (!choice.cancelled) setMessage({ error: true, text: choice.error });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancel = () => {
+    if (review) void window.deckhand.cancelImport(review.id);
+    setReview(null);
+  };
+  const confirm = async () => {
+    if (!review) return;
+    setBusy(true);
+    try {
+      const result: ImportResult = await window.deckhand.confirmImport(review.id);
+      setReview(null);
+      setMessage(result.ok ? { error: false, text: importedText(result) } : { error: true, text: `Import failed: ${result.error}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-text">
+          <span className="settings-title">Import configuration</span>
+          <span className="settings-sub">Replace the configuration from an export or a backup file</span>
+        </div>
+        <button className="settings-button" disabled={busy || review !== null} onClick={() => void choose()}>
+          Import…
+        </button>
+      </div>
+      {message && (
+        <p className={message.error ? 'settings-status settings-status-error' : 'settings-status'} role="status" data-status="import">
+          {message.text}
+        </p>
+      )}
+      {review && <ImportReviewPanel review={review} busy={busy} onCancel={cancel} onConfirm={() => void confirm()} />}
+    </>
+  );
+}
+
+function importedText(result: Extract<ImportResult, { ok: true }>): string {
+  const parts = [`Imported. ${result.written} icon file${result.written === 1 ? '' : 's'} written.`];
+  if (result.appeared.length > 0) parts.push(`Not written, because a file appeared there after the review: ${result.appeared.join(', ')}.`);
+  parts.push(result.backup ? `Your previous configuration is kept at ${result.backup}.` : 'There was no previous configuration to keep.');
+  return parts.join(' ');
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+function ImportReviewPanel({ review, busy, onCancel, onConfirm }: { review: ImportReview; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const by = (outcome: ImportIcon['outcome']) => review.icons.filter((i) => i.outcome === outcome);
+  const relocated = review.icons.filter((i) => i.relocated);
+  const written = by('write').filter((i) => !i.relocated);
+  const same = by('same');
+  const here = by('here');
+  const kept = by('kept');
+  const refused = by('refused');
+  const missing = [...by('absent'), ...by('missing-at-export')];
+
+  return (
+    <section className="import-review" aria-label="Import review" ref={(el) => el?.scrollIntoView({ block: 'nearest' })}>
+      <p className="import-review-title">Import {review.source}?</p>
+      {review.kind === 'json' ? (
+        <p className="import-review-warn">
+          This is a configuration file, not a Deckhand export: a config-only restore. It has no record of where it was made, so its icon paths are used exactly as
+          written — no home folder is remapped and no icons are restored.
+        </p>
+      ) : (
+        <p>
+          Exported {review.exportedAt ? new Date(review.exportedAt).toLocaleString() : ''} from {review.exportedHome}, {review.includesIcons ? 'with its icons' : 'config only — no icon files'}.
+        </p>
+      )}
+      <p>
+        This replaces your whole configuration with {plural(review.profiles.length, 'profile')} ({review.profiles.join(', ')}) for{' '}
+        {review.decks.map((d, i) => (
+          <span key={d.serial}>
+            {i > 0 ? ', ' : ''}
+            {d.name ?? d.serial} ({d.connected ? 'connected' : 'not connected'})
+          </span>
+        ))}
+        . Your current config.json is kept in {review.backupFolder}.
+      </p>
+      {review.unsavedDiscarded && <p className="import-review-warn">Edits not yet saved in the editor will be lost.</p>}
+
+      {relocated.length > 0 && (
+        <IconList title={`${plural(relocated.length, 'icon')} from outside your home folder, moved into ${RESTORED_FOLDER}:`} icons={relocated} show={(i) => `${i.from} → ${i.to}`} warn />
+      )}
+      {kept.length > 0 && <IconList title={`${plural(kept.length, 'icon')} left as they are on this machine — the bundle's copy is not written:`} icons={kept} show={(i) => `${i.to} (${i.reason})`} warn />}
+      {refused.length > 0 && <IconList title={`${plural(refused.length, 'file')} not restored:`} icons={refused} show={(i) => `${i.to} (${i.reason})`} warn />}
+      {missing.length > 0 && (
+        <IconList
+          title={`${plural(missing.length, 'icon')} will show as missing — not in ${review.kind === 'json' ? 'this file' : 'the export'} and not on this machine:`}
+          icons={missing}
+          show={(i) => (i.outcome === 'missing-at-export' ? `${i.to} (already missing when exported)` : i.to)}
+          warn
+        />
+      )}
+      {review.builtinsMissing.length > 0 && (
+        <p className="import-review-warn">
+          Built-in icons this version of Deckhand does not have: {review.builtinsMissing.join(', ')}. Those keys show the missing icon until Deckhand is updated or another is chosen.
+        </p>
+      )}
+      {review.oldHomeElsewhere.length > 0 && (
+        <IconList
+          title={`Other settings that name ${review.exportedHome} — not changed; check them:`}
+          icons={review.oldHomeElsewhere.map((text) => ({ from: text, to: text, relocated: false, outcome: 'here' }))}
+          show={(i) => i.to}
+          warn
+        />
+      )}
+      {written.length + same.length + here.length > 0 && (
+        <details className="import-review-list">
+          <summary>
+            {[written.length > 0 ? `${plural(written.length, 'icon')} restored to where ${written.length === 1 ? 'it was' : 'they were'}` : '', same.length > 0 ? `${same.length} already here` : '', here.length > 0 ? `${here.length} found on this machine` : '']
+              .filter(Boolean)
+              .join(' · ')}
+          </summary>
+          <ul>
+            {[...written, ...same, ...here].map((i) => (
+              <li key={`${i.outcome}:${i.from}`}>{i.to}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div className="import-review-actions">
+        <button className="settings-button" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="settings-button settings-button-danger" disabled={busy} onClick={onConfirm}>
+          {busy ? 'Importing…' : 'Replace configuration'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function IconList({ title, icons, show, warn }: { title: string; icons: ImportIcon[]; show: (icon: ImportIcon) => string; warn?: boolean }) {
+  return (
+    <div className="import-review-list">
+      <p className={warn ? 'import-review-warn' : undefined}>{title}</p>
+      <ul>
+        {icons.map((i) => (
+          <li key={i.from}>{show(i)}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

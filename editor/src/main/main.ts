@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import readline from 'node:readline';
@@ -6,19 +7,20 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, type IpcMainInvokeEvent
 // The daemon's own modules, imported rather than copied (docs/scope.md §7, M4
 // phase A proof 0a). Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
-import { STATE_DIR } from '../../../src/backups.js';
+import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
-import type { ExportResult } from '../shared/backup.js';
+import { IMPORT_LIMITS, type ExportResult, type ImportChoice, type ImportResult } from '../shared/backup.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
 import { buildExport, suggestedExportName, writeExport } from './export-bundle.js';
+import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
 import { Launcher } from './launcher.js';
@@ -329,8 +331,9 @@ function openSettings(): void {
     // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
     // 6a's layout, with nothing below the footer: its 32 px title bar
-    // (TitleBar.tsx) and 384 px of settings — plus 144 px for BACKUP (M5),
-    // which 6a does not have, with room for two lines of export result.
+    // (TitleBar.tsx) and 384 px of settings — plus 224 px for BACKUP (M5),
+    // which 6a does not have: export and import, with room for two lines of
+    // result. An import's review is longer than that; the window scrolls.
     // Frameless, so the content is the window.
     width: 640,
     height: SETTINGS_HEIGHT,
@@ -391,7 +394,7 @@ function closeSettingsOnFocus(): void {
 }
 
 /** The settings window's height (openSettings). */
-const SETTINGS_HEIGHT = 560;
+const SETTINGS_HEIGHT = 640;
 
 /** The home directory as `~`, for showing a path. */
 function tildePath(file: string): string {
@@ -441,6 +444,98 @@ async function exportConfig(includeIcons: boolean): Promise<ExportResult> {
   }
 }
 
+/**
+ * The import waiting for confirmation (M5 piece 2): chosen and planned, not
+ * yet written. The plan stays here; the settings window sees only its review
+ * and id, so a page can never hand main a list of places to write.
+ */
+let pendingImport: { id: string; plan: ImportPlan } | null = null;
+
+/**
+ * Choose a file and plan its import, writing nothing (docs/scope.md §5). The
+ * file is the system open dialog's — or, for checks only,
+ * DECKHAND_CHECK_IMPORT_PATH.
+ */
+async function chooseImport(): Promise<ImportChoice> {
+  pendingImport = null;
+  let source: string;
+  const checkPath = CHECK === null ? undefined : process.env.DECKHAND_CHECK_IMPORT_PATH;
+  if (checkPath) {
+    source = checkPath;
+  } else {
+    const parent = settingsWindow ?? window;
+    const options = {
+      title: 'Import Deckhand configuration',
+      defaultPath: os.homedir(),
+      properties: ['openFile' as const],
+      filters: [{ name: 'Deckhand export or config file', extensions: ['zip', 'json'] }],
+    };
+    const picked = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    if (picked.canceled || !picked.filePaths[0]) return { ok: false, cancelled: true };
+    source = picked.filePaths[0];
+  }
+
+  let plan: ImportPlan;
+  try {
+    const { size } = await fs.stat(source);
+    if (size > IMPORT_LIMITS.totalBytes) throw new Error(`it is larger than ${IMPORT_LIMITS.totalBytes / 1024 / 1024} MB`);
+    plan = await planImport(readImport(new Uint8Array(await fs.readFile(source))));
+  } catch (err) {
+    return { ok: false, error: `${path.basename(source)} cannot be imported: ${(err as Error).message}` };
+  }
+  const id = randomBytes(8).toString('hex');
+  pendingImport = { id, plan };
+  const connected = new Set((daemon.view().decks ?? []).map((d) => d.serial));
+  const state = store?.state();
+  return {
+    ok: true,
+    review: {
+      id,
+      kind: plan.kind,
+      source: tildePath(source),
+      exportedAt: plan.exportedAt,
+      exportedHome: plan.exportedHome,
+      includesIcons: plan.includesIcons,
+      profiles: plan.profiles,
+      decks: plan.decks.map((d) => ({ ...d, connected: connected.has(d.serial) })),
+      icons: plan.icons,
+      builtinsMissing: plan.builtinsMissing,
+      oldHomeElsewhere: plan.oldHomeElsewhere,
+      unsavedDiscarded: Boolean(state && (state.dirty || state.conflict)),
+      backupFolder: tildePath(BACKUP_DIR),
+    },
+  };
+}
+
+/**
+ * Carry out the reviewed import: icons first, into empty places only; then
+ * the store keeps the replaced config.json as backups/before-import-<time>.json
+ * — a name the rolling backups never delete — and writes the new one. If
+ * keeping it fails, config.json is not touched.
+ */
+async function confirmImport(id: string): Promise<ImportResult> {
+  const pending = pendingImport;
+  if (!pending || pending.id !== id) return { ok: false, error: 'this import is no longer waiting; choose the file again' };
+  pendingImport = null;
+  if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
+  try {
+    const { written, appeared } = await writePlannedIcons(pending.plan.writes);
+    let backup: string | null = null;
+    const before = daemon.lastReloadAt();
+    await store.replace(pending.plan.config, async (replacedText) => {
+      if (replacedText === null) return;
+      await fs.mkdir(BACKUP_DIR, { recursive: true });
+      const file = path.join(BACKUP_DIR, `before-import-${new Date().toISOString().replace(/:/g, '-')}.json`);
+      await fs.writeFile(file, replacedText, { flag: 'wx' });
+      backup = tildePath(file);
+    });
+    if (daemon.view().connected) await daemon.waitForReloadAfter(before, 5000);
+    return { ok: true, written: written.length, appeared: appeared.map(tildePath), backup };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 function registerIpc(): void {
   // --- App settings (Ship piece 3) ---
   ipcMain.handle('appSettings', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? appSettings() : DEFAULT_SETTINGS));
@@ -464,6 +559,14 @@ function registerIpc(): void {
   ipcMain.handle('exportConfig', async (event, includeIcons: unknown): Promise<ExportResult> => {
     if (!fromSettingsWindow(event) || typeof includeIcons !== 'boolean') return { ok: false, error: 'not allowed' };
     return exportConfig(includeIcons);
+  });
+  // --- Import (M5 piece 2) ---
+  ipcMain.handle('chooseImport', async (event): Promise<ImportChoice> => (fromSettingsWindow(event) ? chooseImport() : { ok: false, error: 'not allowed' }));
+  ipcMain.handle('confirmImport', async (event, id: unknown): Promise<ImportResult> =>
+    fromSettingsWindow(event) && typeof id === 'string' ? confirmImport(id) : { ok: false, error: 'not allowed' },
+  );
+  ipcMain.handle('cancelImport', (event, id: unknown) => {
+    if (fromSettingsWindow(event) && pendingImport?.id === id) pendingImport = null;
   });
   ipcMain.handle('openSettings', (event) => {
     if (fromOurWindow(event)) openSettings();

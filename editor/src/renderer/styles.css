@@ -2280,6 +2280,60 @@ body.settings-body {
   color: #f19a9a;
 }
 
+.settings-button-danger {
+  background: rgba(241, 154, 154, 0.14);
+  border-color: rgba(241, 154, 154, 0.45);
+  color: #f7c2c2;
+  font-weight: 600;
+}
+
+.import-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(240, 199, 122, 0.35);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.75);
+  overflow-wrap: anywhere;
+}
+
+.import-review p {
+  margin: 0;
+}
+
+.import-review-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef0fa;
+}
+
+.import-review-warn {
+  color: #f0c77a;
+}
+
+.import-review-list ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.import-review-list summary {
+  cursor: pointer;
+}
+
+.import-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .settings-footer {
   display: flex;
   align-items: center;
