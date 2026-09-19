@@ -933,17 +933,18 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   [...document.querySelectorAll<HTMLButtonElement>('.new-profile button')].find((b) => b.textContent === 'Create')!.click();
 
   // 3. Selecting it moves BOTH decks — the thing one deck cannot prove.
+  const connectedDecks = async () => (await decks()).filter((d) => d.connected);
   out.bothDecksSwitched = await until(async () => {
-    const all = await decks();
+    const all = await connectedDecks();
     return all.length === 2 && all.every((d) => d.profile !== undefined && d.profile.startsWith('prof_'));
   });
-  out.afterCreate = await decks();
+  out.afterCreate = await connectedDecks();
   out.profileAfterCreate = profileValue();
 
   // 4. Back to Default: both decks return, each to its own start page.
   chooseProfile('default');
   out.bothDecksReturned = await until(async () => {
-    const all = await decks();
+    const all = await connectedDecks();
     return all.length === 2 && all.every((d) => d.profile === 'default' && d.page === 'main');
   });
 
@@ -985,8 +986,12 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   out.profileMenuOnRightClick = await (async () => {
     profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await sleep(80);
-    return document.querySelectorAll('.tab-menu-item').length;
+    const items = [...document.querySelectorAll('.tab-menu-item')].map((b) => b.textContent);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await sleep(80);
+    return items;
   })();
+;
   pencil('Rename profile')!.click();
   await until(() => document.querySelector('input[aria-label="Profile name"]') !== null);
   const profileField = () => document.querySelector<HTMLInputElement>('input[aria-label="Profile name"]')!;
@@ -1018,7 +1023,41 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   out.pageRenamed = await until(() => tab('Start') !== undefined && tab('Main') === undefined);
   await sleep(300);
 
-  // 9. Leave both decks somewhere that is not their start state, then quit.
+  // 9. Delete a profile (M5): from the right-click menu on the Profile
+  //    dropdown, with a confirmation naming what it changes. The fixture has a
+  //    key switching to it by name, a deck only it covers, and a page whose
+  //    only way off is a key switching to it.
+  chooseProfile('doomed');
+  await until(async () => (await deckAt(serial))?.profile === 'doomed');
+  profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(80);
+  out.profileMenu = [...document.querySelectorAll('.tab-menu-item')].map((b) => b.textContent);
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Delete profile'))!.click();
+  await until(() => document.querySelector('.confirm-card[aria-label="Delete profile"]') !== null);
+  const deleteCard = () => document.querySelector('.confirm-card[aria-label="Delete profile"]');
+  out.deleteProfileText = deleteCard()?.textContent ?? null;
+  // The first list is the keys; the second, when there is one, is the stranded pages.
+  out.deleteProfileLinks = [...(deleteCard()?.querySelector('.link-list')?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
+  out.deleteProfileLists = deleteCard()?.querySelectorAll('.link-list').length ?? 0;
+  // Cancel changes nothing, then do it for real.
+  [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Cancel')!.click();
+  await sleep(200);
+  out.cancelledProfileDelete = deleteCard() === null && profileValue() === 'doomed';
+  profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(80);
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Delete profile'))!.click();
+  await until(() => deleteCard() !== null);
+  [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Delete profile')!.click();
+  out.profileDeletedText = (await until(() => (deleteCard()?.textContent ?? '').includes('is deleted'), 15_000))
+    ? (deleteCard()?.textContent ?? null)
+    : null;
+  [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Close')?.click();
+  await sleep(200);
+  out.profilesAfterDelete = [...profileSelect().options].map((o) => o.textContent);
+  out.profileAfterDelete = profileValue();
+  await sleep(300);
+
+  // 10. Leave both decks somewhere that is not their start state, then quit.
   chooseProfile('other');
   out.leftOnOther = await until(async () => (await deckAt(serial))?.profile === 'other');
   out.finalDecks = await decks();

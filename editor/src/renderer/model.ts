@@ -149,6 +149,21 @@ export function labelDefaults(config: Config): { labelPosition: 'top' | 'bottom'
   return { labelPosition: d.labelPosition, labelColor: d.labelColor, labelSize: d.labelSize };
 }
 
+/** A profile's display name, for messages: its name, else its ID. */
+export function profileLabel(config: Config, profile: string): string {
+  return config.profiles[profile]?.name ?? profile;
+}
+
+/** A deck's display name, for messages: its configured name, then the model, then the serial. */
+export function deckLabel(config: Config, daemon: DaemonView, serial: string): string {
+  return config.decks?.[serial]?.name ?? geometryFor(daemon, serial)?.productName ?? serial;
+}
+
+/** A page's display name inside a profile's layout, for messages across profiles. */
+export function pageLabelIn(config: Config, profile: string, serial: string, page: string): string {
+  return config.profiles[profile]?.layouts[serial]?.pages[page]?.name ?? page;
+}
+
 /** A page's display name, for messages: its name, else its ID. */
 export function pageLabel(layout: LayoutDef, page: string): string {
   return layout.pages[page]?.name ?? page;

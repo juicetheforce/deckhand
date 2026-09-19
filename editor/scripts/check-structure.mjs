@@ -10,7 +10,7 @@
 // Usage: npm run check:structure   (builds first)
 
 import assert from 'node:assert/strict';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -37,9 +37,12 @@ function check(name, fn) {
 
 const A = 'STRUCT-XL';
 const B = 'STRUCT-V2';
+// A deck in config that no profile but "Doomed" covers, so deleting that
+// profile has to give it a layout rather than leave it dark (M5).
+const C = 'STRUCT-SPARE';
 // "Second" holds a key that navigates to Main, so deleting it has something to clear.
 const CONFIG = {
-  decks: { [A]: { name: 'Big deck' }, [B]: { name: 'Little deck' } },
+  decks: { [A]: { name: 'Big deck' }, [B]: { name: 'Little deck' }, [C]: { name: 'Spare deck' } },
   startProfile: 'default',
   profiles: {
     default: {
@@ -52,6 +55,8 @@ const CONFIG = {
             second: { name: 'Second', buttons: { 1: { label: 'Home', action: { type: 'page', to: 'Main' } } } },
             // Hand-written links by name, for the renames (M5): they must follow.
             third: { name: 'Third', buttons: { 2: { label: 'Back to main', action: { type: 'page', to: 'Main' } } } },
+            // A key that switches to the profile deleted below, by name (M5).
+            fourth: { name: 'Fourth', buttons: { 3: { label: 'To Doomed', action: { type: 'profile', to: 'Doomed' } }, 4: { action: { type: 'page', to: 'main' } } } },
           },
         },
         [B]: { startPage: 'main', pages: { main: { name: 'Main', buttons: {} } } },
@@ -60,8 +65,22 @@ const CONFIG = {
     other: {
       name: 'Other',
       layouts: {
-        [A]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: { 3: { label: 'Default', action: { type: 'profile', to: 'Default' } } } } } },
+        [A]: {
+          startPage: 'hotbar',
+          pages: {
+            hotbar: { name: 'Hotbar', buttons: { 3: { label: 'Default', action: { type: 'profile', to: 'Default' } } } },
+            // Its only way off is a switch to the profile deleted below (M5).
+            raid: { name: 'Raid', buttons: { 5: { action: { type: 'profile', to: 'doomed' } } } },
+          },
+        },
         [B]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: { 4: { action: { type: 'profile', to: 'default' } } } } } },
+      },
+    },
+    doomed: {
+      name: 'Doomed',
+      layouts: {
+        [A]: { startPage: 'dm', pages: { dm: { name: 'Doom', buttons: {} } } },
+        [C]: { startPage: 'cm', pages: { cm: { name: 'Spare', buttons: {} } } },
       },
     },
   },
@@ -112,8 +131,8 @@ if (r && !r.error) {
   });
 
   check('the new-profile control offers every deck, connected ones ticked', () => {
-    assert.deepEqual(r.ticksShown, ['Big deck', 'Little deck'], 'names come from config');
-    assert.deepEqual(r.ticksCheckedByDefault, [true, true]);
+    assert.deepEqual(r.ticksShown, ['Big deck', 'Little deck', 'Spare deck — not connected'], 'names come from config');
+    assert.deepEqual(r.ticksCheckedByDefault, [true, true, false], 'connected decks start ticked, and only those');
   });
 
   check('creating a profile covering both decks switches BOTH of them', () => {
@@ -172,7 +191,7 @@ check('rename is a visible pencil for profile, device and page, with no note and
     ['Rename profile "…"', 'Rename "…"', 'Rename page "…"'],
     'expected one pencil each for profile, device and the selected page',
   );
-  assert.equal(r?.profileMenuOnRightClick, 0, 'the Profile dropdown still has a right-click menu');
+  assert.deepEqual(r?.profileMenuOnRightClick, ['Delete profile…'], 'the Profile dropdown right-click should offer Delete alone: rename is the pencil');
   assert.equal(r?.profileFieldStartsWith, 'Default');
   assert.equal(r?.profileRenameExtras, '', 'something besides the field is shown while renaming a profile');
   assert.equal(r?.profileClashError, 'there is already a profile called "Other"');
@@ -196,6 +215,47 @@ check('the renamed page: a name link on another page follows it', () => {
   assert.equal(layout.pages.main.name, 'Start');
   assert.deepEqual(layout.pages.third.buttons['2'].action, { type: 'page', to: 'Start' });
   assert.equal(layout.startPage, 'main', 'startPage by ID was rewritten');
+});
+
+check('deleting a profile names what it changes, and Cancel changes nothing', () => {
+  assert.deepEqual(r?.profileMenu, ['Delete profile…'], 'the Profile dropdown should offer Delete only');
+  const text = String(r?.deleteProfileText);
+  assert.match(text, /Delete\s*“Doomed”/, 'the confirmation does not name the profile');
+  assert.deepEqual(
+    r?.deleteProfileLinks,
+    ['Home · Big deck · Fourth · key 4', 'Other · Big deck · Raid · key 6'],
+    'the keys losing their switch are not named, by profile, deck, page and key',
+  );
+  assert.match(text, /“Spare deck” is in no other profile, so it gets an empty page in “Home”/, 'the uncovered deck is not named');
+  assert.match(text, /1 page will have no key that leaves it/, 'the page left with no way off is not named');
+  assert.equal(r?.deleteProfileLists, 2, 'the keys and the stranded pages should be two lists');
+  assert.match(text, /Other · Big deck · Raid/, 'the stranded page is not named');
+  assert.doesNotMatch(text, /Hotbar/, 'a page that already had no way off should not be reported as newly stranded');
+  assert.equal(r?.cancelledProfileDelete, true, 'Cancel closed onto a different profile, or left the card open');
+});
+
+check('the profile is deleted, the configuration is kept first, and the decks do not go dark', () => {
+  assert.match(String(r?.profileDeletedText), /“Doomed” is deleted/);
+  assert.match(String(r?.profileDeletedText), /kept at .*before-delete-.*\.json/, 'the card does not say where the copy went');
+  assert.deepEqual(r?.profilesAfterDelete, ['Home', 'Other', 'Hardware test'], 'the deleted profile is still in the dropdown');
+  assert.equal(finalConfig.profiles.doomed, undefined, 'the profile is still in the file');
+  // The key that switched to it by name: label kept, switch gone.
+  assert.deepEqual(finalConfig.profiles.default.layouts[A].pages.fourth.buttons['3'], { label: 'To Doomed' });
+  assert.deepEqual(finalConfig.profiles.other.layouts[A].pages.raid.buttons, {}, 'the ID link was not cleared');
+  // The deck only Doomed covered gets a layout in the start profile.
+  const spare = finalConfig.profiles[finalConfig.startProfile ?? 'default'].layouts[C];
+  assert.ok(spare, 'the spare deck is in no profile: it would go dark');
+  assert.deepEqual(Object.values(spare.pages), [{ name: 'Main', buttons: {} }]);
+  assert.equal(finalConfig.startProfile, 'default', 'startProfile moved when it did not have to');
+});
+
+check('the configuration from before the delete is kept where the card says, and still holds the profile', () => {
+  const dir = path.join(scratch, 'state', 'backups');
+  const kept = readdirSync(dir).filter((f) => f.startsWith('before-delete-'));
+  assert.equal(kept.length, 1, `expected one kept copy in ${dir}, found ${JSON.stringify(readdirSync(dir))}`);
+  const before = JSON.parse(readFileSync(path.join(dir, kept[0]), 'utf8'));
+  assert.ok(before.profiles.doomed, 'the kept copy does not hold the deleted profile');
+  assert.ok(before.profiles.default.layouts[A].pages.fourth.buttons['3'].action, 'the kept copy is missing the key that was cleared');
 });
 
 check('closing the editor left both decks where they were, not on the start profile', () => {

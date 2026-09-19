@@ -43,6 +43,7 @@ const bridge: DeckhandBridge = {
   resetAppSettings: () => ipcRenderer.invoke('resetAppSettings'),
   settingsDecks: () => ipcRenderer.invoke('settingsDecks'),
   exportConfig: (includeIcons) => ipcRenderer.invoke('exportConfig', includeIcons),
+  deleteProfile: (profile, pageName) => ipcRenderer.invoke('deleteProfile', profile, pageName),
   chooseImport: () => ipcRenderer.invoke('chooseImport'),
   confirmImport: (id) => ipcRenderer.invoke('confirmImport', id),
   cancelImport: (id) => ipcRenderer.invoke('cancelImport', id),

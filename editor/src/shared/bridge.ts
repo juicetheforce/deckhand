@@ -128,6 +128,9 @@ export interface WindowState {
   focused: boolean;
 }
 
+/** the maintainer's config is kept as `backup` (a ~/ path) before the profile goes. */
+export type DeleteProfileResult = { ok: true; backup: string | null } | { ok: false; error: string };
+
 export interface DeckhandBridge {
   snapshot(): Promise<EditorSnapshot>;
   apply(edit: Edit): Promise<ApplyResult>;
@@ -210,6 +213,15 @@ export interface DeckhandBridge {
    * Choose an export or a config file and plan its import (M5 piece 2;
    * settings window only). Writes nothing: the review says what would happen.
    */
+  /**
+   * Delete a profile (M5), keeping a copy of config.json first: a delete can
+   * take 60 keys with it, and the rolling backups can be up to 5 minutes old
+   * (docs/scope.md §5). The copy is `before-delete-<time>.json`, which the
+   * rolling rotation never deletes; restore it from Settings.
+   * What it will change is planProfileDeletion() in the renderer — the same
+   * code the delete itself runs.
+   */
+  deleteProfile(profile: string, pageName: string): Promise<DeleteProfileResult>;
   chooseImport(): Promise<ImportChoice>;
   /** Carry out the import the review with this id described. */
   confirmImport(id: string): Promise<ImportResult>;

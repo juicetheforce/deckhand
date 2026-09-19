@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
+import type { Config } from '../../../src/types.js';
+import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
 import { Inspector, type Pick } from './Inspector.js';
@@ -21,6 +23,9 @@ import {
   pageChoices,
   pageDeletion,
   pageLabel,
+  pageLabelIn,
+  profileLabel,
+  deckLabel,
   profileChoices,
   profileCoverage,
   reconcileSelection,
@@ -258,6 +263,30 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
     if (!result.ok) setSwitchError(`Could not delete the page: ${result.error}`);
   };
 
+  // Deleting a profile (M5). The confirmation runs the same planning the
+  // delete does (shared/profile-deletion.ts) on this config, so what it names
+  // is what will happen. The card stays open afterwards to say where the
+  // configuration it replaced was kept.
+  const [pendingProfileDelete, setPendingProfileDelete] = useState<string | null>(null);
+  const [profileDeleted, setProfileDeleted] = useState<{ name: string; backup: string | null } | null>(null);
+  const [profileDeleteError, setProfileDeleteError] = useState<string | null>(null);
+  const profileDeletion = (() => {
+    if (pendingProfileDelete === null || !Object.prototype.hasOwnProperty.call(config.profiles, pendingProfileDelete)) return null;
+    try {
+      return { plan: planProfileDeletion(config, pendingProfileDelete), refusal: null };
+    } catch (err) {
+      return { plan: null, refusal: (err as Error).message };
+    }
+  })();
+  const confirmProfileDelete = async () => {
+    if (pendingProfileDelete === null) return;
+    const name = profileLabel(config, pendingProfileDelete);
+    const result = await window.deckhand.deleteProfile(pendingProfileDelete, 'Main');
+    setPendingProfileDelete(null);
+    if (result.ok) setProfileDeleted({ name, backup: result.backup });
+    else setProfileDeleteError(result.error);
+  };
+
   return (
     <div className="app">
       <Toolbar
@@ -286,6 +315,11 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
         onRenameProfile={async (profile, name) => {
           const result = await window.deckhand.apply({ kind: 'renameProfile', profile, name });
           return result.ok ? null : result.error;
+        }}
+        onDeleteProfile={(profile) => {
+          setProfileDeleted(null);
+          setProfileDeleteError(null);
+          setPendingProfileDelete(profile);
         }}
         onDeletePage={setPendingDelete}
       />
@@ -345,6 +379,22 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
                 onClose={() => setKeyMenu(null)}
               />
             )}
+            {(profileDeletion || profileDeleted || profileDeleteError) && (
+              <DeleteProfile
+                name={pendingProfileDelete === null ? (profileDeleted?.name ?? '') : profileLabel(config, pendingProfileDelete)}
+                deletion={profileDeletion}
+                done={profileDeleted}
+                error={profileDeleteError}
+                config={config}
+                daemon={daemon}
+                onConfirm={() => void confirmProfileDelete()}
+                onClose={() => {
+                  setPendingProfileDelete(null);
+                  setProfileDeleted(null);
+                  setProfileDeleteError(null);
+                }}
+              />
+            )}
             {layout && deletion && pendingDelete !== null && (
               <DeletePage
                 name={pageLabel(layout, pendingDelete)}
@@ -395,6 +445,123 @@ function DragLabel({ drag }: { drag: ActionDrag }) {
       {actionName(drag.type)}
     </div>,
     document.body,
+  );
+}
+
+/**
+ * Deleting a profile (M5): what it will change, named before it happens —
+ * every key that loses its switch, where Deckhand will start, a deck that
+ * would otherwise be left with no layout, and any page left with no way off.
+ * The plan comes from the same code the delete runs (shared/profile-deletion.ts).
+ *
+ * After it is done the card stays, to say where the configuration it replaced
+ * was kept: a delete can take a deck's worth of keys with it, and the editor
+ * has no undo (scope §5).
+ */
+function DeleteProfile({
+  name,
+  deletion,
+  done,
+  error,
+  config,
+  daemon,
+  onConfirm,
+  onClose,
+}: {
+  name: string;
+  deletion: { plan: ProfileDeletion | null; refusal: string | null } | null;
+  done: { name: string; backup: string | null } | null;
+  error: string | null;
+  config: Config;
+  daemon: DaemonView;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const label = "Delete profile";
+  if (done) {
+    return (
+      <div className="confirm-card glass" role="alertdialog" aria-label={label}>
+        <p>
+          <strong>“{done.name}” is deleted.</strong>
+        </p>
+        {done.backup && <p className="muted small">Your configuration from before the delete is kept at {done.backup}. Restore it from Settings.</p>}
+        <div className="button-row">
+          <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    );
+  }
+  if (error || deletion?.refusal) {
+    return (
+      <div className="confirm-card glass" role="alertdialog" aria-label={label}>
+        <p>
+          <strong>“{name}” cannot be deleted.</strong> {error ?? deletion?.refusal}
+        </p>
+        <div className="button-row">
+          <button onClick={onClose}>Close</button>
+        </div>
+      </div>
+    );
+  }
+  const plan = deletion?.plan;
+  if (!plan) return null;
+  return (
+    <div className="confirm-card glass" role="alertdialog" aria-label={label}>
+      <p>
+        Delete <strong>“{name}”</strong>, its pages and everything on them?
+      </p>
+      {plan.links.length > 0 && (
+        <>
+          <p className="warning-text">
+            {plan.links.length === 1 ? '1 key switches to it' : `${plan.links.length} keys switch to it`} and will lose that action. Their
+            icons and labels stay.
+          </p>
+          <ul className="link-list">
+            {plan.links.map((link) => (
+              <li key={`${link.profile}/${link.serial}/${link.page}/${link.index}/${link.where}`}>
+                {profileLabel(config, link.profile)} · {deckLabel(config, daemon, link.serial)} ·{' '}
+                {pageLabelIn(config, link.profile, link.serial, link.page)} · key {link.index + 1}
+                {link.where === 'onRelease' ? ' (on release)' : ''}
+                {link.inMulti ? ' — one step of a multi action' : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {plan.freshLayouts.length > 0 && (
+        <p className="warning-text">
+          {plan.freshLayouts.map((serial) => `“${deckLabel(config, daemon, serial)}”`).join(' and ')}{' '}
+          {plan.freshLayouts.length === 1 ? 'is in no other profile, so it gets an empty page' : 'are in no other profile, so they get an empty page each'} in “
+          {profileLabel(config, plan.freshLayoutsIn)}” rather than going dark.
+        </p>
+      )}
+      {plan.startProfileMovesTo && (
+        <p className="muted small">Deckhand will start on “{profileLabel(config, plan.startProfileMovesTo)}”.</p>
+      )}
+      {plan.stranded.length > 0 && (
+        <>
+          <p className="warning-text">
+            {plan.stranded.length === 1 ? '1 page will have' : `${plan.stranded.length} pages will have`} no key that leaves it, so there is
+            no way off from the deck:
+          </p>
+          <ul className="link-list">
+            {plan.stranded.map((page) => (
+              <li key={`${page.profile}/${page.serial}/${page.page}`}>
+                {profileLabel(config, page.profile)} · {deckLabel(config, daemon, page.serial)} ·{' '}
+                {pageLabelIn(config, page.profile, page.serial, page.page)}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="muted small">Your configuration is kept first, and can be restored from Settings.</p>
+      <div className="button-row">
+        <button onClick={onClose}>Cancel</button>
+        <button className="danger" onClick={onConfirm}>
+          Delete profile
+        </button>
+      </div>
+    </div>
   );
 }
 

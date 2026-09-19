@@ -12,8 +12,9 @@ import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
+import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
 import { IMPORT_LIMITS, type ExportResult, type ImportChoice, type ImportResult } from '../shared/backup.js';
+import { deleteProfileKeepingACopy } from './profile-delete.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
@@ -612,6 +613,11 @@ function registerIpc(): void {
     return exportConfig(includeIcons);
   });
   // --- Import (M5 piece 2) ---
+  ipcMain.handle('deleteProfile', async (event, profile: string, pageName: string): Promise<DeleteProfileResult> =>
+    fromOurWindow(event)
+      ? deleteProfileKeepingACopy({ store, storeError, backupDir: BACKUP_DIR, configPath: CONFIG_PATH, tildePath }, profile, pageName)
+      : { ok: false, error: 'not allowed' },
+  );
   ipcMain.handle('chooseImport', async (event): Promise<ImportChoice> => (fromSettingsWindow(event) ? chooseImport() : { ok: false, error: 'not allowed' }));
   ipcMain.handle('confirmImport', async (event, id: unknown): Promise<ImportResult> =>
     fromSettingsWindow(event) && typeof id === 'string' ? confirmImport(id) : { ok: false, error: 'not allowed' },

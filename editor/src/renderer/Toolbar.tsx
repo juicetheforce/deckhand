@@ -22,6 +22,8 @@ interface Props {
   onRenamePage: (page: string, name: string) => Promise<string | null>;
   /** Rename a profile (M5). Returns an error to show, or null. */
   onRenameProfile: (profile: string, name: string) => Promise<string | null>;
+  /** Ask to delete a profile; App shows the confirmation, which names everything that changes. */
+  onDeleteProfile: (profile: string) => void;
   /** Ask to delete a page; App shows the confirmation, since it names what would change. */
   onDeletePage: (page: string) => void;
 }
@@ -35,7 +37,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * change from elsewhere (live switching, 2026-09-15). The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeletePage }: Props) {
+export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const layout = layoutFor(config, selection.profile, selection.serial);
@@ -48,16 +50,13 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
 
   return (
     <header className="toolbar glass">
-      <label className="crumb">
-        <span className="crumb-label">Profile</span>
-        <select value={selection.profile} onChange={(e) => onSelect({ profile: e.target.value })}>
-          {profileChoices(config).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ProfileCrumb
+        config={config}
+        profile={selection.profile}
+        disabled={editingBlocked}
+        onSelect={(profile) => onSelect({ profile })}
+        onDelete={() => onDeleteProfile(selection.profile)}
+      />
       {Object.prototype.hasOwnProperty.call(config.profiles, selection.profile) && (
         <RenameControl
           key={`profile:${selection.profile}`}
@@ -479,6 +478,68 @@ function AddMenu({
             onProfileAdded(profile);
           }}
         />
+      )}
+    </span>
+  );
+}
+
+/**
+ * The Profile dropdown, and the right-click that deletes (M5, the maintainer
+ * 2026-09-19). Rename is the pencil beside it; delete hides behind the
+ * gesture, deliberately: "a permanent delete control in the toolbar sits one
+ * misclick from wiping 60 keys", and deleting a profile is an operation on
+ * something already on screen (scope §10). The same menu a page tab has.
+ */
+function ProfileCrumb({
+  config,
+  profile,
+  disabled,
+  onSelect,
+  onDelete,
+}: {
+  config: Config;
+  profile: string;
+  disabled: boolean;
+  onSelect: (profile: string) => void;
+  onDelete: () => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const closeMenu = useCallback(() => setMenu(false), []);
+  useCloseMenu(menu, wrap, closeMenu);
+
+  return (
+    <span className="crumb tab-wrap" ref={wrap}>
+      <span className="crumb-label">Profile</span>
+      <select
+        value={profile}
+        onChange={(e) => onSelect(e.target.value)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!disabled) setMenu(true);
+        }}
+      >
+        {profileChoices(config).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      {menu && (
+        <ul className="tab-menu" role="menu">
+          <li>
+            <button
+              role="menuitem"
+              className="tab-menu-item danger"
+              onClick={() => {
+                setMenu(false);
+                onDelete();
+              }}
+            >
+              Delete profile…
+            </button>
+          </li>
+        </ul>
       )}
     </span>
   );
