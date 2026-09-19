@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 import type { Config } from '../../src/types.js';
 import { serializeConfig, toConfigPath, type ButtonLocation } from '../src/main/config-document.js';
 import { ConfigStore, type StoreState } from '../src/main/config-store.js';
-import { resolveProfile, startPageOf } from '../../src/config-common.js';
+import { resolvePage, resolveProfile, startPageOf, startProfileOf } from '../../src/config-common.js';
 import { pageDeletion } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
@@ -546,9 +546,10 @@ await check('a profile added in the editor is one the daemon accepts and can be 
 
 console.log('rename page (pulled forward from M5, 2026-09-16)');
 
-await check('renaming a page pins links that reached it by name to its ID', async () => {
+await check('renaming a page takes links that reached it by name to the new name, and leaves ID links alone', async () => {
   // The editor writes IDs, but a hand-written link uses the name — and a
-  // startPage may too. Both must survive the rename.
+  // startPage may too. They follow the page in the form they were written
+  // (the maintainer, 2026-09-19): a name stays a name, so the file stays readable.
   const byName: Config = {
     profiles: {
       p1: {
@@ -556,7 +557,13 @@ await check('renaming a page pins links that reached it by name to its ID', asyn
           [XL.serial]: {
             startPage: 'Combat',
             pages: {
-              home: { name: 'Home', buttons: { '0': { action: { type: 'page', to: 'Combat' } } } },
+              home: {
+                name: 'Home',
+                buttons: {
+                  '0': { action: { type: 'page', to: 'Combat' } },
+                  '1': { action: { type: 'page', to: 'combat' } },
+                },
+              },
               combat: {
                 name: 'Combat',
                 buttons: {
@@ -574,13 +581,15 @@ await check('renaming a page pins links that reached it by name to its ID', asyn
   assert.equal(store.apply({ kind: 'renamePage', profile: 'p1', serial: XL.serial, page: 'combat', name: 'Battle' }).ok, true);
   const layout = store.state().config.profiles.p1.layouts[XL.serial];
   assert.equal(layout.pages.combat.name, 'Battle');
-  assert.equal(layout.startPage, 'combat', 'startPage pinned to the ID');
-  assert.deepEqual(layout.pages.home.buttons['0'].action, { type: 'page', to: 'combat' }, 'the name link is now an ID');
-  assert.deepEqual(layout.pages.combat.buttons['1'].action, { type: 'multi', steps: [{ type: 'page', to: 'combat' }] }, 'inside a multi too');
+  assert.equal(layout.startPage, 'Battle', 'startPage follows the name');
+  assert.deepEqual(layout.pages.home.buttons['0'].action, { type: 'page', to: 'Battle' }, 'a name link follows the name');
+  assert.deepEqual(layout.pages.home.buttons['1'].action, { type: 'page', to: 'combat' }, 'an ID link is left as it was');
+  assert.deepEqual(layout.pages.combat.buttons['1'].action, { type: 'multi', steps: [{ type: 'page', to: 'Battle' }] }, 'inside a multi too');
   // A link to a *different* page is untouched.
   assert.deepEqual(layout.pages.combat.buttons['0'].onRelease, { type: 'page', to: 'Home' });
-  // And the daemon still resolves everything.
+  // And the daemon still resolves everything to the same page.
   assert.equal(startPageOf(layout), 'combat');
+  assert.equal(resolvePage(layout, 'Battle'), 'combat');
   store.close();
 });
 
@@ -608,6 +617,93 @@ await check('renaming refuses a clash, a blank name, and an unknown page', async
   assert.equal(store.apply({ ...where, page: 'nope', name: 'X' }).ok, false, 'unknown page');
   // Its own ID is allowed — validateConfig only refuses a name that is *another* entry's ID.
   assert.equal(store.apply({ ...where, page: 'main', name: 'main' }).ok, true);
+  store.close();
+});
+
+console.log('rename profile (M5)');
+
+/** Two profiles on two decks, linked to each other by name and by ID, in keys, a multi and startProfile. */
+function profileLinkConfig(): Config {
+  return {
+    startProfile: 'Raid',
+    profiles: {
+      home: {
+        name: 'Home',
+        layouts: {
+          [XL.serial]: {
+            pages: {
+              main: {
+                name: 'Main',
+                buttons: {
+                  '0': { label: 'Raid', action: { type: 'profile', to: 'Raid' } },
+                  '1': { action: { type: 'profile', to: 'prof_raid' } },
+                  '2': { action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'f1' }, { type: 'profile', to: 'Raid' }] } },
+                },
+              },
+            },
+          },
+        },
+      },
+      prof_raid: {
+        name: 'Raid',
+        layouts: {
+          [V2_SERIAL]: {
+            pages: { main: { name: 'Main', buttons: { '4': { onRelease: { type: 'profile', to: 'Home' } } } } },
+          },
+        },
+      },
+    },
+  };
+}
+
+await check('renaming a profile takes name links everywhere in the config to the new name, and leaves ID links alone', async () => {
+  const store = await openStore(await configFile(serializeConfig(profileLinkConfig())));
+  assert.equal(store.apply({ kind: 'renameProfile', profile: 'prof_raid', name: 'Savage' }).ok, true);
+  const config = store.state().config;
+  assert.equal(config.profiles.prof_raid.name, 'Savage');
+  assert.equal(config.startProfile, 'Savage', 'startProfile follows the name');
+  const main = config.profiles.home.layouts[XL.serial].pages.main.buttons;
+  assert.deepEqual(main['0'], { label: 'Raid', action: { type: 'profile', to: 'Savage' } }, 'a name link in another profile follows; the label is not touched');
+  assert.deepEqual(main['1'].action, { type: 'profile', to: 'prof_raid' }, 'an ID link is left as it was');
+  assert.deepEqual(main['2'].action, { type: 'multi', steps: [{ type: 'hotkey', keys: 'f1' }, { type: 'profile', to: 'Savage' }] }, 'inside a multi too');
+  // A link to the *other* profile is untouched.
+  assert.deepEqual(config.profiles.prof_raid.layouts[V2_SERIAL].pages.main.buttons['4'].onRelease, { type: 'profile', to: 'Home' });
+  // The daemon resolves every one of them to the same profile as before.
+  assert.equal(startProfileOf(config), 'prof_raid');
+  assert.equal(resolveProfile(config, 'Savage'), 'prof_raid');
+  assert.equal(resolveProfile(config, 'Raid'), null, 'the old name no longer resolves, so nothing may still use it');
+  store.close();
+});
+
+await check('renaming a profile nothing links to by name changes only its name; the same name again writes nothing', async () => {
+  const store = await openStore(await configFile(serializeConfig(profileLinkConfig())));
+  assert.equal(store.apply({ kind: 'renameProfile', profile: 'prof_raid', name: 'Raid' }).ok, true);
+  assert.equal(store.state().dirty, false, 'no write for a no-op rename');
+  // With only an ID link left pointing at Raid, a rename is exactly one changed field.
+  const idOnly = profileLinkConfig();
+  delete idOnly.startProfile;
+  idOnly.profiles.home.layouts[XL.serial].pages.main.buttons = { '1': { action: { type: 'profile', to: 'prof_raid' } } };
+  const second = await openStore(await configFile(serializeConfig(idOnly)));
+  assert.equal(second.apply({ kind: 'renameProfile', profile: 'prof_raid', name: 'Savage' }).ok, true);
+  const after = structuredClone(idOnly);
+  after.profiles.prof_raid.name = 'Savage';
+  assert.deepEqual(second.state().config, after, 'anything beyond the name changed');
+  store.close();
+  second.close();
+});
+
+await check('renaming a profile refuses a clash, a blank name, and an unknown profile', async () => {
+  const store = await openStore(await configFile(serializeConfig(profileLinkConfig())));
+  const rename = (profile: string, name: string) => store.apply({ kind: 'renameProfile', profile, name });
+  assert.equal(rename('prof_raid', 'Home').ok, false, "another profile's name");
+  assert.equal(rename('prof_raid', 'home').ok, false, "another profile's ID");
+  assert.equal(rename('prof_raid', '  ').ok, false, 'blank');
+  assert.equal(rename('nope', 'X').ok, false, 'unknown profile');
+  const clash = rename('prof_raid', 'Home');
+  assert.equal(clash.ok === false && clash.error, 'there is already a profile called "Home"', "the editor's own message, not validateConfig's");
+  // Its own ID is allowed — validateConfig only refuses a name that is *another* entry's ID.
+  assert.equal(rename('prof_raid', 'prof_raid').ok, true);
+  assert.equal(resolveProfile(store.state().config, store.state().config.startProfile!), 'prof_raid');
   store.close();
 });
 

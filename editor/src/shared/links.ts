@@ -11,8 +11,8 @@
  * Pure, and imports nothing that touches Node: the renderer uses it to build
  * the confirmation, the main process to apply the edit.
  */
-import { resolvePage } from '../../../src/config-common.js';
-import type { ActionDef, LayoutDef } from '../../../src/types.js';
+import { resolvePage, resolveProfile } from '../../../src/config-common.js';
+import type { ActionDef, Config, LayoutDef } from '../../../src/types.js';
 
 export interface PageLink {
   /** The page holding the key, by ID. */
@@ -29,6 +29,17 @@ export function targetsPage(action: unknown, layout: LayoutDef, pageId: string):
   const a = action as ActionDef | undefined;
   if (!a || a.type !== 'page' || typeof a.to !== 'string') return false;
   return resolvePage(layout, a.to) === pageId;
+}
+
+/**
+ * Whether an action switches to `profileId`, by the daemon's own ID-then-name
+ * resolution. Unlike a page, a profile resolves across the whole config, so a
+ * key on any deck in any profile can point at it.
+ */
+export function targetsProfile(action: unknown, config: Config, profileId: string): boolean {
+  const a = action as ActionDef | undefined;
+  if (!a || a.type !== 'profile' || typeof a.to !== 'string') return false;
+  return resolveProfile(config, a.to) === profileId;
 }
 
 /** The steps of a multi action, or null if it is not one. */

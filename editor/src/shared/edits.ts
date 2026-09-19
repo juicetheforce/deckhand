@@ -99,11 +99,18 @@ export type Edit =
    *
    * Pages resolve by ID first and then by name (§5), and the editor writes
    * IDs — but a hand-written `"to": "Combat"`, or a `startPage` naming the
-   * page, would stop resolving the moment it is renamed. Both are rewritten to
-   * the page's ID as part of the rename, which preserves what they meant and
-   * makes them immune to the next rename.
+   * page, would stop resolving the moment it is renamed. Those follow the
+   * page to its new name; links by ID are left as they are (the maintainer, 2026-09-19,
+   * replacing the 2026-09-16 rule of pinning them to the ID, which kept them
+   * working but made a hand-written config unreadable).
    */
-  | { kind: 'renamePage'; profile: string; serial: string; page: string; name: string };
+  | { kind: 'renamePage'; profile: string; serial: string; page: string; name: string }
+  /**
+   * Rename a profile (M5). The same rule as renamePage, over the whole config:
+   * a `profile` action resolves across every profile, so a key anywhere, and
+   * `startProfile`, that named the profile follows it to the new name.
+   */
+  | { kind: 'renameProfile'; profile: string; name: string };
 
 /**
  * A button's icon has three states, and they are not interchangeable

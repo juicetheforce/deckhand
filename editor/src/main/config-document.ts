@@ -1,9 +1,9 @@
 import path from 'node:path';
-import { resolvePage } from '../../../src/config-common.js';
+import { resolvePage, resolveProfile } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
-import { multiSteps, pageLinks, targetsPage } from '../shared/links.js';
+import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -141,28 +141,60 @@ function clearPageLinks(layout: LayoutDef, pageId: string): void {
 }
 
 /**
- * Point every link that reached this page **by name** at its ID instead, so a
- * rename cannot break it. Only links whose `to` is not already the ID are
- * touched, so a config that already uses IDs comes out unchanged.
+ * Call `visit` on every action on every key of a layout — press and release,
+ * and each step inside a multi.
  */
-function pinNameLinksToId(layout: LayoutDef, pageId: string): void {
-  const pin = (action: ActionDef | undefined): void => {
+function forEachAction(layout: LayoutDef, visit: (action: ActionDef) => void): void {
+  const walk = (action: ActionDef | undefined): void => {
     if (!action) return;
-    if (targetsPage(action, layout, pageId) && action.to !== pageId) {
-      action.to = pageId;
-      return;
-    }
-    for (const step of multiSteps(action) ?? []) pin(step);
+    visit(action);
+    for (const step of multiSteps(action) ?? []) walk(step);
   };
   for (const page of Object.values(layout.pages)) {
     for (const button of Object.values(page.buttons)) {
-      pin(button.action);
-      pin(button.onRelease);
+      walk(button.action);
+      walk(button.onRelease);
     }
   }
+}
+
+/**
+ * A rename keeps every link in the form its author wrote it (the maintainer,
+ * 2026-09-19, M5): a link that reached the page **by name** gets the new
+ * name; a link by ID is left alone. Pinning name links to the ID instead (the
+ * rule from 2026-09-16) kept them working but made a hand-written config
+ * unreadable — the one reason names resolve at all (docs/scope.md §5).
+ *
+ * Call before the name changes, while the old one still resolves. The new
+ * name resolves to the same page because the rename has already refused a
+ * name that is another page's name or ID.
+ */
+function followPageName(layout: LayoutDef, pageId: string, name: string): void {
+  forEachAction(layout, (action) => {
+    if (targetsPage(action, layout, pageId) && action.to !== pageId) action.to = name;
+  });
   // startPage takes an ID or a name too, and an unresolvable one is refused.
   if (layout.startPage !== undefined && layout.startPage !== pageId && resolvePage(layout, layout.startPage) === pageId) {
-    layout.startPage = pageId;
+    layout.startPage = name;
+  }
+}
+
+/**
+ * The same for a profile. A `profile` action resolves across the whole config,
+ * not one layout, so every key in every profile is looked at, and so is
+ * `startProfile`. Scripts running `deckhand profile <old name>` are outside
+ * the config and cannot be followed; the rename field says so.
+ */
+function followProfileName(config: Config, profileId: string, name: string): void {
+  for (const profile of Object.values(config.profiles)) {
+    for (const layout of Object.values(profile.layouts)) {
+      forEachAction(layout, (action) => {
+        if (targetsProfile(action, config, profileId) && action.to !== profileId) action.to = name;
+      });
+    }
+  }
+  if (config.startProfile !== undefined && config.startProfile !== profileId && resolveProfile(config, config.startProfile) === profileId) {
+    config.startProfile = name;
   }
 }
 
@@ -308,8 +340,24 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       }
       if (page.name === name) return {};
       // Before the name changes, while the old one still resolves.
-      pinNameLinksToId(layout, edit.page);
+      followPageName(layout, edit.page, name);
       page.name = name;
+      return {};
+    }
+    case 'renameProfile': {
+      const profile = profileAt(config, edit.profile);
+      const name = edit.name.trim();
+      if (name === '') throw new EditError('a profile needs a name');
+      // The same rule validateConfig applies: another profile's name, or its
+      // ID, would make one of the two unreachable. Its own ID is fine.
+      for (const [id, other] of Object.entries(config.profiles)) {
+        if (id === edit.profile) continue;
+        if (other.name === name || id === name) throw new EditError(`there is already a profile called "${name}"`);
+      }
+      if (profile.name === name) return {};
+      // Before the name changes, while the old one still resolves.
+      followProfileName(config, edit.profile, name);
+      profile.name = name;
       return {};
     }
     case 'deletePage': {
