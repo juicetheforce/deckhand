@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Config } from '../../src/types.js';
-import { serializeConfig, toConfigPath, type ButtonLocation } from '../src/main/config-document.js';
+import { serializeConfig, toConfigPath, type ButtonLocation, type Edit } from '../src/main/config-document.js';
 import { ConfigStore, type StoreState } from '../src/main/config-store.js';
 import { resolvePage, resolveProfile, startPageOf, startProfileOf } from '../../src/config-common.js';
 import { pageDeletion } from '../src/renderer/model.js';
@@ -704,6 +704,18 @@ await check('renaming a profile refuses a clash, a blank name, and an unknown pr
   // Its own ID is allowed — validateConfig only refuses a name that is *another* entry's ID.
   assert.equal(rename('prof_raid', 'prof_raid').ok, true);
   assert.equal(resolveProfile(store.state().config, store.state().config.startProfile!), 'prof_raid');
+  store.close();
+});
+
+await check('an edit this editor does not know is refused with why, never reported as done', async () => {
+  // A window newer than the main process sends edits the main process has no
+  // case for (the editor survives an install in the tray). This once fell
+  // through the switch, changed nothing, and reported success.
+  const store = await openStore(await configFile(serializeConfig(profileLinkConfig())));
+  const result = store.apply({ kind: 'somethingNewer', profile: 'prof_raid' } as unknown as Edit);
+  assert.equal(result.ok, false, 'an unknown edit was reported as done');
+  assert.match(result.ok === false ? result.error : '', /quit it from the tray menu and start it again/);
+  assert.equal(store.state().dirty, false);
   store.close();
 });
 

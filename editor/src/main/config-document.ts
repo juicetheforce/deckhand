@@ -404,6 +404,20 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       profile.layouts[edit.serial] = newLayout(edit.pageName, env);
       return {};
     }
+    default: {
+      // An edit this main process does not know. It happens when the window
+      // is newer than the main process: the editor stays running in the tray
+      // across `scripts/install.sh update`, and reopening its window loads the
+      // new renderer from disk. Without this, the unknown edit changed nothing
+      // and reported success — M5 profile rename "did nothing" on the maintainer's first
+      // try, 2026-09-19. `never` makes a kind added to Edit without a case
+      // here a type error.
+      const unknown: never = edit;
+      throw new EditError(
+        `this editor does not know how to "${(unknown as { kind?: unknown }).kind}". ` +
+          'It was probably updated while running: quit it from the tray menu and start it again.',
+      );
+    }
   }
 }
 
