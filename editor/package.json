@@ -5,6 +5,7 @@
   "description": "Deckhand config editor (Electron). A config producer only: it writes config.json and talks to the daemon's socket.",
   "type": "module",
   "main": "dist/main/main.js",
+  "desktopName": "io.github.juicetheforce.Deckhand.desktop",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "node scripts/build-main.mjs",

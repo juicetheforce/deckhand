@@ -17,6 +17,9 @@
 #   ~/.local/bin/deckhand                     the CLI: a small wrapper that runs
 #                                             dist/cli.js from the app directory
 #   ~/.local/bin/deckhand-editor              the editor's launcher
+#   $XDG_DATA_HOME/applications/<id>.desktop  the editor's desktop entry, and
+#   $XDG_DATA_HOME/icons/hicolor/*/apps/<id>.*  its icon; <id> is "desktopName"
+#                                             in editor/package.json
 #   /etc/udev/rules.d/60-deckhand.rules       the only file needing sudo
 #   $XDG_CONFIG_HOME/deckhand/                your config — never touched by
 #                                             install; uninstall asks
@@ -52,6 +55,8 @@ CLI_MARKER='# deckhand-cli-wrapper'
 # The editor's launcher, recognised the same way.
 EDITOR_LAUNCHER="$CLI_DIR/deckhand-editor"
 EDITOR_MARKER='# deckhand-editor-launcher'
+# The editor's desktop entry (Ship piece 5), recognised the same way.
+DESKTOP_MARKER='# deckhand-desktop-entry'
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -91,6 +96,8 @@ resolve_locations() {
   LEGACY_BACKUP="$DATA_HOME/deckhand.legacy-unit.bak"
   CONFIG_DIR="$CONFIG_HOME/deckhand"
   STATE_DIR="$STATE_HOME/deckhand"
+  APPLICATIONS_DIR="$DATA_HOME/applications"
+  ICON_THEME_DIR="$DATA_HOME/icons/hicolor"
 }
 
 # --- Checks ------------------------------------------------------------------
@@ -218,11 +225,13 @@ build_editor() {
      "$REPO_DIR/editor/tsconfig.main.json" "$REPO_DIR/editor/tsconfig.renderer.json" \
      "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
   cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
-  # The tray icon's PNGs, which the editor build copies into its dist/, and the
-  # title bar's logo, which Vite bundles into dist/renderer/ (Ship piece 4).
+  # The tray icon's PNGs, which the editor build copies into its dist/; the
+  # title bar's logo, which Vite bundles into dist/renderer/ (Ship piece 4);
+  # and the application icon, png/apps/ and deckhand.svg, which
+  # install_desktop_entry installs from the app directory (Ship piece 5).
   mkdir -p "$STAGE_DIR/assets/logo"
   cp -r "$REPO_DIR/assets/logo/png" "$STAGE_DIR/assets/logo/png"
-  cp "$REPO_DIR/assets/logo/deckhand-small.svg" "$STAGE_DIR/assets/logo/"
+  cp "$REPO_DIR/assets/logo/deckhand-small.svg" "$REPO_DIR/assets/logo/deckhand.svg" "$STAGE_DIR/assets/logo/"
 
   (
     cd "$editor_dir"
@@ -382,6 +391,7 @@ cmd_install() {
   # have no CLI, and the wrapper must not point at one that is not there.
   install_cli
   install_editor_launcher
+  install_desktop_entry
   journalctl --user -u deckhand --since "@$started_at" --no-pager -o cat | grep -E 'attached|not in config' || \
     warn "no Stream Deck attached yet — is one plugged in?"
 }
@@ -467,6 +477,93 @@ remove_editor_launcher() {
   fi
 }
 
+# --- The editor's desktop entry and icon (Ship piece 5) ------------------------
+
+# The desktop file ID: "desktopName" in the installed editor/package.json,
+# without ".desktop". Electron reads the same field and reports it as the
+# window's Wayland app_id (and X11 WM_CLASS), which is how KDE matches the
+# window to this entry and its icon. One copy, so the two cannot disagree.
+desktop_id() {
+  local name
+  name="$(DECKHAND_EDITOR_PACKAGE="$APP_DIR/editor/package.json" node -p 'require(process.env.DECKHAND_EDITOR_PACKAGE).desktopName')"
+  printf '%s\n' "${name%.desktop}"
+}
+
+desktop_entry_is_ours() {
+  [ -f "$1" ] && grep -qxF "$DESKTOP_MARKER" "$1"
+}
+
+# KDE notices a new entry by itself; this makes it immediate.
+refresh_desktop_caches() {
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then kbuildsycoca6 >/dev/null 2>&1 || true; fi
+}
+
+# The icon at every size scripts/render-logo-png.mjs renders, plus the master
+# SVG as the scalable one, then the entry. Exec is the launcher, so how the
+# editor starts stays in one place; with no launcher of ours, no entry.
+install_desktop_entry() {
+  local id entry
+  id="$(desktop_id)"
+  entry="$APPLICATIONS_DIR/$id.desktop"
+  if ! editor_launcher_is_ours; then
+    warn "no Deckhand editor launcher at $EDITOR_LAUNCHER; not writing a desktop entry."
+    return
+  fi
+  # Exec is written double-quoted; these four would need escaping inside it.
+  case "$EDITOR_LAUNCHER" in
+    *'"'* | *'`'* | *'$'* | *'\'*)
+      warn "the launcher's path has a character a desktop entry cannot hold as written; not writing one."
+      return
+      ;;
+  esac
+  if [ -e "$entry" ] && ! desktop_entry_is_ours "$entry"; then
+    warn "$entry exists and was not written by Deckhand; leaving it alone."
+    return
+  fi
+
+  local png size
+  for png in "$APP_DIR"/assets/logo/png/apps/*.png; do
+    size="$(basename "$png" .png)"
+    install -D -m 644 "$png" "$ICON_THEME_DIR/${size}x${size}/apps/$id.png"
+  done
+  install -D -m 644 "$APP_DIR/assets/logo/deckhand.svg" "$ICON_THEME_DIR/scalable/apps/$id.svg"
+
+  mkdir -p "$APPLICATIONS_DIR"
+  local tmp="$entry.new.$$"
+  cat > "$tmp" <<ENTRY
+[Desktop Entry]
+$DESKTOP_MARKER
+# Written by Deckhand's scripts/install.sh; "scripts/install.sh uninstall" removes it.
+Type=Application
+Name=Deckhand
+GenericName=Stream Deck Editor
+Comment=Set up what your Stream Deck keys do
+Exec="$EDITOR_LAUNCHER"
+Icon=$id
+StartupWMClass=$id
+Terminal=false
+Categories=Utility;
+ENTRY
+  chmod 644 "$tmp"
+  mv "$tmp" "$entry"
+  refresh_desktop_caches
+  say "Desktop entry installed: $entry"
+}
+
+# The entry, if Deckhand wrote it, and the icon files named for its ID.
+remove_desktop_entry() {
+  local id="$1"
+  local entry="$APPLICATIONS_DIR/$id.desktop"
+  if desktop_entry_is_ours "$entry"; then
+    rm -f "$entry"
+    say "Removed $entry"
+  elif [ -e "$entry" ]; then
+    warn "$entry was not written by Deckhand; leaving it alone."
+  fi
+  rm -f "$ICON_THEME_DIR"/*/apps/"$id".png "$ICON_THEME_DIR/scalable/apps/$id.svg"
+  refresh_desktop_caches
+}
+
 remove_cli() {
   if cli_is_ours; then
     rm -f "$CLI_FILE"
@@ -517,6 +614,8 @@ cmd_uninstall() {
   fi
   systemctl --user daemon-reload
 
+  # Before the app directory goes: the ID is read from it.
+  if [ -f "$APP_DIR/editor/package.json" ]; then remove_desktop_entry "$(desktop_id)"; fi
   remove_cli
   remove_editor_launcher
 
