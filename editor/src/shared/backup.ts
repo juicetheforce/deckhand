@@ -135,3 +135,35 @@ export type ImportResult =
       backup: string | null;
     }
   | { ok: false; error: string };
+
+/**
+ * The configurations kept before something replaced one (M5): an import's and
+ * a profile delete's. The rules — never deleted except by the maintainer, a cap that
+ * refuses rather than rotates, no second copy of identical bytes — are in
+ * src/main/kept-configs.ts.
+ */
+export type KeptReason = 'delete' | 'import';
+
+/** Enough to stop unbounded growth, not routine cleanup: these are made by hand, a handful a year. */
+export const MAX_KEPT_CONFIGS = 20;
+
+export interface KeptConfig {
+  /** Its name in the backups folder — the only handle a page is given. */
+  file: string;
+  reason: KeptReason;
+  /** When it was kept, ISO, from the name. */
+  keptAt: string;
+  bytes: number;
+  /** What it holds, so the list is readable without opening files; null when it could not be read. */
+  summary: { profiles: string[]; decks: number; keys: number } | null;
+  /** Why it could not be read. */
+  problem?: string;
+}
+
+export interface KeptConfigList {
+  entries: KeptConfig[];
+  /** MAX_KEPT_CONFIGS, so the page can say what the limit is. */
+  max: number;
+  /** Where they live, as a ~/ path, for the one line that says so. */
+  folder: string;
+}

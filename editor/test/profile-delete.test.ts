@@ -63,6 +63,7 @@ async function harness(scratch: string, { flushFails = false } = {}) {
     },
     backupDir: path.join(scratch, 'backups'),
     configPath,
+    keptPath: (file) => path.join(scratch, 'backups', file),
     tildePath: (file) => file,
   };
   return { deps, log, configPath, current: () => config };

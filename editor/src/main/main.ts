@@ -13,8 +13,9 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
-import { IMPORT_LIMITS, type ExportResult, type ImportChoice, type ImportResult } from '../shared/backup.js';
+import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
+import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
@@ -446,7 +447,7 @@ function closeSettingsOnFocus(): void {
 }
 
 /** The settings window's height (openSettings). */
-const SETTINGS_HEIGHT = 640;
+const SETTINGS_HEIGHT = 780;
 
 /** The home directory as `~`, for showing a path. */
 function tildePath(file: string): string {
@@ -527,6 +528,12 @@ async function chooseImport(): Promise<ImportChoice> {
     source = picked.filePaths[0];
   }
 
+  return planImportOf(source);
+}
+
+/** Read and plan one file, and hold the plan for confirmImport: the review writes nothing. */
+async function planImportOf(source: string): Promise<ImportChoice> {
+  pendingImport = null;
   let plan: ImportPlan;
   try {
     const { size } = await fs.stat(source);
@@ -560,6 +567,28 @@ async function chooseImport(): Promise<ImportChoice> {
 }
 
 /**
+ * The configurations kept before an import or a profile delete (M5 piece 2d).
+ * Read for the list in Settings, so choosing one never means opening files.
+ */
+async function keptConfigs(): Promise<KeptConfigList> {
+  return { entries: await listKeptConfigs(BACKUP_DIR), max: MAX_KEPT_CONFIGS, folder: tildePath(BACKUP_DIR) };
+}
+
+/**
+ * Restore a kept configuration: planned as any other import, so it goes
+ * through the same review and keeps the configuration it replaces. Restoring
+ * is destructive too, and its undo is the copy that restoring makes (the maintainer,
+ * 2026-09-19).
+ */
+async function planKeptRestore(file: string): Promise<ImportChoice> {
+  try {
+    return await planImportOf(keptConfigPath(BACKUP_DIR, file));
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/**
  * Carry out the reviewed import: icons first, into empty places only; then
  * the store keeps the replaced config.json as backups/before-import-<time>.json
  * — a name the rolling backups never delete — and writes the new one. If
@@ -576,10 +605,9 @@ async function confirmImport(id: string): Promise<ImportResult> {
     const before = daemon.lastReloadAt();
     await store.replace(pending.plan.config, async (replacedText) => {
       if (replacedText === null) return;
-      await fs.mkdir(BACKUP_DIR, { recursive: true });
-      const file = path.join(BACKUP_DIR, `before-import-${new Date().toISOString().replace(/:/g, '-')}.json`);
-      await fs.writeFile(file, replacedText, { flag: 'wx' });
-      backup = tildePath(file);
+      // Throws at the cap, and store.replace then leaves config.json alone.
+      const kept = await keepConfigCopy(BACKUP_DIR, replacedText, 'import');
+      backup = tildePath(keptConfigPath(BACKUP_DIR, kept.file));
     });
     if (daemon.view().connected) await daemon.waitForReloadAfter(before, 5000);
     return { ok: true, written: written.length, appeared: appeared.map(tildePath), backup };
@@ -615,9 +643,28 @@ function registerIpc(): void {
   // --- Import (M5 piece 2) ---
   ipcMain.handle('deleteProfile', async (event, profile: string, pageName: string): Promise<DeleteProfileResult> =>
     fromOurWindow(event)
-      ? deleteProfileKeepingACopy({ store, storeError, backupDir: BACKUP_DIR, configPath: CONFIG_PATH, tildePath }, profile, pageName)
+      ? deleteProfileKeepingACopy(
+          { store, storeError, backupDir: BACKUP_DIR, configPath: CONFIG_PATH, keptPath: (file) => keptConfigPath(BACKUP_DIR, file), tildePath },
+          profile,
+          pageName,
+        )
       : { ok: false, error: 'not allowed' },
   );
+  ipcMain.handle('keptConfigs', async (event): Promise<KeptConfigList> =>
+    fromSettingsWindow(event) ? keptConfigs() : { entries: [], max: MAX_KEPT_CONFIGS, folder: '' },
+  );
+  ipcMain.handle('restoreKeptConfig', async (event, file: string): Promise<ImportChoice> =>
+    fromSettingsWindow(event) ? planKeptRestore(file) : { ok: false, error: 'not allowed' },
+  );
+  ipcMain.handle('deleteKeptConfig', async (event, file: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    try {
+      await deleteKeptConfig(BACKUP_DIR, file);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
   ipcMain.handle('chooseImport', async (event): Promise<ImportChoice> => (fromSettingsWindow(event) ? chooseImport() : { ok: false, error: 'not allowed' }));
   ipcMain.handle('confirmImport', async (event, id: unknown): Promise<ImportResult> =>
     fromSettingsWindow(event) && typeof id === 'string' ? confirmImport(id) : { ok: false, error: 'not allowed' },

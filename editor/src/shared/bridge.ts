@@ -5,7 +5,7 @@
  * the API) and the renderer (which calls it). The renderer has no Node and no
  * direct access to Electron.
  */
-import type { ExportResult, ImportChoice, ImportResult } from './backup.js';
+import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
 import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
@@ -222,6 +222,12 @@ export interface DeckhandBridge {
    * code the delete itself runs.
    */
   deleteProfile(profile: string, pageName: string): Promise<DeleteProfileResult>;
+  /** The configurations kept before an import or a profile delete, newest first (M5 piece 2d). */
+  keptConfigs(): Promise<KeptConfigList>;
+  /** Restore one: planned like any import, so the same review shows and the replaced config is kept. */
+  restoreKeptConfig(file: string): Promise<ImportChoice>;
+  /** Delete one. The only thing that removes a kept configuration. */
+  deleteKeptConfig(file: string): Promise<{ ok: boolean; error?: string }>;
   chooseImport(): Promise<ImportChoice>;
   /** Carry out the import the review with this id described. */
   confirmImport(id: string): Promise<ImportResult>;

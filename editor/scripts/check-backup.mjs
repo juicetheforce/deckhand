@@ -28,6 +28,7 @@ const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-backup-'));
 const home = path.join(scratch, 'home');
 const configDir = path.join(scratch, 'config');
 const stateDir = path.join(scratch, 'state');
+const backupsDir = path.join(stateDir, 'backups');
 const outDir = path.join(scratch, 'home', 'out'); // inside HOME, so the result shows it as ~/out
 const exportPath = path.join(outDir, 'export.zip');
 const importPath = path.join(scratch, 'import-me'); // content decides what it is, not the name
@@ -283,6 +284,77 @@ r.cancelled = {
   r.bareOnDisk = (await fs.readFile(configFile, 'utf8')).includes('BARE-JSON');
 }
 
+// The kept configurations (M5 piece 2d): the list, Restore and Delete.
+const keptRows = `[...document.querySelectorAll('.kept-list li[data-kept]')].map((li) => ({ file: li.dataset.kept, title: li.querySelector('.kept-title').textContent, sub: li.querySelector('.kept-sub').textContent }))`;
+const keptButton = (file, label) =>
+  `[...document.querySelector('.kept-list li[data-kept="${file}"]').querySelectorAll('button')].find((b) => b.textContent.trim() === '${label}').click(), true`;
+{
+  r.keptRows = await inPage(editor, 'settings', keptRows);
+  const oldest = r.keptRows[r.keptRows.length - 1];
+  // Restore the oldest: the same review as an import, and nothing written yet.
+  await inPage(editor, 'settings', keptButton(oldest.file, 'Restore…'));
+  await until(async () => (await inPage(editor, 'settings', reviewText)) !== null, 10_000);
+  r.restoreReview = await inPage(editor, 'settings', reviewText);
+  r.configBeforeRestore = await fs.readFile(configFile, 'utf8');
+  r.keptTextRestored = await fs.readFile(path.join(backupsDir, oldest.file), 'utf8');
+  r.restoreStatus = await confirmNow();
+  r.configAfterRestore = await fs.readFile(configFile, 'utf8');
+  // Restoring is destructive too, so it kept the configuration it replaced.
+  r.keptAfterRestore = await inPage(editor, 'settings', keptRows);
+  r.replacedIsKept = (
+    await Promise.all(
+      (await fs.readdir(backupsDir)).filter((f) => f.startsWith('before-')).map((f) => fs.readFile(path.join(backupsDir, f), 'utf8')),
+    )
+  ).includes(r.configBeforeRestore);
+
+  // Delete one: two steps, and only then is the file gone.
+  const doomed = r.keptAfterRestore[0];
+  await inPage(editor, 'settings', keptButton(doomed.file, 'Delete'));
+  r.deleteAsks = await inPage(
+    editor,
+    'settings',
+    `[...(document.querySelector('.kept-list li[data-kept="${doomed.file}"]')?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim())`,
+  );
+  r.stillThereWhileAsking = await exists(path.join(backupsDir, doomed.file));
+  // Clicked only if it is there, so a missing confirmation fails the check rather than crashing it.
+  r.askedBeforeDeleting = await inPage(
+    editor,
+    'settings',
+    `(() => { const row = document.querySelector('.kept-list li[data-kept="${doomed.file}"]'); if (!row) return false; const b = [...row.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Delete for good'); if (!b) return false; b.click(); return true; })()`,
+  );
+  await until(async () => (await inPage(editor, 'settings', `document.querySelector('.kept-list li[data-kept="${doomed.file}"]') === null`)) === true);
+  r.deletedGone = !(await exists(path.join(backupsDir, doomed.file)));
+  r.keptAfterDelete = (await inPage(editor, 'settings', keptRows)).length;
+}
+
+// At the cap, an import refuses rather than drop a kept configuration.
+{
+  const kept = (await fs.readdir(backupsDir)).filter((f) => f.startsWith('before-'));
+  for (let i = kept.length; i < 20; i++) {
+    const filler = structuredClone(CONFIG);
+    filler.profiles.default.name = `Filler ${i}`;
+    await fs.writeFile(path.join(backupsDir, `before-delete-2026-01-${String(i + 1).padStart(2, '0')}T00-00-00.000Z.json`), JSON.stringify(filler));
+  }
+  const bare = structuredClone(CONFIG);
+  bare.profiles.default.layouts[XL].pages.main.buttons[10] = { label: 'AT-THE-CAP' };
+  await fs.writeFile(importPath, JSON.stringify(bare, null, 2));
+  // The configuration about to be replaced must not already be kept, or there
+  // is nothing to keep and the cap does not apply (which is the rule working,
+  // and is what this check first caught by accident).
+  await inPage(editor, 'editor', `window.deckhand.apply({ kind: 'setLabel', at: ${at}, label: 'NOT-YET-KEPT' }).then((x) => x.ok)`);
+  await until(async () => (await fs.readFile(configFile, 'utf8')).includes('NOT-YET-KEPT'));
+  r.capNeedsAKeptCopy = !(
+    await Promise.all(
+      (await fs.readdir(backupsDir)).filter((f) => f.startsWith('before-')).map((f) => fs.readFile(path.join(backupsDir, f), 'utf8')),
+    )
+  ).includes(await fs.readFile(configFile, 'utf8'));
+  const before = await fs.readFile(configFile, 'utf8');
+  await chooseNow();
+  r.capStatus = await confirmNow();
+  r.capConfigUnchanged = (await fs.readFile(configFile, 'utf8')) === before;
+  r.capKeptCount = (await fs.readdir(backupsDir)).filter((f) => f.startsWith('before-')).length;
+}
+
 // Something that is neither: refused with why, and nothing to review.
 await fs.writeFile(importPath, 'this is not a configuration');
 r.garbage = await chooseNow();
@@ -361,6 +433,42 @@ check('a file that is neither is refused with why, and no review', () => {
   assert.match(r.garbage.status, /^import-me cannot be imported: the file is not valid JSON/);
 });
 check('the editor window cannot start an import', () => assert.deepEqual(r.editorImportRefused, { ok: false, error: 'not allowed' }));
+
+check('the kept configurations are listed with what is in them, not just a time', () => {
+  assert.ok(r.keptRows.length >= 2, `expected several kept configurations, got ${JSON.stringify(r.keptRows)}`);
+  assert.ok(
+    r.keptRows.every((row) => /Before (an import|deleting a profile) · /.test(row.title)),
+    `titles do not say what kept them: ${JSON.stringify(r.keptRows.map((x) => x.title))}`,
+  );
+  assert.ok(
+    r.keptRows.every((row) => /\d+ profiles?: .*· \d+ decks? · \d+ keys?$/.test(row.sub)),
+    `the summaries do not name profiles, decks and keys: ${JSON.stringify(r.keptRows.map((x) => x.sub))}`,
+  );
+});
+
+check('Restore goes through the same review, replaces the config with that copy, and keeps the one it replaced', () => {
+  assert.match(r.restoreReview, /configuration file, not a Deckhand export: a config-only restore/);
+  assert.notEqual(r.configBeforeRestore, r.keptTextRestored, 'the copy restored was already the current config, so this proves nothing');
+  assert.match(r.restoreStatus, /^Imported\./);
+  assert.equal(JSON.stringify(JSON.parse(r.configAfterRestore)), JSON.stringify(JSON.parse(r.keptTextRestored)), 'config.json is not the restored copy');
+  assert.equal(r.replacedIsKept, true, 'the configuration the restore replaced was not kept');
+  assert.ok(r.keptAfterRestore.length > r.keptRows.length, 'restoring kept nothing');
+});
+
+check('Delete asks first, and only then removes the file — the one way a kept configuration goes', () => {
+  assert.deepEqual(r.deleteAsks, ['Restore…', 'Delete for good', 'Keep']);
+  assert.equal(r.stillThereWhileAsking, true, 'it was deleted before being confirmed');
+  assert.equal(r.askedBeforeDeleting, true, 'there was no confirmation to click');
+  assert.equal(r.deletedGone, true, 'the file is still there');
+  assert.equal(r.keptAfterDelete, r.keptAfterRestore.length - 1);
+});
+
+check('at the cap an import refuses, changes nothing, and deletes no kept configuration', () => {
+  assert.equal(r.capNeedsAKeptCopy, true, 'the configuration was already kept, so no slot was needed and this proves nothing');
+  assert.match(r.capStatus, /Import failed: .*at most 20 configurations.*Delete one in Settings/s);
+  assert.equal(r.capConfigUnchanged, true, 'config.json was replaced although the copy could not be kept');
+  assert.equal(r.capKeptCount, 20, `expected the 20 kept configurations to be untouched, found ${r.capKeptCount}`);
+});
 
 stopWatching();
 await daemon.stop();

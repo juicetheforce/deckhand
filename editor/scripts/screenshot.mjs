@@ -88,6 +88,8 @@ const { values } = parseArgs({
     accent: { type: 'string' },
     // Draw the title bar as it looks behind another window (Ship piece 4).
     unfocused: { type: 'boolean' },
+    // Seed this many kept configurations (M5 piece 2d), for --settings.
+    kept: { type: 'string' },
   },
 });
 if (!values.out) {
@@ -144,6 +146,16 @@ if (values.recent?.length) {
   const editorState = path.join(scratch, 'state', 'editor');
   await fs.mkdir(editorState, { recursive: true });
   await fs.writeFile(path.join(editorState, 'icon-picker.json'), JSON.stringify({ recentFolders: values.recent.map((f) => path.resolve(f)) }, null, 2) + '\n');
+}
+if (values.kept) {
+  // Kept configurations (M5 piece 2d): the names and contents main reads.
+  const backups = path.join(scratch, 'state', 'backups');
+  await fs.mkdir(backups, { recursive: true });
+  for (let i = 0; i < Number(values.kept); i++) {
+    const when = new Date(Date.parse('2026-09-19T21:05:27.962Z') - i * 86_400_000).toISOString().replace(/:/g, '-');
+    const reason = i % 2 === 0 ? 'delete' : 'import';
+    await fs.writeFile(path.join(backups, `before-${reason}-${when}.json`), JSON.stringify(config, null, 2) + '\n');
+  }
 }
 if (values.settings) process.env.DECKHAND_EDITOR_VIEW = 'settings';
 if (values.unfocused) process.env.DECKHAND_EDITOR_UNFOCUSED = '1';

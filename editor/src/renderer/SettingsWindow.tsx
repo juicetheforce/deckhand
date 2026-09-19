@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RESTORED_FOLDER, type ExportResult, type ImportIcon, type ImportResult, type ImportReview } from '../shared/backup.js';
+import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 
 /**
@@ -101,7 +101,7 @@ export function SettingsWindow() {
 
       <span className="settings-heading">BACKUP</span>
       <ExportRow />
-      <ImportRow />
+      <ImportAndKept />
 
       <div className="settings-footer">
         <span className="settings-note">Settings apply immediately</span>
@@ -188,17 +188,27 @@ function ExportStatus({ result }: { result: ExportResult | null }) {
  * the import and this shows the review — every relocated icon and where it
  * will go included — until Replace configuration or Cancel.
  */
-function ImportRow() {
+function ImportAndKept() {
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<ImportReview | null>(null);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  // The kept configurations (M5 piece 2d), reread whenever one is made or removed.
+  const [kept, setKept] = useState<KeptConfigList | null>(null);
+  const refreshKept = () => void window.deckhand.keptConfigs().then(setKept);
+  useEffect(refreshKept, []);
 
-  const choose = async () => {
+  /**
+   * Choosing a file and restoring a kept one are the same thing: main plans
+   * the import and this shows the review, which writes nothing until it is
+   * confirmed. So restoring keeps the configuration it replaces too, and says
+   * what it is replacing first (the maintainer, 2026-09-19).
+   */
+  const choose = async (call: () => Promise<ImportChoice> = () => window.deckhand.chooseImport()) => {
     setBusy(true);
     setMessage(null);
     setReview(null);
     try {
-      const choice = await window.deckhand.chooseImport();
+      const choice = await call();
       if (choice.ok) setReview(choice.review);
       else if (!choice.cancelled) setMessage({ error: true, text: choice.error });
     } finally {
@@ -216,9 +226,15 @@ function ImportRow() {
       const result: ImportResult = await window.deckhand.confirmImport(review.id);
       setReview(null);
       setMessage(result.ok ? { error: false, text: importedText(result) } : { error: true, text: `Import failed: ${result.error}` });
+      refreshKept(); // the import kept the configuration it replaced
     } finally {
       setBusy(false);
     }
+  };
+  const remove = async (file: string) => {
+    const result = await window.deckhand.deleteKeptConfig(file);
+    if (!result.ok) setMessage({ error: true, text: `That kept configuration could not be deleted: ${result.error ?? 'unknown error'}` });
+    refreshKept();
   };
 
   return (
@@ -238,8 +254,101 @@ function ImportRow() {
         </p>
       )}
       {review && <ImportReviewPanel review={review} busy={busy} onCancel={cancel} onConfirm={() => void confirm()} />}
+      <KeptConfigs
+        list={kept}
+        disabled={busy || review !== null}
+        onRestore={(file) => void choose(() => window.deckhand.restoreKeptConfig(file))}
+        onDelete={(file) => void remove(file)}
+      />
     </>
   );
+}
+
+/**
+ * The configurations kept before a profile delete or an import (M5 piece 2d).
+ * Each entry says what is in it — profiles by name, decks, keys — because
+ * choosing between two timestamps means guessing (the maintainer, 2026-09-19). They are
+ * never deleted automatically: Delete here is the only thing that removes one,
+ * and at the cap a delete or import refuses rather than drop the oldest.
+ */
+function KeptConfigs({
+  list,
+  disabled,
+  onRestore,
+  onDelete,
+}: {
+  list: KeptConfigList | null;
+  disabled: boolean;
+  onRestore: (file: string) => void;
+  onDelete: (file: string) => void;
+}) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  if (!list) return null;
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-text">
+          <span className="settings-title">Kept configurations</span>
+          <span className="settings-sub">
+            Kept before a profile delete or an import, in {list.folder}. Never deleted automatically; at most {list.max}, and then a
+            delete or import asks you to remove one.
+          </span>
+        </div>
+      </div>
+      <ul className="kept-list" data-kept-count={list.entries.length}>
+        {list.entries.length === 0 && <li className="kept-empty muted small">Nothing kept yet. Deleting a profile or importing keeps one.</li>}
+        {list.entries.map((entry) => (
+          <li key={entry.file} data-kept={entry.file}>
+            <div className="kept-what">
+              <span className="kept-title">
+                {entry.reason === 'delete' ? 'Before deleting a profile' : 'Before an import'} · {when(entry.keptAt)}
+              </span>
+              <span className="kept-sub">{describeKept(entry)}</span>
+            </div>
+            <div className="kept-actions">
+              <button className="settings-button" disabled={disabled} onClick={() => onRestore(entry.file)}>
+                Restore…
+              </button>
+              {confirming === entry.file ? (
+                <>
+                  <button
+                    className="settings-button danger"
+                    onClick={() => {
+                      setConfirming(null);
+                      onDelete(entry.file);
+                    }}
+                  >
+                    Delete for good
+                  </button>
+                  <button className="settings-button" onClick={() => setConfirming(null)}>
+                    Keep
+                  </button>
+                </>
+              ) : (
+                <button className="settings-button" disabled={disabled} onClick={() => setConfirming(entry.file)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/** A kept copy's time, as this machine shows times. */
+function when(iso: string): string {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+}
+
+/** What is in a kept copy, for the line under its title. */
+function describeKept(entry: KeptConfig): string {
+  if (!entry.summary) return `This file could not be read: ${entry.problem ?? 'unknown error'}`;
+  const { profiles, decks, keys } = entry.summary;
+  const names = profiles.length === 0 ? 'no profiles' : `${plural(profiles.length, 'profile')}: ${profiles.join(', ')}`;
+  return `${names} · ${plural(decks, 'deck')} · ${plural(keys, 'key')}`;
 }
 
 function importedText(result: Extract<ImportResult, { ok: true }>): string {

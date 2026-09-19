@@ -10,11 +10,11 @@
  * rather than only through the editor.
  */
 import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import type { Config } from '../../../src/types.js';
 import type { ApplyResult, Edit } from '../shared/edits.js';
 import type { DeleteProfileResult } from '../shared/bridge.js';
 import { planProfileDeletion } from '../shared/profile-deletion.js';
+import { keepConfigCopy } from './kept-configs.js';
 
 /** What this needs of main.ts: the open store, where backups live, and how to shorten a path for a message. */
 export interface DeleteDeps {
@@ -27,6 +27,8 @@ export interface DeleteDeps {
   storeError?: string | null;
   backupDir: string;
   configPath: string;
+  /** The full path of a kept copy, for the message that names it. */
+  keptPath(file: string): string;
   tildePath(file: string): string;
 }
 
@@ -45,10 +47,9 @@ export async function deleteProfileKeepingACopy(deps: DeleteDeps, profile: strin
     // Edits not yet autosaved belong in the copy: it is what was there before.
     await store.flush();
     const text = await fs.readFile(deps.configPath, 'utf8');
-    await fs.mkdir(deps.backupDir, { recursive: true });
-    const file = path.join(deps.backupDir, `before-delete-${new Date().toISOString().replace(/:/g, '-')}.json`);
-    await fs.writeFile(file, text, { flag: 'wx' });
-    backup = deps.tildePath(file);
+    // Throws at the cap, so the delete stops rather than lose a kept copy.
+    const kept = await keepConfigCopy(deps.backupDir, text, 'delete');
+    backup = deps.tildePath(deps.keptPath(kept.file));
   } catch (err) {
     return { ok: false, error: `nothing was deleted: your configuration could not be kept first (${(err as Error).message})` };
   }
