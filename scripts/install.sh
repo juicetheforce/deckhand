@@ -5,6 +5,7 @@
 #   scripts/install.sh install [--dirty]
 #   scripts/install.sh update  [--dirty]     (same as install)
 #   scripts/install.sh uninstall [--purge]
+#   scripts/install.sh check                 (checks this machine, changes nothing)
 #
 # Layout (docs/scope.md §0), per user, nothing under /usr except the udev rule:
 #
@@ -29,7 +30,8 @@
 #                                             app, not with your config)
 #
 # Run it from a git checkout of Deckhand, as your normal user (not root).
-# It checks for prerequisites but does not install them.
+# It checks for prerequisites but does not install them: anything missing is
+# named, all at once, before anything is changed ("check" shows the same list).
 
 set -euo pipefail
 
@@ -63,7 +65,7 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '3,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -102,36 +104,211 @@ resolve_locations() {
 
 # --- Checks ------------------------------------------------------------------
 
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "'$1' is not installed. $2"
+# The preflight (Ship, docs/scope.md §7): every requirement is checked before
+# anything is touched, and every unmet one is named in one report, rather than
+# the install stopping at the first and failing somewhere obscure later.
+# "Missing" stops the install; "Warnings" do not — they are things that work
+# worse, not things that break the daemon. `scripts/install.sh check` prints
+# the same report and touches nothing, for pasting into a bug report.
+#
+# The fixed paths it looks at are variables so scripts/test/preflight.test.sh
+# can point them at scratch files.
+SERVICE_NODE=/usr/bin/node            # what systemd/deckhand.service runs
+UINPUT_NODE=/dev/uinput
+UINPUT_HEADER=/usr/include/linux/uinput.h
+LOGIND_SEATS_DIR=/run/systemd/seats
+SYSCTL_DIR=/proc/sys
+OS_RELEASE=/etc/os-release
+
+PREFLIGHT_MISSING=()
+PREFLIGHT_WARNINGS=()
+missing() { PREFLIGHT_MISSING+=("$1"); }
+caution() { PREFLIGHT_WARNINGS+=("$1"); }
+
+has_command() { command -v "$1" >/dev/null 2>&1; }
+
+# Whether a name on the session bus has an owner. Fails (status 2) if the bus
+# cannot be asked at all, so a caller can tell "absent" from "no bus".
+bus_name_has_owner() {
+  local answer
+  answer="$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s "$1" 2>/dev/null)" || return 2
+  [ "$answer" = "b true" ]
 }
 
-preflight() {
-  [ "$(id -u)" -ne 0 ] || die "run this as your normal user, not root. It asks for sudo only for the udev rule."
+# Reads one number from /proc/sys, or prints nothing if the file is not there.
+sysctl_value() {
+  [ -r "$SYSCTL_DIR/$1" ] && cat "$SYSCTL_DIR/$1" 2>/dev/null || true
+}
 
-  systemctl --user show-environment >/dev/null 2>&1 \
-    || die "cannot reach the systemd user manager (systemctl --user). Run this from your desktop session."
+preflight_checks() {
+  PREFLIGHT_MISSING=()
+  PREFLIGHT_WARNINGS=()
 
-  require_command node  "Install Node.js 22.12 or newer."
-  require_command npm   "Install npm."
-  require_command make  "Install make."
-  require_command cc    "Install gcc."
-  require_command pactl "Install pipewire-pulseaudio (it provides pactl)."
-
-  # The unit runs /usr/bin/node. Stop rather than install a unit that points
-  # at a node this machine doesn't have.
-  local node_path
-  node_path="$(command -v node)"
-  [ "$node_path" = "/usr/bin/node" ] \
-    || die "node is at $node_path, but the service runs /usr/bin/node. Install Node.js from your distribution's packages."
-
-  # 22.12, not the daemon's own 20: building the editor needs it (Electron's
-  # package and the editor's build tools declare >= 22.12).
-  node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)' \
-    || die "Node.js $(node -v) is too old; Deckhand needs 22.12 or newer."
-
+  [ "$(id -u)" -ne 0 ] \
+    || missing "Running as root. Run this as your normal user; it asks for sudo only for the udev rule."
   [ -f "$REPO_DIR/package.json" ] && [ -f "$UDEV_RULE_SRC" ] \
-    || die "run this script from inside a Deckhand checkout."
+    || missing "Not a Deckhand checkout: run this script from inside one."
+
+  # systemd user session: the daemon is a systemd --user service, started with
+  # the graphical session (systemd/deckhand.service is WantedBy
+  # graphical-session.target — a desktop that never reaches that target would
+  # install fine and then never start the daemon at login).
+  if ! has_command systemctl; then
+    missing "systemctl: Deckhand runs as a systemd user service, and this machine has no systemd."
+  elif ! systemctl --user show-environment >/dev/null 2>&1; then
+    missing "The systemd user manager (systemctl --user) cannot be reached. Run this from a terminal in your desktop session."
+  elif [ "$(systemctl --user is-active graphical-session.target 2>/dev/null)" != active ]; then
+    missing "graphical-session.target is not active in your systemd user session. The service starts with it, so it would never start at login. Run this from your desktop session; if you are, your desktop does not start that target."
+  fi
+
+  # The D-Bus session bus: media keys (MPRIS), and the tray and shortcut
+  # lookups below, all go through it.
+  local bus=yes
+  if ! has_command busctl; then
+    bus=no
+    missing "busctl (part of systemd): needed to reach the D-Bus session bus."
+  elif ! busctl --user status >/dev/null 2>&1; then
+    bus=no
+    missing "No D-Bus session bus (busctl --user status failed). Run this from your desktop session."
+  fi
+
+  # logind, for uaccess: the udev rule tags the decks and /dev/uinput
+  # "uaccess", and it is logind that then grants them to the user at the seat.
+  # With no logind, or no session on a seat, the rule installs and grants nothing.
+  local display_session=""
+  if ! has_command loginctl || [ ! -d "$LOGIND_SEATS_DIR" ]; then
+    missing "systemd-logind is not running (no loginctl or no $LOGIND_SEATS_DIR). Device access is granted through it (udev's uaccess)."
+  else
+    display_session="$(loginctl show-user "$(id -un)" -p Display --value 2>/dev/null || true)"
+    if [ -z "$display_session" ] || [ -z "$(loginctl show-session "$display_session" -p Seat --value 2>/dev/null || true)" ]; then
+      missing "You have no graphical login session on a seat (loginctl). Device access (udev's uaccess) goes to the user at the seat. Log in at the machine and run this from that session."
+    fi
+  fi
+
+  # Node: the unit runs $SERVICE_NODE, and native modules are built by the
+  # node on PATH, so they must be the same one. 22.12, not the daemon's own
+  # 20: building the editor needs it (Electron's package and the editor's
+  # build tools declare >= 22.12).
+  if ! has_command node; then
+    missing "node: install Node.js 22.12 or newer from your distribution's packages (the service runs $SERVICE_NODE)."
+  elif [ "$(command -v node)" != "$SERVICE_NODE" ]; then
+    missing "node on your PATH is $(command -v node), but the service runs $SERVICE_NODE. Native modules built with one would not load in the other. Install Node.js 22.12 or newer from your distribution's packages, and make it the node on PATH."
+  else
+    local version major minor
+    version="$("$SERVICE_NODE" -v 2>/dev/null || true)"
+    version="${version#v}"
+    major="${version%%.*}"
+    minor="${version#*.}"; minor="${minor%%.*}"
+    if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]]; then
+      missing "Cannot tell which Node.js $SERVICE_NODE is ('$version'). Deckhand needs 22.12 or newer."
+    elif [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 12 ]; }; then
+      missing "Node.js $version is too old; Deckhand needs 22.12 or newer."
+    fi
+  fi
+  has_command npm  || missing "npm: install it (some distributions package it apart from Node.js)."
+  has_command make || missing "make: needed to build the key-injection helper."
+  has_command cc   || missing "A C compiler (cc): install gcc, to build the key-injection helper."
+  [ -f "$UINPUT_HEADER" ] \
+    || missing "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
+
+  # The virtual keyboard. Whether it is writable is the udev rule's business,
+  # reported after it is installed; here it only has to exist.
+  [ -c "$UINPUT_NODE" ] \
+    || missing "$UINPUT_NODE does not exist, so keystrokes cannot be injected. Load the module (sudo modprobe uinput) and make it load at boot."
+
+  # Audio keys drive PulseAudio or PipeWire through pactl.
+  if ! has_command pactl; then
+    missing "pactl: install pipewire-pulseaudio (or your distribution's package providing pactl)."
+  elif ! pactl info >/dev/null 2>&1; then
+    missing "pactl cannot reach a sound server (pactl info failed). Deckhand's audio keys need PipeWire's PulseAudio server or PulseAudio running."
+  fi
+
+  # Root is needed only when the udev rule is new or changed.
+  if ! cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
+    has_command sudo    || missing "sudo: needed once, to install the udev rule at $UDEV_RULE_DST."
+    has_command udevadm || missing "udevadm: needed to load the udev rule."
+  fi
+
+  # --- Warnings: the install goes ahead ---
+
+  # Electron's sandbox needs unprivileged user namespaces. Ubuntu 24.04's
+  # AppArmor restriction, and older Debian's switch, turn them off. Only a
+  # warning: the daemon — which is what drives the decks — does not need them,
+  # and that the editor then fails is not yet tested (docs/scope.md §7,
+  # Portability).
+  local userns_why=""
+  [ "$(sysctl_value kernel/apparmor_restrict_unprivileged_userns)" = 1 ] && userns_why="AppArmor restricts unprivileged user namespaces (kernel.apparmor_restrict_unprivileged_userns = 1, as on Ubuntu 24.04 and later)"
+  [ "$(sysctl_value kernel/unprivileged_userns_clone)" = 0 ] && userns_why="unprivileged user namespaces are turned off (kernel.unprivileged_userns_clone = 0)"
+  [ "$(sysctl_value user/max_user_namespaces)" = 0 ] && userns_why="user namespaces are turned off (user.max_user_namespaces = 0)"
+  [ -z "$userns_why" ] \
+    || caution "The editor may not start: $userns_why, which Electron's sandbox needs. The decks will work. The likely symptom: deckhand-editor exits at once, printing something like \"The SUID sandbox helper binary was found, but is not configured correctly\" or \"No usable sandbox!\". Not supported yet."
+
+  if [ "$bus" = yes ]; then
+    # The tray (Ship piece 2) is a StatusNotifierItem: it needs a panel that
+    # hosts them, which registers this name. GNOME has none without an
+    # AppIndicator extension. Electron does not report the difference, so
+    # closing the editor would hide it with no icon to click.
+    bus_name_has_owner org.kde.StatusNotifierWatcher \
+      || caution "No system tray (nothing owns org.kde.StatusNotifierWatcher; GNOME needs an AppIndicator extension). Closing the editor's window would leave it running with no tray icon to reopen it: turn off \"Close to system tray\" in its settings, or run deckhand-editor again to bring the window back."
+    # The hotkey inspector warns when a combo is a KDE global shortcut.
+    bus_name_has_owner org.kde.kglobalaccel \
+      || caution "No KDE shortcut service (org.kde.kglobalaccel): the editor cannot warn when a hotkey is already a desktop shortcut. Everything else works."
+  fi
+}
+
+# One line per thing that describes this machine, for a bug report.
+preflight_header() {
+  local distro="unknown" desktop session commit
+  if [ -r "$OS_RELEASE" ]; then
+    distro="$(sed -n 's/^PRETTY_NAME=//p' "$OS_RELEASE" | tr -d '"')"
+  fi
+  desktop="$(manager_env XDG_CURRENT_DESKTOP || true)"
+  session="$(manager_env XDG_SESSION_TYPE || true)"
+  commit="$(git -C "$REPO_DIR" describe --always --dirty 2>/dev/null || echo "not a git checkout")"
+  printf '  %-9s %s\n' \
+    "deckhand" "$commit" \
+    "distro"   "${distro:-unknown}" \
+    "kernel"   "$(uname -r) $(uname -m)" \
+    "desktop"  "${desktop:-${XDG_CURRENT_DESKTOP:-unknown}} (${session:-${XDG_SESSION_TYPE:-unknown}})" \
+    "node"     "$( (node -v) 2>/dev/null || echo none) at $(command -v node || echo -)" \
+    "npm"      "$( (npm -v) 2>/dev/null || echo none)"
+}
+
+preflight_report() {
+  local item
+  if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ]; then
+    printf '\033[1;31mMissing — the install cannot go ahead:\033[0m\n'
+    for item in "${PREFLIGHT_MISSING[@]}"; do printf '  ✗ %s\n' "$item"; done
+  fi
+  if [ "${#PREFLIGHT_WARNINGS[@]}" -gt 0 ]; then
+    printf '\033[1;33mWarnings — the install goes ahead:\033[0m\n'
+    for item in "${PREFLIGHT_WARNINGS[@]}"; do printf '  ! %s\n' "$item"; done
+  fi
+  if [ "${#PREFLIGHT_MISSING[@]}" -eq 0 ]; then
+    say "Every requirement is met."
+  fi
+}
+
+# Before an install: the report, and stop if anything is missing.
+preflight() {
+  say "Checking this machine"
+  preflight_checks
+  preflight_report
+  if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ]; then
+    preflight_header >&2
+    die "nothing was changed. Fix what is listed above and run this again; 'scripts/install.sh check' re-checks without installing."
+  fi
+}
+
+# `scripts/install.sh check`: the report and nothing else. Exit status 1 if
+# anything is missing.
+cmd_check() {
+  [ $# -eq 0 ] || usage
+  say "Deckhand preflight — this checks the machine and changes nothing"
+  preflight_header
+  preflight_checks
+  preflight_report
+  [ "${#PREFLIGHT_MISSING[@]}" -eq 0 ]
 }
 
 check_clean_checkout() {
@@ -248,8 +425,25 @@ build_editor() {
     find dist -name '*.map' -delete
   )
   [ -x "$editor_dir/electron/electron" ] || die "the editor's Electron binary is missing from $editor_dir/electron"
+  check_electron_libraries "$editor_dir/electron/electron"
   [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] && [ -f "$editor_dir/dist/icons/tray.png" ] \
     || die "the editor did not build into $editor_dir/dist"
+}
+
+# Electron arrives with the build, so the preflight cannot look at it. This
+# runs on the staged copy, before the swap: a shared library the binary links
+# against and this machine lacks would otherwise install fine and leave an
+# editor that never opens. ldd sees only what is linked, not what Electron
+# loads later by name, so a pass here is not a promise.
+check_electron_libraries() {
+  local binary="$1" absent
+  if ! has_command ldd; then
+    warn "ldd is not available; not checking the editor's shared libraries."
+    return
+  fi
+  absent="$(ldd "$binary" 2>/dev/null | awk '/=> not found/ { print $1 }' | sort -u | tr '\n' ' ')" || true
+  [ -z "$absent" ] \
+    || die "the editor's Electron needs shared libraries this machine does not have: ${absent% }. Install the packages that provide them and run this again; nothing was changed."
 }
 
 elgato_hidraw_nodes() {
@@ -658,5 +852,6 @@ command="$1"; shift
 case "$command" in
   install|update) cmd_install "$@" ;;
   uninstall)      cmd_uninstall "$@" ;;
+  check)          cmd_check "$@" ;;
   *)              usage ;;
 esac
