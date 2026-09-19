@@ -4,6 +4,7 @@ import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } fro
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
+import { deleteProfile } from '../shared/profile-deletion.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -358,6 +359,12 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       // Before the name changes, while the old one still resolves.
       followProfileName(config, edit.profile, name);
       profile.name = name;
+      return {};
+    }
+    case 'deleteProfile': {
+      // The rules live in shared/profile-deletion.ts, so the confirmation can
+      // run the same code on a copy and cannot describe a different delete.
+      deleteProfile(config, edit.profile, () => newLayout(edit.pageName, env));
       return {};
     }
     case 'deletePage': {

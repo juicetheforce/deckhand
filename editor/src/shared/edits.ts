@@ -110,7 +110,17 @@ export type Edit =
    * a `profile` action resolves across every profile, so a key anywhere, and
    * `startProfile`, that named the profile follows it to the new name.
    */
-  | { kind: 'renameProfile'; profile: string; name: string };
+  | { kind: 'renameProfile'; profile: string; name: string }
+  /**
+   * Delete a profile (M5). Keys in the other profiles that switched to it lose
+   * that action, keeping icon and label; `startProfile` moves if it named
+   * this one; a deck no remaining profile covers gets a fresh layout, whose
+   * one page is called `pageName` — a deck with nothing on it is worse than a
+   * deck with a blank page (the maintainer, 2026-09-19). Refused for the last profile.
+   * The rules, and the planning the confirmation shows, are in
+   * src/shared/profile-deletion.ts.
+   */
+  | { kind: 'deleteProfile'; profile: string; pageName: string };
 
 /**
  * A button's icon has three states, and they are not interchangeable

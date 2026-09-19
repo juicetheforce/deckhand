@@ -17,6 +17,7 @@ import { serializeConfig, toConfigPath, type ButtonLocation, type Edit } from '.
 import { ConfigStore, type StoreState } from '../src/main/config-store.js';
 import { resolvePage, resolveProfile, startPageOf, startProfileOf } from '../../src/config-common.js';
 import { pageDeletion } from '../src/renderer/model.js';
+import { planProfileDeletion } from '../src/shared/profile-deletion.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
 const TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'deckhand-editor-store-'));
@@ -717,6 +718,149 @@ await check('an edit this editor does not know is refused with why, never report
   assert.match(result.ok === false ? result.error : '', /quit it from the tray menu and start it again/);
   assert.equal(store.state().dirty, false);
   store.close();
+});
+
+console.log('delete profile (M5)');
+
+const DA = 'DECK-A';
+const DB = 'DECK-B';
+
+/**
+ * Two decks, three profiles. "Raid" is linked to by name, by ID, inside a
+ * multi and from an onRelease, across two other profiles; deck B is covered by
+ * Raid alone; startProfile names Raid by name; and home's "second" page can
+ * only be left by a key that switches to Raid.
+ */
+function deleteFixture(): Config {
+  return {
+    startProfile: 'Raid',
+    profiles: {
+      home: {
+        name: 'Home',
+        layouts: {
+          [DA]: {
+            startPage: 'main',
+            pages: {
+              main: {
+                name: 'Main',
+                buttons: {
+                  '0': { label: 'Raid', action: { type: 'profile', to: 'Raid' } },
+                  '1': { action: { type: 'profile', to: 'prof_raid' } },
+                  '2': { icon: '~/icons/both.png', label: 'Both', action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'f1' }, { type: 'profile', to: 'Raid' }] } },
+                  '3': { action: { type: 'multi', steps: [{ type: 'profile', to: 'Raid' }] } },
+                  '5': { action: { type: 'page', to: 'second' } },
+                },
+              },
+              second: { name: 'Second', buttons: { '4': { label: 'To Raid', action: { type: 'profile', to: 'Raid' } } } },
+            },
+          },
+        },
+      },
+      prof_raid: {
+        name: 'Raid',
+        layouts: {
+          [DA]: { pages: { pg_a: { name: 'Main', buttons: {} } } },
+          [DB]: { pages: { pg_b: { name: 'Main', buttons: {} } } },
+        },
+      },
+      prof_alt: {
+        name: 'Alt',
+        layouts: { [DA]: { pages: { alt: { name: 'Alt', buttons: { '6': { onRelease: { type: 'profile', to: 'Raid' } } } } } } },
+      },
+    },
+  };
+}
+
+const deleteRaid = { kind: 'deleteProfile' as const, profile: 'prof_raid', pageName: 'Main' };
+
+await check('deleting a profile takes the switch off keys everywhere, keeping icon and label, and leaves the rest alone', async () => {
+  const store = await openStore(await configFile(serializeConfig(deleteFixture())));
+  assert.equal(store.apply(deleteRaid).ok, true);
+  const config = store.state().config;
+  assert.equal(config.profiles.prof_raid, undefined, 'the profile is still there');
+  const main = config.profiles.home.layouts[DA].pages.main.buttons;
+  assert.deepEqual(main['0'], { label: 'Raid' }, 'the key keeps its label and loses the switch');
+  assert.equal(main['1'], undefined, 'an ID link with nothing else on the key should go entirely');
+  assert.deepEqual(main['2'], { icon: '~/icons/both.png', label: 'Both', action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'f1' }] } }, 'a multi should lose only the step, keeping icon and label');
+  assert.equal(main['3'], undefined, 'a multi with nothing left should go');
+  assert.deepEqual(main['5'], { action: { type: 'page', to: 'second' } }, 'an unrelated key was touched');
+  assert.deepEqual(config.profiles.home.layouts[DA].pages.second.buttons['4'], { label: 'To Raid' }, 'the key keeps its label and loses the switch');
+  assert.deepEqual(config.profiles.prof_alt.layouts[DA].pages.alt.buttons, {}, 'an onRelease switch should go, and an empty key with it');
+});
+
+await check('a deck the deleted profile alone covered gets a fresh named page in the start profile, and startProfile moves', async () => {
+  const store = await openStore(await configFile(serializeConfig(deleteFixture())));
+  assert.equal(store.apply(deleteRaid).ok, true);
+  const config = store.state().config;
+  assert.equal(config.startProfile, 'home', 'startProfile named Raid and should have moved');
+  const fresh = config.profiles.home.layouts[DB];
+  assert.ok(fresh, 'deck B is covered by no profile: it would go dark');
+  assert.deepEqual(Object.values(fresh.pages), [{ name: 'Main', buttons: {} }]);
+  assert.equal(fresh.startPage, Object.keys(fresh.pages)[0], 'the fresh layout should start on its page');
+  // Deck A was covered by two other profiles, so it needs nothing.
+  assert.deepEqual(Object.keys(config.profiles.home.layouts).sort(), [DA, DB].sort());
+  // What the daemon does with it: both decks resolve to a layout on a restart.
+  assert.equal(startProfileOf(config), 'home');
+  for (const serial of [DA, DB]) assert.ok(config.profiles[startProfileOf(config)].layouts[serial], `${serial} has no layout in the start profile`);
+});
+
+await check('the plan says exactly what the delete does, and changes nothing itself', async () => {
+  const config = deleteFixture();
+  const before = structuredClone(config);
+  const plan = planProfileDeletion(config, 'prof_raid');
+  assert.deepEqual(config, before, 'planning changed the config');
+  assert.deepEqual(plan.freshLayouts, [DB]);
+  assert.equal(plan.freshLayoutsIn, 'home');
+  assert.equal(plan.startProfileMovesTo, 'home');
+  assert.deepEqual(
+    plan.links.map((l) => `${l.profile}/${l.serial}/${l.page}/${l.index}/${l.where}${l.inMulti ? '/multi' : ''}`),
+    ['home/DECK-A/main/0/action', 'home/DECK-A/main/1/action', 'home/DECK-A/main/2/action/multi', 'home/DECK-A/main/3/action/multi', 'home/DECK-A/second/4/action', 'prof_alt/DECK-A/alt/6/onRelease'],
+  );
+  // The page whose only way off was a switch to Raid; main keeps its page key.
+  assert.deepEqual(plan.stranded, [{ profile: 'home', serial: DA, page: 'second' }]);
+  // And the same delete through the store leaves the config the plan described.
+  const store = await openStore(await configFile(serializeConfig(deleteFixture())));
+  assert.equal(store.apply(deleteRaid).ok, true);
+  const after = store.state().config;
+  assert.deepEqual(Object.keys(after.profiles.home.layouts), [DA, DB]);
+  assert.equal(after.startProfile, plan.startProfileMovesTo);
+});
+
+await check('a page already with no way off is not reported as newly stranded', async () => {
+  const config = deleteFixture();
+  // "second" loses its only exit either way: take it out first.
+  delete config.profiles.home.layouts[DA].pages.second.buttons['4'];
+  const plan = planProfileDeletion(config, 'prof_raid');
+  assert.deepEqual(plan.stranded, [], `reported ${JSON.stringify(plan.stranded)}`);
+});
+
+await check('nothing moves that does not have to: startProfile by ID elsewhere, and a deck covered by another profile', async () => {
+  const config = deleteFixture();
+  config.startProfile = 'home';
+  config.profiles.prof_alt.layouts[DB] = { pages: { altb: { name: 'Alt', buttons: {} } } };
+  const store = await openStore(await configFile(serializeConfig(config)));
+  assert.equal(store.apply(deleteRaid).ok, true);
+  const after = store.state().config;
+  assert.equal(after.startProfile, 'home', 'startProfile moved when it did not have to');
+  assert.equal(after.profiles.home.layouts[DB], undefined, 'deck B is covered by Alt: it needs no fresh layout');
+  const plan = planProfileDeletion(config, 'prof_raid');
+  assert.deepEqual(plan.freshLayouts, []);
+  assert.equal(plan.startProfileMovesTo, null);
+});
+
+await check('the last profile cannot be deleted, and an unknown one is refused', async () => {
+  const one = deleteFixture();
+  delete one.profiles.home;
+  delete one.profiles.prof_alt;
+  one.startProfile = 'prof_raid';
+  const store = await openStore(await configFile(serializeConfig(one)));
+  const only = Object.keys(store.state().config.profiles);
+  assert.deepEqual(only, ['prof_raid'], 'this check needs a config with exactly one profile');
+  const refused = store.apply({ kind: 'deleteProfile', profile: only[0], pageName: 'Main' });
+  assert.equal(refused.ok, false);
+  assert.match(refused.ok === false ? refused.error : '', /at least one/);
+  assert.equal(store.apply({ kind: 'deleteProfile', profile: 'nope', pageName: 'Main' }).ok, false, 'unknown profile');
+  assert.equal(store.state().dirty, false, 'a refused delete wrote something');
 });
 
 console.log('delete page (M4 phase B, B1)');
