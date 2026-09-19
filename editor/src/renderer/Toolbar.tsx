@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { SettingsGlyph } from './SettingsWindow.js';
 import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
@@ -20,6 +20,8 @@ interface Props {
   onRenameDeck: (serial: string, name: string | null) => Promise<string | null>;
   /** Rename a page. Returns an error to show, or null. */
   onRenamePage: (page: string, name: string) => Promise<string | null>;
+  /** Rename a profile (M5). Returns an error to show, or null. */
+  onRenameProfile: (profile: string, name: string) => Promise<string | null>;
   /** Ask to delete a page; App shows the confirmation, since it names what would change. */
   onDeletePage: (page: string) => void;
 }
@@ -33,7 +35,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * change from elsewhere (live switching, 2026-09-15). The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onDeletePage }: Props) {
+export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeletePage }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const layout = layoutFor(config, selection.profile, selection.serial);
@@ -46,16 +48,13 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
 
   return (
     <header className="toolbar glass">
-      <label className="crumb">
-        <span className="crumb-label">Profile</span>
-        <select value={selection.profile} onChange={(e) => onSelect({ profile: e.target.value })}>
-          {profileChoices(config).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ProfileCrumb
+        config={config}
+        profile={selection.profile}
+        disabled={editingBlocked}
+        onSelect={(profile) => onSelect({ profile })}
+        onRename={(name) => onRenameProfile(selection.profile, name)}
+      />
       <span className="crumb-sep">›</span>
       <label className="crumb">
         <span className="crumb-label">Device</span>
@@ -129,6 +128,139 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
 }
 
 /**
+ * Close a right-click menu on a click anywhere outside `wrap`, and on Escape.
+ * Pointerdown rather than click, so the menu is gone before the thing
+ * underneath reacts.
+ */
+function useCloseMenu(open: boolean, wrap: RefObject<HTMLElement | null>, close: () => void): void {
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) close();
+    };
+    const key = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('keydown', key, true);
+    return () => {
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('keydown', key, true);
+    };
+  }, [open, wrap, close]);
+}
+
+/**
+ * The Profile crumb: the dropdown that switches profiles, and (M5) a
+ * right-click menu on it that renames. The same pattern as a page tab (the maintainer,
+ * 2026-09-19): an operation on something already on screen may hide behind a
+ * gesture (scope §10).
+ *
+ * Renaming shows a field in place of the dropdown. Links in the config follow
+ * the profile to its new name (config-document.ts, followProfileName), but a
+ * script or shortcut running `deckhand profile <name>` is outside the config,
+ * so the field says so and names the ID, which survives any rename.
+ */
+function ProfileCrumb({
+  config,
+  profile,
+  disabled,
+  onSelect,
+  onRename,
+}: {
+  config: Config;
+  profile: string;
+  disabled: boolean;
+  onSelect: (profile: string) => void;
+  onRename: (name: string) => Promise<string | null>;
+}) {
+  const [menu, setMenu] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const closeMenu = useCallback(() => setMenu(false), []);
+  useCloseMenu(menu, wrap, closeMenu);
+
+  const choices = profileChoices(config);
+  const label = choices.find((p) => p.id === profile)?.label ?? profile;
+
+  const submitRename = async () => {
+    const failure = await onRename(draft);
+    if (failure !== null) {
+      setError(failure);
+      return;
+    }
+    setRenaming(false);
+    setError(null);
+  };
+
+  return (
+    <span className="crumb tab-wrap" ref={wrap}>
+      <span className="crumb-label">Profile</span>
+      {renaming ? (
+        <>
+          <input
+            autoFocus
+            className="tab-rename"
+            aria-label={`Rename profile ${label}`}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setError(null);
+            }}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter') void submitRename();
+              if (e.key === 'Escape') setRenaming(false);
+            }}
+            onBlur={() => void submitRename()}
+          />
+          <div className="rename-note glass" role="note">
+            {error && <p className="field-error">{error}</p>}
+            <p className="muted small">
+              Keys that switch to this profile follow the new name. A script or shortcut that runs{' '}
+              <code>deckhand profile "{label}"</code> needs changing by hand; <code>deckhand profile {profile}</code> works
+              whatever it is called.
+            </p>
+          </div>
+        </>
+      ) : (
+        <select
+          value={profile}
+          onChange={(e) => onSelect(e.target.value)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (!disabled) setMenu(true);
+          }}
+        >
+          {choices.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {menu && (
+        <ul className="tab-menu" role="menu">
+          <li>
+            <button
+              role="menuitem"
+              className="tab-menu-item"
+              onClick={() => {
+                setMenu(false);
+                setDraft(config.profiles[profile]?.name ?? '');
+                setError(null);
+                setRenaming(true);
+              }}
+            >
+              Rename profile…
+            </button>
+          </li>
+        </ul>
+      )}
+    </span>
+  );
+}
+
+/**
  * Name a new page. Reached from the "+" menu, which is the trigger — so this
  * shows the field straight away rather than another button behind the first
  * (which is what it did when the toolbar had its own "+ Page").
@@ -197,21 +329,8 @@ function PageTab({
   const [error, setError] = useState<string | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
 
-  // Close on a click anywhere else, and on Escape. Pointerdown rather than
-  // click, so the menu is gone before the thing underneath reacts.
-  useEffect(() => {
-    if (!menu) return;
-    const away = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setMenu(false);
-    };
-    const key = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setMenu(false);
-    window.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', key, true);
-    return () => {
-      window.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', key, true);
-    };
-  }, [menu]);
+  const closeMenu = useCallback(() => setMenu(false), []);
+  useCloseMenu(menu, wrap, closeMenu);
 
   const submitRename = async () => {
     const failure = await onRename(draft);

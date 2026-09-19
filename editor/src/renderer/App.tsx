@@ -283,6 +283,10 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
           });
           return result.ok ? null : result.error;
         }}
+        onRenameProfile={async (profile, name) => {
+          const result = await window.deckhand.apply({ kind: 'renameProfile', profile, name });
+          return result.ok ? null : result.error;
+        }}
         onDeletePage={setPendingDelete}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>

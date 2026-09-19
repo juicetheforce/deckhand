@@ -969,7 +969,37 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   [...document.querySelectorAll<HTMLButtonElement>('.confirm-card button')].find((b) => b.textContent === 'Delete page')!.click();
   out.pageGone = await until(() => tab('Second') === undefined);
 
-  // 7. Leave both decks somewhere that is not their start state, then quit.
+  // 7. Rename the profile being shown, from a right-click on the Profile
+  //    crumb (M5). The script's config links to it by name from the other
+  //    profile; the Node side checks that link followed.
+  const profileSelect = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+  profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(80);
+  out.profileMenu = [...document.querySelectorAll('.tab-menu-item')].map((b) => b.textContent);
+  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Rename profile'))!.click();
+  await until(() => document.querySelector('.rename-note') !== null);
+  out.profileRenameNote = document.querySelector('.rename-note')?.textContent ?? null;
+  const typeAndEnter = async (field: HTMLInputElement, text: string) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, text);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(40);
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  };
+  // A clash first: the field stays open and says why.
+  await typeAndEnter(document.querySelector<HTMLInputElement>('input[aria-label^="Rename profile"]')!, 'Other');
+  await until(() => document.querySelector('.rename-note .field-error') !== null);
+  out.profileClashError = document.querySelector('.rename-note .field-error')?.textContent ?? null;
+  await typeAndEnter(document.querySelector<HTMLInputElement>('input[aria-label^="Rename profile"]')!, 'Home');
+  out.profileRenamed = await until(() => profileSelect()?.selectedOptions[0]?.textContent === 'Home');
+  out.profileStillShown = profileValue();
+
+  // 8. Rename a page from its tab; a key on another page links to it by name.
+  await openTabMenu('Main', 'Rename page');
+  await typeAndEnter(document.querySelector<HTMLInputElement>('input.tab-rename')!, 'Start');
+  out.pageRenamed = await until(() => tab('Start') !== undefined && tab('Main') === undefined);
+  await sleep(300);
+
+  // 9. Leave both decks somewhere that is not their start state, then quit.
   chooseProfile('other');
   out.leftOnOther = await until(async () => (await deckAt(serial))?.profile === 'other');
   out.finalDecks = await decks();

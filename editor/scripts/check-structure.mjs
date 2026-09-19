@@ -50,6 +50,8 @@ const CONFIG = {
           pages: {
             main: { name: 'Main', buttons: { 0: { label: 'To second', action: { type: 'page', to: 'second' } } } },
             second: { name: 'Second', buttons: { 1: { label: 'Home', action: { type: 'page', to: 'Main' } } } },
+            // Hand-written links by name, for the renames (M5): they must follow.
+            third: { name: 'Third', buttons: { 2: { label: 'Back to main', action: { type: 'page', to: 'Main' } } } },
           },
         },
         [B]: { startPage: 'main', pages: { main: { name: 'Main', buttons: {} } } },
@@ -58,8 +60,8 @@ const CONFIG = {
     other: {
       name: 'Other',
       layouts: {
-        [A]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: {} } } },
-        [B]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: {} } } },
+        [A]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: { 3: { label: 'Default', action: { type: 'profile', to: 'Default' } } } } } },
+        [B]: { startPage: 'hotbar', pages: { hotbar: { name: 'Hotbar', buttons: { 4: { action: { type: 'profile', to: 'default' } } } } } },
       },
     },
   },
@@ -162,6 +164,31 @@ check('the deleted page is gone, and the key that pointed at it kept its label b
   assert.equal(layout.pages.second, undefined, 'the page is still in the file');
   assert.deepEqual(layout.pages.main.buttons['0'], { label: 'To second' }, 'the pointing key was not cleared cleanly');
   assert.equal(layout.startPage, 'main', 'startPage should not have needed to move');
+});
+
+check('the Profile crumb has a right-click menu that renames, and says what a rename cannot follow', () => {
+  assert.deepEqual(r?.profileMenu, ['Rename profile…']);
+  assert.match(String(r?.profileRenameNote), /deckhand profile "Default"/, 'the note does not name the old name');
+  assert.match(String(r?.profileRenameNote), /deckhand profile default\b/, 'the note does not name the ID');
+  assert.equal(r?.profileClashError, 'there is already a profile called "Other"');
+  assert.equal(r?.profileRenamed, true, 'the dropdown never showed the new name');
+  assert.equal(r?.profileStillShown, 'default', 'renaming moved the breadcrumb to another profile');
+});
+
+check('the renamed profile: name links follow it, ID links are untouched, the daemon accepted the file', () => {
+  assert.equal(finalConfig.profiles.default.name, 'Home');
+  assert.deepEqual(finalConfig.profiles.other.layouts[A].pages.hotbar.buttons['3'], { label: 'Default', action: { type: 'profile', to: 'Home' } }, 'the name link did not follow (the label is not a link and stays)');
+  assert.deepEqual(finalConfig.profiles.other.layouts[B].pages.hotbar.buttons['4'].action, { type: 'profile', to: 'default' }, 'an ID link was rewritten');
+  assert.equal(finalConfig.startProfile, 'default', 'startProfile by ID was rewritten');
+  assert.equal(daemon.profiles.profileName('default'), 'Home', 'the daemon never loaded the renamed profile');
+});
+
+check('the renamed page: a name link on another page follows it', () => {
+  assert.equal(r?.pageRenamed, true, 'the tab never showed the new name');
+  const layout = finalConfig.profiles.default.layouts[A];
+  assert.equal(layout.pages.main.name, 'Start');
+  assert.deepEqual(layout.pages.third.buttons['2'].action, { type: 'page', to: 'Start' });
+  assert.equal(layout.startPage, 'main', 'startPage by ID was rewritten');
 });
 
 check('closing the editor left both decks where they were, not on the start profile', () => {
