@@ -322,13 +322,15 @@ function openSettings(): void {
   }
   settingsWindow = new BrowserWindow({
     parent: window,
-    // The content's size, not the frame's: 6a's layout, with nothing below the footer.
-    useContentSize: true,
+    // 6a's layout, with nothing below the footer: its 32 px title bar
+    // (TitleBar.tsx) and 384 px of settings. Frameless, so the content is the window.
     width: 640,
-    height: 384,
+    height: 416,
     resizable: false,
     minimizable: false,
     maximizable: false,
+    // Its own bar, with a close button only (Ship piece 4; createWindow says why frameless).
+    frame: false,
     title: 'Deckhand Settings',
     backgroundColor: '#0e1020',
     show: CHECK === null,
@@ -342,6 +344,7 @@ function openSettings(): void {
   // The window's own title, not the page's, which would otherwise replace it.
   settingsWindow.on('page-title-updated', (event) => event.preventDefault());
   settingsWindow.on('closed', () => (settingsWindow = null));
+  reportWindowState(settingsWindow);
   void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings' } });
 }
 
@@ -560,7 +563,7 @@ function createWindow(): void {
   const settingsShot = CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_VIEW === 'settings';
   window = new BrowserWindow({
     width: settingsShot ? 640 : 1400,
-    height: settingsShot ? 384 : 900,
+    height: settingsShot ? 416 : 900,
     show: CHECK === null,
     /*
      * The editor draws its own title bar (Ship piece 4, scope §10): frame:

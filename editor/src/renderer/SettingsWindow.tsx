@@ -7,9 +7,8 @@ import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../
  * saved at once and reaches the editor behind it at once — there is nothing to
  * apply — so Done only closes the window.
  *
- * It runs in its own window, a child of the editor's, with the normal KDE
- * title bar until the frameless one is built (piece 4, which gives this
- * window a close button only).
+ * It runs in its own window, a child of the editor's, frameless, under its
+ * own title bar with a close button only (main.tsx, TitleBar.tsx; piece 4).
  */
 export function SettingsWindow() {
   const [settings, setSettings] = useState<AppSettings | null>(null);

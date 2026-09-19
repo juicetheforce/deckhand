@@ -4,7 +4,7 @@ import type { DeckhandBridge } from '../shared/bridge.js';
 import { App } from './App.js';
 import { runCheck } from './checks.js';
 import logoUrl from '../../../assets/logo/deckhand-small.svg';
-import { applyAccent, SettingsWindow } from './SettingsWindow.js';
+import { applyAccent, SettingsGlyph, SettingsWindow } from './SettingsWindow.js';
 import { TitleBar } from './TitleBar.js';
 import './styles.css';
 
@@ -39,7 +39,20 @@ const editor = (
   </div>
 );
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{view === 'settings' ? <SettingsWindow /> : editor}</StrictMode>);
+// The settings window's bar has a close button only (Ship piece 3), after 6a.
+const settings = (
+  <div className="window">
+    <TitleBar closeOnly>
+      <SettingsGlyph size={15} />
+      <span>Settings</span>
+    </TitleBar>
+    <div className="window-body">
+      <SettingsWindow />
+    </div>
+  </div>
+);
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{view === 'settings' ? settings : editor}</StrictMode>);
 
 const check = new URLSearchParams(window.location.search).get('check');
 if (check) void runCheck(check, window.deckhand);

@@ -1,4 +1,5 @@
-// Ship piece 4: the editor's own title bar, end to end in real Electron.
+// Ship piece 4: the editor's and the settings window's own title bars, end to
+// end in real Electron.
 //
 // Driven like check-settings.mjs (scripts/lib/drive-editor.mjs), on a private
 // bus. Every button is clicked in the page, as a person would; what the window
@@ -67,68 +68,114 @@ const BUTTONS = "[...document.querySelectorAll('.titlebar .titlebar-button')].ma
 const clickBar = (label) =>
   `(() => { const b = document.querySelector('.titlebar [aria-label=${JSON.stringify(label)}]'); if (!b) throw new Error('no ${label} button'); b.click(); return true; })()`;
 const middleLabel = (editor) => inPage(editor, 'editor', "document.querySelectorAll('.titlebar .titlebar-button')[1]?.getAttribute('aria-label') ?? null");
-const barReady = (editor) => until(async () => (await inPage(editor, 'editor', "document.querySelector('.titlebar') !== null")) === true);
+/**
+ * Wait for the editor's bar and the toolbar under it; throws on a timeout,
+ * since until() only returns false. Both, because the bar is outside App and
+ * so is there while App is still loading — reading the page then threw on the
+ * missing toolbar (1 run in 6, right after check:settings).
+ */
+async function barReady(editor) {
+  const started = Date.now();
+  const ready = "document.querySelector('.titlebar') !== null && document.querySelector('.toolbar') !== null";
+  if (!(await until(async () => (await inPage(editor, 'editor', ready)) === true, 20_000)))
+    throw new Error(`the editor's title bar and toolbar did not both appear within ${Date.now() - started} ms`);
+}
 
 const r = {};
 const editor = startEditorAt(electronPath, editorRoot, env);
-await until(() => editor.reports.some((x) => x.event === 'ready'), 30_000);
-await barReady(editor);
+// Every step below, in one try: a step that finds its window gone throws, and
+// the checks after it must still fail by name rather than the run stopping.
+try {
+  if (!(await until(() => editor.reports.some((x) => x.event === 'ready'), 30_000))) throw new Error('the editor never reported ready');
+  await barReady(editor);
+  r.bar = await inPage(
+    editor,
+    'editor',
+    `(() => {
+      const bar = document.querySelector('.titlebar');
+      const region = (el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).webkitAppRegion;
+      return {
+        buttons: ${BUTTONS},
+        barRegion: region(bar),
+        buttonRegions: [...bar.querySelectorAll('button')].map(region),
+        logo: bar.querySelector('.titlebar-logo')?.getAttribute('src') ?? null,
+        logoLoaded: bar.querySelector('.titlebar-logo')?.naturalWidth > 0,
+        middleText: bar.textContent.trim(),
+        aboveToolbar: bar.compareDocumentPosition(document.querySelector('.toolbar')) === Node.DOCUMENT_POSITION_FOLLOWING,
+        focused: bar.dataset.focused,
+      };
+    })()`,
+  );
 
-r.bar = await inPage(
-  editor,
-  'editor',
-  `(() => {
-    const bar = document.querySelector('.titlebar');
-    const region = (el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).webkitAppRegion;
-    return {
-      buttons: ${BUTTONS},
-      barRegion: region(bar),
-      buttonRegions: [...bar.querySelectorAll('button')].map(region),
-      logo: bar.querySelector('.titlebar-logo')?.getAttribute('src') ?? null,
-      logoLoaded: bar.querySelector('.titlebar-logo')?.naturalWidth > 0,
-      middleText: bar.textContent.trim(),
-      aboveToolbar: bar.compareDocumentPosition(document.querySelector('.toolbar')) === Node.DOCUMENT_POSITION_FOLLOWING,
-      focused: bar.dataset.focused,
-    };
-  })()`,
-);
+  // Maximise: main maximises, and the button turns into Restore from the event.
+  await inPage(editor, 'editor', clickBar('Maximise'));
+  r.maximised = await until(async () => (await stateOf(editor)).maximised === true, 5000);
+  r.labelWhenMaximised = await until(async () => (await middleLabel(editor)) === 'Restore', 5000);
 
-// Maximise: main maximises, and the button turns into Restore from the event.
-await inPage(editor, 'editor', clickBar('Maximise'));
-r.maximised = await until(async () => (await stateOf(editor)).maximised === true, 5000);
-r.labelWhenMaximised = await until(async () => (await middleLabel(editor)) === 'Restore', 5000);
+  // A reload is not a maximise event: the bar must read the state when it mounts.
+  // Marked first, so the wait below cannot find the old page's bar before the
+  // reload has happened (it did, 1 run in 4: the check then passed a bar that
+  // never read its state).
+  await inPage(editor, 'editor', '(window.beforeReload = true, setTimeout(() => location.reload(), 50), true)');
+  r.reloaded = await until(async () => (await inPage(editor, 'editor', "window.beforeReload !== true && document.querySelector('.titlebar') !== null")) === true);
+  await barReady(editor);
+  await sleep(300);
+  r.labelAfterReload = await middleLabel(editor);
 
-// A reload is not a maximise event: the bar must read the state when it mounts.
-await inPage(editor, 'editor', 'setTimeout(() => location.reload(), 50), true');
-await sleep(500);
-await barReady(editor);
-await sleep(300);
-r.labelAfterReload = await middleLabel(editor);
+  // Restore: the same button, now a toggle back. Clicked by position, not by its
+  // label, so a bar still drawing Maximise here fails the check above by name
+  // rather than stopping the run.
+  await inPage(editor, 'editor', "document.querySelectorAll('.titlebar .titlebar-button')[1].click(), true");
+  r.restored = await until(async () => (await stateOf(editor)).maximised === false, 5000);
+  r.labelWhenRestored = await until(async () => (await middleLabel(editor)) === 'Maximise', 5000);
 
-// Restore: the same button, now a toggle back. Clicked by position, not by its
-// label, so a bar still drawing Maximise here fails the check above by name
-// rather than stopping the run.
-await inPage(editor, 'editor', "document.querySelectorAll('.titlebar .titlebar-button')[1].click(), true");
-r.restored = await until(async () => (await stateOf(editor)).maximised === false, 5000);
-r.labelWhenRestored = await until(async () => (await middleLabel(editor)) === 'Maximise', 5000);
+  // Minimise: that main was asked, and accepted it. Not whether the window ended up
+  // minimised — a check window is never shown, and minimising a window that was
+  // never mapped only sometimes takes (1 run in 6); that is the maintainer's to see.
+  await inPage(editor, 'editor', clickBar('Minimise'));
+  r.minimiseObeyed = await until(() => editor.reports.some((x) => x.event === 'windowControl' && x.action === 'minimise' && x.from === 'editor' && x.obeyed), 5000);
 
-// Minimise: that main was asked, and accepted it. Not whether the window ended up
-// minimised — a check window is never shown, and minimising a window that was
-// never mapped only sometimes takes (1 run in 6); that is the maintainer's to see.
-await inPage(editor, 'editor', clickBar('Minimise'));
-r.minimiseObeyed = await until(() => editor.reports.some((x) => x.event === 'windowControl' && x.action === 'minimise' && x.from === 'editor' && x.obeyed), 5000);
+  // The settings window: its own bar, close only. Opened from the editor's gear.
+  await inPage(editor, 'editor', "document.querySelector('.toolbar-settings').click(), true");
+  await until(async () => (await stateOf(editor)).settingsOpen);
+  await until(async () => (await inPage(editor, 'settings', "document.querySelector('.titlebar') !== null")) === true);
+  r.settingsBar = await inPage(
+    editor,
+    'settings',
+    `({ buttons: ${BUTTONS}, text: document.querySelector('.titlebar').textContent.trim(), gear: document.querySelector('.titlebar svg') !== null })`,
+  );
+  // Its page can still call the bridge directly: main refuses anything but close from it.
+  await inPage(editor, 'settings', "window.deckhand.windowControl('minimise'), window.deckhand.windowControl('maximise'), true");
+  r.settingsRefused = await until(
+    () =>
+      ['minimise', 'maximise'].every((action) => editor.reports.some((x) => x.event === 'windowControl' && x.action === action && x.from === 'settings' && x.obeyed === false)),
+    5000,
+  );
+  r.settingsNeverObeyed = !editor.reports.some((x) => x.event === 'windowControl' && x.from === 'settings' && x.obeyed);
+  r.editorNotMaximised = (await stateOf(editor)).maximised === false;
+  // Its Close closes it, and only it.
+  await inPage(editor, 'settings', clickBar('Close'));
+  r.settingsClosed = await until(async () => {
+    const s = await stateOf(editor);
+    return !s.settingsOpen && s.windowOpen && s.windows === 1;
+  });
 
-// Close, with close-to-tray on (the default): to the tray, through the launcher.
-await inPage(editor, 'editor', clickBar('Close'));
-r.closedToTray = await until(async () => {
-  const s = await stateOf(editor);
-  return !s.windowOpen && !s.holding && s.windows === 0;
-});
-r.stillRunning = editor.exited === null;
-editor.send('click');
-r.reopened = await until(async () => (await stateOf(editor)).windowOpen);
+  // Close, with close-to-tray on (the default): to the tray, through the launcher.
+  await inPage(editor, 'editor', clickBar('Close'));
+  r.closedToTray = await until(async () => {
+    const s = await stateOf(editor);
+    return !s.windowOpen && !s.holding && s.windows === 0;
+  });
+  r.stillRunning = editor.exited === null;
+  editor.send('click');
+  r.reopened = await until(async () => (await stateOf(editor)).windowOpen);
+} catch (err) {
+  r.stoppedAt = err.message;
+  console.log(`the run stopped early: ${err.message}`);
+}
 editor.child.kill();
 
+check('the run reached the end', () => assert.equal(r.stoppedAt, undefined));
 check('the editor bar sits above the toolbar: the logo on the left, Minimise, Maximise, Close on the right, nothing between', () => {
   assert.deepEqual(r.bar.buttons, ['Minimise', 'Maximise', 'Close']);
   assert.equal(r.bar.aboveToolbar, true);
@@ -145,12 +192,26 @@ check('Maximise maximises the window and the button becomes Restore', () => {
   assert.equal(r.maximised, true);
   assert.equal(r.labelWhenMaximised, true);
 });
-check('after a reload, a maximised window still draws Restore', () => assert.equal(r.labelAfterReload, 'Restore'));
+check('after a reload, a maximised window still draws Restore', () => {
+  assert.equal(r.reloaded, true, 'the page reloaded');
+  assert.equal(r.labelAfterReload, 'Restore');
+});
 check('Restore restores it and the button becomes Maximise again', () => {
   assert.equal(r.restored, true);
   assert.equal(r.labelWhenRestored, true);
 });
 check('Minimise reaches the main process, which accepts it from the editor window (not whether it minimised: see above)', () => assert.equal(r.minimiseObeyed, true));
+check('the settings window has its own bar: the gear and "Settings", and a Close button only', () => {
+  assert.deepEqual(r.settingsBar.buttons, ['Close']);
+  assert.equal(r.settingsBar.text, 'Settings');
+  assert.equal(r.settingsBar.gear, true);
+});
+check('main refuses minimise and maximise from the settings window, even through the bridge', () => {
+  assert.equal(r.settingsRefused, true);
+  assert.equal(r.settingsNeverObeyed, true);
+  assert.equal(r.editorNotMaximised, true, 'nor does it act on the editor window instead');
+});
+check("the settings window's Close closes it and leaves the editor open", () => assert.equal(r.settingsClosed, true));
 check('Close goes to the tray, as closing the window always has; the tray opens it again', () => {
   assert.equal(r.closedToTray, true);
   assert.equal(r.stillRunning, true);

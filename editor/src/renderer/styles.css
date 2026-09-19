@@ -2108,12 +2108,17 @@ button:disabled {
 
 /* --- The settings window, after mockup 6a (Ship piece 3) --- */
 
+/* The settings scroll under the bar, never with it (the window is not resizable, so only a very large font would need it). */
+.settings-body .window-body {
+  overflow: auto;
+}
+
 body.settings-body {
   /* 6a's plane and its glow, which stays blue whatever the accent (see :root above). */
   background:
     radial-gradient(400px 280px at 50% -70px, rgba(91, 110, 232, 0.16), transparent 70%),
     linear-gradient(155deg, #131628, #0e1020);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .settings {
