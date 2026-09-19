@@ -321,6 +321,10 @@ function openSettings(): void {
     return;
   }
   settingsWindow = new BrowserWindow({
+    // A child of the editor's window, but on Wayland that does not keep it
+    // above: KWin puts it behind the editor like any other window (measured
+    // 2026-09-18, framed or not), and alwaysOnTop is unsupported on Wayland.
+    // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
     // 6a's layout, with nothing below the footer: its 32 px title bar
     // (TitleBar.tsx) and 384 px of settings. Frameless, so the content is the window.
@@ -343,9 +347,43 @@ function openSettings(): void {
   });
   // The window's own title, not the page's, which would otherwise replace it.
   settingsWindow.on('page-title-updated', (event) => event.preventDefault());
-  settingsWindow.on('closed', () => (settingsWindow = null));
-  reportWindowState(settingsWindow);
+  // Only if it is still the one: closeSettingsOnFocus lets go of a window
+  // before it has finished closing, and a new one may be open by then.
+  const created = settingsWindow;
+  settingsLeft = false;
+  created.on('focus', () => (settingsLeft = false));
+  created.on('blur', () => (settingsLeft = true));
+  created.on('closed', () => {
+    if (settingsWindow === created) settingsWindow = null;
+  });
+  reportWindowState(created);
   void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings' } });
+}
+
+/**
+ * Whether the settings window has lost focus since it last had it. Clicking
+ * into the editor blurs the settings window and then focuses the editor, 1 ms
+ * apart (measured 2026-09-18); a focus on the editor without that blur first is
+ * not a click away from Settings, and is ignored. Such focus events do arrive:
+ * one closed a settings window moments after it opened, in the title bar check.
+ */
+let settingsLeft = false;
+
+/**
+ * Going back to the editor closes the settings window (the maintainer, 2026-09-18). It
+ * cannot stay above the editor on Wayland (openSettings), and left to go
+ * behind it, it looked closed anyway. Nothing is lost: every setting is saved
+ * the moment it changes.
+ *
+ * The reference is dropped before the window has closed, so a click on the
+ * gear — which focuses the editor first — opens a new one rather than
+ * bringing forward the one that is closing.
+ */
+function closeSettingsOnFocus(): void {
+  const closing = settingsWindow;
+  if (!closing || closing.isDestroyed() || closing === window || !settingsLeft) return;
+  settingsWindow = null;
+  closing.close();
 }
 
 function registerIpc(): void {
@@ -594,6 +632,7 @@ function createWindow(): void {
   // already closes a child with its parent here (check:settings passes without
   // this line); it stays so that does not have to hold on every platform.
   window.on('close', () => settingsWindow?.close());
+  window.on('focus', closeSettingsOnFocus);
   window.on('closed', () => (window = null));
   reportWindowState(window);
   const query: Record<string, string> = {};
@@ -721,6 +760,14 @@ function startTrayCheck(): void {
     else if (command === 'menu') handlers.menu.find((item) => item.label === rest.join(' '))?.click();
     else if (command === 'edit') trayCheckReport('edited', { result: store?.apply(JSON.parse(rest.join(' ')) as Edit) ?? null });
     else if (command === 'settings') openSettings();
+    // Check windows are never shown, so never focused: these emit the events
+    // the compositor would, to run what listens for them. A click from Settings
+    // into the editor is 'click-editor'; 'focus-editor' is the editor's focus
+    // alone, as the stray one seen in this check.
+    else if (command === 'click-editor') {
+      if (settingsWindow && !settingsWindow.isDestroyed() && settingsWindow !== window) settingsWindow.emit('blur');
+      window?.emit('focus');
+    } else if (command === 'focus-editor') window?.emit('focus');
     // Run script in a window's page, as a person clicking there would, and report what it returns.
     else if (command === 'editor-js' || command === 'settings-js') {
       const target = command === 'editor-js' ? window : settingsWindow;

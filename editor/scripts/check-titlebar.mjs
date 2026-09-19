@@ -160,6 +160,37 @@ try {
     return !s.settingsOpen && s.windowOpen && s.windows === 1;
   });
 
+  // Clicking into the editor closes the settings window (it cannot stay above
+  // the editor on Wayland). The focus event is emitted from main: a check
+  // window is never focused by the compositor.
+  const settingsOpens = async () => {
+    await inPage(editor, 'editor', "document.querySelector('.toolbar-settings').click(), true");
+    return until(async () => (await stateOf(editor)).settingsOpen);
+  };
+  r.openedForFocus = await settingsOpens();
+  // The editor focused without Settings having lost focus first — a stray
+  // focus, not a click away from Settings — leaves it open.
+  editor.send('focus-editor');
+  await sleep(500);
+  r.strayFocusIgnored = (await stateOf(editor)).settingsOpen;
+  editor.send('click-editor');
+  r.focusCloses = await until(async () => {
+    const s = await stateOf(editor);
+    return !s.settingsOpen && s.windowOpen && s.windows === 1;
+  });
+  // The gear with Settings open: clicking it moves focus to the editor first,
+  // then opens Settings. One settings window must be open at the end, not
+  // none, even with a stray editor focus after it.
+  r.openedForGear = await settingsOpens();
+  editor.send('click-editor');
+  editor.send('settings');
+  await sleep(500);
+  editor.send('focus-editor');
+  await sleep(500);
+  r.afterGear = await stateOf(editor);
+  editor.send('click-editor');
+  await until(async () => !(await stateOf(editor)).settingsOpen);
+
   // Close, with close-to-tray on (the default): to the tray, through the launcher.
   await inPage(editor, 'editor', clickBar('Close'));
   r.closedToTray = await until(async () => {
@@ -212,6 +243,16 @@ check('main refuses minimise and maximise from the settings window, even through
   assert.equal(r.editorNotMaximised, true, 'nor does it act on the editor window instead');
 });
 check("the settings window's Close closes it and leaves the editor open", () => assert.equal(r.settingsClosed, true));
+check('clicking into the editor closes the settings window and leaves the editor open', () => {
+  assert.equal(r.openedForFocus, true);
+  assert.equal(r.focusCloses, true);
+});
+check('the editor gaining focus without Settings losing it first leaves Settings open', () => assert.equal(r.strayFocusIgnored, true));
+check('the gear, clicked with Settings open, leaves exactly one settings window open', () => {
+  assert.equal(r.openedForGear, true);
+  assert.equal(r.afterGear.settingsOpen, true);
+  assert.equal(r.afterGear.windows, 2);
+});
 check('Close goes to the tray, as closing the window always has; the tray opens it again', () => {
   assert.equal(r.closedToTray, true);
   assert.equal(r.stillRunning, true);
