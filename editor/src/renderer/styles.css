@@ -127,8 +127,12 @@ button:disabled {
   height: 32px;
   padding: 0 4px 0 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  /* Active: faintly tinted with the accent. Inactive, below: flat. */
-  background: rgba(var(--accent-rgb), 0.2);
+  /*
+   * Active: faintly tinted. Inactive, below: flat. The glow's blue, not the
+   * accent: the bar is background, and the background keeps its colour
+   * whatever the accent (see :root). Teal here read as wrong (the maintainer, 2026-09-18).
+   */
+  background: rgba(91, 110, 232, 0.2);
   /* The bar moves the window; its buttons are no-drag, below. */
   -webkit-app-region: drag;
   user-select: none;
