@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...] [--fake-audio]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused]
 //
 // --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
 // audio device forms; without it the daemon has no audio state to list.
@@ -86,6 +86,8 @@ const { values } = parseArgs({
     settings: { type: 'boolean' },
     // An accent colour from src/shared/settings.ts ACCENTS, stored as a setting first.
     accent: { type: 'string' },
+    // Draw the title bar as it looks behind another window (Ship piece 4).
+    unfocused: { type: 'boolean' },
   },
 });
 if (!values.out) {
@@ -144,6 +146,7 @@ if (values.recent?.length) {
   await fs.writeFile(path.join(editorState, 'icon-picker.json'), JSON.stringify({ recentFolders: values.recent.map((f) => path.resolve(f)) }, null, 2) + '\n');
 }
 if (values.settings) process.env.DECKHAND_EDITOR_VIEW = 'settings';
+if (values.unfocused) process.env.DECKHAND_EDITOR_UNFOCUSED = '1';
 if (values.accent !== undefined) {
   const editorState = path.join(scratch, 'state', 'editor');
   await fs.mkdir(editorState, { recursive: true });

@@ -278,9 +278,10 @@ function callingWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
 }
 
 function windowState(w: BrowserWindow): WindowState {
-  // A screenshot window is hidden and so never focused; drawn dimmed, the
-  // screenshot would show the bar as it looks behind another window.
-  return { maximised: w.isMaximized(), focused: w.isFocused() || CHECK === 'screenshot' };
+  // A screenshot window is hidden and so never focused: it is drawn focused
+  // unless the screenshot asks for the other look (screenshot.mjs --unfocused).
+  const screenshotFocus = CHECK === 'screenshot' && !process.env.DECKHAND_EDITOR_UNFOCUSED;
+  return { maximised: w.isMaximized(), focused: w.isFocused() || screenshotFocus };
 }
 
 /**

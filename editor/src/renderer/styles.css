@@ -123,9 +123,12 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   flex: none;
-  height: 44px;
-  padding: 0 10px 0 16px;
+  /* Thinner than 2a's 44 px (the maintainer, 2026-09-18): close to the logo's height. */
+  height: 32px;
+  padding: 0 4px 0 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  /* Active: faintly tinted with the accent. Inactive, below: flat. */
+  background: rgba(var(--accent-rgb), 0.2);
   /* The bar moves the window; its buttons are no-drag, below. */
   -webkit-app-region: drag;
   user-select: none;
@@ -145,18 +148,18 @@ button:disabled {
 
 .titlebar-buttons {
   display: flex;
-  gap: 6px;
+  gap: 2px;
 }
 
 .titlebar-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 24px;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: rgba(255, 255, 255, 0.6);
   /* Or a click on it starts a drag instead. */
@@ -173,10 +176,18 @@ button:disabled {
   color: var(--red);
 }
 
-/* Behind another window the bar recedes, as KDE's own applications do themselves. */
+/*
+ * Behind another window the bar recedes, as KDE's own applications do
+ * themselves: the tint goes and the logo and buttons fade. The toolbar below is
+ * left alone — dimmed, its controls read as disabled (tried 2026-09-18).
+ */
+.titlebar[data-focused='false'] {
+  background: transparent;
+}
+
 .titlebar[data-focused='false'] .titlebar-start,
 .titlebar[data-focused='false'] .titlebar-button:not(:hover) {
-  opacity: 0.45;
+  opacity: 0.3;
 }
 
 /* Toolbar and breadcrumb */
