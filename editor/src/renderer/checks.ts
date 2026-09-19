@@ -27,7 +27,7 @@ async function openAddMenu(item: 'New page' | 'New profile'): Promise<void> {
 }
 
 /** Right-click a page tab and pick from its menu — the only way in since the "⋯" went. */
-async function openTabMenu(page: string, item: 'Rename page' | 'Delete page'): Promise<void> {
+async function openTabMenu(page: string, item: 'Delete page'): Promise<void> {
   const tab = document.querySelector<HTMLButtonElement>(`.tab[data-tab="${page}"]`)!;
   tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await new Promise((r) => setTimeout(r, 80));
@@ -969,33 +969,52 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   [...document.querySelectorAll<HTMLButtonElement>('.confirm-card button')].find((b) => b.textContent === 'Delete page')!.click();
   out.pageGone = await until(() => tab('Second') === undefined);
 
-  // 7. Rename the profile being shown, from a right-click on the Profile
-  //    crumb (M5). The script's config links to it by name from the other
-  //    profile; the Node side checks that link followed.
+  // 7. Rename the profile being shown with the pencil beside it (M5; the maintainer,
+  //    2026-09-19: rename is a visible pencil for profile, device and page).
+  //    The script's config links to it by name from the other profile; the
+  //    Node side checks that link followed.
   const profileSelect = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
-  profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-  await sleep(80);
-  out.profileMenu = [...document.querySelectorAll('.tab-menu-item')].map((b) => b.textContent);
-  [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Rename profile'))!.click();
-  await until(() => document.querySelector('.rename-note') !== null);
-  out.profileRenameNote = document.querySelector('.rename-note')?.textContent ?? null;
+  const pencil = (labelStart: string) => document.querySelector<HTMLButtonElement>(`.toolbar button.icon-button[aria-label^="${labelStart}"]`);
   const typeAndEnter = async (field: HTMLInputElement, text: string) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, text);
     field.dispatchEvent(new Event('input', { bubbles: true }));
     await sleep(40);
     field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   };
+  out.pencils = [...document.querySelectorAll('.toolbar button.icon-button')].map((b) => b.getAttribute('aria-label'));
+  out.profileMenuOnRightClick = await (async () => {
+    profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await sleep(80);
+    return document.querySelectorAll('.tab-menu-item').length;
+  })();
+  pencil('Rename profile')!.click();
+  await until(() => document.querySelector('input[aria-label="Profile name"]') !== null);
+  const profileField = () => document.querySelector<HTMLInputElement>('input[aria-label="Profile name"]')!;
+  out.profileFieldStartsWith = profileField().value;
+  out.profileRenameExtras = profileField().parentElement?.textContent ?? null;
   // A clash first: the field stays open and says why.
-  await typeAndEnter(document.querySelector<HTMLInputElement>('input[aria-label^="Rename profile"]')!, 'Other');
-  await until(() => document.querySelector('.rename-note .field-error') !== null);
-  out.profileClashError = document.querySelector('.rename-note .field-error')?.textContent ?? null;
-  await typeAndEnter(document.querySelector<HTMLInputElement>('input[aria-label^="Rename profile"]')!, 'Home');
-  out.profileRenamed = await until(() => profileSelect()?.selectedOptions[0]?.textContent === 'Home');
+  await typeAndEnter(profileField(), 'Other');
+  await until(() => profileField()?.parentElement?.querySelector('.field-error') != null);
+  out.profileClashError = profileField()?.parentElement?.querySelector('.field-error')?.textContent ?? null;
+  await typeAndEnter(profileField(), 'Home');
+  out.profileRenamed = await until(() => profileSelect()?.selectedOptions[0]?.textContent === 'Home' && document.querySelector('input[aria-label="Profile name"]') === null);
   out.profileStillShown = profileValue();
 
-  // 8. Rename a page from its tab; a key on another page links to it by name.
-  await openTabMenu('Main', 'Rename page');
-  await typeAndEnter(document.querySelector<HTMLInputElement>('input.tab-rename')!, 'Start');
+  // 8. Rename a page with the pencil beside its tab; a key on another page
+  //    links to it by name. Only the selected tab has one, and the tab's
+  //    right-click menu no longer offers Rename.
+  tab('Main')!.click();
+  await until(() => selectedTab() === 'Main');
+  out.pagePencils = [...document.querySelectorAll('.toolbar button.icon-button')].filter((b) => b.getAttribute('aria-label')?.startsWith('Rename page')).map((b) => b.getAttribute('aria-label'));
+  tab('Main')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(80);
+  out.tabMenu = [...document.querySelectorAll('.tab-menu-item')].map((b) => b.textContent);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  await sleep(80);
+  pencil('Rename page')!.click();
+  await until(() => document.querySelector('input[aria-label="Page name"]') !== null);
+  await typeAndEnter(document.querySelector<HTMLInputElement>('input[aria-label="Page name"]')!, 'Start');
   out.pageRenamed = await until(() => tab('Start') !== undefined && tab('Main') === undefined);
   await sleep(300);
 

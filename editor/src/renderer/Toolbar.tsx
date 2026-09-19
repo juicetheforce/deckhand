@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { SettingsGlyph } from './SettingsWindow.js';
 import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
@@ -48,13 +48,26 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
 
   return (
     <header className="toolbar glass">
-      <ProfileCrumb
-        config={config}
-        profile={selection.profile}
-        disabled={editingBlocked}
-        onSelect={(profile) => onSelect({ profile })}
-        onRename={(name) => onRenameProfile(selection.profile, name)}
-      />
+      <label className="crumb">
+        <span className="crumb-label">Profile</span>
+        <select value={selection.profile} onChange={(e) => onSelect({ profile: e.target.value })}>
+          {profileChoices(config).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {Object.prototype.hasOwnProperty.call(config.profiles, selection.profile) && (
+        <RenameControl
+          key={`profile:${selection.profile}`}
+          fieldLabel="Profile name"
+          buttonLabel={`Rename profile "${config.profiles[selection.profile].name ?? selection.profile}"`}
+          name={config.profiles[selection.profile].name ?? ''}
+          disabled={editingBlocked}
+          onRename={(name) => onRenameProfile(selection.profile, name)}
+        />
+      )}
       <span className="crumb-sep">›</span>
       <label className="crumb">
         <span className="crumb-label">Device</span>
@@ -69,28 +82,47 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         </select>
       </label>
       {selectedDeck && (
-        <RenameDeck
-          serial={selectedDeck.id}
-          name={config.decks?.[selectedDeck.id]?.name ?? null}
-          modelName={selectedDeck.label}
+        <RenameControl
+          key={`deck:${selectedDeck.id}`}
+          fieldLabel="Deck name"
+          buttonLabel={
+            config.decks?.[selectedDeck.id]?.name === undefined
+              ? `No name set — showing the model name, ${selectedDeck.label}. Click to name this deck.`
+              : `Rename "${config.decks[selectedDeck.id].name}"`
+          }
+          name={config.decks?.[selectedDeck.id]?.name ?? ''}
+          placeholder={selectedDeck.label}
+          hint={`Empty to use “${selectedDeck.label}”`}
           disabled={editingBlocked}
-          onRename={onRenameDeck}
+          onRename={(name) => onRenameDeck(selectedDeck.id, name.trim() === '' ? null : name)}
         />
       )}
       <span className="crumb-sep">›</span>
       <nav className="tabs" aria-label="Pages">
         {layout &&
           pageChoices(layout).map((p) => (
-            <PageTab
-              key={p.id}
-              label={p.label}
-              selected={p.id === selection.page}
-              stranded={stranded.has(p.id)}
-              disabled={editingBlocked}
-              onSelect={() => onSelect({ page: p.id })}
-              onRename={(name) => onRenamePage(p.id, name)}
-              onDelete={() => onDeletePage(p.id)}
-            />
+            <Fragment key={p.id}>
+              <PageTab
+                label={p.label}
+                selected={p.id === selection.page}
+                stranded={stranded.has(p.id)}
+                disabled={editingBlocked}
+                onSelect={() => onSelect({ page: p.id })}
+                onDelete={() => onDeletePage(p.id)}
+              />
+              {/* One pencil, on the selected tab only: a control per tab would
+                  multiply with every page created (the maintainer, 2026-09-19). */}
+              {p.id === selection.page && (
+                <RenameControl
+                  key={`page:${p.id}`}
+                  fieldLabel="Page name"
+                  buttonLabel={`Rename page "${p.label}"`}
+                  name={layout.pages[p.id].name ?? ''}
+                  disabled={editingBlocked}
+                  onRename={(name) => onRenamePage(p.id, name)}
+                />
+              )}
+            </Fragment>
           ))}
         <AddMenu
           canAddPage={layout !== null}
@@ -149,118 +181,6 @@ function useCloseMenu(open: boolean, wrap: RefObject<HTMLElement | null>, close:
 }
 
 /**
- * The Profile crumb: the dropdown that switches profiles, and (M5) a
- * right-click menu on it that renames. The same pattern as a page tab (the maintainer,
- * 2026-09-19): an operation on something already on screen may hide behind a
- * gesture (scope §10).
- *
- * Renaming shows a field in place of the dropdown. Links in the config follow
- * the profile to its new name (config-document.ts, followProfileName), but a
- * script or shortcut running `deckhand profile <name>` is outside the config,
- * so the field says so and names the ID, which survives any rename.
- */
-function ProfileCrumb({
-  config,
-  profile,
-  disabled,
-  onSelect,
-  onRename,
-}: {
-  config: Config;
-  profile: string;
-  disabled: boolean;
-  onSelect: (profile: string) => void;
-  onRename: (name: string) => Promise<string | null>;
-}) {
-  const [menu, setMenu] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const wrap = useRef<HTMLSpanElement>(null);
-  const closeMenu = useCallback(() => setMenu(false), []);
-  useCloseMenu(menu, wrap, closeMenu);
-
-  const choices = profileChoices(config);
-  const label = choices.find((p) => p.id === profile)?.label ?? profile;
-
-  const submitRename = async () => {
-    const failure = await onRename(draft);
-    if (failure !== null) {
-      setError(failure);
-      return;
-    }
-    setRenaming(false);
-    setError(null);
-  };
-
-  return (
-    <span className="crumb tab-wrap" ref={wrap}>
-      <span className="crumb-label">Profile</span>
-      {renaming ? (
-        <>
-          <input
-            autoFocus
-            className="tab-rename"
-            aria-label={`Rename profile ${label}`}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setError(null);
-            }}
-            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-              if (e.key === 'Enter') void submitRename();
-              if (e.key === 'Escape') setRenaming(false);
-            }}
-            onBlur={() => void submitRename()}
-          />
-          <div className="rename-note glass" role="note">
-            {error && <p className="field-error">{error}</p>}
-            <p className="muted small">
-              Keys that switch to this profile follow the new name. A script or shortcut that runs{' '}
-              <code>deckhand profile "{label}"</code> needs changing by hand; <code>deckhand profile {profile}</code> works
-              whatever it is called.
-            </p>
-          </div>
-        </>
-      ) : (
-        <select
-          value={profile}
-          onChange={(e) => onSelect(e.target.value)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            if (!disabled) setMenu(true);
-          }}
-        >
-          {choices.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      )}
-      {menu && (
-        <ul className="tab-menu" role="menu">
-          <li>
-            <button
-              role="menuitem"
-              className="tab-menu-item"
-              onClick={() => {
-                setMenu(false);
-                setDraft(config.profiles[profile]?.name ?? '');
-                setError(null);
-                setRenaming(true);
-              }}
-            >
-              Rename profile…
-            </button>
-          </li>
-        </ul>
-      )}
-    </span>
-  );
-}
-
-/**
  * Name a new page. Reached from the "+" menu, which is the trigger — so this
  * shows the field straight away rather than another button behind the first
  * (which is what it did when the toolbar had its own "+ Page").
@@ -311,7 +231,6 @@ function PageTab({
   stranded,
   disabled,
   onSelect,
-  onRename,
   onDelete,
 }: {
   label: string;
@@ -320,50 +239,13 @@ function PageTab({
   stranded: boolean;
   disabled: boolean;
   onSelect: () => void;
-  onRename: (name: string) => Promise<string | null>;
   onDelete: () => void;
 }) {
   const [menu, setMenu] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
 
   const closeMenu = useCallback(() => setMenu(false), []);
   useCloseMenu(menu, wrap, closeMenu);
-
-  const submitRename = async () => {
-    const failure = await onRename(draft);
-    if (failure !== null) {
-      setError(failure);
-      return;
-    }
-    setRenaming(false);
-    setError(null);
-  };
-
-  if (renaming) {
-    return (
-      <span className="tab-wrap" ref={wrap}>
-        <input
-          autoFocus
-          className="tab-rename"
-          aria-label={`Rename ${label}`}
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setError(null);
-          }}
-          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-            if (e.key === 'Enter') void submitRename();
-            if (e.key === 'Escape') setRenaming(false);
-          }}
-          onBlur={() => void submitRename()}
-        />
-        {error && <span className="field-error">{error}</span>}
-      </span>
-    );
-  }
 
   return (
     <span className="tab-wrap" ref={wrap}>
@@ -387,26 +269,11 @@ function PageTab({
           </span>
         )}
       </button>
-      {/* Right-click is the only way in (the maintainer, 2026-09-16): rename and delete
-          on a tab are universal muscle memory, and a per-tab button costs a
-          slot on every page ever created. Operations may hide behind a
-          gesture; capabilities may not (scope §10). */}
+      {/* Right-click is the way to delete (the maintainer, 2026-09-16): a per-tab
+          button costs a slot on every page ever created. Rename is the pencil
+          beside the selected tab, as for profile and device (2026-09-19). */}
       {menu && (
         <ul className="tab-menu" role="menu">
-          <li>
-            <button
-              role="menuitem"
-              className="tab-menu-item"
-              onClick={() => {
-                setMenu(false);
-                setDraft(label);
-                setError(null);
-                setRenaming(true);
-              }}
-            >
-              Rename page…
-            </button>
-          </li>
           <li>
             <button
               role="menuitem"
@@ -618,40 +485,39 @@ function AddMenu({
 }
 
 /**
- * Rename the selected deck (scope §10). `decks.<serial>.name` has been in the
- * schema since v0.1 and deck config sits outside profiles, so a name set once
- * applies everywhere — this is UI over an existing field.
- *
- * A pencil rather than the word "Rename" (the maintainer, 2026-09-16): the toolbar is the
- * row that fills up as pages are added, so anything that can give back width
- * should.
- *
- * **With no name set the model name is shown and nothing else.** No serial is
- * appended and no attempt is made to tell identical devices apart: nobody knows
- * their serials and nobody will check them. Two XLs both reading "Stream Deck
- * XL" is correct, because that is genuinely all the software knows — which is
- * which is the owner's to decide and name ("Left", "Right"), and changes when
- * they rearrange their desk. Our job is only to make naming possible.
+ * Rename by pencil — the one control for profile, device and page (the maintainer,
+ * 2026-09-19): a visible pencil beside the thing, which becomes a field in its
+ * place. Enter or leaving the field saves; Escape cancels; a refusal (a name
+ * already in use, a blank one) stays open and says why.
  */
-function RenameDeck({
-  serial,
+function RenameControl({
+  fieldLabel,
+  buttonLabel,
   name,
-  modelName,
+  placeholder,
+  hint,
   disabled,
   onRename,
 }: {
-  serial: string;
-  name: string | null;
-  modelName: string;
+  /** The field's accessible name: "Profile name", "Deck name", "Page name". */
+  fieldLabel: string;
+  /** The pencil's tooltip and accessible name. */
+  buttonLabel: string;
+  /** The name the field starts with. */
+  name: string;
+  placeholder?: string;
+  /** A short line beside the field, for the deck's "empty uses the model name". */
+  hint?: string;
   disabled: boolean;
-  onRename: (serial: string, name: string | null) => Promise<string | null>;
+  /** Returns an error to show, or null when renamed. */
+  onRename: (name: string) => Promise<string | null>;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    const failure = await onRename(serial, text.trim() === '' ? null : text);
+    const failure = await onRename(text);
     if (failure !== null) {
       setError(failure);
       return;
@@ -665,10 +531,10 @@ function RenameDeck({
       <button
         className="icon-button"
         disabled={disabled}
-        aria-label={name === null ? `Name this deck (currently showing the model name, ${modelName})` : `Rename "${name}"`}
-        title={name === null ? `No name set — showing the model name, ${modelName}. Click to name this deck.` : `Rename "${name}"`}
+        aria-label={buttonLabel}
+        title={buttonLabel}
         onClick={() => {
-          setText(name ?? '');
+          setText(name);
           setError(null);
           setEditing(true);
         }}
@@ -678,11 +544,11 @@ function RenameDeck({
     );
   }
   return (
-    <span className="rename-deck">
+    <span className="rename-inline">
       <input
         autoFocus
-        aria-label="Deck name"
-        placeholder={modelName}
+        aria-label={fieldLabel}
+        placeholder={placeholder}
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -694,7 +560,7 @@ function RenameDeck({
         }}
         onBlur={() => void submit()}
       />
-      <span className="muted small">Empty to use “{modelName}”</span>
+      {hint && <span className="muted small">{hint}</span>}
       {error && <span className="field-error">{error}</span>}
     </span>
   );

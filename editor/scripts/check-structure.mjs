@@ -166,13 +166,20 @@ check('the deleted page is gone, and the key that pointed at it kept its label b
   assert.equal(layout.startPage, 'main', 'startPage should not have needed to move');
 });
 
-check('the Profile crumb has a right-click menu that renames, and says what a rename cannot follow', () => {
-  assert.deepEqual(r?.profileMenu, ['Rename profile…']);
-  assert.match(String(r?.profileRenameNote), /deckhand profile "Default"/, 'the note does not name the old name');
-  assert.match(String(r?.profileRenameNote), /deckhand profile default\b/, 'the note does not name the ID');
+check('rename is a visible pencil for profile, device and page, with no note and no right-click', () => {
+  assert.deepEqual(
+    r?.pencils?.map((l) => l.replace(/"[^"]*"/, '"…"')),
+    ['Rename profile "…"', 'Rename "…"', 'Rename page "…"'],
+    'expected one pencil each for profile, device and the selected page',
+  );
+  assert.equal(r?.profileMenuOnRightClick, 0, 'the Profile dropdown still has a right-click menu');
+  assert.equal(r?.profileFieldStartsWith, 'Default');
+  assert.equal(r?.profileRenameExtras, '', 'something besides the field is shown while renaming a profile');
   assert.equal(r?.profileClashError, 'there is already a profile called "Other"');
-  assert.equal(r?.profileRenamed, true, 'the dropdown never showed the new name');
+  assert.equal(r?.profileRenamed, true, 'the dropdown never showed the new name, or the field stayed open');
   assert.equal(r?.profileStillShown, 'default', 'renaming moved the breadcrumb to another profile');
+  assert.deepEqual(r?.pagePencils, ['Rename page "Main"'], 'a page pencil should be on the selected tab only');
+  assert.deepEqual(r?.tabMenu, ['Delete page…'], 'the tab menu should hold Delete only');
 });
 
 check('the renamed profile: name links follow it, ID links are untouched, the daemon accepted the file', () => {

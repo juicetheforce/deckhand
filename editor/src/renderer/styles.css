@@ -1352,29 +1352,6 @@ button:disabled {
   color: var(--red);
 }
 
-/* Renaming a profile: what follows the new name, and what cannot */
-
-.rename-note {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 30;
-  width: 320px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--glass-border);
-  background: #14141c;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-}
-
-.rename-note p {
-  margin: 0;
-}
-
-.rename-note p + p {
-  margin-top: 6px;
-}
-
 /* A deck this profile does not cover */
 
 .no-layout {
@@ -1893,13 +1870,13 @@ button:disabled {
   gap: 8px;
 }
 
-.rename-deck {
+.rename-inline {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.rename-deck input {
+.rename-inline input {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--accent);
   border-radius: 9px;
@@ -1977,15 +1954,6 @@ button:disabled {
 .add-panel {
   padding: 10px;
   min-width: 220px;
-}
-
-.tab-rename {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--accent);
-  border-radius: 9px;
-  padding: 4px 8px;
-  width: 150px;
-  color: var(--text);
 }
 
 /* Bulk operations (M4 phase B3): multi-select, the key menu, the status line */
