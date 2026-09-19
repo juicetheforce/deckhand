@@ -537,7 +537,7 @@ $DESKTOP_MARKER
 Type=Application
 Name=Deckhand
 GenericName=Stream Deck Editor
-Comment=Set up what your Stream Deck keys do
+Comment=Linux-based Stream Deck key editor
 Exec="$EDITOR_LAUNCHER"
 Icon=$id
 StartupWMClass=$id
