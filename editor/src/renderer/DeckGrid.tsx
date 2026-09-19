@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import missingIconUrl from '../../../assets/icons/missing.svg';
+import { failedBadgeSvg } from '../../../src/failed-badge.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
@@ -11,6 +12,8 @@ interface Props {
   page: PageDef;
   /** Icon path → its file's stamp (src/main/icon-files.ts), so a changed file is fetched again. */
   iconStamps: Record<string, string>;
+  /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
+  failedKeys: Record<number, string>;
   selectedKeys: number[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
   onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
@@ -115,7 +118,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
   const keyDrag = useKeyDrag(onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -137,6 +140,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, selectedKeys, onC
           iconSize={geometry.iconSize}
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
+          failure={failedKeys[k.index]}
           selected={selectedKeys.includes(k.index)}
           onClick={(modifiers) => {
             if (!keyDrag.takeSuppressedClick()) onClickKey(k.index, modifiers);
@@ -160,6 +164,8 @@ interface KeyProps {
   iconSize: number | null;
   button: ButtonDef | undefined;
   iconStamps: Record<string, string>;
+  /** The error, if this key's last press on the deck failed (Ship piece 6). */
+  failure: string | undefined;
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
@@ -170,7 +176,7 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, failure, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
   const face = keyFace(config, button, iconSize);
@@ -244,6 +250,11 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
         <span className="key-mark" title="Shows something, but does nothing when pressed">
           no action
         </span>
+      )}
+      {failure !== undefined && (
+        // The deck's own badge, from the same drawing (src/failed-badge.ts),
+        // inlined: the page's CSP refuses data: images. Sized in CSS.
+        <span className="key-failed" title={`Its last press failed: ${failure}`} dangerouslySetInnerHTML={{ __html: failedBadgeSvg(100) }} />
       )}
     </button>
   );

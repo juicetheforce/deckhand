@@ -25,7 +25,8 @@
     "check:forms": "npm run build && node scripts/check-forms.mjs",
     "check:tray": "npm run build && node scripts/check-tray.mjs",
     "check:settings": "npm run build && node scripts/check-settings.mjs",
-    "check:titlebar": "npm run build && node scripts/check-titlebar.mjs"
+    "check:titlebar": "npm run build && node scripts/check-titlebar.mjs",
+    "check:failures": "npm run build && node scripts/check-failures.mjs"
   },
   "engines": {
     "node": ">=22.12"

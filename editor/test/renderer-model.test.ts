@@ -32,6 +32,7 @@ import {
   clipboardSummary,
   placementMessage,
   deviceTargets,
+  failedKeysOn,
 } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
@@ -664,6 +665,22 @@ await check('Copy to device offers the other decks this profile covers, with the
     'the deck being edited is not a target, and a disconnected deck is listed as such',
   );
   assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL, V2]), selection)[0].connected, true);
+});
+
+await check('failed keys: only those on the page being edited, from the deck being edited, with their errors (Ship piece 6)', () => {
+  const view = daemonView([XL, V2]);
+  const xl = view.status!.decks.find((d) => d.serial === XL)!;
+  xl.failed = [
+    { profile: 'default', page: 'main', key: 3, error: 'no' },
+    { profile: 'default', page: 'games', key: 1, error: 'other page' },
+    { profile: 'raid', page: 'main', key: 4, error: 'other profile' },
+  ];
+  view.status!.decks.find((d) => d.serial === V2)!.failed = [{ profile: 'default', page: 'main', key: 5, error: 'other deck' }];
+  assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), { 3: 'no' });
+  assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), { 1: 'other page' });
+  assert.deepEqual(failedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'a daemon from before piece 6 sends no list');
+  const offline: DaemonView = { connected: false, problem: 'x', status: null, decks: null };
+  assert.deepEqual(failedKeysOn(offline, { profile: 'default', serial: XL, page: 'main' }), {});
 });
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

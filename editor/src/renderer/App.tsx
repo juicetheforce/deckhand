@@ -13,6 +13,7 @@ import {
   clickKeys,
   deckForProfile,
   deviceTargets,
+  failedKeysOn,
   followDeck,
   geometryFor,
   layoutFor,
@@ -316,6 +317,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
                 geometry={geometry}
                 page={page}
                 iconStamps={iconStamps}
+                failedKeys={failedKeysOn(daemon, selection)}
                 selectedKeys={selection.keys}
                 onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
                 onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}

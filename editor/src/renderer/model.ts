@@ -16,6 +16,20 @@ import { pageLinks, type PageLink } from '../shared/links.js';
 
 export type DeckGeometryWithSerial = DecksResult[number];
 
+/**
+ * The keys on the page being edited whose last press on the deck failed, with
+ * the error (Ship piece 6). The deck draws a badge on them, and the grid
+ * mirrors the deck (scope §10), so the grid draws one too. Keyed by the
+ * selection's profile and page, not by what the deck shows: a key failed on
+ * a page stays failed while the deck is elsewhere.
+ */
+export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
+  const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
+  const failed: Record<number, string> = {};
+  for (const f of deck?.failed ?? []) if (f.profile === selection.profile && f.page === selection.page) failed[f.key] = f.error;
+  return failed;
+}
+
 export interface Selection {
   profile: string;
   serial: string;
