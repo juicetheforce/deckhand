@@ -48,6 +48,7 @@ function harness({ tray = true, closeToTray = true } = {}) {
   const windows: FakeWindow[] = [];
   let holdRelease: Promise<void> | null = null;
   let failAcquire = false;
+  let changed = false;
   const deps: LauncherDeps = {
     acquire: async () => {
       if (failAcquire) {
@@ -71,6 +72,8 @@ function harness({ tray = true, closeToTray = true } = {}) {
     closeToTray: async () => closeToTray,
     trayAlive: () => tray,
     quit: () => log.push('quit'),
+    installChanged: () => changed,
+    restart: () => log.push('restart'),
   };
   return {
     launcher: new Launcher(deps),
@@ -86,6 +89,10 @@ function harness({ tray = true, closeToTray = true } = {}) {
     },
     failNextAcquire() {
       failAcquire = true;
+    },
+    /** `scripts/install.sh update` replacing the editor on disk. */
+    install() {
+      changed = true;
     },
   };
 }
@@ -172,6 +179,36 @@ await check('an open that fails does not wedge the launcher: the next one works'
   await assert.rejects(h.launcher.open(), /cannot be opened/);
   await h.launcher.open();
   assert.deepEqual(h.log, ['acquire failed', 'acquire', 'window']);
+});
+
+await check('reopened from the tray after an install: restarts instead of making a window, and nothing opens after', async () => {
+  // The 2026-09-19 bug: a window made now would load the new page against
+  // this old main process.
+  const h = harness();
+  await h.launcher.open();
+  h.windows[0].close();
+  await settle();
+  h.install();
+  await h.launcher.open();
+  await h.launcher.open();
+  assert.deepEqual(h.log, ['acquire', 'window', 'release started', 'release done', 'restart']);
+  assert.equal(h.windows.length, 1, 'a window was made after the install');
+});
+
+await check('a window already open when the install happens is only brought forward: it and this process still match', async () => {
+  const h = harness();
+  await h.launcher.open();
+  h.install();
+  await h.launcher.open();
+  assert.deepEqual(h.log, ['acquire', 'window']);
+  assert.equal(h.windows[0].focused, 1);
+});
+
+await check('the first open of a changed install restarts before acquiring anything', async () => {
+  const h = harness();
+  h.install();
+  await h.launcher.open();
+  assert.deepEqual(h.log, ['restart']);
 });
 
 console.log(failures === 0 ? '\nlauncher: all checks passed' : `\nlauncher: ${failures} check(s) failed`);

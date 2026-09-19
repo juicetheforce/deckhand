@@ -177,6 +177,71 @@ results.closeQuitsExitCode = noTray.exited?.code ?? null;
 
 for (const e of [editor, second, noTray]) if (e.exited === null) e.child.kill();
 
+// --- An install while the editor is running (M5, 2026-09-19) ----------------
+//
+// scripts/install.sh update replaces the editor on disk; an editor in the tray
+// would then open the new page against its old main process. The check stands
+// in for the install by changing a stamp file the editor reads in place of its
+// renderer's index.html, and counts the editors that start from a pid file:
+// a restart is a new process this script never spawned.
+
+await fs.rm(path.join(stateDir, 'editor', 'preferences.json'), { force: true }); // close to the tray again
+const stamp = path.join(scratch, 'install-stamp');
+const pidFile = path.join(scratch, 'editor-pids');
+const pids = async () => (await fs.readFile(pidFile, 'utf8').catch(() => '')).split('\n').filter(Boolean).map(Number);
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const installEnv = { ...env, DECKHAND_CHECK_INSTALL_STAMP: stamp, DECKHAND_CHECK_PID_FILE: pidFile };
+const relaunched = [];
+
+// 1. In the tray, then installed over, then clicked.
+await fs.writeFile(stamp, 'build 1');
+const stale = startEditorAt(electronPath, editorRoot, installEnv);
+await until(() => stale.reports.some((r) => r.event === 'ready'), 30_000);
+await until(() => connections() === 1);
+stale.send('close');
+results.staleInTray = await until(async () => !(await stateOf(stale))?.holding && connections() === 0);
+// Nothing changed yet: a click just reopens.
+stale.send('click');
+results.unchangedReopens = await until(async () => (await stateOf(stale))?.windowOpen === true);
+stale.send('close');
+await until(async () => !(await stateOf(stale))?.holding && connections() === 0);
+await fs.writeFile(stamp, 'build 2'); // the install
+stale.send('click');
+results.staleExited = await until(() => stale.exited !== null, 15_000);
+results.staleExitCode = stale.exited?.code ?? null;
+results.restartedAs = (await until(async () => (await pids()).length === 2, 30_000)) ? (await pids())[1] : null;
+if (results.restartedAs) relaunched.push(results.restartedAs);
+results.restartedConnects = await until(() => connections() === 1, 30_000);
+await sleep(2000);
+results.restartStaysUp = results.restartedAs !== null && alive(results.restartedAs) && (await pids()).length === 2;
+for (const pid of relaunched) if (alive(pid)) process.kill(pid);
+await until(() => connections() === 0);
+
+// 2. Open across the install, then Settings — also a new page.
+await fs.rm(pidFile, { force: true });
+await fs.writeFile(stamp, 'build 3');
+const openAcross = startEditorAt(electronPath, editorRoot, installEnv);
+await until(() => openAcross.reports.some((r) => r.event === 'ready'), 30_000);
+await until(() => connections() === 1);
+await fs.writeFile(stamp, 'build 4'); // the install
+openAcross.send('state');
+results.openAcrossStillOpen = (await stateOf(openAcross))?.windowOpen === true;
+openAcross.send('settings');
+results.settingsRestarts = await until(() => openAcross.exited !== null, 15_000);
+results.settingsRestartedAs = (await until(async () => (await pids()).length === 2, 30_000)) ? (await pids())[1] : null;
+if (results.settingsRestartedAs) relaunched.push(results.settingsRestartedAs);
+await until(() => connections() === 1, 30_000);
+for (const pid of relaunched) if (alive(pid)) process.kill(pid);
+for (const e of [stale, openAcross]) if (e.exited === null) e.child.kill();
+await until(() => connections() === 0);
+
 // --- Verdicts -----------------------------------------------------------------
 
 check('the editor starts with a tray icon, a window, config.json open and the daemon connected', () => {
@@ -222,6 +287,23 @@ check("the menu's Quit exits cleanly and closes the socket", () => {
 check('with close-to-tray turned off in preferences.json, closing the window quits', () => {
   assert.equal(results.closeQuitsWhenOff, true);
   assert.equal(results.closeQuitsExitCode, 0);
+});
+
+check('in the tray with nothing installed, a click just reopens', () => {
+  assert.equal(results.staleInTray, true);
+  assert.equal(results.unchangedReopens, true);
+});
+check('installed over while in the tray, a click restarts it: the old process exits and a new one starts, connects and stays up', () => {
+  assert.equal(results.staleExited, true, 'the stale editor did not exit');
+  assert.equal(results.staleExitCode, 0);
+  assert.ok(results.restartedAs, 'no new editor started');
+  assert.equal(results.restartedConnects, true, 'the restarted editor never opened (no connection)');
+  assert.equal(results.restartStaysUp, true, 'the restarted editor did not stay up, or restarted again');
+});
+check('open across an install, opening Settings restarts it rather than load the new page', () => {
+  assert.equal(results.openAcrossStillOpen, true, 'the open window was disturbed by the install alone');
+  assert.equal(results.settingsRestarts, true, 'Settings opened against the old main process');
+  assert.ok(results.settingsRestartedAs, 'no new editor started');
 });
 
 console.log(`\nmemory (PSS, MB): open ${pssMb(results.openTree)} (${byType(results.openTree)}); in the tray ${pssMb(results.trayTree)} (${byType(results.trayTree)})`);

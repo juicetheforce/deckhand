@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, appendFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import readline from 'node:readline';
 import path from 'node:path';
@@ -62,6 +62,50 @@ if (!IS_PRIMARY) app.quit();
 // and more, which would fire while the hotkey inspector is listening. With
 // it removed those combos reach the page and can be captured (scope §10, 0b).
 Menu.setApplicationMenu(null);
+
+/**
+ * Which build of the editor this process started from (M5, the maintainer 2026-09-19).
+ * `scripts/install.sh update` swaps the app directory while an editor can sit
+ * in the tray, so a page loaded later comes from the new build and talks to
+ * this old main process — which once made profile rename silently do nothing.
+ * The renderer's index.html names its bundles by content hash, so its text
+ * changes whenever the page does. Read once now, and again before any page is
+ * loaded; if it differs, the editor restarts from what is on disk.
+ *
+ * Checks may point this at a file of their own (DECKHAND_CHECK_INSTALL_STAMP),
+ * to stand in for an install without touching the build.
+ */
+const INSTALL_STAMP =
+  CHECK !== null && process.env.DECKHAND_CHECK_INSTALL_STAMP
+    ? process.env.DECKHAND_CHECK_INSTALL_STAMP
+    : path.join(import.meta.dirname, '../renderer/index.html');
+
+function readInstallStamp(): string | null {
+  try {
+    return readFileSync(INSTALL_STAMP, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+const startedFrom = readInstallStamp();
+
+/**
+ * Whether the editor on disk has changed since this process started. Unreadable
+ * (mid-install, say) is not "changed": restarting then would start nothing.
+ */
+function installChanged(): boolean {
+  if (startedFrom === null) return false;
+  const now = readInstallStamp();
+  return now !== null && now !== startedFrom;
+}
+
+/** Quit, writing unsaved edits (before-quit), and start again from what is on disk. */
+function restartForNewInstall(): void {
+  console.log('[editor] the installed editor changed since it started; restarting');
+  app.relaunch();
+  app.quit();
+}
 
 let window: BrowserWindow | null = null;
 /** The settings window (Ship piece 3): a child of `window`, one at a time, closed with it. */
@@ -322,6 +366,13 @@ function openSettings(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show();
     settingsWindow.focus();
+    return;
+  }
+  // A new page, so the same rule as a new editor window (installChanged):
+  // an editor left open across an install restarts rather than load the new
+  // settings page against this main process.
+  if (installChanged()) {
+    restartForNewInstall();
     return;
   }
   settingsWindow = new BrowserWindow({
@@ -868,6 +919,8 @@ const launcher = new Launcher({
   closeToTray: async () => (await appSettings()).closeToTray,
   trayAlive: () => tray.alive(),
   quit: () => app.quit(),
+  installChanged,
+  restart: restartForNewInstall,
 });
 
 if (IS_PRIMARY && USES_LAUNCHER) app.on('second-instance', () => void launcher.open().then(() => trayCheckReport('second-instance')));
@@ -883,6 +936,9 @@ app.whenReady().then(async () => {
       quit: () => launcher.quit(),
     });
   }
+  // The tray check counts the editors that start, to see a restart happen:
+  // a relaunched editor is a new process the check did not spawn.
+  if (CHECK === 'tray' && process.env.DECKHAND_CHECK_PID_FILE) appendFileSync(process.env.DECKHAND_CHECK_PID_FILE, `${process.pid}\n`);
   await launcher.open();
   if (CHECK === 'tray') startTrayCheck();
 });

@@ -39,6 +39,15 @@ export interface LauncherDeps {
   trayAlive(): boolean;
   /** Quit the application (app.quit(), whose before-quit writes unsaved edits). */
   quit(): void;
+  /**
+   * Whether the editor on disk is no longer the one this process started
+   * from — `scripts/install.sh update` replaced it while the editor sat in the
+   * tray. A window made now would load the new page against this old main
+   * process, which is the stale-editor bug of 2026-09-19 (M5).
+   */
+  installChanged(): boolean;
+  /** Start the editor again from what is on disk: quit (writing unsaved edits) and relaunch. */
+  restart(): void;
 }
 
 export class Launcher {
@@ -64,6 +73,14 @@ export class Launcher {
         if (current.isMinimized()) current.restore();
         current.show();
         current.focus();
+        return;
+      }
+      // Only a new window can mix old and new: one already open was loaded by
+      // this process, so the two still match. Checked before acquiring, so a
+      // restart takes nothing it would then have to hand back.
+      if (this.deps.installChanged()) {
+        this.quitting = true;
+        this.deps.restart();
         return;
       }
       if (!this.holding) {
