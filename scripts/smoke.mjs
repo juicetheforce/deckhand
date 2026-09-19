@@ -12,6 +12,7 @@ import { DeckSession } from '../dist/deck.js';
 import { registry } from '../dist/actions/index.js';
 import { startProfileOf, validateConfig } from '../dist/config.js';
 import { Profiles } from '../dist/profiles.js';
+import { KeyFailures } from '../dist/key-failures.js';
 
 class FakeDeck {
   constructor() {
@@ -95,6 +96,8 @@ function standaloneSession(fake, serial, sessionLayout, hardware = {}) {
     layout: sessionLayout,
     defaults: {},
     switchProfile: async () => {},
+    failures: new KeyFailures(),
+    profileOf: () => 'standalone',
   });
 }
 
@@ -362,6 +365,8 @@ async function attachFake(serial) {
     layout: profiles.layoutFor(profileId, serial),
     defaults: {},
     switchProfile: (ref) => profiles.switchTo(ref, sessions),
+    failures: new KeyFailures(),
+    profileOf: () => profiles.shownProfileFor(serial) ?? profileId,
   });
   await deckSession.start();
   sessions.set(serial, deckSession);

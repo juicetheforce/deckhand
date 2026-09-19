@@ -95,6 +95,8 @@ export interface Display {
   labelSize: number;
   labelPosition: 'top' | 'bottom' | 'center';
   background: string;
+  /** The key's last press failed: drawn with a badge over everything else (Ship piece 6). */
+  failed?: boolean;
 }
 
 /** Partial display override returned by an action's describe(). */
@@ -107,6 +109,8 @@ export interface DeckHandle {
   iconSize: number;
   /** Switch to a page on this deck, by ID or name. */
   goToPage(page: string): Promise<void>;
+  /** Whether this deck's layout has a page with this ID or name. */
+  hasPage(page: string): boolean;
   /** Return to the previously shown page. */
   goBack(): Promise<void>;
   setBrightness(value: number): Promise<void>;

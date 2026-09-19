@@ -17,6 +17,7 @@ const dist = (file) => path.join(REPO, 'dist', file);
 
 export const { DeckSession } = await import(dist('deck.js'));
 export const { Profiles } = await import(dist('profiles.js'));
+export const { KeyFailures } = await import(dist('key-failures.js'));
 export const { validateConfig } = await import(dist('config.js'));
 export const server = await import(dist('control/server.js'));
 export const commands = await import(dist('control/commands.js'));
@@ -69,6 +70,7 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   const socket = path.join(directory, 'c.sock');
   const state = { config: validateConfig(structuredClone(config)), lastReload: { ok: true, at: 'start' } };
   const profiles = new Profiles(state.config);
+  const failures = new KeyFailures();
   const sessions = new Map();
   const unattached = new Map();
   let events = null;
@@ -98,6 +100,8 @@ export async function startDaemon(directory, config, extraDeps = {}) {
       defaults: {},
       switchProfile: async (ref) => { await profiles.switchTo(ref, sessions); },
       onStateChange: () => events?.state(),
+      failures,
+      profileOf: () => profiles.shownProfileFor(serial) ?? id,
     });
     await session.start();
     sessions.set(serial, session);
@@ -111,13 +115,14 @@ export async function startDaemon(directory, config, extraDeps = {}) {
     for (const session of sessions.values()) await session.close();
   }
 
-  return { socket, control, events, profiles, sessions, unattached, state, deps, attach, stop };
+  return { socket, control, events, profiles, failures, sessions, unattached, state, deps, attach, stop };
 }
 
 /**
  * Reload config.json into a startDaemon() daemon whenever it changes, the way
  * src/index.ts reload() does and **in the same order**: record the reload,
- * apply it to the decks, then announce it with the `config` event. The editor
+ * drop the failure marks of edited keys, apply it to the decks, then announce
+ * it with the `config` event. The editor
  * clears a preview on that event, so the order is what stops a key flashing
  * its old icon (Ship, 2026-09-18). This is the one copy the checks share; keep
  * it in step with reload().
@@ -134,6 +139,7 @@ export async function reloadLikeTheDaemon(daemon, { applyDelayMs = 0, onReload =
       const { config } = await loadConfig();
       daemon.state.config = config;
       daemon.state.lastReload = { ok: true, at: new Date().toISOString() };
+      if (daemon.failures.prune(config)) daemon.events.state();
       if (applyDelayMs > 0) await sleep(applyDelayMs);
       await daemon.profiles.applyReload(config, daemon.sessions);
       daemon.events.config();

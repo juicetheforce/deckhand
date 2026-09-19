@@ -2,6 +2,8 @@ import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import { describeAction, iconStateOf, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
+import type { KeyFailure } from './control/protocol.js';
+import type { KeyFailures } from './key-failures.js';
 import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
 import { renderButton } from './render.js';
 import type {
@@ -56,8 +58,12 @@ export interface DeckSessionOptions {
   defaults: Defaults;
   /** Called by the profile action. Switches every deck, not just this one. */
   switchProfile: (profile: string) => Promise<void>;
-  /** Called when what the control socket's "status" shows for this deck changes: page, brightness, previews. */
+  /** Called when what the control socket's "status" shows for this deck changes: page, brightness, previews, failed keys. */
   onStateChange?: () => void;
+  /** Keys whose last press failed, held for the daemon (src/key-failures.ts). */
+  failures: KeyFailures;
+  /** The profile this deck is showing, which the failed keys are keyed by. */
+  profileOf: () => string;
 }
 
 /** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
@@ -79,6 +85,8 @@ export class DeckSession implements DeckHandle {
   private defaults: Required<Defaults>;
   private switchProfile: (profile: string) => Promise<void>;
   private onStateChange: () => void;
+  private failures: KeyFailures;
+  private profileOf: () => string;
   /** ID of the page shown. */
   private page: string;
   /** Page IDs, for "back". */
@@ -101,6 +109,8 @@ export class DeckSession implements DeckHandle {
     this.defaults = { ...DEFAULTS, ...options.defaults };
     this.switchProfile = options.switchProfile;
     this.onStateChange = options.onStateChange ?? (() => undefined);
+    this.failures = options.failures;
+    this.profileOf = options.profileOf;
 
     const modelKey = String(raw.MODEL ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const fallback = MODEL_FALLBACK[modelKey] ?? { keys: 15, icon: 72 };
@@ -196,11 +206,31 @@ export class DeckSession implements DeckHandle {
     await runActionOrThrow(this.context(-1, 'socket'), action);
   }
 
+  /**
+   * Run a key's action (its press, or its release). A failure marks the key and
+   * a success clears its mark (Ship piece 6) — keyed by the page and profile
+   * it was pressed on, read before running, since a page or profile action
+   * moves the deck. The repaint after every press, which was already here,
+   * draws or removes the badge: no extra write, no timer.
+   */
   private async dispatch(index: number, action: ActionDef): Promise<void> {
-    await runAction(this.context(index), action);
+    const profile = this.profileOf();
+    const page = this.page;
+    const button = this.currentButtons()[String(index)];
+    const failure = await runAction(this.context(index), action);
+    const changed =
+      failure === null
+        ? this.failures.clear(this.serial, profile, page, index)
+        : this.failures.mark(this.serial, { profile, page, key: index, error: failure }, button);
+    if (changed) this.onStateChange();
     // Most actions change something visible; a cheap targeted repaint beats
     // waiting up to a full tick for the button to catch up.
     void this.renderButtonAt(index, true);
+  }
+
+  /** This deck's failed keys, on every page and profile, for the control socket's status. */
+  failedKeys(): KeyFailure[] {
+    return this.failures.forDeck(this.serial);
   }
 
   private context(index: number, source: ActionContext['source'] = 'deck'): ActionContext {
@@ -257,6 +287,8 @@ export class DeckSession implements DeckHandle {
 
     const patch = await describeAction(this.context(index), button?.action);
     if (patch) Object.assign(display, patch);
+    // Not on a preview: it shows something unsaved, which has never been pressed.
+    if (!this.previews.has(index) && this.failures.has(this.serial, this.profileOf(), this.page, index)) display.failed = true;
 
     // The action's built-in default (docs/scope.md §3), in this order: an icon
     // the action chose (iconMuted, album art) wins, then the key's own icon;
@@ -427,6 +459,10 @@ export class DeckSession implements DeckHandle {
 
   currentPage(): string {
     return this.page;
+  }
+
+  hasPage(ref: string): boolean {
+    return resolvePage(this.layout, ref) !== null;
   }
 
   /** Go to a page by ID or name. */

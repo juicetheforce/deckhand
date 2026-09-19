@@ -12,6 +12,7 @@ import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
 import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
+import { KeyFailures } from './key-failures.js';
 import type { Config } from './types.js';
 
 /**
@@ -43,6 +44,8 @@ let control: ControlServer | null = null;
 /** Event notifications for the control socket; null until it exists, so calls before then do nothing. */
 let events: ReturnType<typeof eventNotifiers> | null = null;
 const notifyState = () => events?.state();
+/** Keys whose last press failed, for every deck, kept across unplugging (src/key-failures.ts). */
+const keyFailures = new KeyFailures();
 
 /** `npm run decks` — print serials so you can paste them into config.json. */
 async function printDecks(): Promise<void> {
@@ -184,6 +187,10 @@ async function attach(devicePath: string): Promise<void> {
       await profileState.switchTo(ref, sessions);
     },
     onStateChange: notifyState,
+    failures: keyFailures,
+    // Recorded as shown only once the deck has started (below), so until then
+    // it is the profile it was attached with.
+    profileOf: () => profileState.shownProfileFor(serial) ?? profileId,
   });
 
   try {
@@ -280,6 +287,9 @@ async function reload(): Promise<void> {
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
+    // An edited key is not the key that failed: its mark goes before the decks
+    // redraw with the new layout (Ship piece 6).
+    if (keyFailures.prune(next)) notifyState();
 
     const applyStarted = Date.now();
     await profiles?.applyReload(next, sessions);

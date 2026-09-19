@@ -58,6 +58,10 @@ export const page: ActionHandler = {
     }
     const to = params.to;
     if (typeof to !== 'string') throw new Error('page action needs "to" or "back": true');
+    // A key that goes to a page this deck does not have has failed (Ship
+    // piece 6). Only for a key: over the control socket, goToPage() logging and
+    // returning is what the editor's showPage expects of a page just saved.
+    if (ctx.source === 'deck' && !ctx.deck.hasPage(to)) throw new Error(`no page with ID or name "${to}" on this deck`);
     await ctx.deck.goToPage(to);
   },
 };

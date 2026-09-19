@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
 import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
+import { failedBadgePlacement, failedBadgeSvg } from './failed-badge.js';
 import type { Display } from './types.js';
 
 /**
@@ -68,6 +69,12 @@ function labelSvg(display: Display, size: number): Buffer {
 </svg>`;
 
   return Buffer.from(svg);
+}
+
+/** The failed-key badge (Ship piece 6, src/failed-badge.ts), placed over a finished key. */
+function failedBadge(size: number): OverlayOptions {
+  const { diameter, inset } = failedBadgePlacement(size);
+  return { input: Buffer.from(failedBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
 }
 
 async function iconStamp(iconPath: string): Promise<string> {
@@ -161,6 +168,11 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 
   const svg = labelSvg(display, size);
   if (svg.length > 0) layers.push({ input: svg, top: 0, left: 0 });
+
+  // Last, so it is over the label as well as the icon. `failed` is part of the
+  // cache key (JSON.stringify(display), above), so a marked face and a clean
+  // one are two entries and never stand in for each other.
+  if (display.failed) layers.push(failedBadge(size));
 
   if (layers.length > 0) base = base.composite(layers);
 

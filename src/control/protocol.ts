@@ -52,6 +52,17 @@ export interface DeckStatus {
   brightness?: number;
   /** Keys showing a preview. */
   previews?: number[];
+  /** Keys whose last press failed, on any page or profile (Ship piece 6). */
+  failed?: KeyFailure[];
+}
+
+/** A key whose last press failed. It stays so until a press of it succeeds, or it is edited. */
+export interface KeyFailure {
+  profile: string;
+  page: string;
+  key: number;
+  /** The failed action's error message, as logged. */
+  error: string;
 }
 
 /** The part of "status" that the "state" event also carries. */

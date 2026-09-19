@@ -47,6 +47,10 @@ export const registry: Record<string, ActionHandler> = {
  * bottom, and how the editor's step list shows it. Above, the output switches,
  * 150 ms pass, then the hotkey is sent.
  *
+ * A step that fails is logged and the rest still run, as they always have;
+ * then the multi action fails, naming the first failed step (Ship piece 6), so
+ * the key shows it failed rather than looking like it worked.
+ *
  * Defined here rather than in its own file so it can reach the registry
  * without a circular import.
  */
@@ -54,11 +58,14 @@ registry.multi = {
   async execute(ctx: ActionContext, params: ActionDef) {
     const steps = Array.isArray(params.steps) ? (params.steps as ActionDef[]) : [];
     if (steps.length === 0) throw new Error('multi action needs a "steps" array');
-    for (const step of steps) {
-      await runAction(ctx, step);
+    let firstFailure: string | null = null;
+    for (const [i, step] of steps.entries()) {
+      const failure = await runAction(ctx, step);
+      if (failure !== null && firstFailure === null) firstFailure = `step ${i + 1} failed: ${failure}`;
       const delay = typeof step.delayMs === 'number' ? step.delayMs : 0;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
     }
+    if (firstFailure !== null) throw new Error(firstFailure);
   },
 };
 
@@ -73,20 +80,27 @@ export function isDynamic(action: ActionDef | undefined): boolean {
 }
 
 /**
- * Execute an action. Failures are logged and swallowed — one bad binding
- * must never take the daemon down or wedge the deck.
+ * Run an action for a deck key. A failure is logged, not thrown — one bad
+ * binding must never take the daemon down or wedge the deck — and returned:
+ * its message, or null if the action succeeded, so the deck can mark a key
+ * whose press failed (Ship piece 6). An unknown action type is a failure: the
+ * key does nothing.
  */
-export async function runAction(ctx: ActionContext, action: ActionDef): Promise<void> {
+export async function runAction(ctx: ActionContext, action: ActionDef): Promise<string | null> {
   const handler = registry[action.type];
   if (!handler) {
-    ctx.log(`unknown action type "${action.type}"`);
-    return;
+    const message = `unknown action type "${action.type}"`;
+    ctx.log(message);
+    return message;
   }
-  if (!handler.execute) return;
+  if (!handler.execute) return null;
   try {
     await handler.execute(ctx, action);
+    return null;
   } catch (err) {
-    ctx.log(`action "${action.type}" failed: ${(err as Error).message}`);
+    const message = (err as Error).message;
+    ctx.log(`action "${action.type}" failed: ${message}`);
+    return message;
   }
 }
 

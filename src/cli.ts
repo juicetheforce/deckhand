@@ -200,6 +200,8 @@ async function main(argv: string[]): Promise<void> {
             const flags = [d.connected ? 'connected' : 'not connected', d.configured ? '' : 'no layout'].filter(Boolean).join(', ');
             const previews = d.previews?.length ? `, previewing keys ${d.previews.join(' ')}` : '';
             lines.push(`  ${d.serial}  ${flags}${where ? ` — ${where}` : ''}${previews}`);
+            // Keys whose last press failed (Ship piece 6), wherever they are.
+            for (const f of d.failed ?? []) lines.push(`    key ${f.key} failed (profile ${f.profile}, page ${f.page}): ${f.error}`);
           }
           return lines.join('\n');
         });
