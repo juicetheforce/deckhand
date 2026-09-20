@@ -1956,6 +1956,13 @@ button:disabled {
   min-width: 220px;
 }
 
+/* A key the deck is holding down (M7's latching toggle) */
+
+.key-latched {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 /* Kept configurations (M5 piece 2d) */
 
 .kept-list {

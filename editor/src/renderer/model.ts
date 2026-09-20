@@ -361,16 +361,31 @@ export interface KeyFace {
  * half (`mic`, `speaker`, `play`), and now playing shows its idle icon. The
  * deck is the truth (§10).
  */
-export function faceIcon(button: ButtonDef | undefined): string | null {
+export function faceIcon(button: ButtonDef | undefined, latched = false): string | null {
   if (!button) return null;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   const action = button.action;
-  // A state pair's own icon comes first on the deck (src/deck.ts); the grid shows the resting half's.
-  const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : undefined;
+  // A state pair's own icon comes first on the deck (src/deck.ts); the grid
+  // shows the resting half's — except a toggle, whose state the daemon reports
+  // per key, so the grid can show the half the deck is really showing (M7).
+  const toggleIcon = action?.type === 'toggle' ? (latched ? action.iconOn : action.iconOff) : undefined;
+  const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : toggleIcon;
   if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
-  const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : {});
+  const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : { latched });
   return name === null ? null : builtinRef(name);
+}
+
+/**
+ * The keys this deck is holding down right now (M7), from the daemon's status.
+ * Only while the grid is showing the page the deck is on: a latch is released
+ * when the deck leaves the page, so a latch on another page cannot exist, and
+ * drawing one would be a lie. The deck is the truth (§10).
+ */
+export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): number[] {
+  const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
+  if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return [];
+  return deck.latched ?? [];
 }
 
 /**
@@ -378,12 +393,12 @@ export function faceIcon(button: ButtonDef | undefined): string | null {
  * the deck is the truth). Live faces — clock time, track, active output — are
  * not drawn; default icons are (faceIcon).
  */
-export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null): KeyFace {
+export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
   const size = iconSize ?? 72;
   return {
     background: button?.background ?? d.background,
-    icon: faceIcon(button),
+    icon: faceIcon(button, latched),
     iconFit: button?.iconFit ?? d.iconFit,
     label: button?.label ?? null,
     labelColor: button?.labelColor ?? d.labelColor,
@@ -406,6 +421,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   command: ['command'],
   // With its release action; see isPressRelease.
   keyHold: ['keys', 'state'],
+  // M7's latching toggle: the combo, and the icon pair the picker sets
+  // (shared/icons.ts pairIconFields). The label pair stays hand-edited, as
+  // the mute pairs' did.
+  toggle: ['keys', 'iconOn', 'iconOff'],
   // Each step is checked on its own (MultiForm.tsx); one it cannot edit is shown read-only.
   multi: ['steps'],
   page: ['to', 'back'],
@@ -496,6 +515,7 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
     case 'hotkey':
       return Array.isArray(action.keys) ? action.keys.length === 0 || !nonEmpty(action.keys[0]) : !nonEmpty(action.keys);
     case 'keyHold':
+    case 'toggle':
       return !nonEmpty(action.keys);
     case 'text':
       return typeof action.text !== 'string';

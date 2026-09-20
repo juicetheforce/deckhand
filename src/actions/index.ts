@@ -12,6 +12,7 @@ import * as system from './system.js';
  */
 export const registry: Record<string, ActionHandler> = {
   hotkey: keyboard.hotkey,
+  toggle: keyboard.toggle,
   text: keyboard.text,
   keyHold: keyboard.keyHold,
 
@@ -132,6 +133,6 @@ export async function describeAction(
 }
 
 /** The state an action's default icon pair shows, from cached state only; {} for actions with no pair. */
-export function iconStateOf(action: ActionDef): IconState {
-  return registry[action.type]?.iconState?.(action) ?? {};
+export function iconStateOf(action: ActionDef, ctx?: ActionContext): IconState {
+  return registry[action.type]?.iconState?.(action, ctx) ?? {};
 }

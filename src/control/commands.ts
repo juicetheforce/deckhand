@@ -98,6 +98,7 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.page = session.currentPage();
       entry.brightness = session.currentBrightness();
       entry.previews = session.previewKeys();
+      entry.latched = session.latchedKeys();
       entry.failed = session.failedKeys();
     }
     return entry;

@@ -23,13 +23,15 @@ export const BUILTIN_FOLDER = BUILTIN_PREFIX;
  * `media.control` between playing and paused. The daemon draws whichever
  * matches the state, and falls back to the key's own icon, then the default.
  */
-export type PairIconField = 'iconMuted' | 'iconUnmuted' | 'iconPlaying' | 'iconPaused';
+export type PairIconField = 'iconMuted' | 'iconUnmuted' | 'iconPlaying' | 'iconPaused' | 'iconOn' | 'iconOff';
 
 /** Which pair icons an action has; none for every other action. */
 export function pairIconFields(action: { type: string; method?: unknown } | undefined): readonly PairIconField[] {
   if (!action) return [];
   if (action.type === 'audio.micMute' || action.type === 'audio.mute') return ['iconMuted', 'iconUnmuted'];
   if (action.type === 'media.control' && String(action.method ?? 'playpause').toLowerCase() === 'playpause') return ['iconPlaying', 'iconPaused'];
+  // M7's latching toggle: down and up (docs/scope.md §6).
+  if (action.type === 'toggle') return ['iconOn', 'iconOff'];
   return [];
 }
 

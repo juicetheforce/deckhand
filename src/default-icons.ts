@@ -47,9 +47,7 @@ export const BUILTIN_ICONS = [
   'speaker-out-muted',
   'stop',
   'text-macro',
-  // No action draws these two by default: the latching toggle is M7
-  // (docs/scope.md §6, §7). They can still be chosen for a key as
-  // builtin:toggle and builtin:toggle-off.
+  // The latching toggle's two faces (M7): down and up.
   'toggle',
   'toggle-off',
   'volume-down',
@@ -65,6 +63,8 @@ export interface IconState {
   playing?: boolean;
   /** media.info: no player, or nothing with a title or artist. */
   idle?: boolean;
+  /** toggle: the key is latched down (M7). */
+  latched?: boolean;
 }
 
 const MEDIA_METHODS: Record<string, BuiltinIcon> = {
@@ -102,6 +102,9 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return 'multi-action';
     case 'keyHold': // Press/Release
       return 'press-release';
+    // The latching toggle (M7): down and up are two faces, as mute and play are.
+    case 'toggle':
+      return state.latched ? 'toggle' : 'toggle-off';
     case 'command':
       return 'command';
     case 'profile':

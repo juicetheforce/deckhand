@@ -16,6 +16,7 @@ import {
   deckForProfile,
   deviceTargets,
   failedKeysOn,
+  latchedKeysOn,
   followDeck,
   geometryFor,
   layoutFor,
@@ -192,7 +193,12 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // the icon URL; without it Chromium keeps the image it loaded first. Default
   // icons count: they are files too, in the checkout's assets/icons/.
   const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
-  const pageIcons = page ? [...new Set(Object.values(page.buttons).map(faceIcon).filter((i): i is string => i !== null))] : [];
+  // Both halves of a state pair the daemon reports per key (a toggle, M7), so
+  // the icon it flips to is stamped too rather than fetched unstamped.
+  // Not `.map(faceIcon)`: that passes the array index as the second argument.
+  const pageIcons = page
+    ? [...new Set(Object.values(page.buttons).flatMap((b) => [faceIcon(b), faceIcon(b, true)]).filter((i): i is string => i !== null))]
+    : [];
   const iconsKey = pageIcons.join('\u0000');
   useEffect(() => {
     let alive = true;
@@ -356,6 +362,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
                 page={page}
                 iconStamps={iconStamps}
                 failedKeys={failedKeysOn(daemon, selection)}
+                latchedKeys={latchedKeysOn(daemon, selection)}
                 selectedKeys={selection.keys}
                 onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
                 onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}

@@ -33,6 +33,8 @@ import {
   placementMessage,
   deviceTargets,
   failedKeysOn,
+  latchedKeysOn,
+  faceIcon,
 } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
@@ -106,7 +108,8 @@ await check('the library enables exactly the actions with a form, and greys the 
   // Piece 6: text, command, Press/Release.
   // Piece 7: Multi action — every action in the catalogue now has a form.
   // 2026-09-17: audio.cycleSource (Cycle inputs), the mirror of audio.cycle (scope §6).
-  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text']);
+  // 2026-09-20: toggle, M7's latching toggle.
+  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
   assert.equal(entries.filter((e) => !e.editable).length, 0, 'C2 exit: every §6 action can be configured'); 
   // Every editable entry must have an inspector that will accept a bare key.
   for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
@@ -665,6 +668,35 @@ await check('Copy to device offers the other decks this profile covers, with the
     'the deck being edited is not a target, and a disconnected deck is listed as such',
   );
   assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL, V2]), selection)[0].connected, true);
+});
+
+await check('latched keys: only while the grid shows the page the deck is on (M7)', () => {
+  const view = daemonView([XL, V2]);
+  const xl = view.status!.decks.find((d) => d.serial === XL)!;
+  xl.profile = 'default';
+  xl.page = 'main';
+  xl.latched = [2, 5];
+  view.status!.decks.find((d) => d.serial === V2)!.latched = [1];
+  assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), [2, 5]);
+  // A latch is released when the deck leaves the page, so one on a page the
+  // deck is not showing cannot exist: drawing it would be a lie (§10).
+  assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), []);
+  assert.deepEqual(latchedKeysOn(view, { profile: 'raid', serial: XL, page: 'main' }), []);
+  assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: V2, page: 'main' }), [], 'the other deck reports no page here');
+  assert.deepEqual(latchedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), [], 'a daemon from before M7 sends no list');
+  const offline: DaemonView = { connected: false, problem: 'x', status: null, decks: null };
+  assert.deepEqual(latchedKeysOn(offline, { profile: 'default', serial: XL, page: 'main' }), []);
+});
+
+await check("a toggle's face follows the latch: its own icons, or the built-in pair (M7)", () => {
+  const plain = { action: { type: 'toggle', keys: 'shift' } };
+  assert.equal(faceIcon(plain, false), 'builtin:toggle-off');
+  assert.equal(faceIcon(plain, true), 'builtin:toggle', 'the grid should show the half the deck is showing');
+  const own = { action: { type: 'toggle', keys: 'shift', iconOn: '~/on.png', iconOff: '~/off.png' } };
+  assert.equal(faceIcon(own, false), '~/off.png');
+  assert.equal(faceIcon(own, true), '~/on.png');
+  // A key with its own icon keeps it in both states, as everywhere else.
+  assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, true), '~/mine.png');
 });
 
 await check('failed keys: only those on the page being edited, from the deck being edited, with their errors (Ship piece 6)', () => {

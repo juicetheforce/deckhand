@@ -187,8 +187,10 @@ if (r && !r.error) {
   });
   check("a key with an action and no icon draws its default in the grid; library rows draw theirs, all loaded", () => {
     assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
-    // 18 since 2026-09-17: Cycle inputs (audio.cycleSource) joined the catalogue.
-    assert.equal(r.libraryIcons.length, 18, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    // 18 since 2026-09-17 (Cycle inputs); 19 since 2026-09-20 (M7's Toggle,
+    // which draws the up half of its pair in the library).
+    assert.equal(r.libraryIcons.length, 19, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    assert.ok(r.libraryIcons.includes('toggle-off'), 'Toggle should draw the up half of its pair');
     assert.ok(r.libraryIcons.includes('press-release') && r.libraryIcons.includes('now-playing'), JSON.stringify(r.libraryIcons));
     // The select/cycle set, so a row drawing the wrong one of the pair is caught here.
     assert.deepEqual(r.libraryIcons.filter((n) => /-(select|cycle)$/.test(n)), ['output-select', 'output-cycle', 'input-select', 'input-cycle'], JSON.stringify(r.libraryIcons));

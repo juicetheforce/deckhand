@@ -14,6 +14,8 @@ interface Props {
   iconStamps: Record<string, string>;
   /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
   failedKeys: Record<number, string>;
+  /** Keys the deck is holding down right now (M7, model.ts latchedKeysOn). */
+  latchedKeys: number[];
   selectedKeys: number[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
   onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
@@ -118,7 +120,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
   const keyDrag = useKeyDrag(onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -141,6 +143,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, selec
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
           failure={failedKeys[k.index]}
+          latched={latchedKeys.includes(k.index)}
           selected={selectedKeys.includes(k.index)}
           onClick={(modifiers) => {
             if (!keyDrag.takeSuppressedClick()) onClickKey(k.index, modifiers);
@@ -166,6 +169,8 @@ interface KeyProps {
   iconStamps: Record<string, string>;
   /** The error, if this key's last press on the deck failed (Ship piece 6). */
   failure: string | undefined;
+  /** This key is latched down on the deck right now (M7). */
+  latched: boolean;
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
@@ -176,10 +181,10 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, failure, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
-  const face = keyFace(config, button, iconSize);
+  const face = keyFace(config, button, iconSize, latched);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
   // Which icon failed to load, by path and stamp, so a changed path — or the
   // same path whose file changed — is tried again.
@@ -194,10 +199,12 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
     dragging ? 'key-dragging' : '',
     dropTarget ? 'key-drop-target' : '',
     incomplete ? 'key-incomplete' : '',
+    latched ? 'key-latched' : '',
   ]
     .filter(Boolean)
     .join(' ');
-  const title = kind === 'empty' ? `Key ${index + 1}: empty` : `Key ${index + 1}: ${describeAction(button)}`;
+  const title =
+    kind === 'empty' ? `Key ${index + 1}: empty` : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}`;
 
   return (
     <button

@@ -52,6 +52,8 @@ export interface DeckStatus {
   brightness?: number;
   /** Keys showing a preview. */
   previews?: number[];
+  /** Keys latched down by a toggle (M7, docs/scope.md §6), so the editor's grid can show it. */
+  latched?: number[];
   /** Keys whose last press failed, on any page or profile (Ship piece 6). */
   failed?: KeyFailure[];
 }

@@ -32,6 +32,8 @@ class InputBridge {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private ready = false;
   private readyWaiters: Array<() => void> = [];
+  /** Told when the virtual keyboard goes: whatever thought a key was held is wrong (M7). */
+  private keyboardLostListeners = new Set<() => void>();
   private queue: Pending[] = [];
   private restartTimer: NodeJS.Timeout | null = null;
   private stopped = false;
@@ -69,6 +71,15 @@ class InputBridge {
       // The virtual keyboard went with the helper, so nothing is held any more.
       this.held.deck.clear();
       this.held.socket.clear();
+      // A latched deck key would otherwise show itself as down with nothing
+      // holding it (M7, docs/scope.md §6).
+      for (const listener of this.keyboardLostListeners) {
+        try {
+          listener();
+        } catch (err) {
+          console.error(`[input] keyboard-lost listener failed: ${(err as Error).message}`);
+        }
+      }
       this.failAllPending(new Error('input helper exited'));
       this.scheduleRestart();
     });
@@ -158,6 +169,16 @@ class InputBridge {
     this.held[source].clear();
     if (codes.length > 0) await this.send(`UP ${codes.join(' ')}`);
     return codes;
+  }
+
+  /**
+   * Be told when the helper dies and takes the virtual keyboard with it, so
+   * state about what is held can be dropped (M7: a latched key). Returns an
+   * unsubscribe.
+   */
+  onKeyboardLost(listener: () => void): () => void {
+    this.keyboardLostListeners.add(listener);
+    return () => this.keyboardLostListeners.delete(listener);
   }
 
   /** Keycodes `source` currently holds. For the control socket's tests and logs. */

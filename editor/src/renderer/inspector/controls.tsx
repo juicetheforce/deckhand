@@ -167,6 +167,8 @@ const PAIR_LABELS: Record<PairIconField, string> = {
   iconUnmuted: 'While unmuted',
   iconPlaying: 'While playing',
   iconPaused: 'While paused',
+  iconOn: 'While held down',
+  iconOff: 'While up',
 };
 
 const PAIR_STATES: Record<PairIconField, IconState> = {
@@ -174,6 +176,8 @@ const PAIR_STATES: Record<PairIconField, IconState> = {
   iconUnmuted: { muted: false },
   iconPlaying: { playing: true },
   iconPaused: { playing: false },
+  iconOn: { latched: true },
+  iconOff: { latched: false },
 };
 
 export function pairLabel(field: PairIconField): string {

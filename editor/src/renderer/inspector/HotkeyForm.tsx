@@ -332,3 +332,41 @@ export function PressReleaseForm({ at, button, editingBlocked, run, listenReques
     </ComboCapture>
   );
 }
+
+/**
+ * Toggle (M7, docs/scope.md §6): one combo, latched. Press once and it stays
+ * down; press again and it releases. The same capture as Press/Release —
+ * including lone modifiers, which is what a latch is usually for — but it
+ * writes one action, with no release action: the daemon holds the state and
+ * ignores the physical release.
+ */
+export function ToggleForm({ at, button, editingBlocked, run, listenRequest, onListening }: { at: ButtonLocation; button: ButtonDef | undefined; editingBlocked: boolean; run: (edit: Edit) => Promise<boolean> } & ListenProps) {
+  const combo = button?.action?.type === 'toggle' && typeof button.action.keys === 'string' && button.action.keys !== '' ? button.action.keys : null;
+  return (
+    <ComboCapture
+      heading="Toggle"
+      combo={combo}
+      editingBlocked={editingBlocked}
+      save={(keys) => run({ kind: 'setAction', at, action: { type: 'toggle', keys } })}
+      clear={() => void run({ kind: 'removeAction', at })}
+      clearLabel="Clear"
+      recordLoneModifiers
+      listenRequest={listenRequest}
+      onListening={onListening}
+    >
+      <div className="phases">
+        <div className="phase">
+          <span className="phase-name">First press</span>
+          {combo ? <span>hold {keycaps(combo).join('+')} down</span> : <span className="muted">nothing yet</span>}
+        </div>
+        <div className="phase">
+          <span className="phase-name">Next press</span>
+          {combo ? <span>let {keycaps(combo).join('+')} go</span> : <span className="muted">nothing yet</span>}
+        </div>
+      </div>
+      <p className="muted small">
+        It stays down while you do other things — leaving the page, switching profile or unplugging the deck releases it.
+      </p>
+    </ComboCapture>
+  );
+}

@@ -120,6 +120,16 @@ export interface DeckHandle {
   invalidate(): void;
   /** The ID of the page currently shown. */
   currentPage(): string;
+  /**
+   * Latching toggle (M7, docs/scope.md §6): press once and the combo stays
+   * down, press again and it releases. The session owns the state because it
+   * owns the lifecycle — leaving the page, the deck going away or the helper
+   * restarting all have to release it, and nothing may leave a key held.
+   * Throws if another key on this deck already latches an overlapping combo.
+   */
+  toggleLatch(index: number, combo: string): Promise<void>;
+  /** Whether this key is latched down, for its face. */
+  isLatched(index: number): boolean;
 }
 
 export interface ActionContext {
@@ -147,5 +157,5 @@ export interface ActionHandler {
    * mute for audio.micMute and audio.mute, play state for media.control. Must
    * read cached state only — it runs on every render of the key.
    */
-  iconState?(params: ActionDef): IconState;
+  iconState?(params: ActionDef, ctx?: ActionContext): IconState;
 }

@@ -5,6 +5,8 @@ import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
 import type { KeyFailures } from './key-failures.js';
 import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
+import { input } from './input.js';
+import { parseCombo } from './keymap.js';
 import { renderButton } from './render.js';
 import type {
   ActionContext,
@@ -98,6 +100,14 @@ export class DeckSession implements DeckHandle {
   private ticking = false;
   private closed = false;
   private heldRelease = new Map<number, ActionDef>();
+  /**
+   * Latching toggles (M7, docs/scope.md §6): key index → the combo it holds
+   * down. Memory only, like failure marks — a restart starts with the helper's
+   * virtual keyboard new, so nothing is held.
+   */
+  private latched = new Map<number, string>();
+  /** Unsubscribe from input's keyboard-lost notice. */
+  private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
   private brightness: number;
 
@@ -145,6 +155,10 @@ export class DeckSession implements DeckHandle {
     this.raw.on('error', (err: unknown) => {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
+
+    // A latched key is only latched while there is a virtual keyboard holding
+    // it (M7): if the helper dies, the state goes with it.
+    this.stopWatchingKeyboard = input.onKeyboardLost(() => this.forgetLatches());
 
     await this.setBrightness(this.brightness);
     await this.raw.clearPanel();
@@ -194,6 +208,101 @@ export class DeckSession implements DeckHandle {
       this.heldRelease.delete(index);
       void this.dispatch(index, release);
     }
+  }
+
+  /**
+   * Latch or unlatch a key's combo (M7). A second key latching a combo that
+   * overlaps one already latched is refused rather than allowed to steal the
+   * release: `input`'s held keys are a set, not counted, so releasing one
+   * would lift the other's key while its face still said it was down. The
+   * refusal fails the press, which badges the key (Ship piece 6).
+   */
+  async toggleLatch(index: number, combo: string): Promise<void> {
+    const held = this.latched.get(index);
+    if (held !== undefined) {
+      this.latched.delete(index);
+      try {
+        await input.up(held, 'deck');
+      } finally {
+        this.onStateChange();
+      }
+      return;
+    }
+    const wanted = new Set(parseCombo(combo));
+    for (const [other, otherCombo] of this.latched) {
+      if (parseCombo(otherCombo).some((code) => wanted.has(code))) {
+        throw new Error(`"${combo}" overlaps "${otherCombo}", which key ${other + 1} is holding down`);
+      }
+    }
+    await input.down(combo, 'deck');
+    this.latched.set(index, combo);
+    this.onStateChange();
+  }
+
+  isLatched(index: number): boolean {
+    return this.latched.has(index);
+  }
+
+  /** The keys latched down on this deck, for the control socket's status (M7). */
+  latchedKeys(): number[] {
+    return [...this.latched.keys()].sort((a, b) => a - b);
+  }
+
+  /**
+   * Release every latched key, because the key that would release it is about
+   * to be out of reach: the page or profile changing, the config replacing the
+   * key, a preview covering it, the deck going away (docs/scope.md §6, the maintainer
+   * 2026-09-20 — "definitely release on leaving page").
+   */
+  private async releaseLatches(reason: string): Promise<void> {
+    const held = [...this.latched.entries()];
+    if (held.length === 0) return;
+    this.latched.clear();
+    for (const [index, combo] of held) {
+      try {
+        await input.up(combo, 'deck');
+      } catch (err) {
+        console.error(`[${this.label()}] releasing latched key ${index + 1} on ${reason} failed: ${(err as Error).message}`);
+      }
+    }
+    this.onStateChange();
+    for (const [index] of held) void this.renderButtonAt(index, true);
+  }
+
+  /**
+   * After a config reload that kept the page: a latch is kept only while the
+   * key still carries the same toggle. Edited, cleared, swapped with another
+   * key or pointed at another combo, and the key that would release it is
+   * gone (the maintainer, 2026-09-20).
+   */
+  private async releaseLatchesOnChangedKeys(): Promise<void> {
+    const buttons = this.currentButtons();
+    for (const [index, combo] of [...this.latched]) {
+      const action = buttons[String(index)]?.action;
+      if (action?.type === 'toggle' && String(action.keys ?? '') === combo) continue;
+      this.latched.delete(index);
+      try {
+        await input.up(combo, 'deck');
+      } catch (err) {
+        console.error(`[${this.label()}] releasing latched key ${index + 1} on a config reload failed: ${(err as Error).message}`);
+      }
+      this.onStateChange();
+      void this.renderButtonAt(index, true);
+    }
+  }
+
+  /**
+   * The helper died and took the virtual keyboard with it, so nothing is held
+   * any more: drop the latches rather than draw keys as down. No `up` is sent
+   * — there is nothing to send it to.
+   */
+  private forgetLatches(): void {
+    if (this.latched.size === 0) return;
+    const keys = [...this.latched.keys()];
+    this.latched.clear();
+    console.error(`[${this.label()}] the virtual keyboard went away; ${keys.length} latched key(s) are no longer held`);
+    this.onStateChange();
+    for (const index of keys) void this.renderButtonAt(index, true);
   }
 
   /**
@@ -319,7 +428,7 @@ export class DeckSession implements DeckHandle {
     // `icon: null` means deliberately none, so only an *absent* icon gets a
     // default; and a key with no action gets none — it stays blank.
     if (button?.action && button.icon === undefined && display.icon === undefined) {
-      const name = defaultIconFor(button.action, iconStateOf(button.action));
+      const name = defaultIconFor(button.action, iconStateOf(button.action, this.context(index)));
       if (name) display.icon = builtinIconRef(name);
     }
 
@@ -406,6 +515,9 @@ export class DeckSession implements DeckHandle {
    * preview is removed again and the key goes back to what it showed.
    */
   async setPreview(index: number, button: ButtonDef): Promise<void> {
+    // A previewed key does nothing when pressed (onKey), so a latch under one
+    // could not be released by pressing it (M7).
+    if (this.latched.has(index)) await this.releaseLatches('a preview on the key');
     this.previews.set(index, button);
     this.onStateChange();
     try {
@@ -500,6 +612,7 @@ export class DeckSession implements DeckHandle {
     // Before the page moves: a key held on the page being left still has its
     // release, and this is the last moment it can run.
     await this.fireHeldReleases('a page change');
+    await this.releaseLatches('a page change');
     this.history.push(this.page);
     if (this.history.length > 32) this.history.shift();
     this.page = id;
@@ -511,6 +624,7 @@ export class DeckSession implements DeckHandle {
     const previous = this.history.pop();
     if (!previous || !this.layout.pages[previous]) return;
     await this.fireHeldReleases('a page change');
+    await this.releaseLatches('a page change');
     this.page = previous;
     this.onStateChange();
     await this.renderPage(true);
@@ -533,6 +647,7 @@ export class DeckSession implements DeckHandle {
    */
   async setLayout(layout: LayoutDef): Promise<void> {
     await this.fireHeldReleases('a profile switch');
+    await this.releaseLatches('a profile switch');
     this.layout = layout;
     this.page = startPageOf(layout);
     this.history = [];
@@ -559,9 +674,12 @@ export class DeckSession implements DeckHandle {
     this.defaults = { ...DEFAULTS, ...defaults };
     if (!keepPage || !layout.pages[this.page]) {
       await this.fireHeldReleases('a config reload');
+      await this.releaseLatches('a config reload');
       this.page = startPageOf(layout);
       this.history = [];
       this.onStateChange();
+    } else {
+      await this.releaseLatchesOnChangedKeys();
     }
     await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
     this.lastSent.fill(null);
@@ -572,6 +690,9 @@ export class DeckSession implements DeckHandle {
     // Before the flag: a key still held by this deck is released rather than
     // left down when the deck goes (unplugged, or the daemon shutting down).
     await this.fireHeldReleases('the deck closing');
+    await this.releaseLatches('the deck closing');
+    this.stopWatchingKeyboard?.();
+    this.stopWatchingKeyboard = null;
     this.closed = true;
     if (this.ticker) clearInterval(this.ticker);
     this.ticker = null;

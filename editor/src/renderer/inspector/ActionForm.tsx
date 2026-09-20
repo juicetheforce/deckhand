@@ -4,7 +4,7 @@ import type { PairIconField } from '../../shared/icons.js';
 import type { Choice } from '../model.js';
 import { MuteForm, VolumeForm } from './AudioForms.js';
 import { CycleForm, CycleInputsForm, InputForm, OutputForm, type AudioLists } from './DeviceForms.js';
-import { HotkeyForm, PressReleaseForm } from './HotkeyForm.js';
+import { HotkeyForm, PressReleaseForm, ToggleForm } from './HotkeyForm.js';
 import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
 import { PageAction } from './PageAction.js';
@@ -42,6 +42,8 @@ export function ActionForm(p: ActionFormProps) {
       return <HotkeyForm at={p.at} button={p.button} editingBlocked={p.disabled} run={p.run} listenRequest={p.listenRequest} onListening={p.onListening} />;
     case 'keyHold':
       return <PressReleaseForm at={p.at} button={p.button} editingBlocked={p.disabled} run={p.run} listenRequest={p.listenRequest} onListening={p.onListening} />;
+    case 'toggle':
+      return <ToggleForm at={p.at} button={p.button} editingBlocked={p.disabled} run={p.run} listenRequest={p.listenRequest} onListening={p.onListening} />;
     case 'text':
       return <TextForm {...common} />;
     case 'command':
