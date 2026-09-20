@@ -71,16 +71,43 @@ async function printDecks(): Promise<void> {
 const STARTER_KEYS = 'shift+d';
 
 /**
+ * The configuration written when there is no deck to key one by: valid, and
+ * empty. One profile, no layouts, no decks — `validateConfig` asks only for a
+ * profiles object with at least one profile whose `layouts` is an object, and
+ * an empty `layouts` satisfies it.
+ *
+ * A function rather than a constant so no caller can mutate a shared object.
+ */
+function emptyConfig(): Config {
+  return {
+    decks: {},
+    profiles: { default: { name: 'Default', layouts: {} } },
+    startProfile: 'default',
+  };
+}
+
+/**
  * First run: no config.json exists. Write one keyed by the decks connected
  * right now — one profile, with one hotkey button on key 0 of each deck — so
  * the daemon starts lit rather than exiting. Returns false if there was
  * nothing to write.
+ *
+ * **With no deck connected the daemon still starts** (docs/scope.md §7,
+ * Portability, `[decided]` the maintainer 2026-09-20). Installing before plugging the
+ * hardware in is what anyone does who installs first and connects later, and
+ * exiting here made systemd restart-loop and the installer roll the whole
+ * install back — measured on Ubuntu 26.04, 2026-09-20. An empty configuration
+ * is written instead, and a deck plugged in afterwards arrives through the
+ * same udev path as any other hotplug: no profile has a layout for it, so it
+ * lands in `unattached`, where the editor can see it and configure it.
  */
 async function bootstrapConfig(): Promise<boolean> {
   const devices = await listStreamDecks();
   if (devices.length === 0) {
-    console.error('[main] no config.json and no Stream Decks connected — nothing to bootstrap');
-    return false;
+    console.log('[main] no config.json and no Stream Decks connected — starting on an empty configuration');
+    console.log('[main] plug a deck in and add it in the editor; the daemon picks it up without a restart');
+    await writeNewConfig(emptyConfig());
+    return true;
   }
 
   const decks: NonNullable<Config['decks']> = {};
