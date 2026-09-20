@@ -40,6 +40,17 @@ let lastReload: ReloadResult = { ok: true, at: new Date().toISOString() };
  * has never mentioned without holding it open.
  */
 const unattached = new Map<string, DeckGeometry>();
+/**
+ * Set by reload(), consumed by the next scan(): that one scan re-opens every
+ * deck in `unattached` to see whether the new config covers it. Without it a
+ * scan leaves them alone, which is what stops the safety-net poll opening an
+ * unconfigured deck once a minute for ever (docs/scope.md §7, Portability).
+ *
+ * Skipping `unattached` unconditionally is the obvious fix and is wrong: a
+ * deck that has just been given a layout would then be skipped by the very
+ * scan the reload runs to pick it up, and stay dark until it was replugged.
+ */
+let reevaluateUnattached = false;
 let control: ControlServer | null = null;
 /** Event notifications for the control socket; null until it exists, so calls before then do nothing. */
 let events: ReturnType<typeof eventNotifiers> | null = null;
@@ -246,6 +257,10 @@ async function attach(devicePath: string): Promise<void> {
  */
 async function scan(): Promise<void> {
   if (shuttingDown) return;
+  // Read and cleared here, not at the end: a reload that lands while this scan
+  // is running sets it again, and requestScan() then runs one more scan for it.
+  const reevaluate = reevaluateUnattached;
+  reevaluateUnattached = false;
   let devices: Awaited<ReturnType<typeof listStreamDecks>>;
   try {
     devices = await listStreamDecks();
@@ -275,6 +290,16 @@ async function scan(): Promise<void> {
   for (const device of devices) {
     const serial = device.serialNumber?.trim();
     if (serial && sessions.has(serial)) continue;
+    // Already known to have no layout: opening it again would read the same
+    // serial, log the same warning and close it again, every 60 s for ever
+    // (measured on Ubuntu 26.04, 2026-09-20 — two decks, two journal lines a
+    // minute at rest). Only a config change can make it attachable, so only a
+    // reload's scan looks again. A deck that is unplugged meanwhile leaves
+    // `unattached` in the loop above, so replugging it is picked up as normal.
+    // An enumeration entry with no serial cannot be matched and is opened as
+    // before: the serial is optional in the library's types, though both decks
+    // here report one (`[confirmed]` 2026-09-20).
+    if (serial && !reevaluate && unattached.has(serial)) continue;
     await attach(device.path);
   }
 }
@@ -328,7 +353,13 @@ async function reload(): Promise<void> {
     // reloadLikeTheDaemon().
     events?.config();
     console.log(`[main] config reloaded, on ${sessions.size} deck(s) in ${Date.now() - applyStarted} ms`);
-    // Picks up decks that were connected but previously unconfigured.
+    // Picks up decks that were connected but previously unconfigured — and
+    // only this scan does, which is why the flag is set rather than scan()
+    // looking at `unattached` every time. It also catches the reverse:
+    // applyReload() closes the session of a deck the new config no longer
+    // covers, and this scan puts it back in `unattached` where the editor can
+    // still see it.
+    reevaluateUnattached = true;
     await requestScan();
   } catch (err) {
     // Keep running on the last good config — a typo while editing should
