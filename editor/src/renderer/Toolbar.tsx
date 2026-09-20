@@ -75,7 +75,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
             <option key={d.id} value={d.id}>
               {d.label}
               {d.connected ? '' : ' — not connected'}
-              {d.hasLayout ? '' : ' — no layout in this profile'}
             </option>
           ))}
         </select>
