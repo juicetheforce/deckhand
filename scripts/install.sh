@@ -218,7 +218,7 @@ preflight_checks() {
 
   # Audio keys drive PulseAudio or PipeWire through pactl.
   if ! has_command pactl; then
-    missing "pactl: install pipewire-pulseaudio (or your distribution's package providing pactl)."
+    missing "pactl: install the package that provides this command-line tool — pulseaudio-utils on Debian and Ubuntu, pipewire-pulseaudio on Fedora. A machine can have PipeWire running and still not have it."
   elif ! pactl info >/dev/null 2>&1; then
     missing "pactl cannot reach a sound server (pactl info failed). Deckhand's audio keys need PipeWire's PulseAudio server or PulseAudio running."
   fi
