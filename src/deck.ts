@@ -197,6 +197,30 @@ export class DeckSession implements DeckHandle {
   }
 
   /**
+   * Fire every release a held key is still waiting for, instead of dropping
+   * it. The page, the profile or the config changing under a finger used to
+   * *discard* these (`heldRelease.clear()`), which left the combo down at the
+   * evdev layer with no key left to release it — the stuck key the control
+   * socket goes to lengths to rule out (docs/scope.md §7, M3). Found by
+   * reading, 2026-09-20, before the latching toggle it also applies to.
+   *
+   * Failures are logged, not marked on the key: by the time this runs the key
+   * may be on a page that is no longer shown, and a mark there would be
+   * invisible and unclearable.
+   */
+  private async fireHeldReleases(reason: string): Promise<void> {
+    const pending = [...this.heldRelease.entries()];
+    this.heldRelease.clear();
+    for (const [index, action] of pending) {
+      try {
+        await runActionOrThrow(this.context(index), action);
+      } catch (err) {
+        console.error(`[${this.label()}] releasing key ${index + 1} on ${reason} failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
    * Run an action sent over the control socket, on this deck. Unlike a key
    * press, a failure propagates to the caller, and any key it holds down is
    * recorded as held by the socket. It belongs to no key, so no key repaints.
@@ -473,10 +497,12 @@ export class DeckSession implements DeckHandle {
       return;
     }
     if (id === this.page) return;
+    // Before the page moves: a key held on the page being left still has its
+    // release, and this is the last moment it can run.
+    await this.fireHeldReleases('a page change');
     this.history.push(this.page);
     if (this.history.length > 32) this.history.shift();
     this.page = id;
-    this.heldRelease.clear();
     this.onStateChange();
     await this.renderPage(true);
   }
@@ -484,8 +510,8 @@ export class DeckSession implements DeckHandle {
   async goBack(): Promise<void> {
     const previous = this.history.pop();
     if (!previous || !this.layout.pages[previous]) return;
+    await this.fireHeldReleases('a page change');
     this.page = previous;
-    this.heldRelease.clear();
     this.onStateChange();
     await this.renderPage(true);
   }
@@ -506,10 +532,10 @@ export class DeckSession implements DeckHandle {
    * when the active profile changes. Brightness is hardware and is untouched.
    */
   async setLayout(layout: LayoutDef): Promise<void> {
+    await this.fireHeldReleases('a profile switch');
     this.layout = layout;
     this.page = startPageOf(layout);
     this.history = [];
-    this.heldRelease.clear();
     this.onStateChange();
     await this.renderPage(true);
   }
@@ -532,9 +558,9 @@ export class DeckSession implements DeckHandle {
     this.layout = layout;
     this.defaults = { ...DEFAULTS, ...defaults };
     if (!keepPage || !layout.pages[this.page]) {
+      await this.fireHeldReleases('a config reload');
       this.page = startPageOf(layout);
       this.history = [];
-      this.heldRelease.clear();
       this.onStateChange();
     }
     await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
@@ -543,6 +569,9 @@ export class DeckSession implements DeckHandle {
   }
 
   async close(): Promise<void> {
+    // Before the flag: a key still held by this deck is released rather than
+    // left down when the deck goes (unplugged, or the daemon shutting down).
+    await this.fireHeldReleases('the deck closing');
     this.closed = true;
     if (this.ticker) clearInterval(this.ticker);
     this.ticker = null;
