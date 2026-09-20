@@ -371,9 +371,12 @@ await check('the three states that used to render identically are told apart', (
   assert.equal(fresh.kind, 'never-configured');
   assert.equal(fresh.canAddLayout, false);
 
-  // 3. Decks are configured; none is plugged in.
-  const unplugged = emptyState(EXAMPLE, daemonView([]), { profile: 'prof_game', serial: '' })!;
-  assert.equal(unplugged.kind, 'all-unplugged');
+  // 3. Decks are configured; none is plugged in. The breadcrumb still has one
+  // of them selected — reconcileSelection always picks something — so this is
+  // the case that must not fall through to per-deck language about the one it
+  // happened to pick. "Nothing is connected" is tested before the layout.
+  const unplugged = emptyState(EXAMPLE, daemonView([]), { profile: 'default', serial: XL })!;
+  assert.equal(unplugged.kind, 'all-unplugged', 'a selected, configured deck must not make this per-deck');
   assert.match(unplugged.detail, /XL and Original V2/, 'it names the decks it is waiting for');
   assert.equal(unplugged.canAddLayout, false);
 
@@ -394,10 +397,14 @@ await check('a connected deck this profile does not cover is the one case that o
 });
 
 await check('a configured deck that is unplugged says so, and does not offer a layout it already has', () => {
+  // Per-deck language is right *here*, because another deck is plugged in:
+  // this really is the one that is missing, not the whole machine.
   const state = emptyState(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 })!;
   assert.equal(state.kind, 'deck-unplugged');
   assert.match(state.title, /Original V2 is not connected/);
   assert.equal(state.canAddLayout, false);
+  // And the same selection with nothing plugged in is the whole-machine case.
+  assert.equal(emptyState(EXAMPLE, daemonView([]), { profile: 'default', serial: V2 })!.kind, 'all-unplugged');
 });
 
 await check('there is no empty state when there is a grid to draw', () => {
@@ -423,7 +430,12 @@ await check('the connection pill always has something to say', () => {
     label: 'No decks connected',
   });
   assert.equal(connectionPill(EXAMPLE, daemonView([XL, V2]), { profile: 'default', serial: XL }).state, 'connected');
+  // One deck absent while another is there: naming the absent one is right.
   assert.equal(connectionPill(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 }).state, 'disconnected');
+  // But with nothing plugged in, a configured deck is still selected, and
+  // "Not connected" would name it alone. The pill and the card must agree.
+  assert.equal(connectionPill(EXAMPLE, daemonView([]), { profile: 'default', serial: XL }).state, 'no-decks');
+  assert.equal(emptyState(EXAMPLE, daemonView([]), { profile: 'default', serial: XL })!.kind, 'all-unplugged');
   // A daemon that is up but has lost every deck is "no decks", not "not
   // connected": no one deck is being talked about.
   assert.equal(connectionPill(EMPTY_CONFIG, daemonView([]), { profile: 'default', serial: 'GONE' }).state, 'no-decks');

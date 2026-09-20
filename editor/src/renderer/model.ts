@@ -585,13 +585,18 @@ function configuredSerials(config: Config): string[] {
  * - `never-configured` — the daemon is there, no deck is plugged in, and no
  *   profile has a layout for any deck. The empty configuration a first
  *   install with no hardware writes.
- * - `all-unplugged` — decks are configured; none is plugged in.
+ * - `all-unplugged` — decks are configured; **none** is plugged in.
  * - `no-layout` — a deck **is** plugged in and this profile has no layout for
  *   it. The one case where the old sentence was true, and the only one where
  *   offering to add a layout means anything.
- * - `deck-unplugged` — this profile has a layout for the selected deck, but
- *   the deck is not there, so its geometry is unknown and the grid cannot be
- *   drawn.
+ * - `deck-unplugged` — another deck is plugged in, but not the selected one,
+ *   which this profile does have a layout for; its geometry is unknown so the
+ *   grid cannot be drawn.
+ *
+ * The order matters as much as the list. "Nothing is connected" is tested
+ * before anything per-deck, because with nothing plugged in the breadcrumb
+ * still has some deck selected, and naming that one alone understates it —
+ * which is the per-deck language the maintainer objected to.
  *
  * The first three were indistinguishable on screen and have all been possible
  * since M1; nobody noticed because a deck has always been attached to the
@@ -623,17 +628,10 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
     };
   }
 
-  const layout = layoutFor(config, selection.profile, selection.serial);
-  if (layout) {
-    if (geometryFor(daemon, selection.serial) !== null) return null;
-    return {
-      kind: 'deck-unplugged',
-      title: `${deckLabel(config, daemon, selection.serial)} is not connected`,
-      detail: 'Its layout comes from the deck itself, so plug it in to edit this page.',
-      canAddLayout: false,
-    };
-  }
-
+  // Before anything per-deck: with nothing plugged in at all, naming the one
+  // deck the breadcrumb happens to have selected understates it, and that is
+  // the per-deck language the maintainer objected to. Say what is true of the whole
+  // machine, then name the decks it is waiting for.
   if ((daemon.decks ?? []).length === 0) {
     const configured = configuredSerials(config);
     if (configured.length === 0) {
@@ -649,6 +647,19 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
       kind: 'all-unplugged',
       title: 'No Stream Deck is connected',
       detail: `${names} ${configured.length === 1 ? 'is' : 'are'} set up, but not plugged in. Plug one in to edit its layout.`,
+      canAddLayout: false,
+    };
+  }
+
+  // Something is plugged in, so from here the per-deck language is about a
+  // deck that really is there, or really is the one missing.
+  const layout = layoutFor(config, selection.profile, selection.serial);
+  if (layout) {
+    if (geometryFor(daemon, selection.serial) !== null) return null;
+    return {
+      kind: 'deck-unplugged',
+      title: `${deckLabel(config, daemon, selection.serial)} is not connected`,
+      detail: 'Its layout comes from the deck itself, so plug it in to edit this page.',
       canAddLayout: false,
     };
   }
@@ -678,10 +689,13 @@ export interface ConnectionPill {
 
 export function connectionPill(config: Config, daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial'>): ConnectionPill {
   if (!daemon.connected) return { state: 'daemon-down', label: 'Daemon not running' };
+  // The same precedence emptyState() uses, so the pill and the card can never
+  // disagree: with nothing plugged in at all, "Not connected" would name the
+  // one deck the breadcrumb happens to have selected and imply the others are
+  // fine. A configured deck is always selected, so this is not the same as
+  // having no deck to select.
+  if ((daemon.decks ?? []).length === 0) return { state: 'no-decks', label: 'No decks connected' };
   const selected = deckChoices(config, selection.profile, daemon).find((d) => d.id === selection.serial);
-  // No deck selected means the dropdown is empty: nothing is plugged in and
-  // this profile covers nothing. "Not connected" would imply one particular
-  // deck is absent, which is not what is being said.
   if (!selected) return { state: 'no-decks', label: 'No decks connected' };
   return selected.connected ? { state: 'connected', label: 'Connected' } : { state: 'disconnected', label: 'Not connected' };
 }

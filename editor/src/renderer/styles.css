@@ -266,6 +266,21 @@ button:disabled {
   border-color: rgba(232, 90, 110, 0.4);
 }
 
+/* No deck at all, and no daemon (scope §7, Portability). Amber rather than
+   red: nothing is broken, there is just nothing there — red is for a deck
+   this profile expects and cannot find. */
+.pill-no-decks {
+  color: var(--amber);
+  background: rgba(232, 180, 90, 0.1);
+  border-color: rgba(232, 180, 90, 0.4);
+}
+
+.pill-daemon-down {
+  color: var(--red);
+  background: rgba(232, 90, 110, 0.1);
+  border-color: rgba(232, 90, 110, 0.4);
+}
+
 .tabs {
   display: flex;
   align-items: center;
@@ -1361,6 +1376,15 @@ button:disabled {
   gap: 12px;
   max-width: 420px;
   text-align: center;
+}
+
+/* The one line that says which situation this is (scope §7, Portability):
+   larger than the explanation under it, so the state is readable at a glance
+   rather than needing the paragraph read. */
+.empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 /* Confirmations over the grid */

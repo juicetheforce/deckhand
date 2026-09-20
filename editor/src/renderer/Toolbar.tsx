@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent,
 import { SettingsGlyph } from './SettingsWindow.js';
 import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
-import { deckChoices, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
+import { connectionPill, deckChoices, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
 import { pagesWithNoWayOff } from '../shared/links.js';
 import { EditIcon } from './icons.js';
 
@@ -40,6 +40,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
 export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
+  const pill = connectionPill(config, daemon, selection);
   const layout = layoutFor(config, selection.profile, selection.serial);
   // The guard (scope §10): no key is auto-reserved for Back, so a page you
   // cannot leave is flagged on its tab instead.
@@ -70,7 +71,13 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
       <span className="crumb-sep">›</span>
       <label className="crumb">
         <span className="crumb-label">Device</span>
-        <select value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })}>
+        {/* data-crumb, like the tabs' data-tab: a stable hook for the checks,
+            so matching on rendered text does not break when the row grows. */}
+        <select data-crumb="device" value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })} disabled={decks.length === 0}>
+          {/* An empty dropdown reads as a working editor with nothing chosen
+              yet, which is what the maintainer saw on a machine with no deck (scope §7).
+              Say there is nothing to choose from. */}
+          {decks.length === 0 && <option value="">No decks</option>}
           {decks.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label}
@@ -146,13 +153,14 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
       <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
         <SettingsGlyph size={18} />
       </button>
-      {/* The selected deck's connection state (scope §10, changed 2026-09-15). */}
-      {selectedDeck && (
-        <span className={selectedDeck.connected ? 'pill pill-connected' : 'pill pill-disconnected'} role="status">
-          <span className="pill-dot" aria-hidden="true" />
-          {selectedDeck.connected ? 'Connected' : 'Not connected'}
-        </span>
-      )}
+      {/* The connection state (scope §10, changed 2026-09-15; always shown
+          since 2026-09-20). It used to render only with a deck selected, so
+          the one case that most needed it — nothing connected at all — was
+          the one that showed nothing (scope §7, Portability). */}
+      <span className={`pill pill-${pill.state}`} role="status" data-connection={pill.state}>
+        <span className="pill-dot" aria-hidden="true" />
+        {pill.label}
+      </span>
     </header>
   );
 }

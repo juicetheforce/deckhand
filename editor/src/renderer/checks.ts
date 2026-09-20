@@ -882,6 +882,68 @@ async function panes(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
+ * The empty state (scope §7, Portability): what the editor actually says when
+ * there is no grid to show. One run per situation — scripts/check-empty.mjs
+ * sets each one up and starts a fresh editor for it — so this only has to
+ * report what is on screen, and the Node side decides whether it is right.
+ *
+ * It reads the rendered DOM rather than calling emptyState() again: the unit
+ * tests already cover the function, and what is being checked here is that
+ * the window shows it.
+ */
+async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<string, unknown>> {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  // The daemon view arrives after the first paint, so wait for the toolbar
+  // and then let the connection settle: a check that read straight away saw
+  // the pre-connection state every time.
+  await until(() => document.querySelector('.toolbar') !== null);
+  await sleep(800);
+
+  // "empty-select": choose the other deck in the dropdown first, which is how
+  // a person reaches a connected deck the profile does not cover when another
+  // one does — the breadcrumb opens on the deck with a layout.
+  if (selectOther) {
+    const device = document.querySelector<HTMLSelectElement>('select[data-crumb="device"]');
+    const other = device === null ? undefined : [...device.options].find((o) => o.value !== device.value);
+    if (device && other) {
+      device.value = other.value;
+      device.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(800);
+    }
+  }
+
+  const card = document.querySelector('[data-empty-state]');
+  const pill = document.querySelector('[data-connection]');
+  const device = document.querySelector<HTMLSelectElement>('select[data-crumb="device"]');
+  const notices = [...document.querySelectorAll('.notice')].map((n) => n.textContent ?? '');
+
+  return {
+    kind: card?.getAttribute('data-empty-state') ?? null,
+    title: card?.querySelector('.empty-title')?.textContent ?? null,
+    detail: card?.querySelector('.muted')?.textContent ?? null,
+    // Null when there is no button, which is the point in four of the five.
+    addButton: card?.querySelector<HTMLButtonElement>('button.primary')?.textContent ?? null,
+    pill: pill?.getAttribute('data-connection') ?? null,
+    pillLabel: pill?.textContent?.trim() ?? null,
+    grid: document.querySelector('.grid') !== null,
+    deviceOptions: device === null ? null : [...device.options].map((o) => o.textContent),
+    deviceDisabled: device?.disabled ?? null,
+    // "Say it once": how many separate places mention the daemon being down.
+    daemonNotices: notices.filter((t) => t.includes('Not connected to the daemon')).length,
+    // Every visible warning, so a second voice anywhere shows up in the report.
+    warnBadges: [...document.querySelectorAll('.warn-badge')].map((b) => b.textContent),
+  };
+}
+
+/**
  * M4 phase B, B1: profiles and pages, driven through the real UI against two
  * decks. Deliberately the same four things the maintainer checks by hand on the real
  * decks, so the hardware run confirms rather than discovers.
@@ -1949,6 +2011,8 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'panes') api.reportCheck(name, await panes(api));
     else if (name === 'structure') api.reportCheck(name, await structure(api));
     else if (name === 'navigate') api.reportCheck(name, await navigate(api));
+    else if (name === 'empty') api.reportCheck(name, await empty(api));
+    else if (name === 'empty-select') api.reportCheck(name, await empty(api, true));
     else if (name === 'forms') api.reportCheck(name, await forms(api));
     else if (name === 'bulk') {
       // Reports how far it got, so a failure part-way through can be diagnosed.

@@ -5,13 +5,18 @@ interface Props {
   daemon: DaemonView;
   /** The last live switch that failed; cleared by the next one that works. */
   switchError: string | null;
+  /**
+   * The empty state under this is already saying the daemon is not running
+   * (scope §7, "say it once"), so this banner would be the second voice.
+   */
+  daemonSaidBelow: boolean;
 }
 
 /**
  * Transient notices only — no permanent status chrome (scope §10). Each one
  * is shown only while its condition holds.
  */
-export function Notices({ store, daemon, switchError }: Props) {
+export function Notices({ store, daemon, switchError, daemonSaidBelow }: Props) {
   const api = window.deckhand;
   const lastReload = daemon.status?.config.lastReload;
 
@@ -60,7 +65,7 @@ export function Notices({ store, daemon, switchError }: Props) {
           <p>{switchError}</p>
         </div>
       )}
-      {!daemon.connected && (
+      {!daemon.connected && !daemonSaidBelow && (
         <div className="notice notice-info">
           <p>
             <strong>Not connected to the daemon:</strong> {daemon.problem}. Edits are still saved; the decks pick them up

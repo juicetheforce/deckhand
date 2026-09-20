@@ -15,6 +15,7 @@ import {
   clickKeys,
   deckForProfile,
   deviceTargets,
+  emptyState,
   failedKeysOn,
   latchedKeysOn,
   followDeck,
@@ -149,6 +150,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   const layout = layoutFor(config, selection.profile, selection.serial);
   const page = layout?.pages[selection.page];
   const geometry = geometryFor(daemon, selection.serial);
+  /** Why there is no grid, or null when there is one (scope §7, Portability). */
+  const nothing = emptyState(config, daemon, selection);
 
   // Bulk operations over the selected keys (M4 phase B3).
   const selectKeys = (keys: number[]) =>
@@ -339,21 +342,27 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
-          <Notices store={store} daemon={daemon} switchError={switchError} />
+          {/* Say it once (scope §7): when the empty state below is already
+              explaining that the daemon is not running, the banner saying so
+              a second time is the redundancy the maintainer called pointless. */}
+          <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
           <div className="well">
-            {!layout && (
-              <div className="no-layout">
-                <p className="muted">This profile has no layout for this deck, so switching to it leaves the deck showing whatever it had.</p>
-                <button className="primary" disabled={editingBlocked} onClick={() => void addLayout()}>
-                  Add a layout for this deck
-                </button>
+            {/* One place says why there is no grid (scope §7, Portability).
+                Before 2026-09-20 three different situations — no daemon, no
+                deck plugged in, nothing ever configured — all rendered the
+                same per-deck layout sentence and an "Add a layout for this
+                deck" button for a deck that did not exist. */}
+            {nothing && (
+              <div className="no-layout" data-empty-state={nothing.kind}>
+                <p className="empty-title">{nothing.title}</p>
+                <p className="muted">{nothing.detail}</p>
+                {nothing.canAddLayout && (
+                  <button className="primary" disabled={editingBlocked} onClick={() => void addLayout()}>
+                    Add a layout for {deckLabel(config, daemon, selection.serial)}
+                  </button>
+                )}
                 {addLayoutError && <p className="field-error">{addLayoutError}</p>}
               </div>
-            )}
-            {layout && !geometry && (
-              <p className="muted">
-                This deck is not connected. Its layout comes from the deck itself, so plug it in to edit this page.
-              </p>
             )}
             {layout && geometry && page && (
               <DeckGrid

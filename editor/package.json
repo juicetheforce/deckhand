@@ -27,7 +27,8 @@
     "check:settings": "npm run build && node scripts/check-settings.mjs",
     "check:backup": "npm run build && node scripts/check-backup.mjs",
     "check:titlebar": "npm run build && node scripts/check-titlebar.mjs",
-    "check:failures": "npm run build && node scripts/check-failures.mjs"
+    "check:failures": "npm run build && node scripts/check-failures.mjs",
+    "check:empty": "npm run build && node scripts/check-empty.mjs"
   },
   "engines": {
     "node": ">=22.12"
