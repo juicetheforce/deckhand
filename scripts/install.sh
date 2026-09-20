@@ -38,6 +38,10 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UDEV_RULE_SRC="$REPO_DIR/udev/60-deckhand.rules"
 UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
+# The AppArmor profile that lets the editor's Electron have a user namespace.
+# Installed only where the kernel is restricting them; see apparmor_needed().
+APPARMOR_PROFILE_SRC="$REPO_DIR/apparmor/deckhand-editor"
+APPARMOR_PROFILE_DST="/etc/apparmor.d/deckhand-editor"
 
 # The unit file used to be copied into ~/.config/systemd/user/ and pointed at a
 # checkout in ~/src/deckhand. A unit there overrides the installed one, so an
@@ -140,6 +144,31 @@ sysctl_value() {
   [ -r "$SYSCTL_DIR/$1" ] && cat "$SYSCTL_DIR/$1" 2>/dev/null || true
 }
 
+# Whether this machine denies unprivileged user namespaces to unconfined
+# programs, which is what stops the editor's Electron starting (docs/scope.md
+# §7, Portability). Ubuntu 24.04 and later set this; Fedora does not, and there
+# the profile is neither needed nor installed.
+userns_restricted() {
+  [ "$(sysctl_value kernel/apparmor_restrict_unprivileged_userns)" = 1 ]
+}
+
+# The profile's attachment path is a glob over the default location, so it
+# covers every user of the machine without one install overwriting another's.
+# An install somewhere else (a non-default XDG_DATA_HOME) is not covered by it,
+# and says so rather than installing a profile that would never attach.
+apparmor_path_covered() {
+  case "$APP_DIR/editor/electron/electron" in
+    /home/*/.local/share/deckhand/editor/electron/electron) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Whether the profile has to be installed or refreshed: only where user
+# namespaces are restricted, and only when what is on disk differs.
+apparmor_needed() {
+  userns_restricted && ! cmp -s "$APPARMOR_PROFILE_SRC" "$APPARMOR_PROFILE_DST"
+}
+
 preflight_checks() {
   PREFLIGHT_MISSING=()
   PREFLIGHT_WARNINGS=()
@@ -229,6 +258,12 @@ preflight_checks() {
     has_command udevadm || missing "udevadm: needed to load the udev rule."
   fi
 
+  # Same, for the AppArmor profile the editor needs on this kind of machine.
+  if apparmor_needed; then
+    has_command sudo           || missing "sudo: needed once, to install the AppArmor profile at $APPARMOR_PROFILE_DST that lets the editor start."
+    has_command apparmor_parser || missing "apparmor_parser: needed to load the AppArmor profile that lets the editor start. Install your distribution's apparmor package."
+  fi
+
   # --- Warnings: the install goes ahead ---
 
   # Electron's sandbox needs unprivileged user namespaces. Ubuntu 24.04's
@@ -240,8 +275,20 @@ preflight_checks() {
   [ "$(sysctl_value kernel/apparmor_restrict_unprivileged_userns)" = 1 ] && userns_why="AppArmor restricts unprivileged user namespaces (kernel.apparmor_restrict_unprivileged_userns = 1, as on Ubuntu 24.04 and later)"
   [ "$(sysctl_value kernel/unprivileged_userns_clone)" = 0 ] && userns_why="unprivileged user namespaces are turned off (kernel.unprivileged_userns_clone = 0)"
   [ "$(sysctl_value user/max_user_namespaces)" = 0 ] && userns_why="user namespaces are turned off (user.max_user_namespaces = 0)"
-  [ -z "$userns_why" ] \
-    || caution "The editor may not start: $userns_why, which Electron's sandbox needs. The decks will work. The likely symptom: deckhand-editor exits at once, printing something like \"The SUID sandbox helper binary was found, but is not configured correctly\" or \"No usable sandbox!\". Not supported yet."
+  # The AppArmor case is handled: this install puts a profile in place that
+  # grants the editor's Electron a user namespace, so warn only when that
+  # profile cannot be what fixes it — the other two switches, which no profile
+  # overrides — or when it is not installed yet and cannot be.
+  if [ -n "$userns_why" ]; then
+    if cmp -s "$APPARMOR_PROFILE_SRC" "$APPARMOR_PROFILE_DST"; then
+      : # the profile is installed and current; the editor starts
+    elif userns_restricted && [ "$(sysctl_value kernel/unprivileged_userns_clone)" != 0 ] \
+        && [ "$(sysctl_value user/max_user_namespaces)" != 0 ]; then
+      caution "The editor needs an AppArmor profile here: $userns_why, which Electron's sandbox needs. This install adds one at $APPARMOR_PROFILE_DST (it asks for sudo once) and the editor then starts normally. The decks never needed it."
+    else
+      caution "The editor will not start: $userns_why, which Electron's sandbox needs, and no AppArmor profile can grant it — that switch is off for every program. The decks will work. The likely symptom: deckhand-editor exits at once, printing \"No usable sandbox!\" or \"The SUID sandbox helper binary was found, but is not configured correctly\"."
+    fi
+  fi
 
   if [ "$bus" = yes ]; then
     # The tray (Ship piece 2) is a StatusNotifierItem: it needs a panel that
@@ -497,6 +544,30 @@ install_udev_rule() {
   report_device_access
 }
 
+# The AppArmor profile that lets the editor's Electron start (docs/scope.md §7).
+# Only where user namespaces are restricted, and only when it is not already
+# there: on Fedora, and on a second run, this does nothing and asks for nothing.
+install_apparmor_profile() {
+  if ! userns_restricted; then
+    return
+  fi
+  if ! apparmor_path_covered; then
+    warn "not installing the AppArmor profile: it attaches to ~/.local/share/deckhand/editor/electron/electron, and this install is at $APP_DIR. The editor will not start until a profile matching that path grants it \"userns\"; copy $APPARMOR_PROFILE_SRC, change the path in it, and load it with apparmor_parser -r."
+    return
+  fi
+  if cmp -s "$APPARMOR_PROFILE_SRC" "$APPARMOR_PROFILE_DST"; then
+    say "AppArmor profile already up to date"
+    return
+  fi
+  say "Installing AppArmor profile to $APPARMOR_PROFILE_DST, so the editor can start (needs sudo)"
+  if sudo install -m 644 "$APPARMOR_PROFILE_SRC" "$APPARMOR_PROFILE_DST" && sudo apparmor_parser -r "$APPARMOR_PROFILE_DST"; then
+    say "AppArmor profile loaded"
+  else
+    # Not fatal: the daemon and the decks do not need it, only the editor does.
+    warn "could not install or load the AppArmor profile. The decks will work; the editor will abort at startup with \"The SUID sandbox helper binary was found, but is not configured correctly\"."
+  fi
+}
+
 service_is_up() {
   # $1 is the service's main PID right after it was started. Up means active,
   # and still the same process: a crash plus automatic restart always gives a
@@ -550,6 +621,7 @@ cmd_install() {
   # or npm ci leaves everything as it was.
   build_and_stage
   install_udev_rule
+  install_apparmor_profile
 
   say "Stopping the running service"
   systemctl --user stop deckhand 2>/dev/null || true
@@ -769,6 +841,24 @@ remove_cli() {
 
 # --- uninstall ---------------------------------------------------------------
 
+# The AppArmor profile goes with the app: it names a path that no longer
+# exists after an uninstall, and leaving root-owned files behind is rude.
+remove_apparmor_profile() {
+  # `return 0`, not a bare `return`: install.sh runs under `set -e`, and a bare
+  # one here would hand back the failed `[ -e ]` and abort the uninstall before
+  # it reached the udev rule.
+  [ -e "$APPARMOR_PROFILE_DST" ] || return 0
+  say "Removing AppArmor profile $APPARMOR_PROFILE_DST (needs sudo)"
+  # Unload first: removing the file alone leaves the profile loaded until reboot.
+  if sudo apparmor_parser -R "$APPARMOR_PROFILE_DST" 2>/dev/null && sudo rm -f "$APPARMOR_PROFILE_DST"; then
+    say "AppArmor profile removed"
+  elif sudo rm -f "$APPARMOR_PROFILE_DST"; then
+    warn "removed $APPARMOR_PROFILE_DST, but could not unload the profile; it stays loaded until the next reboot. It grants nothing except to a binary that is now gone."
+  else
+    warn "could not remove $APPARMOR_PROFILE_DST. Remove it with:  sudo apparmor_parser -R $APPARMOR_PROFILE_DST && sudo rm $APPARMOR_PROFILE_DST"
+  fi
+}
+
 remove_udev_rule() {
   [ -e "$UDEV_RULE_DST" ] || { say "No udev rule to remove"; return; }
   say "Removing udev rule $UDEV_RULE_DST (needs sudo)"
@@ -826,6 +916,7 @@ cmd_uninstall() {
     say "Removed $STATE_DIR (app state, including $backup_count config backup(s))"
   fi
 
+  remove_apparmor_profile
   remove_udev_rule
 
   if [ -d "$CONFIG_DIR" ]; then

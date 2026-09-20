@@ -29,7 +29,7 @@ cc -shared -fPIC -o "$S/lib/libdeckhandprobe.so" "$S/lib/probe.c" \
 # --- Basic tools, and stubs ---------------------------------------------------
 mkdir -p "$S/base" "$S/stubs.orig"
 # cat … ldd are what install.sh's checks use; rm is for the setups below.
-for tool in cat cmp sed tr git uname awk sort ldd rm; do
+for tool in cat cmp sed tr git uname awk sort ldd rm cp; do
   ln -s "$(command -v "$tool")" "$S/base/$tool"
 done
 stub() { printf '#!/bin/bash\n%s\n' "$2" > "$S/stubs.orig/$1"; chmod 755 "$S/stubs.orig/$1"; }
@@ -53,14 +53,14 @@ esac'
 stub pactl 'exit "${STUB_PACTL_RC:-0}"'
 stub node 'echo "v${STUB_NODE_VERSION:-22.12.0}"'
 stub npm 'echo 11.0.0'
-for tool in make cc sudo udevadm; do stub "$tool" 'exit 0'; done
+for tool in make cc sudo udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
 
 # --- One run -------------------------------------------------------------------
 # run '<setup>' — a fresh copy of the stubs and scratch paths, the setup
 # evaluated (to remove a stub or change a path), then preflight_checks.
 # Prints one line per finding: "M: …" missing, "W: …" warning.
 run() {
-  rm -rf "$S/stubs" "$S/sys" "$S/seats"
+  rm -rf "$S/stubs" "$S/sys" "$S/seats" "$S/installed.apparmor"
   cp -a "$S/stubs.orig" "$S/stubs"
   mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"
   touch "$S/uinput.h"
@@ -76,6 +76,8 @@ run() {
     SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null   # a character device
     UINPUT_HEADER="$S/uinput.h"; LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"
     UDEV_RULE_DST="$S/installed.rules"
+    APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"
+    APPARMOR_PROFILE_DST="$S/installed.apparmor"   # absent unless a setup puts it there
     eval "$1"
     preflight_checks
     for m in "${PREFLIGHT_MISSING[@]}"; do echo "M: $m"; done
@@ -153,14 +155,30 @@ fi
 # Warnings: named, and the install is not refused for them.
 expect_warning "no tray"                      'export STUB_BUS_ABSENT=org.kde.StatusNotifierWatcher' 'No system tray'
 expect_warning "no KDE shortcut service"      'export STUB_BUS_ABSENT=org.kde.kglobalaccel'          'No KDE shortcut service'
-expect_warning "AppArmor userns restriction"  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"' 'apparmor_restrict_unprivileged_userns = 1'
+expect_warning "AppArmor userns restriction"  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"' 'The editor needs an AppArmor profile here'
+# The profile this install would add is the answer to that one, so once it is
+# in place there is nothing to warn about (docs/scope.md §7, Portability).
+expect_clean   "userns restricted but the profile is installed" \
+  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; cp "$REPO/apparmor/deckhand-editor" "$S/installed.apparmor"'
+out="$(run 'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; cp "$REPO/apparmor/deckhand-editor" "$S/installed.apparmor"')"
+[ "$out" = END ] && ok "profile installed: no userns warning at all" || no "profile installed — got: $out"
+# Installing it needs root and apparmor_parser, and only when it is not current.
+expect_missing "no apparmor_parser when the profile is needed" \
+  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; rm "$S/stubs/apparmor_parser"' \
+  'apparmor_parser: needed to load'
+expect_clean   "no apparmor_parser but the profile is current" \
+  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; cp "$REPO/apparmor/deckhand-editor" "$S/installed.apparmor"; rm "$S/stubs/apparmor_parser"'
 expect_warning "userns_clone off"             'echo 0 > "$S/sys/kernel/unprivileged_userns_clone"'            'unprivileged_userns_clone = 0'
 expect_warning "max_user_namespaces 0"        'echo 0 > "$S/sys/user/max_user_namespaces"'                    'max_user_namespaces = 0'
 expect_clean   "userns allowed: no warning"   'echo 0 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; echo 1 > "$S/sys/kernel/unprivileged_userns_clone"'
 out="$(run 'echo 0 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; echo 1 > "$S/sys/kernel/unprivileged_userns_clone"; echo 1000 > "$S/sys/user/max_user_namespaces"')"
 [ "$out" = END ] && ok "permissive userns sysctls: no warning at all" || no "permissive userns sysctls — got: $out"
-out="$(run 'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"')"
-completed "$out" && grep -q 'SUID sandbox helper' <<<"$out" && ok "the userns warning names the likely symptom" || no "userns warning has no symptom"
+# A switch no profile can override still names the symptom, because nothing
+# this installer does will fix it.
+out="$(run 'echo 0 > "$S/sys/kernel/unprivileged_userns_clone"')"
+completed "$out" && grep -q 'SUID sandbox helper' <<<"$out" && ok "the unfixable userns warning names the likely symptom" || no "unfixable userns warning has no symptom"
+out="$(run 'echo 0 > "$S/sys/kernel/unprivileged_userns_clone"')"
+completed "$out" && grep -q 'will not start' <<<"$out" && ok "the unfixable case says the editor will not start" || no "unfixable case wording — got: $out"
 out="$(run 'export STUB_NO_BUS=1')"
 completed "$out" && ! grep -q '^W: ' <<<"$out" && ok "no bus: no tray or shortcut warnings on top" || no "no bus — got: $out"
 

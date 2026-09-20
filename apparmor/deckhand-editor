@@ -1,0 +1,30 @@
+# Deckhand's editor is Electron, and Electron's sandbox needs an unprivileged
+# user namespace. Ubuntu 24.04 and later deny those to unconfined programs
+# (kernel.apparmor_restrict_unprivileged_userns = 1), so Electron falls back to
+# its SUID sandbox, finds chrome-sandbox not setuid, and aborts rather than run
+# unsandboxed:
+#
+#   FATAL:setuid_sandbox_host.cc:166 The SUID sandbox helper binary was found,
+#   but is not configured correctly.
+#
+# This profile is the same shape Ubuntu ships for Chrome, Chromium and VS Code
+# (/etc/apparmor.d/chrome, /etc/apparmor.d/code): unconfined, so it restricts
+# nothing that was not already restricted, but named, so the kernel can grant
+# it `userns`. The sandbox stays on — it is the namespace sandbox rather than
+# the setuid one (docs/scope.md §7, Portability, `[decided]` the maintainer 2026-09-20:
+# not a setuid-root chrome-sandbox, which does nothing on a nosuid mount).
+#
+# Installed by scripts/install.sh only where that sysctl is 1; removed by
+# "scripts/install.sh uninstall". The path is a glob so one profile covers
+# every user on the machine who installs Deckhand in the default location.
+
+abi <abi/5.0>,
+include <tunables/global>
+
+profile deckhand-editor /home/*/.local/share/deckhand/editor/electron/electron flags=(unconfined) {
+  userns,
+  @{exec_path} mr,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/deckhand-editor>
+}
