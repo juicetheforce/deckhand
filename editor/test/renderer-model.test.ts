@@ -15,7 +15,9 @@ import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue } from '../src/r
 import { STEP_TYPES, multiTotal, stepEditable, stepSummary } from '../src/renderer/steps.js';
 import {
   canSwitchDeck,
+  connectionPill,
   deckChoices,
+  emptyState,
   deckForProfile,
   describeAction,
   followDeck,
@@ -347,6 +349,98 @@ await check('profileCoverage names the decks a profile changes, and the connecte
 
   // A deck that is not plugged in is not a warning: nothing is left showing.
   assert.deepEqual(profileCoverage(EXAMPLE, daemonView([XL]), 'prof_game').uncoveredConnected, []);
+});
+
+console.log('the empty state (scope §7, Portability)');
+
+/** The empty configuration the daemon writes on a first install with no deck attached. */
+const EMPTY_CONFIG: Config = { profiles: { default: { name: 'Default', layouts: {} } }, startProfile: 'default' };
+
+/** No daemon: the socket is not answering, so nothing at all is known. */
+const NO_DAEMON: DaemonView = { connected: false, problem: 'the daemon is not running', status: null, decks: null };
+
+await check('the three states that used to render identically are told apart', () => {
+  // 1. The daemon is not reachable. Nothing is known — not even which decks exist.
+  const down = emptyState(EMPTY_CONFIG, NO_DAEMON, { profile: 'default', serial: '' })!;
+  assert.equal(down.kind, 'daemon-down');
+  assert.match(down.detail, /the daemon is not running/, "it says why, not just that");
+  assert.equal(down.canAddLayout, false);
+
+  // 2. Nothing was ever configured: the empty configuration, no deck plugged in.
+  const fresh = emptyState(EMPTY_CONFIG, daemonView([]), { profile: 'default', serial: '' })!;
+  assert.equal(fresh.kind, 'never-configured');
+  assert.equal(fresh.canAddLayout, false);
+
+  // 3. Decks are configured; none is plugged in.
+  const unplugged = emptyState(EXAMPLE, daemonView([]), { profile: 'prof_game', serial: '' })!;
+  assert.equal(unplugged.kind, 'all-unplugged');
+  assert.match(unplugged.detail, /XL and Original V2/, 'it names the decks it is waiting for');
+  assert.equal(unplugged.canAddLayout, false);
+
+  // All three differ in what they say, which is the whole point of the piece.
+  const said = [down, fresh, unplugged].map((s) => `${s.title}|${s.detail}`);
+  assert.equal(new Set(said).size, 3, 'two of them say the same thing');
+});
+
+await check('a connected deck this profile does not cover is the one case that offers a layout', () => {
+  // prof_game covers the XL only, so with the V2 selected and plugged in
+  // there is a real deck to add a layout for — the one situation in which
+  // the old sentence was true.
+  const state = emptyState(EXAMPLE, daemonView([XL, V2]), { profile: 'prof_game', serial: V2 })!;
+  assert.equal(state.kind, 'no-layout');
+  assert.equal(state.canAddLayout, true);
+  assert.match(state.title, /Original V2/, 'it names the deck rather than saying "this deck"');
+  assert.match(state.detail, /showing whatever it had/);
+});
+
+await check('a configured deck that is unplugged says so, and does not offer a layout it already has', () => {
+  const state = emptyState(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 })!;
+  assert.equal(state.kind, 'deck-unplugged');
+  assert.match(state.title, /Original V2 is not connected/);
+  assert.equal(state.canAddLayout, false);
+});
+
+await check('there is no empty state when there is a grid to draw', () => {
+  assert.equal(emptyState(EXAMPLE, daemonView([XL, V2]), { profile: 'default', serial: XL }), null);
+});
+
+await check('a layout the daemon cannot confirm is the daemon\'s fault, not the cable\'s', () => {
+  // The deck has a layout, so the old code said "this deck is not connected"
+  // — but with no daemon the editor has no idea whether it is plugged in.
+  const state = emptyState(EXAMPLE, NO_DAEMON, { profile: 'default', serial: XL })!;
+  assert.equal(state.kind, 'daemon-down');
+});
+
+await check('the connection pill always has something to say', () => {
+  // The bug: it rendered only when a deck was selected, so the one case that
+  // most needed an indicator — nothing connected — showed none.
+  assert.deepEqual(connectionPill(EMPTY_CONFIG, NO_DAEMON, { profile: 'default', serial: '' }), {
+    state: 'daemon-down',
+    label: 'Daemon not running',
+  });
+  assert.deepEqual(connectionPill(EMPTY_CONFIG, daemonView([]), { profile: 'default', serial: '' }), {
+    state: 'no-decks',
+    label: 'No decks connected',
+  });
+  assert.equal(connectionPill(EXAMPLE, daemonView([XL, V2]), { profile: 'default', serial: XL }).state, 'connected');
+  assert.equal(connectionPill(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 }).state, 'disconnected');
+  // A daemon that is up but has lost every deck is "no decks", not "not
+  // connected": no one deck is being talked about.
+  assert.equal(connectionPill(EMPTY_CONFIG, daemonView([]), { profile: 'default', serial: 'GONE' }).state, 'no-decks');
+});
+
+await check('the empty state agrees with what the daemon reports on the wire', () => {
+  // scope §7: stateSnapshot already distinguishes these, so the editor must
+  // not invent a fourth answer. A connected-but-unconfigured deck is
+  // connected: true, configured: false — which is exactly 'no-layout'.
+  const view = daemonView([XL]);
+  view.status!.decks = [{ serial: XL, connected: true, configured: false }];
+  const state = emptyState(EMPTY_CONFIG, view, { profile: 'default', serial: XL })!;
+  assert.equal(state.kind, 'no-layout');
+  // And with decks: [] and an active profile, the empty configuration case.
+  const empty = daemonView([]);
+  assert.deepEqual(empty.status!.decks, []);
+  assert.equal(emptyState(EMPTY_CONFIG, empty, { profile: 'default', serial: '' })!.kind, 'never-configured');
 });
 
 console.log('keys');

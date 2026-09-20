@@ -568,6 +568,124 @@ export function profileCoverage(
   return { covered: layouts.map(label), uncoveredConnected };
 }
 
+/** Every serial any profile has a layout for — the same set the daemon calls `configured`. */
+function configuredSerials(config: Config): string[] {
+  const serials = new Set<string>();
+  for (const profile of Object.values(config.profiles)) for (const serial of Object.keys(profile.layouts)) serials.add(serial);
+  return [...serials];
+}
+
+/**
+ * Why there is no grid to show (docs/scope.md §7, Portability). Five
+ * situations, four of which used to render as the same per-deck layout
+ * language about a deck that was not there:
+ *
+ * - `daemon-down` — the socket is not answering, so **nothing** is known:
+ *   not which decks exist, not whether any is plugged in.
+ * - `never-configured` — the daemon is there, no deck is plugged in, and no
+ *   profile has a layout for any deck. The empty configuration a first
+ *   install with no hardware writes.
+ * - `all-unplugged` — decks are configured; none is plugged in.
+ * - `no-layout` — a deck **is** plugged in and this profile has no layout for
+ *   it. The one case where the old sentence was true, and the only one where
+ *   offering to add a layout means anything.
+ * - `deck-unplugged` — this profile has a layout for the selected deck, but
+ *   the deck is not there, so its geometry is unknown and the grid cannot be
+ *   drawn.
+ *
+ * The first three were indistinguishable on screen and have all been possible
+ * since M1; nobody noticed because a deck has always been attached to the
+ * working machine. Null means there is a grid to draw.
+ */
+export type EmptyStateKind = 'daemon-down' | 'never-configured' | 'all-unplugged' | 'no-layout' | 'deck-unplugged';
+
+export interface EmptyState {
+  kind: EmptyStateKind;
+  /** The heading. */
+  title: string;
+  /** The sentence under it. */
+  detail: string;
+  /** Only `no-layout` offers it: there is no deck to add a layout for in the others. */
+  canAddLayout: boolean;
+}
+
+export function emptyState(config: Config, daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial'>): EmptyState | null {
+  // First, because it is the answer to every other question: with no daemon
+  // the editor does not know what is plugged in, so it must not say.
+  if (!daemon.connected) {
+    return {
+      kind: 'daemon-down',
+      title: 'The Deckhand daemon is not running',
+      // Carries what the Notices banner would otherwise repeat underneath
+      // (scope §7, "say it once"): App.tsx hides that one while this shows.
+      detail: `${daemon.problem ?? 'The editor cannot reach it'}. Until it starts, the editor cannot see any deck. Your edits are still saved, and the decks pick them up when it runs.`,
+      canAddLayout: false,
+    };
+  }
+
+  const layout = layoutFor(config, selection.profile, selection.serial);
+  if (layout) {
+    if (geometryFor(daemon, selection.serial) !== null) return null;
+    return {
+      kind: 'deck-unplugged',
+      title: `${deckLabel(config, daemon, selection.serial)} is not connected`,
+      detail: 'Its layout comes from the deck itself, so plug it in to edit this page.',
+      canAddLayout: false,
+    };
+  }
+
+  if ((daemon.decks ?? []).length === 0) {
+    const configured = configuredSerials(config);
+    if (configured.length === 0) {
+      return {
+        kind: 'never-configured',
+        title: 'No Stream Deck is connected',
+        detail: 'Nothing has been set up yet. Plug a deck in and it appears here — the daemon picks it up without a restart.',
+        canAddLayout: false,
+      };
+    }
+    const names = joinNames(configured.map((serial) => deckLabel(config, daemon, serial)));
+    return {
+      kind: 'all-unplugged',
+      title: 'No Stream Deck is connected',
+      detail: `${names} ${configured.length === 1 ? 'is' : 'are'} set up, but not plugged in. Plug one in to edit its layout.`,
+      canAddLayout: false,
+    };
+  }
+
+  // A real, connected deck this profile does not cover. The sentence the maintainer
+  // quoted, kept because here it is true (scope §7, and the maintainer 2026-09-20).
+  const name = deckLabel(config, daemon, selection.serial);
+  return {
+    kind: 'no-layout',
+    title: `This profile has no layout for ${name}`,
+    detail: `Switching to this profile leaves ${name} showing whatever it had.`,
+    canAddLayout: true,
+  };
+}
+
+/**
+ * The toolbar's connection state (scope §7). It used to render only when a
+ * deck was selected, so the one situation that most needed a connection
+ * indicator — nothing connected at all — was the one that showed none.
+ */
+export type ConnectionState = 'daemon-down' | 'no-decks' | 'connected' | 'disconnected';
+
+export interface ConnectionPill {
+  state: ConnectionState;
+  label: string;
+}
+
+export function connectionPill(config: Config, daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial'>): ConnectionPill {
+  if (!daemon.connected) return { state: 'daemon-down', label: 'Daemon not running' };
+  const selected = deckChoices(config, selection.profile, daemon).find((d) => d.id === selection.serial);
+  // No deck selected means the dropdown is empty: nothing is plugged in and
+  // this profile covers nothing. "Not connected" would imply one particular
+  // deck is absent, which is not what is being said.
+  if (!selected) return { state: 'no-decks', label: 'No decks connected' };
+  return selected.connected ? { state: 'connected', label: 'Connected' } : { state: 'disconnected', label: 'Not connected' };
+}
+
 /** One line describing what a key does, for its tooltip and the inspector. */
 export function describeAction(button: ButtonDef | undefined): string {
   const action = button?.action;
