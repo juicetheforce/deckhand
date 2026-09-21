@@ -123,17 +123,21 @@ function Submenu({ label, expanded, disabled, title, onToggle }: { label: string
 }
 
 /**
- * One deck under "Copy to device": its name, then its pages. A deck that is not
- * connected is listed but cannot be picked — keys land by row and column, and
- * without the deck there is no geometry to place them by — and says so rather
- * than vanishing (§2: say why, do not hide).
+ * One deck under "Copy to device": its name, then its pages.
+ *
+ * Every deck here is connected, because deviceTargets() comes from
+ * deckChoices(), which lists only plugged-in decks (the maintainer, 2026-09-20). This
+ * used to list a disconnected deck greyed out with "— not connected", on §2's
+ * "say why, do not hide"; that is reversed for this menu, because the reason
+ * it could not be picked was that it was not there, and not being there is
+ * now said by not being listed. `connected` is still checked: the daemon's
+ * `decks` and `status` lists can disagree for an instant.
  */
 function DeviceGroup({ device, onPick }: { device: DeviceTarget; onPick: (page: string) => void }) {
   return (
     <>
       <li className="key-menu-heading" role="presentation">
         {device.label}
-        {device.connected ? '' : ' — not connected'}
       </li>
       {device.pages.map((p) => (
         <MenuItem

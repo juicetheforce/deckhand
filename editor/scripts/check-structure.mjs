@@ -130,9 +130,13 @@ if (r && !r.error) {
     assert.equal(b.page, openedWith.b, 'opening moved deck B');
   });
 
-  check('the new-profile control offers every deck, connected ones ticked', () => {
-    assert.deepEqual(r.ticksShown, ['Big deck', 'Little deck', 'Spare deck — not connected'], 'names come from config');
-    assert.deepEqual(r.ticksCheckedByDefault, [true, true, false], 'connected decks start ticked, and only those');
+  check('the new-profile control offers the connected decks, all ticked', () => {
+    // Changed 2026-09-20 (the maintainer, scope §7): a deck that is not plugged in is
+    // not listed anywhere, so "Spare deck" is absent rather than shown with a
+    // "— not connected" marker. Everything offered is therefore connected,
+    // and so everything offered starts ticked.
+    assert.deepEqual(r.ticksShown, ['Big deck', 'Little deck'], 'names come from config');
+    assert.deepEqual(r.ticksCheckedByDefault, [true, true], 'connected decks start ticked, and only those');
   });
 
   check('creating a profile covering both decks switches BOTH of them', () => {

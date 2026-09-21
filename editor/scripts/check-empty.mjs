@@ -209,29 +209,59 @@ check('say it once: the toolbar badge summarises, the card explains — two voic
   assert.equal(chosen.deviceOptions.filter((o) => o.includes('no layout')).length, 0, 'the dropdown clause stays gone');
 });
 
-// ------------------------------------------- 5. a configured deck, unplugged
+// ------------------------------- 5. a configured deck that is not plugged in
 
-console.log('\n5. this profile covers the selected deck, which is not plugged in');
+console.log('\n5. this profile covers a deck that is not plugged in');
+// `[decided]` the maintainer 2026-09-20: it is not listed at all. "The list is the list"
+// — a deck's absence from it is what says it is missing, and a deck that has
+// been sold or replaced would otherwise sit there for ever. The state this
+// case used to check, `deck-unplugged`, is now unreachable by clicking: it
+// survives only as a guard for the instant the daemon's two lists disagree.
 const gone = await situation({
   check: 'empty-select',
   config: configWith(XL, V2),
   setUp: async (daemon, harness) => {
-    // Only the XL is there; the V2 has a layout and is absent. Selecting the
-    // absent one is the only way to see its message.
+    // Only the XL is there; the V2 has a layout and is absent.
     await daemon.attach(XL, new harness.FakeDeck());
   },
 });
 
-check('choosing the absent deck blames the deck, not the daemon', () => {
-  assert.equal(gone.kind, 'deck-unplugged');
-  assert.match(gone.title, /My V2 is not connected/);
-  assert.equal(gone.addButton, null, 'it already has a layout');
+check('the absent deck is not offered at all', () => {
+  assert.deepEqual(gone.deviceOptions, ['My XL']);
+  assert.equal(gone.deviceOptions.filter((o) => o.includes('not connected')).length, 0, 'and carries no status marker');
 });
-check('the pill follows the selected deck', () => assert.equal(gone.pill, 'disconnected'));
-check('and the dropdown marks it, which is one of the three states, not a repeat', () => {
-  assert.equal(gone.deviceOptions.filter((o) => o.includes('not connected')).length, 1);
+check('so "choose the other deck" cannot reach it, and the grid stays', () => {
+  // The check asked for another option and there was none to pick.
+  assert.equal(gone.kind, null);
+  assert.equal(gone.grid, true);
 });
+check('the pill describes the deck that is there', () => assert.equal(gone.pill, 'connected'));
 check('the daemon is fine, so nothing says otherwise', () => assert.equal(gone.daemonNotices, 0));
+
+// ------------------------- 6. every list drops the marker, not just the one
+
+// What this can and cannot catch, measured by breaking it both ways
+// (2026-09-20): putting the "— not connected" marker back in the JSX fails
+// *nothing* here, and cannot, because with only connected decks listed the
+// marker's condition is never true — it is dead code, not a visible mistake.
+// The invariant that actually matters is the one underneath: deckChoices()
+// never returns a disconnected deck. Reverting *that* fails four of the
+// checks below. So these assert what a person would see, and the unit test
+// ("Device dropdown: only connected decks") guards the rule itself.
+console.log('\n6. no device list anywhere carries a status marker');
+for (const [name, report] of [['no daemon', down], ['nothing configured', fresh], ['all unplugged', unplugged], ['fresh with a deck', fresh2], ['two decks', chosen], ['one absent', gone]]) {
+  check(`${name}: no "not connected" in the device dropdown`, () => {
+    assert.deepEqual((report.deviceOptions ?? []).filter((o) => o.includes('not connected')), []);
+  });
+}
+// And with nothing plugged in, the dropdown says so rather than listing
+// configured-but-absent decks (the case the maintainer raised: sold and replaced decks).
+check('all-unplugged lists no decks at all, though two are configured', () => {
+  assert.deepEqual(unplugged.deviceOptions, ['No decks']);
+  assert.equal(unplugged.deviceDisabled, true);
+  // The card is now the only place those decks are named.
+  assert.match(unplugged.detail, /My XL and My V2/);
+});
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

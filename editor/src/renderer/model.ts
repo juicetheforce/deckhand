@@ -71,14 +71,28 @@ export function geometryFor(daemon: DaemonView, serial: string): DeckGeometryWit
 }
 
 /**
- * The Device dropdown: decks this profile has a layout for, in config order,
- * then connected decks it has none for. Connection state lives here, not in
- * a toolbar pill (scope §10).
+ * The Device dropdown: **only decks that are plugged in right now** — those
+ * this profile has a layout for, in config order, then the rest.
+ *
+ * `[decided]` the maintainer 2026-09-20: a deck that is not connected is not listed at
+ * all. "The list is the list" — it is a list of devices to work on, not a
+ * status display, and **its absence is the indicator that it is missing.**
+ * The case that settles it is a deck that has been sold, replaced or
+ * upgraded: its serial stays in `config.json` for ever, and it would sit in
+ * this dropdown for ever with it. This replaced an earlier, smaller decision
+ * to keep a "— not connected" marker on such a row (scope §7).
+ *
+ * Nothing is lost by it: a layout can only be edited with the deck present,
+ * because the grid is drawn from the geometry the daemon reads off the device
+ * (scope §3). Every entry this returns therefore has geometry, and
+ * `connected` is true on all of them — kept on the type because the daemon's
+ * `decks` and `status` lists can disagree for an instant, so callers still
+ * guard.
  */
 export function deckChoices(config: Config, profile: string, daemon: DaemonView): DeckChoice[] {
   const layouts = Object.keys(config.profiles[profile]?.layouts ?? {});
   const connected = (daemon.decks ?? []).map((d) => d.serial);
-  const serials = [...layouts, ...connected.filter((s) => !layouts.includes(s))];
+  const serials = [...layouts.filter((s) => connected.includes(s)), ...connected.filter((s) => !layouts.includes(s))];
   return serials.map((serial) => {
     const geometry = geometryFor(daemon, serial);
     const name = config.decks?.[serial]?.name ?? geometry?.productName ?? serial;
@@ -87,14 +101,18 @@ export function deckChoices(config: Config, profile: string, daemon: DaemonView)
 }
 
 /**
- * Every deck the editor knows about, for the new-profile control: the decks
- * named in config, then any connected deck that is not. Unlike deckChoices
- * this is not scoped to a profile — it is the set a new profile may cover.
+ * The decks a new profile may cover: **the connected ones**, named in config
+ * first. Unlike deckChoices this is not scoped to a profile.
+ *
+ * Same rule and the same reason as deckChoices (the maintainer, 2026-09-20): a deck
+ * that is not plugged in is not offered. Ticking a sold deck into a new
+ * profile would write a layout nobody can edit or see. With none connected
+ * the panel already says "No decks are known yet. Plug one in."
  */
 export function knownDecks(config: Config, daemon: DaemonView): DeckChoice[] {
   const named = Object.keys(config.decks ?? {});
   const connected = (daemon.decks ?? []).map((d) => d.serial);
-  const serials = [...named, ...connected.filter((s) => !named.includes(s))];
+  const serials = [...named.filter((s) => connected.includes(s)), ...connected.filter((s) => !named.includes(s))];
   return serials.map((serial) => {
     const geometry = geometryFor(daemon, serial);
     return {
@@ -213,12 +231,22 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
  * not connected) leaves the selection as it is.
  */
 export function followDeck(config: Config, daemon: DaemonView, current: Selection): Selection {
-  const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === current.serial) : undefined;
+  // Settle on a deck that exists *first*, then follow that one. Following
+  // `current.serial` directly is wrong whenever the selection does not name a
+  // deck that is here — which became reachable on 2026-09-20, when the Device
+  // dropdown stopped listing disconnected decks: until the daemon reports its
+  // decks there is nothing to select, so the serial is "", the lookup below
+  // finds nothing, and the editor settles on the layout's start page instead
+  // of the page the deck is really showing. That is scope §10's "the
+  // breadcrumb follows the decks" failing exactly when the window opens.
+  // Caught by check:structure, deterministically, three runs out of three.
+  const settled = reconcileSelection(config, daemon, current);
+  const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === settled.serial) : undefined;
   if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
-    const moved = deck.profile !== current.profile || deck.page !== current.page;
-    return reconcileSelection(config, daemon, { ...current, profile: deck.profile, page: deck.page, ...(moved ? { key: null, keys: [] } : {}) });
+    const moved = deck.profile !== settled.profile || deck.page !== settled.page;
+    return reconcileSelection(config, daemon, { ...settled, profile: deck.profile, page: deck.page, ...(moved ? { key: null, keys: [] } : {}) });
   }
-  return reconcileSelection(config, daemon, current);
+  return settled;
 }
 
 /**
@@ -589,9 +617,12 @@ function configuredSerials(config: Config): string[] {
  * - `no-layout` — a deck **is** plugged in and this profile has no layout for
  *   it. The one case where the old sentence was true, and the only one where
  *   offering to add a layout means anything.
- * - `deck-unplugged` — another deck is plugged in, but not the selected one,
- *   which this profile does have a layout for; its geometry is unknown so the
- *   grid cannot be drawn.
+ * - `deck-unplugged` — **a guard, not a state you can reach by clicking.**
+ *   Since 2026-09-20 the Device dropdown lists only connected decks, so the
+ *   selection is always a deck that is present; this covers the instant in
+ *   which the daemon's `decks` and `status` lists disagree, rather than a
+ *   deck someone selected and unplugged. Kept because drawing a grid with no
+ *   geometry is the alternative.
  *
  * The order matters as much as the list. "Nothing is connected" is tested
  * before anything per-deck, because with nothing plugged in the breadcrumb
@@ -695,9 +726,12 @@ export function connectionPill(config: Config, daemon: DaemonView, selection: Pi
   // fine. A configured deck is always selected, so this is not the same as
   // having no deck to select.
   if ((daemon.decks ?? []).length === 0) return { state: 'no-decks', label: 'No decks connected' };
+  // Past here at least one deck is plugged in, so "No decks connected" would
+  // be false: a selection that is not among them is a *stale* selection, and
+  // "Not connected" is the true thing to say about it.
   const selected = deckChoices(config, selection.profile, daemon).find((d) => d.id === selection.serial);
-  if (!selected) return { state: 'no-decks', label: 'No decks connected' };
-  return selected.connected ? { state: 'connected', label: 'Connected' } : { state: 'disconnected', label: 'Not connected' };
+  if (!selected || !selected.connected) return { state: 'disconnected', label: 'Not connected' };
+  return { state: 'connected', label: 'Connected' };
 }
 
 /** One line describing what a key does, for its tooltip and the inspector. */

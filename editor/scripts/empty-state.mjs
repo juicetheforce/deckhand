@@ -20,7 +20,8 @@
 //   never-configured  the empty configuration, nothing plugged in
 //   all-unplugged     two decks configured, neither plugged in
 //   no-layout         a fresh install with one deck plugged into it
-//   deck-unplugged    two decks configured, one of them missing
+//   deck-unplugged    two decks configured, one of them missing — which is
+//                     now shown by that deck simply not being in the list
 //   normal            a configured deck, connected — the control case
 //
 // Press Ctrl-C in this terminal to finish. Closing the window is not enough:
@@ -78,7 +79,7 @@ const WHAT_TO_LOOK_FOR = {
   'never-configured': 'Pill: "No decks connected". The dropdown says "No decks" and is greyed. Nothing offers to add a layout.',
   'all-unplugged': 'Pill: "No decks connected" — not "Not connected", although a configured deck is selected. The text names both decks.',
   'no-layout': 'The one state that offers a button, and it names the deck: "Add a layout for Original V2".',
-  'deck-unplugged': 'Choose "Original V2 — not connected" in the dropdown: it blames the deck, and offers no layout, because it already has one.',
+  'deck-unplugged': 'The Original V2 is configured and not plugged in, so it is NOT in the Device list at all — only the XL is. Its absence is the indicator (the maintainer, 2026-09-20).',
   normal: 'The control case: a grid, and a green "Connected" pill.',
 };
 

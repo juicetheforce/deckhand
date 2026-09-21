@@ -78,10 +78,12 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
               yet, which is what the maintainer saw on a machine with no deck (scope §7).
               Say there is nothing to choose from. */}
           {decks.length === 0 && <option value="">No decks</option>}
+          {/* No connection marker, and no disconnected decks to mark: the
+              list is a list of devices to work on, and a deck's absence from
+              it is what says it is not there (the maintainer, 2026-09-20, scope §7). */}
           {decks.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label}
-              {d.connected ? '' : ' — not connected'}
             </option>
           ))}
         </select>
@@ -361,7 +363,6 @@ function NewProfile({
             <label>
               <input type="checkbox" checked={chosen.includes(deck.id)} onChange={() => toggle(deck.id)} />
               {deck.label}
-              {deck.connected ? '' : ' — not connected'}
             </label>
           </li>
         ))}

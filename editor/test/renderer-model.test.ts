@@ -37,6 +37,7 @@ import {
   failedKeysOn,
   latchedKeysOn,
   faceIcon,
+  type Selection,
 } from '../src/renderer/model.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../..');
@@ -431,9 +432,11 @@ await check('the connection pill always has something to say', () => {
   });
   assert.equal(connectionPill(EXAMPLE, daemonView([XL, V2]), { profile: 'default', serial: XL }).state, 'connected');
   // One deck absent while another is there: naming the absent one is right.
+  // A selection that is not among the connected decks: stale, because the
+  // list no longer offers it. "Not connected" is true of it; "No decks
+  // connected" would be false, since the XL is here.
   assert.equal(connectionPill(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 }).state, 'disconnected');
-  // But with nothing plugged in, a configured deck is still selected, and
-  // "Not connected" would name it alone. The pill and the card must agree.
+  // With nothing plugged in at all, the pill and the card must agree.
   assert.equal(connectionPill(EXAMPLE, daemonView([]), { profile: 'default', serial: XL }).state, 'no-decks');
   assert.equal(emptyState(EXAMPLE, daemonView([]), { profile: 'default', serial: XL })!.kind, 'all-unplugged');
   // A daemon that is up but has lost every deck is "no decks", not "not
@@ -531,38 +534,66 @@ await check('icon URLs carry paths with spaces, parentheses and ~ intact', () =>
 
 console.log('breadcrumb and selection');
 
-await check('Device dropdown: layouts in config order, then connected decks with none; names from config', () => {
+await check('Device dropdown: only connected decks — layouts first, then the rest; names from config', () => {
+  // the maintainer 2026-09-20: a deck that is not plugged in is not listed at all. The
+  // XL has a layout in this profile and is absent, so it does not appear —
+  // its absence is what says it is missing, and a sold or replaced deck would
+  // otherwise sit in this list for ever.
   const extra = 'UNCONFIGURED';
   const choices = deckChoices(EXAMPLE, 'default', daemonView([V2, extra]));
   assert.deepEqual(
     choices.map((c) => [c.id, c.label, c.connected, c.hasLayout]),
     [
-      [XL, 'XL', false, true],
       [V2, 'Original V2', true, true],
       [extra, 'Test 8x4', true, false],
     ],
   );
+  // Every entry is connected, by construction: nothing else can be listed.
+  assert.ok(choices.every((c) => c.connected));
+  // With nothing plugged in the list is empty, whatever the config says.
+  assert.deepEqual(deckChoices(EXAMPLE, 'default', daemonView([])), []);
 });
 
-await check("initial selection: the daemon's active profile, the first connected deck with a layout, its start page", () => {
+await check("initial selection: the daemon's active profile, a connected deck with a layout, its start page", () => {
+  // prof_game only has an XL layout and the XL is not plugged in, so there is
+  // no deck to select at all — the editor shows the empty state rather than
+  // opening on a deck nobody can edit (the maintainer 2026-09-20).
+  // prof_game only has an XL layout and the XL is not plugged in. The V2 is,
+  // so it is listed even though this profile does not cover it — that is the
+  // 'no-layout' empty state, with a real deck to add a layout for.
   const s = reconcileSelection(EXAMPLE, daemonView([V2], 'prof_game'), null);
   assert.equal(s.profile, 'prof_game');
-  // prof_game only has an XL layout; with the XL disconnected it is still chosen, as the only layout.
-  assert.equal(s.serial, XL);
-  assert.equal(s.page, 'pg_hotbar', 'startPage "Hotbar" resolves by name, the daemon rule');
-  assert.equal(s.key, null);
+  assert.equal(s.serial, V2, 'the connected deck, uncovered by this profile');
+  assert.equal(s.page, '', 'no layout, so no page');
+  assert.equal(emptyState(EXAMPLE, daemonView([V2], 'prof_game'), s)!.kind, 'no-layout');
+  // Nothing plugged in at all: nothing to select.
+  const none = reconcileSelection(EXAMPLE, daemonView([], 'prof_game'), null);
+  assert.deepEqual([none.serial, none.page], ['', '']);
+
+  const withXL = reconcileSelection(EXAMPLE, daemonView([XL], 'prof_game'), null);
+  assert.equal(withXL.serial, XL);
+  assert.equal(withXL.page, 'pg_hotbar', 'startPage "Hotbar" resolves by name, the daemon rule');
+  assert.equal(withXL.key, null);
 
   const d = reconcileSelection(EXAMPLE, daemonView([V2]), null);
-  assert.deepEqual([d.profile, d.serial, d.page], ['default', V2, 'main'], 'the connected deck wins over the disconnected XL');
+  assert.deepEqual([d.profile, d.serial, d.page], ['default', V2, 'main'], 'the connected deck is the only candidate');
 });
 
-await check('the Default deck setting: opened on that deck, connected or not; Automatic when the profile has no layout for it', () => {
-  // The V2 is connected and would win by the automatic rule; the XL is chosen, though it is not connected.
-  const s = reconcileSelection(EXAMPLE, daemonView([V2]), null, XL);
+await check('the Default deck setting: opened on that deck when it is plugged in; Automatic when the profile has no layout for it', () => {
+  // Changed 2026-09-20 with "only connected decks are listed": the setting can
+  // still name a deck that is not here, but it cannot open on one, because
+  // there is nothing to edit without the deck's geometry. It falls back to the
+  // automatic rule instead.
+  const absent = reconcileSelection(EXAMPLE, daemonView([V2]), null, XL);
+  assert.deepEqual([absent.profile, absent.serial, absent.page], ['default', V2, 'main'], 'the XL is not here; the rule picks the V2');
+  const s = reconcileSelection(EXAMPLE, daemonView([XL, V2]), null, XL);
   assert.deepEqual([s.profile, s.serial, s.page], ['default', XL, 'main']);
-  // prof_game has no V2 layout: this opening falls back to the rule (its only layout, the XL).
+  // prof_game has no V2 layout, and its XL is not here: the only deck that can
+  // be shown is the V2, uncovered.
   const g = reconcileSelection(EXAMPLE, daemonView([V2], 'prof_game'), null, V2);
-  assert.equal(g.serial, XL);
+  assert.equal(g.serial, V2);
+  // With the XL plugged in, the rule prefers the deck the profile covers.
+  assert.equal(reconcileSelection(EXAMPLE, daemonView([XL, V2], 'prof_game'), null, V2).serial, XL);
   // A deck config does not know at all: the rule.
   assert.equal(reconcileSelection(EXAMPLE, daemonView([V2]), null, 'NOT-A-DECK').serial, V2);
   // Only an opening uses it: a selection that exists is kept.
@@ -573,7 +604,18 @@ await check('the Default deck setting: opened on that deck, connected or not; Au
 await check('a selection that still exists is kept, key included, across config and daemon changes', () => {
   const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current), current);
-  assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([]), current), current, 'a deck unplugging does not move the editor off its page');
+  // **Changed 2026-09-20, and it is a real cost.** This used to assert that
+  // "a deck unplugging does not move the editor off its page". Now that only
+  // connected decks are listed, the deck you were editing stops being a thing
+  // that can be selected, so unplugging it moves the selection — to another
+  // connected deck, or to nothing — and your page and key selection go with
+  // it. Replugging does not bring you back. Accepted by the maintainer's rule that a
+  // disconnected deck is not listed; recorded here so it is not mistaken for
+  // a regression, and so the cost is visible if it ever needs revisiting.
+  const unplugged = reconcileSelection(EXAMPLE, daemonView([]), current);
+  assert.deepEqual([unplugged.serial, unplugged.page, unplugged.key], ['', '', null], 'nothing is left to select');
+  const other = reconcileSelection(EXAMPLE, daemonView([V2]), current);
+  assert.equal(other.serial, V2, 'with another deck present the editor moves to it');
 });
 
 await check('a deleted page falls back to the start page and drops the key; an unknown profile falls back too', () => {
@@ -616,12 +658,36 @@ await check('when the deck has not moved, the selected key stays (mid-edit)', ()
   assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), current), current);
 });
 
-await check('nothing to follow — disconnected deck, daemon not connected — leaves the selection alone', () => {
+await check('nothing to follow — daemon not connected — leaves the selection alone', () => {
   const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
-  assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: V2, profile: 'default', page: 'main' }]), current), current, 'another deck moving');
+  // Another deck moving used to leave the selection alone outright. It still
+  // does not *follow* that deck, but with the XL no longer plugged in the
+  // selection cannot stay on it either (see the note above): it lands on the
+  // deck that is there, at that deck's own page.
+  const moved = followDeck(EXAMPLE, showing([{ serial: V2, profile: 'default', page: 'main' }]), current);
+  assert.equal(moved.serial, V2, 'the XL is gone, so the V2 is all there is');
+  // With both present, another deck moving is still not followed.
+  const bothThere = showing([{ serial: XL, profile: 'default', page: 'games' }, { serial: V2, profile: 'default', page: 'main' }]);
+  assert.deepEqual(followDeck(EXAMPLE, bothThere, current), current, 'another deck moving');
   const down = showing([{ serial: XL, profile: 'default', page: 'main' }]);
   down.connected = false;
   assert.deepEqual(followDeck(EXAMPLE, down, current), current, 'daemon not connected: stale state is not followed');
+});
+
+await check('the first decks to arrive are followed, not just settled on', () => {
+  // The window opens before the daemon has reported anything, so the selection
+  // names no deck at all — reachable since disconnected decks stopped being
+  // listed (2026-09-20). Following `current.serial` then looked up "", found
+  // nothing, and left the editor on the layout's start page instead of the
+  // page the deck is really showing. check:structure caught it; this is the
+  // same thing without Electron.
+  const nothingYet: Selection = { profile: 'default', serial: '', page: '', key: null, keys: [] };
+  const arrived = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), nothingYet);
+  assert.deepEqual([arrived.serial, arrived.page], [XL, 'games'], 'it must follow the deck it just settled on');
+  // And a stale serial, for the same reason: the deck it named is gone.
+  const stale: Selection = { profile: 'default', serial: 'SOLD-DECK', page: 'main', key: 2, keys: [2] };
+  const moved = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), stale);
+  assert.deepEqual([moved.serial, moved.page, moved.key], [XL, 'games', null]);
 });
 
 await check('a deck showing a profile the editor does not have (outside edit not reloaded yet) is not followed into nowhere', () => {
@@ -652,17 +718,17 @@ await check('a switch is sent only for a connected deck with a session, with the
 
 console.log('profiles and pages (M4 phase B, B1)');
 
-await check('knownDecks lists every deck in config, then connected decks that are not', async () => {
-  // prof_game covers only the XL, but both decks are in "decks", so a new
-  // profile can be given either.
+await check('knownDecks offers only connected decks to a new profile', async () => {
+  // the maintainer 2026-09-20, the same rule as deckChoices: ticking a deck that is not
+  // here would write a layout nobody can edit or see.
   const both = knownDecks(EXAMPLE, daemonView([XL]));
   assert.deepEqual(
     both.map((d) => [d.id, d.connected]),
     [
       [XL, true],
-      [V2, false],
     ],
   );
+  assert.deepEqual(knownDecks(EXAMPLE, daemonView([])), [], 'none plugged in, none offered');
   // A deck connected but never named in config still has to be offerable.
   const stranger = knownDecks({ profiles: EXAMPLE.profiles }, daemonView([XL, V2]));
   assert.deepEqual(
@@ -765,15 +831,19 @@ await check('a paste message names what was skipped and what lost its navigation
   assert.match(placementMessage('Pasted', { writes: [], skipped: [wide], lostNavigation: [] }, '“Main”'), /^Nothing pasted: no copied key has a place on “Main”\.$/);
 });
 
-await check('Copy to device offers the other decks this profile covers, with their pages, and says which are not connected', () => {
+await check('Copy to device offers the other connected decks this profile covers, with their pages', () => {
   const selection = { profile: 'default', serial: XL, page: 'main', key: 0, keys: [0] };
-  const targets = deviceTargets(EXAMPLE, daemonView([XL]), selection);
+  // Changed 2026-09-20: a disconnected deck used to be listed and greyed out,
+  // with "— not connected" as the reason (§2, "say why, do not hide"). It is
+  // not listed at all now — keys land by row and column, so a deck that is
+  // not here was never a possible target, and its absence is the reason.
+  assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL]), selection), [], 'the V2 is not here, so it is not offered');
+  const both = deviceTargets(EXAMPLE, daemonView([XL, V2]), selection);
   assert.deepEqual(
-    targets.map((t) => [t.serial, t.connected, t.pages.map((p) => p.id)]),
-    [[V2, false, ['main']]],
-    'the deck being edited is not a target, and a disconnected deck is listed as such',
+    both.map((t) => [t.serial, t.connected, t.pages.map((p) => p.id)]),
+    [[V2, true, ['main']]],
+    'the deck being edited is not a target',
   );
-  assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL, V2]), selection)[0].connected, true);
 });
 
 await check('latched keys: only while the grid shows the page the deck is on (M7)', () => {
