@@ -12,7 +12,7 @@
     "start": "npm run build:ts && node dist/index.js",
     "decks": "npm run build:ts && node dist/index.js --list",
     "typecheck": "tsc --noEmit",
-    "smoke": "npm run build:ts && node scripts/smoke.mjs && node scripts/smoke-socket.mjs && node scripts/smoke-backups.mjs && node scripts/smoke-icons.mjs && node scripts/smoke-audio.mjs && node scripts/smoke-mpris.mjs && node scripts/smoke-dbus-restart.mjs && node scripts/smoke-defaults.mjs && node scripts/smoke-failures.mjs && node scripts/smoke-latch.mjs && node scripts/smoke-bootstrap.mjs && node scripts/smoke-unattached.mjs"
+    "smoke": "npm run build:ts && node scripts/smoke.mjs && node scripts/smoke-socket.mjs && node scripts/smoke-backups.mjs && node scripts/smoke-icons.mjs && node scripts/smoke-audio.mjs && node scripts/smoke-mpris.mjs && node scripts/smoke-dbus-restart.mjs && node scripts/smoke-defaults.mjs && node scripts/smoke-failures.mjs && node scripts/smoke-latch.mjs && node scripts/smoke-bootstrap.mjs && node scripts/smoke-unattached.mjs && node scripts/smoke-command.mjs"
   },
   "engines": {
     "node": ">=20"

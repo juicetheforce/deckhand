@@ -5,14 +5,44 @@ import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 const run = promisify(execFile);
 
 /**
+ * Start a program that must outlive the daemon: an app launched from a deck.
+ *
+ * It runs in its own transient systemd scope, not as the daemon's child.
+ * deckhand.service uses systemd's default KillMode=control-group, so anything
+ * left in the service's cgroup is killed whenever the service stops — every
+ * `install.sh update`, a crash restart, logging out. A detached spawn is not
+ * enough: it gets its own session but stays in the cgroup. systemd-run
+ * --scope moves itself into a new scope and then execs the program, which
+ * inherits the daemon's environment as before.
+ *
+ * Not KillMode=process on the unit instead: that would leave the input
+ * helper, `pactl subscribe` and `udevadm monitor` running after every stop.
+ *
+ * The press does not wait for the program, so it cannot learn whether it
+ * started: a missing program fails inside systemd-run, after the press has
+ * returned, and is not badged — as before this, when the failure arrived as
+ * an error event after the press had returned. Only systemd-run itself being
+ * missing is logged here.
+ */
+function launch(argv: string[]): void {
+  const child = spawn('systemd-run', ['--user', '--scope', '--quiet', '--collect', '--', ...argv], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.on('error', (err) => console.error(`[command] cannot start systemd-run: ${err.message}`));
+  child.unref();
+}
+
+/**
  * command — run something.
  *
  *   { "type": "command", "command": "kate ~/notes.md" }        via sh -c
  *   { "type": "command", "exec": ["flatpak", "run", "com.x"] } no shell
  *   { "type": "command", "command": "systemctl --user restart x", "wait": true }
  *
- * By default the process is detached and the button returns immediately —
- * launching an app should never block the deck.
+ * By default the program is launched (above) and the button returns
+ * immediately — launching an app should never block the deck. With "wait"
+ * it runs as the daemon's child, up to 15 s, and its failure marks the key.
  */
 export const command: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -25,7 +55,7 @@ export const command: ActionHandler = {
         const { stdout } = await run(bin, args, { timeout: 15000 });
         if (stdout.trim()) ctx.log(stdout.trim());
       } else {
-        spawn(bin, args, { detached: true, stdio: 'ignore' }).unref();
+        launch([bin, ...args]);
       }
       return;
     }
@@ -38,7 +68,7 @@ export const command: ActionHandler = {
       const { stdout } = await run('/bin/sh', ['-c', cmd], { timeout: 15000 });
       if (stdout.trim()) ctx.log(stdout.trim());
     } else {
-      spawn('/bin/sh', ['-c', cmd], { detached: true, stdio: 'ignore' }).unref();
+      launch(['/bin/sh', '-c', cmd]);
     }
   },
 };
