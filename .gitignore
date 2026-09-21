@@ -2,6 +2,8 @@ node_modules/
 dist/
 helper/deckhand-input
 *.log
+# scripts/release.sh's builds and its download cache.
+/release/
 
 # The maintainer's private working documents: their own git repository,
 # nested here. CLAUDE.local.md imports from it.

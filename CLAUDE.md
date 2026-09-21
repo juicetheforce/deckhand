@@ -90,6 +90,8 @@ tests the installer's desktop entry and icon against a scratch HOME;
 runs it, with a terminal and without one.
 `bash scripts/test/release-install.test.sh` a release's download, checksum
 and unpack against a fake package, every way it can be wrong.
+`bash scripts/test/release-glibc.test.sh` the release build's glibc check,
+which refuses a package with any binary newer than the floor.
 `scripts/install.sh check` runs the preflight for real and changes nothing.
 
 For looking rather than checking: `node editor/scripts/screenshot.mjs --out
