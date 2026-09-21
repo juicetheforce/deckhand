@@ -84,7 +84,10 @@ harness for the control socket. `bash scripts/test/desktop-entry.test.sh`
 tests the installer's desktop entry and icon against a scratch HOME;
 `bash scripts/test/preflight.test.sh` its preflight against stub commands;
 `bash scripts/test/apparmor-profile.test.sh` its AppArmor profile;
-`bash scripts/test/upgrade.test.sh` its `upgrade` against a local origin.
+`bash scripts/test/upgrade.test.sh` its `upgrade` against a local origin;
+`bash scripts/test/uninstaller.test.sh` the `deckhand-uninstall` it leaves;
+`bash scripts/test/pipe.test.sh` the script piped into bash, as `curl … | bash`
+runs it, with a terminal and without one.
 `scripts/install.sh check` runs the preflight for real and changes nothing.
 
 For looking rather than checking: `node editor/scripts/screenshot.mjs --out

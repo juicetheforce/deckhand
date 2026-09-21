@@ -8,6 +8,9 @@
 #   scripts/install.sh uninstall [--purge]
 #   scripts/install.sh check                 (checks this machine, changes nothing)
 #
+# (usage() below prints the same list; it cannot read it from this file, which
+# a piped install does not have.)
+#
 # Layout, per user, nothing under /usr except the udev rule:
 #
 #   $XDG_DATA_HOME/deckhand/                  the app: dist/, node_modules/,
@@ -61,13 +64,24 @@ EDITOR_LAUNCHER="$CLI_DIR/deckhand-editor"
 EDITOR_MARKER='# deckhand-editor-launcher'
 # The editor's desktop entry, recognised the same way.
 DESKTOP_MARKER='# deckhand-desktop-entry'
+# The uninstaller, recognised the same way.
+UNINSTALLER="$CLI_DIR/deckhand-uninstall"
+UNINSTALL_MARKER='# deckhand-uninstall-wrapper'
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '3,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  cat >&2 <<'USAGE'
+Deckhand install / update / uninstall — the daemon and the editor.
+
+  scripts/install.sh install [--dirty]
+  scripts/install.sh update  [--dirty]     (same as install)
+  scripts/install.sh upgrade               (moves a release checkout to the newest release, then updates)
+  scripts/install.sh uninstall [--purge]
+  scripts/install.sh check                 (checks this machine, changes nothing)
+USAGE
   exit 2
 }
 
@@ -694,6 +708,22 @@ build_and_stage() {
     npm ci --omit=dev
     rm -rf src tsconfig.json helper/deckhand-input.c helper/Makefile
   )
+  stage_install_files
+  # The Node this install was built with. A release carries its own here
+  # instead; either way the unit and the deckhand command run runtime/node.
+  mkdir -p "$STAGE_DIR/runtime"
+  ln -s "$SERVICE_NODE" "$STAGE_DIR/runtime/node"
+  git -C "$REPO_DIR" describe --always --dirty 2>/dev/null > "$STAGE_DIR/VERSION" || echo unknown > "$STAGE_DIR/VERSION"
+}
+
+# What an installed copy needs to install, update and remove itself without the
+# checkout it came from: this script (deckhand-uninstall runs a copy of it), the
+# udev rule, the AppArmor profile and the unit. A release carries the same.
+stage_install_files() {
+  install -m 755 "$REPO_DIR/scripts/install.sh" "$STAGE_DIR/install.sh"
+  install -D -m 644 "$REPO_DIR/udev/60-deckhand.rules" "$STAGE_DIR/udev/60-deckhand.rules"
+  install -D -m 644 "$REPO_DIR/apparmor/deckhand-editor" "$STAGE_DIR/apparmor/deckhand-editor"
+  install -D -m 644 "$REPO_DIR/systemd/deckhand.service" "$STAGE_DIR/systemd/deckhand.service"
 }
 
 # The editor goes inside the daemon's app directory, built from the same
@@ -894,7 +924,7 @@ cmd_install() {
   mv "$STAGE_DIR" "$APP_DIR"
 
   mkdir -p "$UNIT_DIR"
-  install -m 644 "$REPO_DIR/systemd/deckhand.service" "$UNIT_FILE"
+  install -m 644 "$APP_DIR/systemd/deckhand.service" "$UNIT_FILE"
 
   say "Starting the service"
   local started_at main_pid
@@ -914,6 +944,7 @@ cmd_install() {
   # have no CLI, and the wrapper must not point at one that is not there.
   install_cli
   install_editor_launcher
+  install_uninstaller
   install_desktop_entry
   journalctl --user -u deckhand --since "@$started_at" --no-pager -o cat | grep -E 'attached|not in config' || \
     warn "no Stream Deck attached yet — is one plugged in?"
@@ -987,13 +1018,13 @@ editor_launcher_is_ours() {
 install_cli() {
   case "$APP_DIR" in
     *"'"*)
-      warn "the app directory contains a single quote; not writing the CLI wrapper. Run: node '$APP_DIR/dist/cli.js'"
+      warn "the app directory contains a single quote; not writing the CLI wrapper. Run: '$APP_DIR/runtime/node' '$APP_DIR/dist/cli.js'"
       return
       ;;
   esac
   if [ -e "$CLI_FILE" ] && ! cli_is_ours; then
     warn "$CLI_FILE exists and was not written by Deckhand; leaving it alone."
-    warn "The CLI can be run as: /usr/bin/node $APP_DIR/dist/cli.js"
+    warn "The CLI can be run as: $APP_DIR/runtime/node $APP_DIR/dist/cli.js"
     return
   fi
   mkdir -p "$CLI_DIR"
@@ -1002,7 +1033,7 @@ install_cli() {
 #!/bin/sh
 $CLI_MARKER
 # Written by Deckhand's scripts/install.sh; "scripts/install.sh uninstall" removes it.
-exec /usr/bin/node '$APP_DIR/dist/cli.js' "\$@"
+exec '$APP_DIR/runtime/node' '$APP_DIR/dist/cli.js' "\$@"
 EOF
   chmod 755 "$tmp"
   mv "$tmp" "$CLI_FILE"
@@ -1042,6 +1073,54 @@ EOF
   say "Editor launcher installed: $EDITOR_LAUNCHER"
 }
 
+uninstaller_is_ours() {
+  [ -f "$UNINSTALLER" ] && grep -qxF "$UNINSTALL_MARKER" "$UNINSTALLER"
+}
+
+# Writes ~/.local/bin/deckhand-uninstall: uninstall with no checkout and no
+# network. It runs a temporary copy of the installed install.sh, never the
+# installed one, because uninstalling deletes the directory that one lives in.
+# The wrapper itself is deleted during the run too; sh keeps reading the file
+# it opened, so that is harmless (the same measurement as for upgrade).
+install_uninstaller() {
+  case "$APP_DIR" in
+    *"'"*)
+      warn "the app directory contains a single quote; not writing deckhand-uninstall."
+      return
+      ;;
+  esac
+  if [ -e "$UNINSTALLER" ] && ! uninstaller_is_ours; then
+    warn "$UNINSTALLER exists and was not written by Deckhand; leaving it alone."
+    warn "Deckhand can be removed with: bash '$APP_DIR/install.sh' uninstall"
+    return
+  fi
+  mkdir -p "$CLI_DIR"
+  local tmp="$UNINSTALLER.new.$$"
+  cat > "$tmp" <<WRAPPER
+#!/bin/sh
+$UNINSTALL_MARKER
+# Written by Deckhand's install.sh; it removes itself along with Deckhand.
+copy="\$(mktemp "\${TMPDIR:-/tmp}/deckhand-uninstall.XXXXXX")" || exit 1
+cp '$APP_DIR/install.sh' "\$copy" || { rm -f "\$copy"; echo "deckhand-uninstall: $APP_DIR/install.sh is missing" >&2; exit 1; }
+bash "\$copy" uninstall "\$@"
+status=\$?
+rm -f "\$copy"
+exit \$status
+WRAPPER
+  chmod 755 "$tmp"
+  mv "$tmp" "$UNINSTALLER"
+  say "Uninstaller installed: $UNINSTALLER"
+}
+
+remove_uninstaller() {
+  if uninstaller_is_ours; then
+    rm -f "$UNINSTALLER"
+    say "Removed $UNINSTALLER"
+  elif [ -e "$UNINSTALLER" ]; then
+    warn "$UNINSTALLER was not written by Deckhand; leaving it alone."
+  fi
+}
+
 remove_editor_launcher() {
   if editor_launcher_is_ours; then
     rm -f "$EDITOR_LAUNCHER"
@@ -1057,9 +1136,10 @@ remove_editor_launcher() {
 # without ".desktop". Electron reads the same field and reports it as the
 # window's Wayland app_id (and X11 WM_CLASS), which is how KDE matches the
 # window to this entry and its icon. One copy, so the two cannot disagree.
+# Read with sed, not node: uninstall must work with no Node on the machine.
 desktop_id() {
   local name
-  name="$(DECKHAND_EDITOR_PACKAGE="$APP_DIR/editor/package.json" node -p 'require(process.env.DECKHAND_EDITOR_PACKAGE).desktopName')"
+  name="$(sed -n 's/^[[:space:]]*"desktopName":[[:space:]]*"\([^"]*\)".*/\1/p' "$APP_DIR/editor/package.json" | head -n 1)"
   printf '%s\n' "${name%.desktop}"
 }
 
@@ -1207,6 +1287,7 @@ cmd_uninstall() {
   if [ -f "$APP_DIR/editor/package.json" ]; then remove_desktop_entry "$(desktop_id)"; fi
   remove_cli
   remove_editor_launcher
+  remove_uninstaller
 
   say "Removing $APP_DIR"
   rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR"
@@ -1242,13 +1323,28 @@ cmd_uninstall() {
 }
 
 # --- main --------------------------------------------------------------------
+#
+# Everything above is definitions; the one call is the file's last line. So a
+# download cut short runs nothing, and under `curl … | bash` the whole script
+# has been read from the pipe before any of it runs.
 
-[ $# -ge 1 ] || usage
-command="$1"; shift
-case "$command" in
-  install|update) cmd_install "$@" ;;
-  upgrade)        cmd_upgrade "$@" ;;
-  uninstall)      cmd_uninstall "$@" ;;
-  check)          cmd_check "$@" ;;
-  *)              usage ;;
-esac
+main() {
+  # Piped (`curl … | bash`), stdin is the script — already read to its end by
+  # the time this runs. Every prompt, and every command that might read, gets
+  # the real terminal instead. With no terminal at all (no controlling tty),
+  # stdin stays as it is and the prompts see there is no one to ask.
+  if [ ! -t 0 ] && { true </dev/tty; } 2>/dev/null; then
+    exec </dev/tty
+  fi
+  [ $# -ge 1 ] || usage
+  local command="$1"; shift
+  case "$command" in
+    install|update) cmd_install "$@" ;;
+    upgrade)        cmd_upgrade "$@" ;;
+    uninstall)      cmd_uninstall "$@" ;;
+    check)          cmd_check "$@" ;;
+    *)              usage ;;
+  esac
+}
+
+main "$@"

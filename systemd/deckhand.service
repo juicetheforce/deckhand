@@ -10,7 +10,10 @@ Type=simple
 # (~/.local/share/deckhand by default) and this file in
 # $XDG_DATA_HOME/systemd/user. %D is $XDG_DATA_HOME for user units, so nothing
 # here names a home directory or a checkout.
-ExecStart=/usr/bin/node %D/deckhand/dist/index.js
+# runtime/node is the Node the app runs on: in a release, the official build it
+# ships with; in a developer install, a link to the system's /usr/bin/node,
+# which that install was built with.
+ExecStart=%D/deckhand/runtime/node %D/deckhand/dist/index.js
 Restart=on-failure
 RestartSec=3
 
