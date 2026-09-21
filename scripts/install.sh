@@ -829,8 +829,12 @@ build_and_stage() {
 # What an installed copy needs to install, update and remove itself without the
 # checkout it came from: this script (deckhand-uninstall runs a copy of it), the
 # udev rule, the AppArmor profile and the unit. A release carries the same.
+# And the licences: Deckhand's own, and licenses/ for what ships without its
+# text (scripts/release.sh names each such package).
 stage_install_files() {
   install -m 755 "$REPO_DIR/scripts/install.sh" "$STAGE_DIR/install.sh"
+  install -m 644 "$REPO_DIR/LICENSE" "$STAGE_DIR/LICENSE"
+  cp -r "$REPO_DIR/licenses" "$STAGE_DIR/licenses"
   install -D -m 644 "$REPO_DIR/udev/60-deckhand.rules" "$STAGE_DIR/udev/60-deckhand.rules"
   install -D -m 644 "$REPO_DIR/apparmor/deckhand-editor" "$STAGE_DIR/apparmor/deckhand-editor"
   install -D -m 644 "$REPO_DIR/systemd/deckhand.service" "$STAGE_DIR/systemd/deckhand.service"

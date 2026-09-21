@@ -168,24 +168,43 @@ check_glibc() {
   say "$count binaries, none newer than glibc $GLIBC_FLOOR or libstdc++ $GLIBCXX_FLOOR"
 }
 
+# Packages whose npm package carries no licence text of its own, each with the
+# file in the release that does. sharp-libvips ships prebuilt libvips and its
+# dependencies; its README lists each library's licence, many LGPLv3, but the
+# package has no licence text.
+LICENCE_TEXT_ELSEWHERE=(
+  "node_modules/@img/sharp-libvips-linux-x64=licenses/LGPL-3.0.txt"
+)
+
 # Every production package the lock says ships, and is on disk, has a licence
-# file of its own.
+# file of its own (LICENSE, LICENSE-MIT.txt, LICENSE.APACHE2, COPYING, ...) or
+# is named above with a file that is really in the package. And the licences
+# of what is not an npm package: Deckhand's, Node's, Electron's.
 check_licences() {
+  local stage="$WORK/deckhand" entry
   say "Checking every shipped package carries its licence"
-  (cd "$WORK/deckhand" && "$WORK/node/bin/node" -e '
-    const fs = require("fs"), path = require("path");
+  for entry in "${LICENCE_TEXT_ELSEWHERE[@]}"; do
+    [ -f "$stage/${entry#*=}" ] || die "${entry%%=*} relies on ${entry#*=}, which is not in the package."
+  done
+  (cd "$stage" && DECKHAND_ELSEWHERE="${LICENCE_TEXT_ELSEWHERE[*]}" "$WORK/node/bin/node" -e '
+    const fs = require("fs");
     const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+    const elsewhere = new Set(process.env.DECKHAND_ELSEWHERE.split(" ").map((e) => e.split("=")[0]));
     const missing = [];
     let count = 0;
     for (const [key, entry] of Object.entries(lock.packages)) {
       if (key === "" || entry.dev || entry.devOptional || !fs.existsSync(key)) continue;
       count++;
-      if (!fs.readdirSync(key).some((f) => /^(licen[cs]e|copying)(\.(md|txt))?$/i.test(f))) missing.push(key);
+      const own = fs.readdirSync(key).some((f) => /^(licen[cs]e|copying)([._-].*)?$/i.test(f));
+      if (!own && !elsewhere.has(key)) missing.push(key);
     }
     if (missing.length) { console.error("  no licence file: " + missing.join(", ")); process.exit(1); }
     console.log("    " + count + " packages");
   ') || die "a shipped package has no licence file (above)."
-  [ -f "$WORK/deckhand/runtime/LICENSE" ] || die "Node's LICENSE is missing from runtime/."
+  local file
+  for file in LICENSE runtime/LICENSE editor/electron/LICENSE editor/electron/LICENSES.chromium.html editor/dist/THIRD-PARTY-NOTICES.txt; do
+    [ -f "$stage/$file" ] || die "$file is missing from the package."
+  done
 }
 
 # --- Packing -----------------------------------------------------------------------
