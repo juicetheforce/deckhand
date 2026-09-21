@@ -158,10 +158,9 @@ async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
  * Success is read from the deck's state, not from the reply: a page action
  * for a page the deck does not have yet logs and returns without an error
  * (`DeckSession.goToPage`), so action.run answers ok while nothing moved.
- * The daemon reports a reload only after applying it to the decks
- * (src/index.ts reload()); the retry covers a daemon that reports first, and
- * costs nothing when the page is there: after a save, a page that has not
- * appeared is asked for again, for about a second.
+ * No retry is needed after a save: the daemon reports a reload only once the
+ * decks have it (src/index.ts reload()), and the editor is installed from
+ * the same commit as the daemon.
  */
 async function showPage(serial: string, page: string): Promise<DaemonResult> {
   const before = daemon.lastReloadAt();
@@ -172,27 +171,18 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
     if (!reload.ok) return { ok: false, code: 'config_refused', error: `the daemon refused the saved config: ${reload.error}` };
   }
   const shows = () => daemon.view().status?.decks.some((d) => d.serial === serial && d.page === page) ?? false;
-  const ATTEMPTS = wrote ? 10 : 1;
-  for (let attempt = 1; ; attempt++) {
-    const result = await daemonCall(() => daemon.showPage(serial, page));
-    if (!result.ok) return result;
-    const started = Date.now();
-    while (!shows() && Date.now() - started < 500) await new Promise((resolve) => setTimeout(resolve, 20));
-    if (shows()) return result;
-    if (attempt >= ATTEMPTS) return { ok: false, code: 'not_shown', error: `the deck did not switch to page "${page}"` };
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  const result = await daemonCall(() => daemon.showPage(serial, page));
+  if (!result.ok) return result;
+  const started = Date.now();
+  while (!shows() && Date.now() - started < 500) await new Promise((resolve) => setTimeout(resolve, 20));
+  return shows() ? result : { ok: false, code: 'not_shown', error: `the deck did not switch to page "${page}"` };
 }
 
 /**
  * Make a profile active. Mirrors showPage, and for
  * the same reason: the profile may exist only in edits not yet saved — one
- * just created — so save first, and wait for the daemon to report the reload.
- *
- * Retried like showPage, for a daemon that announces a reload before it has
- * applied it: Profiles keeps its own copy of the config, so a switch sent too
- * early is answered "not_found". The current daemon announces after
- * profiles.applyReload() (src/index.ts reload()).
+ * just created — so save first, and wait for the daemon to report the reload,
+ * which it does only after profiles.applyReload() (src/index.ts reload()).
  */
 async function switchProfile(to: string): Promise<DaemonResult> {
   const before = daemon.lastReloadAt();
@@ -202,12 +192,7 @@ async function switchProfile(to: string): Promise<DaemonResult> {
     if (reload === null) return { ok: false, code: 'timeout', error: 'the daemon did not pick up the saved config within 5 s' };
     if (!reload.ok) return { ok: false, code: 'config_refused', error: `the daemon refused the saved config: ${reload.error}` };
   }
-  const ATTEMPTS = wrote ? 10 : 1;
-  for (let attempt = 1; ; attempt++) {
-    const result = await daemonCall(() => daemon.switchProfile(to).then(() => undefined));
-    if (result.ok || attempt >= ATTEMPTS || result.code !== 'not_found') return result;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  return daemonCall(() => daemon.switchProfile(to).then(() => undefined));
 }
 
 /**

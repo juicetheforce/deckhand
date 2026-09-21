@@ -60,10 +60,9 @@ const session = daemon.sessions.get(SERIAL);
 const notify = daemon.control.notify.bind(daemon.control);
 daemon.control.notify = (name, snapshot) => (name === 'state' ? setTimeout(() => notify(name, snapshot), 150) : notify(name, snapshot));
 // 2. A reload takes the decks time to apply, and the daemon announces it only
-//    once they have it (src/index.ts reload()). An older daemon announced
-//    first, which is why the editor still retries showing a new page
-//    (showPage in src/main/main.ts). Hold the apply back, so anything acting
-//    before the announcement fails.
+//    once they have it (src/index.ts reload()); the editor relies on that and
+//    does not retry. Hold the apply back, so anything acting before the
+//    announcement fails.
 const RELOAD_APPLY_DELAY_MS = 300;
 
 // Reload as src/index.ts does (the harness's reloadLikeTheDaemon).
