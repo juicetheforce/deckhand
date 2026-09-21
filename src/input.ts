@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { parseCombo, textToTaps } from './keymap.js';
+import { TEXT_DELAY_MS } from './input-timing.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -195,7 +196,7 @@ class InputBridge {
   }
 
   /** Type a literal string (US layout). */
-  async type(text: string, delayMs = 8): Promise<void> {
+  async type(text: string, delayMs = TEXT_DELAY_MS): Promise<void> {
     for (const codes of textToTaps(text)) {
       await this.send(`TAP ${codes.join(' ')}`);
       if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));

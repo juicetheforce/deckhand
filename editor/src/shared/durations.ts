@@ -11,13 +11,11 @@
  *     8 ms pause, ~150 ms per shifted character ("Hello World" 506 ms measured,
  *     501 ms by this estimate).
  */
+import { HOTKEY_GAP_MS, TEXT_DELAY_MS } from '../../../src/input-timing.js';
 import { parseCombo, textToTaps } from '../../../src/keymap.js';
 
 export const SINGLE_TAP_MS = 14.8;
 export const COMBO_TAP_MS = 141.5;
-/** `text`'s default pause after each character (src/input.ts). */
-export const TEXT_DELAY_MS = 8;
-
 /** A string's typing time, or null if the US-layout map cannot type it. */
 export function textDurationMs(text: string, delayMs = TEXT_DELAY_MS): number | null {
   let taps: number[][];
@@ -37,9 +35,6 @@ export function comboTapMs(combo: string): number | null {
     return null;
   }
 }
-
-/** hotkey's own pause between repeats and between a sequence's combos (src/actions/keyboard.ts). */
-const HOTKEY_GAP_MS = 30;
 
 /**
  * About how long one action takes to run, not counting a Multi step's delay.

@@ -1,5 +1,6 @@
 import { input } from '../input.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+import { HOTKEY_GAP_MS, TEXT_DELAY_MS } from '../input-timing.js';
 
 /**
  * hotkey — send a key combo to whatever currently has focus.
@@ -19,7 +20,7 @@ export const hotkey: ActionHandler = {
 
     const holdMs = typeof params.holdMs === 'number' ? params.holdMs : 0;
     const repeat = typeof params.repeat === 'number' ? Math.max(1, params.repeat) : 1;
-    const gapMs = typeof params.gapMs === 'number' ? params.gapMs : 30;
+    const gapMs = typeof params.gapMs === 'number' ? params.gapMs : HOTKEY_GAP_MS;
 
     for (let i = 0; i < repeat; i++) {
       for (const combo of combos) {
@@ -41,7 +42,7 @@ export const text: ActionHandler = {
   async execute(_ctx, params: ActionDef) {
     const value = params.text;
     if (typeof value !== 'string') throw new Error('text action needs a "text" string');
-    const delayMs = typeof params.delayMs === 'number' ? params.delayMs : 8;
+    const delayMs = typeof params.delayMs === 'number' ? params.delayMs : TEXT_DELAY_MS;
     await input.type(value, delayMs);
   },
 };
