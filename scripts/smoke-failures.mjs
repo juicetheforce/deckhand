@@ -116,7 +116,7 @@ console.log('it survives a page switch, and clears on success');
   failing = true;
 }
 
-console.log('the failures that used to be swallowed');
+console.log('failures that mark the key');
 {
   ran = 0;
   fake.press(2);

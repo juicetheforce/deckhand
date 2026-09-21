@@ -1,11 +1,11 @@
 /**
  * Offline test: the MPRIS service survives its session bus going away and
- * coming back (src/services/mpris.ts getBus()). Runs its own
- * dbus-daemon on a fixed socket path in a scratch directory, so the bus can be
- * stopped and started again at the same address — never the desktop's bus.
+ * coming back (src/services/mpris.ts getBus()). Runs its own dbus-daemon on a
+ * fixed socket path in a scratch directory, so the bus can be stopped and
+ * started again at the same address — never the desktop's bus.
  *
  * Counts uncaught exceptions the way the daemon's own handler would see them
- * (src/index.ts): before this was fixed, a lost bus was one of those.
+ * (src/index.ts): a lost bus must never become one of those.
  *
  *   npm run build:ts && node scripts/smoke-dbus-restart.mjs
  */

@@ -4,9 +4,6 @@
  * Stream Deck, no /dev/uinput needed.
  *
  *   npm run build && npm run smoke
- *
- * Useful when you change the render pipeline and don't want to unplug
- * anything to find out you broke it.
  */
 import { DeckSession } from '../dist/deck.js';
 import { registry } from '../dist/actions/index.js';

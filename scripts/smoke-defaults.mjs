@@ -170,7 +170,7 @@ console.log('which icon a key draws');
   check('output mute, unmuted: speaker', same(key(14), await expected(icon('speaker'))));
   check('media next draws next', same(key(15), await expected(icon('next'))));
   check('play/pause with nothing playing draws play', same(key(16), await expected(icon('play'))));
-  check('an idle now-playing key keeps its own icon (was wiped), with no label', same(key(17), await expected(GOOD)));
+  check('an idle now-playing key keeps its own icon, with no label', same(key(17), await expected(GOOD)));
   check('an idle now-playing key with no icon draws now-playing and no label', same(key(22), await expected(icon('now-playing'))));
   check('idleLabel puts a label back over it', same(key(23), await renderButton(display({ icon: icon('now-playing'), label: 'Quiet' }), 96)));
   check('Press/Release (keyHold) draws press-release', same(key(18), await expected(icon('press-release'))));

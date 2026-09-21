@@ -4,11 +4,10 @@
  *
  * The sibling of scripts/test/no-decks-hooks.mjs, and the same technique for
  * the same reason (see that file): the daemon imports `listStreamDecks` and
- * `openStreamDeck` straight from '@elgato-stream-deck/node', and the working
- * machine always has both real decks attached, so a test has to redirect that
- * specifier rather than depend on what is plugged in. As there, the stand-in
- * **re-exports the real module** and overrides only what it must — other code
- * imports `VENDOR_ID` and `CORSAIR_VENDOR_ID` from it.
+ * `openStreamDeck` straight from '@elgato-stream-deck/node', and a test must
+ * not depend on what is plugged in, so it redirects that specifier. As there,
+ * the stand-in **re-exports the real module** and overrides only what it
+ * must — other code imports `VENDOR_ID` and `CORSAIR_VENDOR_ID` from it.
  *
  * Two specifiers are redirected:
  *

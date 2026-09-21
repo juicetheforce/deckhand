@@ -4,15 +4,14 @@
  *
  * `src/index.ts` imports `listStreamDecks` and `openStreamDeck` straight from
  * '@elgato-stream-deck/node', so a test that spawns the real daemon would
- * otherwise take a different branch on a machine with decks attached than on
- * one without — and the working machine always has both decks attached
- * (CLAUDE.md). Rather than adding a test-only switch to the daemon, this
- * redirects that one specifier, in the child only.
+ * otherwise take a different branch depending on which decks are plugged into
+ * the machine running the test. Rather than adding a test-only switch to the
+ * daemon, this redirects that one specifier, in the child only.
  *
  * The stand-in **re-exports the real module** and overrides only those two
  * functions: other code imports other names from it (`src/services/hotplug.ts`
  * wants `VENDOR_ID` and `CORSAIR_VENDOR_ID`), and a stub that provided only
- * what `index.ts` uses made the daemon fail to load at all. An explicit local
+ * what `index.ts` uses would make the daemon fail to load. An explicit local
  * export takes precedence over `export *`, so the overrides win.
  *
  * Registered by scripts/test/no-decks.mjs, which is what a child is given

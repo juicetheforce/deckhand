@@ -5,8 +5,8 @@
  * test can plug a deck in and out while the daemon runs by rewriting that
  * file. `openStreamDeck()` returns a deck-shaped object and **appends a line
  * to `FAKE_DECKS_LOG` for every open and every close**, which is how
- * scripts/smoke-unattached.mjs counts the USB open/close cycles the safety-net
- * scan used to make.
+ * scripts/smoke-unattached.mjs proves a scan does not reopen a deck it already
+ * knows.
  *
  * The surface is the one scripts/test/control-harness.mjs's FakeDeck provides,
  * plus `getSerialNumber()`, because `src/index.ts` attach() reads the serial

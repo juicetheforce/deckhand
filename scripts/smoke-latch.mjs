@@ -1,8 +1,7 @@
 /**
- * Offline test of keys a deck holds down (M7, docs/scope.md §6): the release a
- * Press/Release key is waiting for, and — once it exists — the latching
- * toggle. Fake decks and the fake input helper; no Stream Deck and no
- * /dev/uinput.
+ * Offline test of keys a deck holds down: the release a Press/Release key is
+ * waiting for, and the latching toggle. Fake decks and the fake input helper;
+ * no Stream Deck and no /dev/uinput.
  *
  *   npm run build:ts && node scripts/smoke-latch.mjs     (npm run smoke runs it too)
  *
@@ -93,9 +92,8 @@ async function release(index) {
   await settle();
 }
 
-// The bug these replace (found by reading, 2026-09-20): the page changing
-// under a finger *discarded* the pending release, so lifting the finger
-// released nothing and f24 stayed down with no key left to release it.
+// A page change under a finger must fire the pending release, not discard
+// it: discarding it leaves f24 down with no key left to release it.
 console.log('a held key is released, never discarded');
 
 await press(0);

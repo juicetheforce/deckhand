@@ -23,8 +23,7 @@
  * <index> <node>` records the destination in `movedSourceOutputs[index]`, and
  * `refuseMove: [indices]` makes one fail the way an uncooperative application
  * does, so "the rest still move" is testable. Playback streams
- * (`list sink-inputs`) are still none — audio.sink's moving predates this and
- * is unchanged.
+ * (`list sink-inputs`) are none.
  *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.

@@ -307,8 +307,8 @@ expect_command "guard: a manager that knows nothing offers nothing" \
 expect_command "guard: only the names it does know" \
   'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub dnf make' \
   'sudo dnf install -y make'
-# The Fedora cell that would have been wrong: nodejs does not exist there, and
-# the candidate list falls through to the versioned package that does.
+# Fedora has no `nodejs` package: the candidate list falls through to the
+# versioned one that exists.
 expect_command "candidates: falls past a name this release dropped" \
   'rm "$S/stubs/node"; pm_stub dnf nodejs22-bin' \
   'sudo dnf install -y nodejs22-bin'
@@ -354,9 +354,9 @@ else
 fi
 
 # Whether the command covers the whole list is said only when it does not.
-# This line once fired every time: the caller read the command through $(...),
-# so the package list it compared against had been built in a subshell and was
-# empty by the time it looked.
+# Guards the $(...) subshell trap described at install.sh build_install_command:
+# read through a subshell, the package list would be empty and this line would
+# always fire.
 out="$(entry 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' preflight)"
 if ! grep -q 'does not cover the whole list' <<<"$out"; then
   ok "the command covers everything: no caveat"
@@ -371,8 +371,8 @@ else
 fi
 
 # check's header names the manager and what every cell resolves to here —
-# with nothing missing. That is the case it exists for: without it, the Nobara
-# rehearsal on a machine that already has everything would show no names at all.
+# with nothing missing. That is the case it exists for: on a machine that
+# already has everything, the header is the only place the table's answers show.
 out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers nodejs22-bin nodejs24-npm-bin' cmd_check)"
 if grep -q 'rc=0$' <<<"$out" \
    && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers pactl=pulseaudio-utils' <<<"$out"; then

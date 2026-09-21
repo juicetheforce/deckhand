@@ -177,7 +177,7 @@ console.log('no reload storm');
   await sleep(300);
   const WRITES = 5;
   for (let i = 1; i <= WRITES; i++) {
-    // The editor's planned atomic write: temp file, then rename onto config.json.
+    // The editor's atomic write: temp file, then rename onto config.json.
     const tmp = path.join(CONFIG_DIR, '.config.json.tmp');
     await fs.writeFile(tmp, `write ${i}\n`);
     await fs.rename(tmp, CONFIG_PATH);

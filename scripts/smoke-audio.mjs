@@ -207,8 +207,8 @@ console.log('audio.source by node');
   check('another input\'s key shows inactive', (await describe(headsetMic)).background === '#101014');
   check('an explicit activeBackground is used', (await describe({ ...builtinMic, activeBackground: '#123456' })).background === '#123456');
 
-  // Moving recording streams: the same rule as audio.sink and audio.cycleSource
-  // since 2026-09-18 (the maintainer), after Discord was seen following a Cycle inputs press.
+  // Moving recording streams: the same rule as audio.sink and audio.cycleSource.
+  // An application already recording follows the new default.
   const movedTo = async () => JSON.parse(await fs.readFile(PACTL_STATE, 'utf8')).movedSourceOutputs ?? {};
   await serverState({ defaultSource: HEADSET_MIC });
   await runActionOrThrow(context(), builtinMic);
@@ -343,7 +343,7 @@ console.log('audio.mute face (output mute state)');
   check('...switching to a muted output shows muted', (await describe(muteKey)).icon === '/icons/speaker-off.png');
   check('...and the output switch repaints mute keys', repaint.includes('audio.mute'));
 
-  check('with no icon or label parameters the face changes nothing (defaults come later)', JSON.stringify(await describe({ type: 'audio.mute' })) === '{}');
+  check('with no icon or label parameters the face adds nothing (the built-in default is drawn elsewhere)', JSON.stringify(await describe({ type: 'audio.mute' })) === '{}');
 
   // The fake's default input starts muted (fake-pactl.mjs), so compare, not assume.
   await serverState({ defaultSink: STEREO, muted: { [STEREO]: false } });

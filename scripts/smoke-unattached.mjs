@@ -2,35 +2,31 @@
  * Offline test: decks coming and going — one that no profile has a layout
  * for, and one that does.
  *
- * The defect this exists for, `[confirmed]` on Ubuntu 26.04 on 2026-09-20 by
- * journal timestamps exactly 60 s apart: `scan()` skipped a deck already in
- * `sessions` but not one in `unattached`, so the safety-net poll called
- * `attach()` on every unconfigured deck once a minute — opening the HID
- * device, reading its serial, logging "connected but not in config" and
- * closing it again. Two decks made two USB open/close cycles and two journal
- * lines a minute, at rest, and "connected, no layout" is the state every new
- * install now sits in.
+ * What this guards: `scan()` must skip a deck already in `unattached`, not
+ * only one in `sessions`. Otherwise the 60 s safety-net poll calls `attach()`
+ * on every unconfigured deck once a minute — opening the HID device, reading
+ * its serial, logging "connected but not in config" and closing it again.
+ * That is USB traffic and journal lines at rest, in the state every new
+ * install starts in: connected, no layout.
  *
  * The obvious fix — skipping `unattached` the way `sessions` is skipped —
  * strands a deck that is later given a layout, so the reverse is checked here
  * too, in both directions: a layout added must light the deck with no replug,
  * and a layout removed must put it back where the editor can still see it.
  *
- * The last section is the **configured** deck's round trip, added 2026-09-20
- * when the maintainer asked what happens to a deck that is unplugged now that the
- * editor stops listing it ("people sell, replace, or upgrade decks"): nothing
- * may be lost. It is a common path, not an edge case — any deck taken to
- * another machine, or a cable pulled — and the "absence is the indicator"
- * rule leans on it, because a deck the editor has stopped showing must still
- * be all there when it comes back.
+ * The last section is the **configured** deck's round trip. The editor stops
+ * listing a deck that is unplugged, so nothing about that deck may be lost
+ * while it is away. It is a common path, not an edge case — any deck taken to
+ * another machine, or a cable pulled — and a deck the editor has stopped
+ * showing must still be all there when it comes back.
  *
  * This spawns the real `dist/index.js`, because scan(), reload() and their
  * ordering are the thing under test and only a live process runs them. The
  * child is given scripts/test/fake-decks.mjs with `--import`, so it sees a
- * fake deck rather than the two real ones this machine always has attached,
- * and rescans on SIGUSR2 rather than on a 60 s timer; the fake input helper,
- * so nothing touches /dev/uinput; and a private D-Bus session. Every path it
- * writes is inside a scratch directory.
+ * fake deck rather than whatever is plugged in, and rescans on SIGUSR2 rather
+ * than on a 60 s timer; the fake input helper, so nothing touches /dev/uinput;
+ * and a private D-Bus session. Every path it writes is inside a scratch
+ * directory.
  *
  *   npm run build:ts && node scripts/smoke-unattached.mjs
  */
@@ -203,7 +199,7 @@ check('the daemon warned about it once', warnings() === 1);
 check('it was opened once', (await opens()) === 1);
 check('and closed again, so nothing holds the device', (await closes()) === 1);
 
-console.log('\nthe regression: repeated scans while nothing changes');
+console.log('\nrepeated scans while nothing changes');
 
 const openedBefore = await opens();
 await forceScan(4);
@@ -263,9 +259,8 @@ check('after which scans leave it alone once more', (await opens()) === openedRe
 
 console.log('\na configured deck, unplugged and plugged back in');
 
-// The question this answers (the maintainer, 2026-09-20): the editor no longer lists a
-// deck that is not plugged in, so does unplugging one lose anything? Nothing
-// may be lost — not the layout, not the pages, not the buttons, not the name.
+// The editor does not list a deck that is not plugged in, so unplugging one
+// must lose nothing: not the layout, the pages, the buttons or the name.
 await writeConfig(RICH_CONFIG);
 const richAttached = await until(async () => typeof (await deckStatus())?.page === 'string', 10_000);
 check('the rich config attaches it', richAttached);

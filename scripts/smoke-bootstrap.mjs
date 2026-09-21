@@ -1,15 +1,15 @@
 /**
  * Offline test: first run with no config.json and no Stream Deck connected.
  *
- * The daemon must write a valid empty configuration and **stay up**. Before
- * 2026-09-20 it exited 1, which on a real machine made systemd restart-loop
- * and `scripts/install.sh` roll the whole install back — measured on a fresh
- * Ubuntu 26.04 GNOME machine, installing before the decks were plugged in.
+ * The daemon must write a valid empty configuration and **stay up**. Exiting
+ * instead makes systemd restart-loop it and makes `scripts/install.sh` roll
+ * the install back, which is exactly what installing before any deck is
+ * plugged in hits.
  *
- * This spawns the real `dist/index.js`, because the defect was in `main()`'s
- * startup path and only a live process proves it keeps running. The child is
- * given scripts/test/no-decks.mjs with `--import`, so it finds no decks even
- * on a machine with both attached; the fake input helper, so nothing touches
+ * This spawns the real `dist/index.js`, because the behaviour lives in
+ * `main()`'s startup path and only a live process proves it keeps running. The
+ * child is given scripts/test/no-decks.mjs with `--import`, so it finds no
+ * decks whatever is plugged in; the fake input helper, so nothing touches
  * /dev/uinput; and a private D-Bus session, so MPRIS never reaches the
  * desktop's bus. Every path it writes is inside a scratch directory.
  *
@@ -103,8 +103,8 @@ const first = startDaemon();
 const wrote = await until(() => exists(CONFIG_PATH));
 check('the daemon writes a config.json', wrote);
 
-// The regression: it used to exit 1 here, and systemd would restart-loop it.
-// Long enough that a start-then-exit would have been seen.
+// Exiting here would make systemd restart-loop it. Long enough that a
+// start-then-exit would be seen.
 await sleep(3000);
 check('the daemon is still running three seconds later', first.child.exitCode === null);
 check('it did not exit with a failure', first.child.exitCode === null || first.child.exitCode === 0);

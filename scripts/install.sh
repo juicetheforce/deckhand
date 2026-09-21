@@ -277,9 +277,8 @@ preflight_checks() {
 
   # Electron's sandbox needs unprivileged user namespaces. Ubuntu 24.04's
   # AppArmor restriction, and older Debian's switch, turn them off. Only a
-  # warning: the daemon — which is what drives the decks — does not need them,
-  # and that the editor then fails is not yet tested (docs/scope.md §7,
-  # Portability).
+  # warning: the daemon, which drives the decks, does not need them. Only the
+  # editor does.
   local userns_why=""
   [ "$(sysctl_value kernel/apparmor_restrict_unprivileged_userns)" = 1 ] && userns_why="AppArmor restricts unprivileged user namespaces (kernel.apparmor_restrict_unprivileged_userns = 1, as on Ubuntu 24.04 and later)"
   [ "$(sysctl_value kernel/unprivileged_userns_clone)" = 0 ] && userns_why="unprivileged user namespaces are turned off (kernel.unprivileged_userns_clone = 0)"
@@ -314,10 +313,9 @@ preflight_checks() {
 
 # --- Offering to install what is missing --------------------------------------
 #
-# The preflight used to stop at a list of things to go and install by hand.
-# This turns that diagnosis into help: one command, named in full, run only on
-# a keypress. `scripts/install.sh check` prints the same command and never
-# offers to run it.
+# Turns the preflight's list into one install command, shown in full and run
+# only on a keypress. `scripts/install.sh check` prints the same command and
+# never offers to run it.
 #
 # Two rules hold this together.
 #
@@ -326,91 +324,76 @@ preflight_checks() {
 #    person has read it, because reading it is what makes typing "y" safe.
 #
 # 2. **A package name is never printed without asking this machine whether it
-#    exists.** That guard is not caution, it is the defect this code exists
-#    because of. The remedy string for pactl has been written twice and been
-#    wrong twice: it named pipewire-pulseaudio for Fedora, where pactl has
-#    always come from pulseaudio-utils (`rpm -qf $(command -v pactl)`), and on
-#    2026-09-20 it was corrected *for Ubuntu* on this very Fedora machine
-#    without anyone noticing the Fedora half was wrong — pactl has never been
-#    missing here, so the string has never been read by anyone who needed it.
-#    A third would have followed: Fedora 44 has no package called `nodejs` or
-#    `npm` at all (`dnf list nodejs npm` matches nothing; /usr/bin/node comes
-#    from nodejs24-bin), so README's long-standing `dnf install nodejs npm`
-#    fails outright. Two chances, two wrong cells, and a third waiting. A name
-#    this machine does not know is therefore never shown: the requirement is
-#    reported without a command instead, which is honest rather than wrong.
+#    exists.** A hand-written package table goes wrong silently: on Fedora,
+#    pactl comes from pulseaudio-utils, not pipewire-pulseaudio
+#    (`rpm -qf $(command -v pactl)`), and Fedora 44 has no package called
+#    `nodejs` or `npm` at all (`dnf list nodejs npm` matches nothing;
+#    /usr/bin/node comes from nodejsNN-bin). So a name this machine's package
+#    manager does not know is never shown: the requirement is reported without
+#    a command instead.
 #
-#    **What the guard does not do**, stated plainly so nobody trusts it
-#    further than it goes. It catches a name that does not exist. It does not
-#    catch a name that exists and is the wrong package — and that is exactly
-#    what the Fedora pactl cell was: `pipewire-pulseaudio` is a real Fedora
-#    package, it simply does not contain pactl. So of the three wrong cells
-#    above the guard catches one (`nodejs`), and the other two were only ever
-#    going to be caught by checking a cell against a real machine, which is
-#    what the per-cell tags below record. The second line of defence for a
-#    wrong-but-real name is the re-check: install it, find the command still
-#    missing, and refuse by name. That costs one wasted install and tells the
-#    truth, which is the same bargain as the Debian Node case.
+#    What the guard does not catch: a name that exists but is the wrong
+#    package (pipewire-pulseaudio is a real Fedora package without pactl).
+#    Only checking a cell against a real machine catches that in advance. At
+#    install time the re-check catches it: the package installs, the command
+#    is still missing, and the preflight refuses by name. That costs one
+#    wasted install and still tells the truth.
 #
-#    Rejected, for the record: asking the manager which package provides the
-#    missing *command* (`dnf provides /usr/bin/pactl`), which would catch both
-#    kinds. It works on dnf out of the box and on neither of the others —
-#    apt needs apt-file and pacman needs pkgfile, neither installed by
-#    default — so it would be a per-manager capability, not a rule.
+#    Not done: asking the manager which package provides the missing
+#    *command* (`dnf provides /usr/bin/pactl`), which would catch both kinds.
+#    dnf supports it out of the box, but apt needs apt-file and pacman needs
+#    pkgfile, and neither is installed by default, so it would be a
+#    per-manager capability, not a rule.
 
 # The table. Candidates are tried in order and the first one this machine knows
 # about is the one offered, so a versioned name can be listed ahead of a plain
 # one and the cell ages gracefully as distributions renumber.
 #
-# Verification, recorded per cell rather than per table, because only some of
-# it has been checked against a real machine:
-#   dnf    [confirmed] 2026-09-20 on Fedora 44, `dnf list` / `dnf provides`.
-#   apt    [confirmed] 2026-09-20 on Ubuntu 26.04 for pulseaudio-utils, nodejs
-#          and npm (docs/scope.md §7, Portability); the rest [inference].
-#   pacman [inference] throughout — no Arch machine has ever run this. The
-#          guard is what makes that honest: an unverified cell that turns out
-#          wrong prints nothing rather than a lie.
+# Checked against a real machine, and marked "checked" per cell: every dnf
+# cell (Fedora 44, `dnf list` / `dnf provides`), and apt's pactl, node and npm
+# (Ubuntu 26.04). The rest, including every pacman cell, are unchecked; the
+# guard makes a wrong one print nothing rather than a wrong name.
 pkg_candidates() {   # pkg_candidates <manager> <key> -> candidate names, best first
   case "$1:$2" in
-    apt:pactl)             echo "pulseaudio-utils" ;;          # [confirmed] Ubuntu 26.04
-    dnf:pactl)             echo "pulseaudio-utils" ;;          # [confirmed] Fedora 44
-    pacman:pactl)          echo "libpulse" ;;                  # [inference]
+    apt:pactl)             echo "pulseaudio-utils" ;;          # checked: Ubuntu 26.04
+    dnf:pactl)             echo "pulseaudio-utils" ;;          # checked: Fedora 44
+    pacman:pactl)          echo "libpulse" ;;
 
-    apt:cc)                echo "gcc" ;;                       # [inference]
-    dnf:cc)                echo "gcc" ;;                       # [confirmed] Fedora 44
-    pacman:cc)             echo "gcc" ;;                       # [inference]
+    apt:cc)                echo "gcc" ;;
+    dnf:cc)                echo "gcc" ;;                       # checked: Fedora 44
+    pacman:cc)             echo "gcc" ;;
 
-    apt:make)              echo "make" ;;                      # [inference]
-    dnf:make)              echo "make" ;;                      # [confirmed] Fedora 44
-    pacman:make)           echo "make" ;;                      # [inference]
+    apt:make)              echo "make" ;;
+    dnf:make)              echo "make" ;;                      # checked: Fedora 44
+    pacman:make)           echo "make" ;;
 
-    apt:uinput-header)     echo "linux-libc-dev" ;;            # [inference]
-    dnf:uinput-header)     echo "kernel-headers" ;;            # [confirmed] Fedora 44
-    pacman:uinput-header)  echo "linux-api-headers" ;;         # [inference]
+    apt:uinput-header)     echo "linux-libc-dev" ;;
+    dnf:uinput-header)     echo "kernel-headers" ;;            # checked: Fedora 44
+    pacman:uinput-header)  echo "linux-api-headers" ;;
 
     # Fedora has no unversioned nodejs package; /usr/bin/node comes from
     # nodejsNN-bin. Newest first, so the floor of 22.12 is cleared by whichever
     # of these the release still carries.
-    apt:node)              echo "nodejs" ;;                    # [confirmed] Ubuntu 26.04: 22.22.1
-    dnf:node)              echo "nodejs24-bin nodejs22-bin nodejs" ;;   # [confirmed] Fedora 44
-    pacman:node)           echo "nodejs" ;;                    # [inference]
+    apt:node)              echo "nodejs" ;;                    # checked: Ubuntu 26.04 (22.22.1)
+    dnf:node)              echo "nodejs24-bin nodejs22-bin nodejs" ;;   # checked: Fedora 44
+    pacman:node)           echo "nodejs" ;;
 
-    apt:npm)               echo "npm" ;;                       # [confirmed] Ubuntu 26.04: 9.2.0
-    dnf:npm)               echo "nodejs24-npm-bin nodejs22-npm-bin npm" ;;  # [confirmed] Fedora 44
-    pacman:npm)            echo "npm" ;;                       # [inference]
+    apt:npm)               echo "npm" ;;                       # checked: Ubuntu 26.04 (9.2.0)
+    dnf:npm)               echo "nodejs24-npm-bin nodejs22-npm-bin npm" ;;  # checked: Fedora 44
+    pacman:npm)            echo "npm" ;;
 
     # Only ever asked for where AppArmor restricts user namespaces, which is
     # the apt family; Fedora never reaches this check.
-    apt:apparmor-parser)   echo "apparmor" ;;                  # [inference]
-    pacman:apparmor-parser) echo "apparmor" ;;                 # [inference]
+    apt:apparmor-parser)   echo "apparmor" ;;
+    pacman:apparmor-parser) echo "apparmor" ;;
   esac
 }
 
 # By command presence, not /etc/os-release: Nobara reports ID=nobara and Mint
 # reports ID=linuxmint, and asking which tool is installed gets every
 # derivative right without an ID_LIKE chain to maintain. Prints nothing on a
-# machine with none of them, and the caller then behaves as this script always
-# did — name what is missing, offer nothing.
+# machine with none of them, and the caller then names what is missing and
+# offers nothing.
 detect_package_manager() {
   if has_command apt-get; then echo apt
   elif has_command dnf; then echo dnf
@@ -465,12 +448,11 @@ resolve_key() {   # resolve_key <manager> <key>
 
 # For the header: the manager this script detected and what every cell in the
 # table resolves to on this machine — **whether or not anything is missing**.
-# Without it, `check` on a machine that already has everything says nothing
-# about the table at all, and the Nobara rehearsal (docs/scope.md §7,
-# Portability, "Tested once, at the end") would show nothing to read. "?" is a
-# requirement with a cell but no candidate this machine knows — the guard's
-# answer, shown rather than hidden. A requirement with no cell for this manager
-# (apparmor-parser on dnf) is left out.
+# Without it, `check` on a machine that already has everything would say
+# nothing about what the table resolves to there. "?" is a requirement with a
+# cell but no candidate this machine knows — the guard's answer, shown rather
+# than hidden. A requirement with no cell for this manager (apparmor-parser on
+# dnf) is left out.
 package_summary() {
   local manager key found line=""
   manager="$(detect_package_manager)"
@@ -516,10 +498,10 @@ resolve_packages() {   # resolve_packages <manager>
 # build: no package manager this script knows, no cell in the table, or a cell
 # this machine does not recognise.
 #
-# It sets a variable rather than printing one, because a caller reading it
-# through $(...) would run resolve_packages in a subshell and get back a
-# command with no PREFLIGHT_PACKAGES to go with it — which is how the "does
-# this cover everything" line below came to fire when it covered everything.
+# It sets a variable rather than printing one: a caller reading it through
+# $(...) would run resolve_packages in a subshell, and PREFLIGHT_PACKAGES and
+# PREFLIGHT_UNCOVERED would not survive back to it, so the "does this cover
+# everything" line below would fire even when it covered everything.
 PREFLIGHT_INSTALL_COMMAND=""
 build_install_command() {
   local manager
@@ -1115,7 +1097,7 @@ remove_cli() {
 # --- uninstall ---------------------------------------------------------------
 
 # The AppArmor profile goes with the app: it names a path that no longer
-# exists after an uninstall, and leaving root-owned files behind is rude.
+# exists after an uninstall, and root-owned files should not outlive the app.
 remove_apparmor_profile() {
   # `return 0`, not a bare `return`: install.sh runs under `set -e`, and a bare
   # one here would hand back the failed `[ -e ]` and abort the uninstall before
