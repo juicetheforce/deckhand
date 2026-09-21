@@ -133,6 +133,29 @@ ps -o args= -p "$(systemctl --user show deckhand -p MainPID --value)" | grep -q 
   && [ ! -L "$APP/runtime/node" ] \
   && ok "the service runs the bundled Node" || no "service command: $(ps -o args= -p "$(systemctl --user show deckhand -p MainPID --value)")"
 [ -x "$HOME/.local/bin/deckhand-uninstall" ] && ok "deckhand-uninstall is in place" || no "no deckhand-uninstall"
+# The same line again, now on a terminal: the "already installed" path returns
+# normally, the one way a piped run can end without an exit — a piped
+# install that succeeded once sat waiting on the terminal. It must end.
+again="cd '$S' && cat '$OUT/install.sh' | DECKHAND_RELEASE_BASE='file://$OUT' bash"
+out="$(timeout 120 python3 -c '
+import os, pty, sys
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("bash", ["bash", "-c", sys.argv[1]])
+seen = b""
+while True:
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    seen += chunk
+os.waitpid(pid, 0)
+sys.stdout.write(seen.decode("utf-8", "replace"))
+' "$again" 2>&1)"; status=$?
+[ "$status" != 124 ] && grep -q "already installed" <<<"$out" \
+  && ok "at a terminal, the line again: says it is installed and ends by itself" || no "the line again at a terminal did not end (status $status)"
 
 # --- 5. The suites, against the install -------------------------------------------------
 section "the daemon's smoke tests, against the installed dist/ and runtime/node"

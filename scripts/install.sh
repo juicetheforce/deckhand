@@ -1550,4 +1550,9 @@ main() {
   esac
 }
 
-main "$@"
+# "; exit" on the same line, not a line of its own: bash reads and parses this
+# whole line before running any of it. Piped, main hands stdin to the terminal,
+# so once main returns, bash would read "the rest of the script" from the
+# terminal and wait there — a successful piped install never returned to the
+# prompt. The exit is already parsed, so nothing more is read.
+main "$@"; exit

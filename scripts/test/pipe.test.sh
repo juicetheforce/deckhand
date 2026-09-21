@@ -73,6 +73,16 @@ grep -qE 'unbound variable|bash: line [0-9]+:' <<<"$out" && no "a shell error un
 grep -q 'nothing was changed' <<<"${out#*Run this now? \[y/N\]}" && [ "${out#*Run this now? \[y/N\]}" != "$out" ] \
   && ok "the answer was read from the terminal, and the script went on from there" || no "nothing after the question: $(tail -5 <<<"$out")"
 
+# 1b. A run that succeeds must end by itself. Piped, stdin is handed to the
+#     terminal; if the script then returns without exiting, bash goes on
+#     reading "the rest of the script" from the terminal and waits there for
+#     ever — what a real install did. Every other case here ends in exit, so
+#     only a success can show it. "check" succeeds on this machine.
+succeeded="cd '$REPO/scripts' && cat '$REPO/scripts/install.sh' | bash -s -- check"
+out="$(timeout 120 bash -c "$(declare -f on_a_terminal); on_a_terminal \"\$1\"" _ "$succeeded" 2>&1)"; status=$?
+[ "$status" != 124 ] && grep -q 'Every requirement is met' <<<"$out" \
+  && ok "at a terminal: a run that succeeds ends by itself" || no "a successful run did not end (status $status): $(tail -3 <<<"$out")"
+
 # 2. No terminal: setsid leaves the pipeline with no controlling terminal, as
 #    a launcher or a cron job would.
 out="$(timeout 180 setsid -w bash -c "$piped" </dev/null 2>&1)"; status=$?
