@@ -1,13 +1,13 @@
 /**
- * How long input actions take, estimated from the helper's measured timings
- * (docs/code-state.md, "Cost of the combo timing on `text`", 2026-09-13,
- * `[confirmed]` on the laptop). Estimates: the helper's timing is fixed, but
+ * How long input actions take, estimated from the helper's timings, measured
+ * on real hardware. Estimates: the helper's timing is fixed, but
  * the system around it is not. No Node imports: the renderer uses this.
  *
  *   - a single key tap: 14.8 ms; with `text`'s 8 ms pause after each, ~22.5 ms
  *     per plain character (11 characters of "hello world" measured 247 ms);
  *   - a combo (anything with a modifier, including a capital letter): 141.5 ms,
- *     held for games (scope §10 — not lowered without a game re-test); with the
+ *     held long enough for games to register the modifier (do not lower it
+ *     without re-testing in a game); with the
  *     8 ms pause, ~150 ms per shifted character ("Hello World" 506 ms measured,
  *     501 ms by this estimate).
  */
@@ -40,7 +40,7 @@ export function comboTapMs(combo: string): number | null {
  * About how long one action takes to run, not counting a Multi step's delay.
  * Only input actions are estimated, from the measurements above. Every other
  * action — switching an output, a page, a media key — counts as 0:
- * `[inference]` short beside a combo's 141 ms, and not measured.
+ * assumed short beside a combo's 141 ms; not measured.
  */
 export function actionDurationMs(action: { type: string; [k: string]: unknown }): number {
   if (action.type === 'text') return typeof action.text === 'string' ? (textDurationMs(action.text) ?? 0) : 0;

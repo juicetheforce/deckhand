@@ -39,10 +39,10 @@ app.setPath('userData', path.join(STATE_DIR, 'editor'));
 registerIconScheme(); // before the app is ready
 
 /**
- * Check modes, used only by scripts/check-*.mjs and scripts/screenshot.mjs:
- * "shared" (proof 0a), "bridge" (step 2), "screenshot" (step 3). The renderer
- * runs the check and reports with reportCheck(); main prints one line and
- * quits.
+ * Check modes, set only by scripts/check-*.mjs and scripts/screenshot.mjs:
+ * the renderer runs the named check and reports with reportCheck(); main
+ * prints one line and quits. `tray` is driven from main instead
+ * (startTrayCheck).
  */
 const CHECK = process.env.DECKHAND_EDITOR_CHECK ?? null;
 // Offscreen frames came back 0×0 with GPU rendering.
@@ -52,8 +52,8 @@ if (CHECK === 'screenshot') app.disableHardwareAcceleration();
  * One editor at a time: launching it again while it is open or
  * in the tray brings that one forward ('second-instance', below) rather than
  * starting another. The lock is per userData directory, so the checks — each
- * with its own scratch state directory — never meet the maintainer's editor. The other
- * check modes run without it, as they always have.
+ * with its own scratch state directory — never meet the user's editor. The
+ * other check modes run without it.
  */
 const USES_LAUNCHER = CHECK === null || CHECK === 'tray';
 const IS_PRIMARY = !USES_LAUNCHER || app.requestSingleInstanceLock();
@@ -68,7 +68,7 @@ Menu.setApplicationMenu(null);
  * Which build of the editor this process started from.
  * `scripts/install.sh update` swaps the app directory while an editor can sit
  * in the tray, so a page loaded later comes from the new build and talks to
- * this old main process — which once made profile rename silently do nothing.
+ * this old main process, which may not know the edits the new page sends.
  * The renderer's index.html names its bundles by content hash, so its text
  * changes whenever the page does. Read once now, and again before any page is
  * loaded; if it differs, the editor restarts from what is on disk.
@@ -158,10 +158,9 @@ async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
  * Success is read from the deck's state, not from the reply: a page action
  * for a page the deck does not have yet logs and returns without an error
  * (`DeckSession.goToPage`), so action.run answers ok while nothing moved.
- * Until Ship (2026-09-18) the daemon reported a reload before applying it to
- * the decks, so a page just saved could be missing; it now reports after
- * (src/index.ts reload()). The retry is kept for a daemon from before that,
- * and costs nothing when the page is there: after a save, a page that has not
+ * The daemon reports a reload only after applying it to the decks
+ * (src/index.ts reload()); the retry covers a daemon that reports first, and
+ * costs nothing when the page is there: after a save, a page that has not
  * appeared is asked for again, for about a second.
  */
 async function showPage(serial: string, page: string): Promise<DaemonResult> {
@@ -190,10 +189,10 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
  * the same reason: the profile may exist only in edits not yet saved — one
  * just created — so save first, and wait for the daemon to report the reload.
  *
- * Retried like showPage, because announcing a reload is not the same as having
- * applied it: src/index.ts reload() fires its config event *before*
- * profiles.applyReload(), and Profiles keeps its own copy of the config, so a
- * switch sent on the announcement can still be answered "not_found".
+ * Retried like showPage, for a daemon that announces a reload before it has
+ * applied it: Profiles keeps its own copy of the config, so a switch sent too
+ * early is answered "not_found". The current daemon announces after
+ * profiles.applyReload() (src/index.ts reload()).
  */
 async function switchProfile(to: string): Promise<DaemonResult> {
   const before = daemon.lastReloadAt();
@@ -268,11 +267,8 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
  * Choosing (or removing) an icon. The preview on the key is cleared only
  * after the daemon has reloaded the saved file, so the key goes straight from
  * the preview to the saved icon — and presses work again, since a previewed
- * key is inert. `[confirmed]` 2026-09-15 by reading
- * src/index.ts, src/profiles.ts and src/deck.ts: reload() fires its config
- * event before applyReload() runs, and applyReload awaits each deck in turn,
- * so a key on a second deck can show its old icon until the first deck's full
- * repaint has finished. Ordering confirmed; duration not measured.
+ * key is inert. The daemon announces a reload only after every deck has the
+ * new layout (src/index.ts reload()).
  */
 async function commitIcon(
   at: ButtonLocation,
@@ -379,11 +375,10 @@ function openSettings(): void {
     // framed or not), and alwaysOnTop is unsupported on Wayland.
     // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
-    // 6a's layout, with nothing below the footer: its 32 px title bar
-    // (TitleBar.tsx) and 384 px of settings — plus 224 px for BACKUP (M5),
-    // which 6a does not have: export and import, with room for two lines of
-    // result. An import's review is longer than that; the window scrolls.
-    // Frameless, so the content is the window.
+    // Frameless, so the content is the window: a 32 px title bar
+    // (TitleBar.tsx), the settings and the Backup section (export and import,
+    // with room for two lines of result). An import's review is longer; the
+    // window scrolls.
     width: 640,
     height: SETTINGS_HEIGHT,
     resizable: false,
@@ -635,7 +630,7 @@ function registerIpc(): void {
     if (!fromSettingsWindow(event) || typeof includeIcons !== 'boolean') return { ok: false, error: 'not allowed' };
     return exportConfig(includeIcons);
   });
-  // --- Import (M5 piece 2) ---
+  // --- Profile delete, kept configurations and import ---
   ipcMain.handle('deleteProfile', async (event, profile: string, pageName: string): Promise<DeleteProfileResult> =>
     fromOurWindow(event)
       ? deleteProfileKeepingACopy(
@@ -833,9 +828,8 @@ async function finishCheck(rendererReport: unknown): Promise<void> {
     }
   }
   if (CHECK === 'screenshot' && window && process.env.DECKHAND_EDITOR_SCREENSHOT) {
-    // A single paint is not reliable: the first run captured a frame from before
-    // the check's click, the next the blank first paint after invalidate(). So
-    // repaint a few times, let frames settle, and keep the latest.
+    // A single paint is not reliable: it can be a frame from before the
+    // check's click, or the blank first paint after invalidate(). So repaint a few times, let frames settle, and keep the latest.
     for (let i = 0; i < 3; i++) {
       window.webContents.invalidate();
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -859,8 +853,8 @@ function createWindow(): void {
     /*
      * The editor draws its own title bar: frame:
      * false, or KWin draws its own above it and there are two. Kept opaque,
-     * with the drop shadow left on — measured on this machine 2026-09-18,
-     * Electron 44.3.0 on Wayland: opaque, transparent and shadowless frameless
+     * with the drop shadow left on — measured with Electron 44.3.0 on KDE
+     * Wayland: opaque, transparent and shadowless frameless
      * windows all resized from every edge and corner, dragged, and opened
      * KWin's window menu on a right-click of the bar; opaque with the shadow
      * is the one that looked right.
@@ -1021,7 +1015,7 @@ function startTrayCheck(): void {
     // Check windows are never shown, so never focused: these emit the events
     // the compositor would, to run what listens for them. A click from Settings
     // into the editor is 'click-editor'; 'focus-editor' is the editor's focus
-    // alone, as the stray one seen in this check.
+    // alone, with no blur first.
     else if (command === 'click-editor') {
       if (settingsWindow && !settingsWindow.isDestroyed() && settingsWindow !== window) settingsWindow.emit('blur');
       window?.emit('focus');

@@ -6,9 +6,8 @@ import type { SystemShortcut } from '../shared/bridge.js';
  * KDE's shortcut service over D-Bus, `org.kde.kglobalaccel`
  * `getGlobalShortcutsByKey`, through `busctl --user --json=short` — read-only.
  *
- * Two limits: a miss does not mean the combo is safe
- * (Alt+F6 was grabbed in proof 0b and the service does not know it), and keys
- * the layout remaps (F13–F18, F20–F23) cannot be found this way at all.
+ * Two limits: a miss does not mean the combo is safe (Alt+F6 can be grabbed
+ * without the service listing it), and keys the layout remaps (F13–F18, F20–F23) cannot be found this way at all.
  * Without KDE's service — another desktop, no busctl — every lookup is a miss.
  */
 

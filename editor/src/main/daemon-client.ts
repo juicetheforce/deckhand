@@ -23,7 +23,7 @@ export type { DaemonView };
  *   re-sends whatever preview it wants after onChange reports connected.
  */
 
-/** An error reply from the daemon, with its stable code (scope §7, "Error codes"). */
+/** An error reply from the daemon, with its stable code (ErrorCode in src/control/server.ts). */
 export class DaemonError extends Error {
   constructor(
     readonly code: string,

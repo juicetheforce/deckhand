@@ -85,8 +85,7 @@ export type Captured =
 
 /**
  * Turn a keydown into a combo. Modifiers come from the flags on the
- * non-modifier key — `[confirmed]` for Meta by the maintainer's physical presses
- * (scope §10); only a modifier's own keydown may lack its flag, which is why a
+ * non-modifier key — confirmed for Meta with physical key presses; only a modifier's own keydown may lack its flag, which is why a
  * modifier on its own is reported by code. A right-hand modifier used as a
  * modifier is written as the left-hand name ("ctrl+1"), which is what a game
  * binding means.
@@ -112,7 +111,7 @@ export function captureKey(event: KeyEventLike): Captured {
  */
 export function canonicalCombo(text: string): string {
   // The daemon reads an empty part oddly: "ctrl++" as a bare Ctrl, "ctrl+" as
-  // ctrl+= (confirmed by test/keys.test.ts; its comment says otherwise). So an
+  // ctrl+= (src/keymap.ts parseCombo; test/keys.test.ts checks it). So an
   // empty part is refused here rather than saved as something unintended.
   if (text.trim() !== '' && text.split('+').some((part) => part.trim() === '')) {
     throw new Error('a key name is missing between "+" signs — for the + key, write "=" (+ is shift+= on a US layout)');
@@ -166,7 +165,7 @@ export function keycaps(combo: string): string[] {
 
 /**
  * Keys the standard XKB layout turns into other keys before KDE sees them
- * (`[confirmed]` from /usr/share/X11/xkb/symbols/inet, scope §10). A lookup of
+ * (per /usr/share/X11/xkb/symbols/inet). A lookup of
  * KDE shortcuts cannot see these, so they get a fixed note instead.
  */
 export const LAYOUT_REMAPPED_KEYS: ReadonlySet<string> = new Set(['f13', 'f14', 'f15', 'f16', 'f17', 'f18', 'f20', 'f21', 'f22', 'f23']);

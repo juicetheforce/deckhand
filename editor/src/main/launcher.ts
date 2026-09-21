@@ -1,6 +1,5 @@
 /**
- * The editor as a launcher: a thing the maintainer opens, not a
- * resident process. Closing the window puts the editor in the tray and hands
+ * The editor as a launcher: a thing you open, not a resident process. Closing the window puts the editor in the tray and hands
  * back everything an open editor holds — config.json and its watcher, the
  * daemon socket, the icon watchers — so what is left at rest is the main
  * process and the tray icon. Opening again, from the tray or by launching the

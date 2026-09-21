@@ -1,8 +1,8 @@
 /**
  * Deleting a profile, as one pure function that both
  * the confirmation and the edit run — the confirmation on a copy — so what the
- * confirmation names is what the delete does. Page delete once had the two
- * decide separately, and they disagreed (docs/code-state.md, B1).
+ * confirmation names is what the delete does. Deciding them separately lets
+ * them disagree.
  *
  * What a delete does:
  * - Refused for the last profile: the daemon refuses a config with none.
@@ -59,7 +59,7 @@ export interface DeletionResult {
 export interface ProfileDeletion extends DeletionResult {
   /** Keys in other profiles that lose their switch to this profile. */
   links: ProfileLink[];
-  /** Pages that had a key leaving them and will have none (scope §10's guard). */
+  /** Pages that had a key leaving them and will have none (pagesWithNoWayOff in links.ts). */
   stranded: PageRef[];
 }
 

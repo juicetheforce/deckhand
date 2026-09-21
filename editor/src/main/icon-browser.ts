@@ -147,8 +147,8 @@ function sortMatches(matches: IconSearchMatch[]): IconSearchMatch[] {
 
 /**
  * The folder the picker opens on: the folder of the key's current icon if it
- * still exists, else the most recent folder that exists, else the first
- * fallback that exists (the caller passes Pictures, then home). Nothing is
+ * still exists, else the first of `recent` that exists (the caller passes
+ * the bookmarks, newest first), else the first fallback that exists (the caller passes Pictures, then home). Nothing is
  * hardcoded about any particular icon tree.
  */
 export async function startFolder(currentIconPath: string | null, recent: string[], fallbacks: string[]): Promise<string> {
@@ -168,8 +168,8 @@ export async function startFolder(currentIconPath: string | null, recent: string
  * The built-ins the picker offers: every shipped icon but `missing`, which is
  * what a broken icon looks like, not something to choose. An entry's `path`
  * and `configPath` are both `builtin:<name>` — what is saved, previewed and
- * served — never the file inside the checkout, which config.json must not
- * point into (scope §3).
+ * served — never the file in the app directory: a name survives updates,
+ * and config.json must not point into the app directory.
  */
 async function builtinEntries(): Promise<IconFolderEntry[]> {
   const names = BUILTIN_ICONS.filter((name) => name !== 'missing');

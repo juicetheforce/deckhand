@@ -20,7 +20,8 @@ export const BUILTIN_FOLDER = BUILTIN_PREFIX;
 /**
  * The icons of a state pair, kept on the action: `audio.micMute`
  * and `audio.mute` swap between muted and unmuted, a play/pause
- * `media.control` between playing and paused. The daemon draws whichever
+ * `media.control` between playing and paused, a latching `toggle` between
+ * held down and up. The daemon draws whichever
  * matches the state, and falls back to the key's own icon, then the default.
  */
 export const PAIR_ICON_FIELDS = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused', 'iconOn', 'iconOff'] as const;
@@ -52,9 +53,8 @@ export function builtinRef(name: BuiltinIcon): string {
 
 /**
  * The built-in an icon names, or null when it is not a `builtin:` reference or
- * names an icon this checkout does not ship. The editor lists built-ins from
- * the checkout it runs from (scope §10), so an unknown name is a broken icon
- * here, as on the deck — which also draws `missing` for it.
+ * names an icon this version does not ship, which is a broken icon here, as
+ * on the deck — which also draws `missing` for it.
  */
 export function builtinName(icon: string): BuiltinIcon | null {
   if (!icon.startsWith(BUILTIN_PREFIX)) return null;

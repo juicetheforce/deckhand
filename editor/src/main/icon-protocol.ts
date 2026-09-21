@@ -10,8 +10,8 @@ import { ICON_CONTENT_TYPES, ICON_SCHEME, iconExtension, isShownIcon } from '../
  * off to allow file:// would open far more than images. This serves only
  * files with an image extension Chromium can draw (ICON_CONTENT_TYPES, shared
  * with the icon picker); anything else is 404. Paths are as the config stores
- * them: ~/... is allowed, and builtin:<name> is served from the checkout's
- * assets/icons/ (src/main/builtin-icons.ts).
+ * them: ~/... is allowed, and builtin:<name> is served from the built-in
+ * icon directory (builtinIconDir in src/main/builtin-icons.ts).
  */
 
 /** Must run before the app is ready. */

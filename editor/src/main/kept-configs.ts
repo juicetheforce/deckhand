@@ -7,7 +7,7 @@
  * `config-<time>.json`), which is what makes them reliable and also means they
  * would accumulate forever. The rules:
  *
- * - **A kept copy is never deleted except by the maintainer**, from the list in Settings.
+ * - **A kept copy is never deleted except by the user**, from the list in Settings.
  *   The rolling backups drop the oldest because the newest snapshot is the
  *   useful one; here it is the other way round — the copy from before the
  *   profile deleted three months ago is exactly the one worth keeping — so a

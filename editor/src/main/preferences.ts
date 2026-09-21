@@ -3,8 +3,8 @@ import path from 'node:path';
 import { MAX_BOOKMARKS } from '../shared/bridge.js';
 
 /**
- * The editor's own preferences — the first thing it persists that is not
- * config. Bookmarked icon folders today.
+ * The editor's own preferences: bookmarked icon folders, collapsed library
+ * sections and the app settings.
  *
  * **Never `config.json`.** That file is the daemon's, and these are the
  * editor's own preferences; it lives in Electron's `userData`, which is set
@@ -12,7 +12,7 @@ import { MAX_BOOKMARKS } from '../shared/bridge.js';
  * with the app and nothing the editor writes lands beside the config.
  *
  * Writes are debounced and `flush()` writes before the editor quits, because
- * a burst (a drag, a row of edits) would otherwise write once per change.
+ * a burst of changes would otherwise write once per change.
  */
 export class Preferences {
   private value: Record<string, unknown> | null = null;
@@ -62,7 +62,7 @@ export class Preferences {
         await fs.writeFile(temp, JSON.stringify(value, null, 2) + '\n');
         await fs.rename(temp, this.file);
       } catch {
-        // Losing a pane width is not worth troubling anyone with.
+        // Losing a preference is not worth troubling anyone with.
       }
     });
     await this.writing;

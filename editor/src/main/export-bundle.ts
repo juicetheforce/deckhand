@@ -8,8 +8,8 @@ import { BUNDLE_FORMAT, BUNDLE_VERSION, CONFIG_ENTRY, ICON_FIELDS, MANIFEST_ENTR
 import { BUILTIN_PREFIX } from '../shared/icons.js';
 
 /**
- * Building an export (M5 piece 1, docs/scope.md §5). The import half is
- * piece 2; this file only reads the config and the icon files it names.
+ * Building an export. The import half is import-bundle.ts; this file only
+ * reads the config and the icon files it names.
  */
 
 /**
@@ -99,8 +99,8 @@ export async function buildExport(configText: string, includeIcons: boolean): Pr
         continue;
       }
       const entry = includeIcons ? entryName(entryForFile.size + 1, file) : null;
-      // Stored, not deflated: image files are already compressed. On the maintainer's
-      // 31 icons, deflating took 379 ms of the main process for 0.09% smaller.
+      // Stored, not deflated: image files are already compressed. On a 31-icon
+      // export, deflating took 379 ms of the main process for 0.09% smaller.
       if (entry) files[entry] = [new Uint8Array(data), { level: 0 }];
       known = { entry, sha256: createHash('sha256').update(data).digest('hex'), size: data.length };
       entryForFile.set(file, known);

@@ -102,8 +102,8 @@ function removeField(page: PageDef, index: number, field: keyof ButtonDef): void
 
 /**
  * An icon as it is written: a built-in as its name, never a path into the app
- * directory (scope §3) — refused if the checkout does not ship it — and a file
- * under the home directory as ~/...
+ * directory, so it survives updates — refused if this version does not ship
+ * it — and a file under the home directory as ~/...
  */
 function storedIcon(iconPath: string, env: EditEnvironment): string {
   if (!iconPath.startsWith(BUILTIN_PREFIX)) return toConfigPath(iconPath, env.homeDir);
@@ -160,10 +160,11 @@ function forEachAction(layout: LayoutDef, visit: (action: ActionDef) => void): v
 }
 
 /**
- * A rename keeps every link in the form its author wrote it: a link that reached the page **by name** gets the new
- * name; a link by ID is left alone. Pinning name links to the ID instead
- * kept them working but made a hand-written config
- * unreadable — the one reason names resolve at all.
+ * A rename keeps every link in the form its author wrote it: a link that
+ * reached the page **by name** gets the new name; a link by ID is left alone.
+ * Pinning name links to the ID would keep them working but make a
+ * hand-written config unreadable, and readability is the one reason names
+ * resolve at all.
  *
  * Call before the name changes, while the old one still resolves. The new
  * name resolves to the same page because the rename has already refused a
@@ -414,8 +415,8 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       // An edit this main process does not know. It happens when the window
       // is newer than the main process: the editor stays running in the tray
       // across `scripts/install.sh update`, and reopening its window loads the
-      // new renderer from disk. Without this, the unknown edit changed nothing
-      // and reported success. `never` makes a kind added to Edit without a case
+      // new renderer from disk. Without this, an unknown edit would change
+      // nothing and report success. `never` makes a kind added to Edit without a case
       // here a type error.
       const unknown: never = edit;
       throw new EditError(

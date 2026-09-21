@@ -127,7 +127,7 @@ export type IconChoice =
    * Absolute paths under $HOME are stored as ~/...
    */
   | { kind: 'file'; path: string }
-  /** Deliberately none: writes `"icon": null`, so a label-only button stays label-only after phase C. */
+  /** Deliberately none: writes `"icon": null`, so a label-only button stays label-only even when its action has a default icon. */
   | { kind: 'none' }
   /** Nothing chosen: removes the key, so the action's built-in default renders. */
   | { kind: 'default' };

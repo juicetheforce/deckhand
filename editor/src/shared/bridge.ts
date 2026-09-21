@@ -49,7 +49,8 @@ export interface DaemonView {
   /**
    * The daemon's live device lists (`audio.sinks` / `audio.sources`, kept
    * current by the "audio" event), which the audio forms pick from — the
-   * editor writes a node from here, never a match string (scope §3). Absent
+   * editor writes a node from here, never a match string, so the key keeps
+   * pointing at the device the user chose. Absent
    * or null until the daemon has read its audio state.
    */
   audio?: { sinks: AudioList; sources: AudioList } | null;
@@ -64,9 +65,8 @@ export interface SystemShortcut {
 }
 
 /**
- * At most this many bookmarked folders (scope §10). The maintainer expects to keep five
- * to eight, and the row scrolls, so the cap is a guard rather than a limit he
- * would meet.
+ * At most this many bookmarked folders. The row scrolls, so the cap is a
+ * guard, not a limit anyone should meet.
  */
 export const MAX_BOOKMARKS = 12;
 
@@ -128,7 +128,7 @@ export interface WindowState {
   focused: boolean;
 }
 
-/** the maintainer's config is kept as `backup` (a ~/ path) before the profile goes. */
+/** The config is kept as `backup` (a ~/ path) before the profile goes. */
 export type DeleteProfileResult = { ok: true; backup: string | null } | { ok: false; error: string };
 
 export interface DeckhandBridge {
@@ -155,10 +155,9 @@ export interface DeckhandBridge {
 
   /**
    * Which action-library sections are collapsed, by group name. Sections
-   * default to expanded (the maintainer, 2026-09-16): collapsed-by-default would hide
-   * capabilities from someone who does not know to look for them, which is the
-   * §2 problem the library exists to solve — collapsing is a choice, never
-   * inherited. Editor preferences, never config.json.
+   * default to expanded: collapsed by default would hide capabilities from
+   * someone who does not know to look for them, which is the problem the
+   * library exists to solve. Collapsing is a choice, never inherited. Editor preferences, never config.json.
    */
   collapsedLibrary(): Promise<string[]>;
   setCollapsedLibrary(groups: string[]): Promise<void>;
@@ -177,7 +176,7 @@ export interface DeckhandBridge {
   watchIconFiles(configPaths: string[]): Promise<Record<string, string>>;
   onIconStamps(callback: (stamps: Record<string, string>) => void): () => void;
 
-  /** The icon picker's opening folder: the current icon's folder, a recent one, Pictures, or home. */
+  /** The icon picker's opening folder: the current icon's folder, a bookmark, Pictures, or home. */
   iconStartFolder(currentIcon: string | null): Promise<string>;
   /** List a folder, and watch it: onIconFolderChanged reports changes until another folder is listed or stopIconWatch. */
   listIconFolder(folder: string): Promise<IconFolderResult>;
@@ -188,7 +187,7 @@ export interface DeckhandBridge {
    * Set a key's icon to one of its three states — or, with `slot`,
    * one icon of its action's state pair — save, and once the daemon has
    * reloaded, clear the preview on that key — so the key shows the saved icon
-   * and responds to presses again. Remembers the icon's folder as recent.
+   * and responds to presses again.
    */
   commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null, slot: PairIconField | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
@@ -208,16 +207,12 @@ export interface DeckhandBridge {
    */
   exportConfig(includeIcons: boolean): Promise<ExportResult>;
   /**
-   * Choose an export or a config file and plan its import (M5 piece 2;
-   * settings window only). Writes nothing: the review says what would happen.
-   */
-  /**
-   * Delete a profile, keeping a copy of config.json first: a delete can
-   * take 60 keys with it, and the rolling backups can be up to 5 minutes old.
-   * The copy is `before-delete-<time>.json`, which the
-   * rolling rotation never deletes; restore it from Settings.
-   * What it will change is planProfileDeletion() in the renderer — the same
-   * code the delete itself runs.
+   * Delete a profile, keeping a copy of config.json first: a delete can take
+   * a deck's worth of keys with it, and the rolling backups can be up to 5
+   * minutes old. The copy is `before-delete-<time>.json`, which the rolling
+   * rotation never deletes; restore it from Settings. What it will change is
+   * planProfileDeletion() (src/shared/profile-deletion.ts) — the same code
+   * the delete itself runs.
    */
   deleteProfile(profile: string, pageName: string): Promise<DeleteProfileResult>;
   /** The configurations kept before an import or a profile delete, newest first. */
@@ -226,6 +221,10 @@ export interface DeckhandBridge {
   restoreKeptConfig(file: string): Promise<ImportChoice>;
   /** Delete one. The only thing that removes a kept configuration. */
   deleteKeptConfig(file: string): Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Choose an export or a config file and plan its import (settings window
+   * only). Writes nothing: the review says what would happen.
+   */
   chooseImport(): Promise<ImportChoice>;
   /** Carry out the import the review with this id described. */
   confirmImport(id: string): Promise<ImportResult>;
