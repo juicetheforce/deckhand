@@ -20,7 +20,7 @@ import type {
 } from './types.js';
 
 /**
- * Minimal surface we need from the streamdeck library. Deliberately narrow:
+ * The minimal surface needed from the streamdeck library. Deliberately narrow:
  * v7 describes geometry through CONTROLS, older versions through NUM_KEYS /
  * ICON_SIZE, and both are handled so a library bump can't brick the daemon.
  */
@@ -306,11 +306,10 @@ export class DeckSession implements DeckHandle {
 
   /**
    * Fire every release a held key is still waiting for, instead of dropping
-   * it. The page, the profile or the config changing under a finger used to
-   * *discard* these (`heldRelease.clear()`), which left the combo down at the
-   * evdev layer with no key left to release it — the stuck key the control
-   * socket goes to lengths to rule out (docs/scope.md §7, M3). Found by
-   * reading, 2026-09-20, before the latching toggle it also applies to.
+   * it. When the page, the profile or the config changes under a finger, a
+   * dropped release would leave the combo down at the evdev layer with no key
+   * left to release it — the stuck key the control socket also goes to
+   * lengths to rule out.
    *
    * Failures are logged, not marked on the key: by the time this runs the key
    * may be on a page that is no longer shown, and a mark there would be
@@ -339,11 +338,11 @@ export class DeckSession implements DeckHandle {
   }
 
   /**
-   * Run a key's action (its press, or its release). A failure marks the key and
-   * a success clears its mark — keyed by the page and profile
-   * it was pressed on, read before running, since a page or profile action
-   * moves the deck. The repaint after every press, which was already here,
-   * draws or removes the badge: no extra write, no timer.
+   * Run a key's action (its press, or its release). A failure marks the key
+   * and a success clears its mark — keyed by the page and profile it was
+   * pressed on, read before running, since a page or profile action moves the
+   * deck. The repaint after every press draws or removes the badge: no extra
+   * write, no timer.
    */
   private async dispatch(index: number, action: ActionDef): Promise<void> {
     const profile = this.profileOf();
@@ -410,7 +409,7 @@ export class DeckSession implements DeckHandle {
   /**
    * Render one key and write it to the deck. A render failure throws (the
    * caller decides whether to log it or report it); a USB write failure is
-   * logged here, as before. strictIcon: see renderButton().
+   * logged here. strictIcon: see renderButton().
    */
   private async drawKey(index: number, force: boolean, strictIcon: boolean): Promise<void> {
     if (this.closed) return;

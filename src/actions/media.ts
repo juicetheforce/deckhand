@@ -10,10 +10,10 @@ function truncate(value: string, max: number): string {
  *
  *   { "type": "media.control", "method": "playpause" }
  *   { "type": "media.control", "method": "next" }
- *   { "type": "media.control", "method": "playpause", "player": "tidal" }
+ *   { "type": "media.control", "method": "playpause", "player": "spotify" }
  *
  * Omit "player" and it targets whatever is actually playing, so the same
- * button works for Tidal today and a browser tab tomorrow. A playpause
+ * button works for a music app today and a browser tab tomorrow. A playpause
  * button can swap its icon with iconPlaying / iconPaused.
  */
 const METHODS: Record<string, mpris.MediaMethod> = {
@@ -86,8 +86,8 @@ export const info: ActionHandler = {
     const track = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
 
     if (!track || isIdle(track)) {
-      // No `icon` here: `icon: undefined` used to wipe the key's own icon while
-      // idle. With no icon of its own the key gets `now-playing` (iconState).
+      // No `icon` here: returning `icon: undefined` would wipe the key's own
+      // icon while idle. With no icon of its own the key gets `now-playing` (iconState).
       return params.idleLabel !== undefined ? { label: String(params.idleLabel) } : null;
     }
 

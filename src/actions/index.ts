@@ -47,7 +47,7 @@ export const registry: Record<string, ActionHandler> = {
  * reads top to bottom, and how the editor's step list shows it. Above, the
  * output switches, 150 ms pass, then the hotkey is sent.
  *
- * A step that fails is logged and the rest still run, as they always have;
+ * A step that fails is logged and the rest still run;
  * then the multi action fails, naming the first failed step, so
  * the key shows it failed rather than looking like it worked.
  *
@@ -107,7 +107,7 @@ export async function runAction(ctx: ActionContext, action: ActionDef): Promise<
 /**
  * Execute an action and let its failure propagate. For the control socket,
  * which reports failures to the client; deck presses use runAction(), which
- * logs and swallows them.
+ * logs them and returns the message.
  */
 export async function runActionOrThrow(ctx: ActionContext, action: ActionDef): Promise<void> {
   const handler = registry[action.type];

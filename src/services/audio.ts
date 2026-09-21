@@ -107,7 +107,7 @@ const warnedAmbiguous = new Set<string>();
  * findSinkByNode() instead.
  *
  * A substring that matches several sinks — a headset's stereo and mono sinks
- * usually share a word — takes the first, as it always has, and says so once
+ * usually share a word — takes the first, and says so once
  * per substring. Called from describe() on every refresh,
  * hence once rather than every time.
  */
@@ -290,8 +290,8 @@ export async function setDefaultSink(sinkName: string, moveStreams = true): Prom
  *
  * Without moveStreams the key face changes to the new microphone while the
  * application carries on reading the old one: the input version of "I pressed
- * the button and nothing happened". Tested on
- * hardware: Discord followed the switch.
+ * the button and nothing happened". Tested on hardware: Discord followed the
+ * switch.
  */
 export async function setDefaultSource(sourceName: string, moveStreams = true): Promise<void> {
   await pactl(['set-default-source', sourceName]);

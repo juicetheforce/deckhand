@@ -17,9 +17,9 @@ import type { Config } from './types.js';
 
 /**
  * Decks are found by udev hotplug events (services/hotplug.ts). This poll is
- * only the safety net for a missed event or a missing udevadm. It used to run
- * every 3 s, and measured at ~0.65% of one core at rest (docs/code-state.md,
- * "Idle CPU"), about 20 ms of CPU per scan.
+ * only the safety net for a missed event or a missing udevadm. At a 3 s
+ * interval it measured ~0.65% of one core at rest (about 20 ms of CPU per
+ * scan), so it runs once a minute.
  */
 const SAFETY_SCAN_INTERVAL_MS = 60000;
 
@@ -135,8 +135,9 @@ async function bootstrapConfig(): Promise<boolean> {
     try {
       const serial = (await raw.getSerialNumber()).trim();
       // No `name`: with none set the editor and logs show the model name, which
-      // stays right if the library's naming improves. Writing one here froze
-      // "Stream Deck" into the maintainer's config for an Original V2 (2026-09-16).
+      // stays right if the library's naming improves. Writing one here would
+      // freeze the library's name, which is ambiguous for some models: it
+      // calls both the Original and the Original V2 "Stream Deck".
       decks[serial] = {};
       layouts[serial] = {
         startPage: 'main',
@@ -305,7 +306,7 @@ let scanRunning = false;
 let scanQueued = false;
 
 /**
- * Run scan(), never two at once. Scans now start from several places (a
+ * Run scan(), never two at once. Scans start from several places (a
  * hotplug event can land during the safety-net poll or a reload), and two
  * overlapping scans could both open the same new deck before either records
  * its session. A request that arrives mid-scan runs one more scan afterwards.
@@ -343,9 +344,9 @@ async function reload(): Promise<void> {
     const applyStarted = Date.now();
     await profiles?.applyReload(next, sessions);
     // Announced only once every deck has the new layout. The editor takes this
-    // event as "saved and on the decks" and clears its preview on it; sent
-    // before applyReload, a cleared key was redrawn from the old layout and
-    // flashed its old icon until its deck's turn came.
+    // event as "saved and on the decks" and clears its preview on it. Sent
+    // before applyReload, a cleared key would be redrawn from the old layout
+    // and flash its old icon until its deck's turn came.
     // Tests mirror this order: scripts/test/control-harness.mjs
     // reloadLikeTheDaemon().
     events?.config();

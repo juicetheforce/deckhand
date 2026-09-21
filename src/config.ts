@@ -150,9 +150,11 @@ export async function writeNewConfig(config: Config): Promise<void> {
 }
 
 /**
- * Watch the config file and call back on change. Editors that write via
- * rename (most of them) can briefly remove the file, so this debounces and
- * re-establishes the watch rather than trusting a single event.
+ * Watch the config file and call back on change. Watches the config
+ * directory, not the file, so a write by rename (as the editor does) is still
+ * seen. Deliberately non-recursive and filtered on the file name: nothing
+ * else written in or below this directory may trigger a reload. Bursts are
+ * debounced to one reload, and the watch is re-established if it errors.
  */
 export function watchConfig(onChange: () => void): () => void {
   let timer: NodeJS.Timeout | null = null;

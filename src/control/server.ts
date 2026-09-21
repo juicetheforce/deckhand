@@ -3,22 +3,25 @@ import net from 'node:net';
 import path from 'node:path';
 
 /**
- * The control socket: newline-delimited JSON over a Unix stream socket
- * This file is transport only —
- * framing, limits, connections. What each command does is in commands.ts.
+ * The control socket: newline-delimited JSON over a Unix stream socket. This
+ * file is transport only — framing, limits, connections. What each command
+ * does is in commands.ts.
  *
  * Everything here runs on the same thread that handles deck key presses, so
- * nothing in it may block or wait on a client. See "Stall protections" in
- * §7 for why each limit below exists.
+ * nothing in it may block or wait on a client. Each limit below closes one
+ * way a client could delay a press.
  */
 
 export const PROTOCOL_VERSION = 1;
 
-/** Stall protection 1 and 3: an inbound line, and a half-sent one, stay small. */
+/**
+ * Bounds the JSON.parse work per line, and what a client that sends half a
+ * line and hangs can hold. No idle timeout: that would be a timer at rest.
+ */
 export const MAX_LINE_BYTES = 64 * 1024;
-/** Stall protection 2: a client whose unsent output passes this has stopped reading. */
+/** A client whose unsent output passes this has stopped reading; it is disconnected rather than buffered for without limit. */
 export const MAX_BACKLOG_BYTES = 1024 * 1024;
-/** Stall protection 7. */
+/** Bounds memory and per-connection work; the editor and a CLI need two. */
 export const MAX_CONNECTIONS = 16;
 
 export type ErrorCode =

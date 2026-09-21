@@ -42,7 +42,7 @@ export interface PageDef {
  * in every profile.
  */
 export interface DeckDef {
-  /** Friendly name, only used in logs. */
+  /** Friendly name, shown in the editor and in logs. */
   name?: string;
   /** 0-100. */
   brightness?: number;
@@ -143,7 +143,7 @@ export interface ActionContext {
 }
 
 export interface ActionHandler {
-  /** Run the action. Errors are caught and logged; they never kill the daemon. */
+  /** Run the action. Throw to fail the press: the caller logs it and marks the key. Never kills the daemon. */
   execute?(ctx: ActionContext, params: ActionDef): Promise<void>;
   /**
    * Optional. Return live display overrides (track title, current sink, etc).

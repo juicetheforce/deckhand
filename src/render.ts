@@ -7,10 +7,10 @@ import { failedBadgePlacement, failedBadgeSvg } from './failed-badge.js';
 import type { Display } from './types.js';
 
 /**
- * Feed it any image file — png, jpg, webp, whatever Midjourney or a Google
- * image search hands you — and it comes back as a raw RGBA buffer at the
- * key size for whichever deck asked. No import step, no icon library: the
- * config just holds a path, and editing the file on disk updates the button.
+ * Any image file sharp can read (png, jpg, webp…) comes back as a raw RGBA
+ * buffer at the key size for whichever deck asked. No import step: the config
+ * holds a path, so editing the file on disk updates the button. Built-in
+ * icons (builtin-icons.ts) are files too, named rather than given by path.
  */
 
 const cache = new Map<string, Buffer>();

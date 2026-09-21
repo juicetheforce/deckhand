@@ -83,8 +83,8 @@ function confirmDefaultSourceIs(requested: audio.AudioDevice): void {
  *   { "type": "audio.sink", "node": "…", "moveStreams": false }
  *
  * `node` is what the editor writes: the exact device picked from the daemon's
- * list (`deckhand sinks`). If that device is not present the press logs and
- * does nothing — no fallback. `label` is for showing only.
+ * list (`deckhand sinks`). If that device is not present the press fails
+ * (logged, and the key is marked) — no fallback. `label` is for showing only.
  * `match`, a substring of the description or node name, is kept for
  * hand-edited config and is ignored when `node` is set.
  *
@@ -150,7 +150,7 @@ export const sink: ActionHandler = {
  * stereo and mono sinks apart, where the description's first word could not —
  * and nothing when the default is not in the list. `label` fixes the text;
  * `showCurrent: false` turns it off. With `matches` the key shows the first
- * word of the default's description, as it always has.
+ * word of the default's description.
  */
 export const cycle: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -213,15 +213,13 @@ export const cycle: ActionHandler = {
  *
  *   { "type": "audio.source", "node": "alsa_input.usb-…mono-fallback", "label": "USB Headset Mic" }
  *
- * A mirror of audio.sink, by `node` only: it is new, so there is no
- * hand-edited `match` to keep. A device that is not present logs and does
- * nothing. The key paints `activeBackground` while this input is the default,
- * so "why can nobody hear me" is a glance.
+ * A mirror of audio.sink, by `node` only; there is no hand-edited `match`
+ * form. A device that is not present fails the press. The key paints
+ * `activeBackground` while this input is the default, so "why can nobody hear
+ * me" is a glance.
  *
- * **Streams already recording move with it** unless `moveStreams: false`
- * as audio.sink and audio.cycleSource do. Until then this
- * action left them behind, which was the one place the four device actions
- * disagreed.
+ * **Streams already recording move with it** unless `moveStreams: false`,
+ * as audio.sink and audio.cycleSource do.
  */
 export const source: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -266,9 +264,8 @@ export const source: ActionHandler = {
  * while the application carried on recording from the old one — the input
  * version of the complaint audio.sink's moveStreams exists to answer.
  *
- * No `matches` fallback: audio.cycle carries one because it predates the
- * editor and hand-written config used it. This action is new, so there is no
- * hand-edited form to keep working (as audio.source).
+ * No `matches` fallback: that form exists only for hand-written audio.cycle
+ * config.
  */
 export const cycleSource: ActionHandler = {
   async execute(ctx, params: ActionDef) {

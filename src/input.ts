@@ -25,9 +25,9 @@ interface Pending {
 export type InputSource = 'deck' | 'socket';
 
 /**
- * Owns the lifetime of the C helper process. Commands are serialized: one
- * outstanding at a time, which keeps modifier state coherent and costs
- * nothing at human press rates.
+ * Owns the lifetime of the C helper process. Commands run in order: the
+ * helper reads stdin one line at a time and replies in order, which keeps
+ * modifier state coherent. Several may be queued; each waits for its reply.
  */
 class InputBridge {
   private proc: ChildProcessWithoutNullStreams | null = null;

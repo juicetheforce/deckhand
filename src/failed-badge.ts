@@ -7,7 +7,7 @@
  * Pure and import-free, so the editor can import it.
  *
  * 30% of the key, in its top-right corner: 22 px on a 72 px key, 29 on a 96 px
- * one. The maintainer looked at both on the decks (2026-09-18): the X reads at 72.
+ * one. Checked on both deck sizes: the X stays legible at 72 px.
  */
 
 /** The badge's diameter and its inset from the key's top and right edges, for a key `size` pixels square. */

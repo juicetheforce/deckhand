@@ -62,8 +62,7 @@ export const KEYS: Record<string, number> = {
 
 /**
  * Parse a combo like "ctrl+alt+3" or "shift+F13" into evdev codes.
- * Order is preserved, so modifiers should be written first — which is how
- * everyone writes them anyway.
+ * Order is preserved, so modifiers should be written first.
  */
 export function parseCombo(combo: string): number[] {
   const parts = combo
@@ -71,7 +70,9 @@ export function parseCombo(combo: string): number[] {
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
 
-  // A literal "+" as the final key: "ctrl++"
+  // A single trailing "+" ("ctrl+") adds the =/+ key, unshifted: ctrl+=.
+  // "ctrl++" is not special-cased — its empty parts are dropped, leaving a
+  // bare Ctrl. The editor refuses both forms (editor/test/keys.test.ts).
   if (combo.trim().endsWith('+') && !combo.trim().endsWith('++')) {
     parts.push('=');
   }
@@ -95,8 +96,7 @@ const SHIFTED: Record<string, string> = {
 };
 
 /**
- * Convert a string into a sequence of tap actions. Assumes a US layout —
- * fine for the ASCII you'd realistically bind to a button.
+ * Convert a string into a sequence of tap actions. Assumes a US layout.
  */
 export function textToTaps(text: string): number[][] {
   const taps: number[][] = [];

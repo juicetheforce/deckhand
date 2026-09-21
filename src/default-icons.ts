@@ -129,10 +129,7 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     case 'audio.cycleSource':
       return 'input-cycle';
     case 'audio.source':
-      // A desk mic and a headset mic,
-      // one of which the key picks. The old `input-select` — the same two with
-      // swap arrows — was a cycle icon on a select action and is now
-      // `input-cycle`.
+      // A desk mic and a headset mic, one of which the key picks.
       return 'input-select';
     case 'audio.micMute':
       return state.muted ? 'mic-muted' : 'mic';

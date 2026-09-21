@@ -5,9 +5,9 @@ import path from 'node:path';
 import * as dbus from 'dbus-next';
 
 /**
- * MPRIS is a D-Bus standard, so this works with tidal-hifi, a browser tab,
- * VLC, Spotify — anything that exposes a player. Nothing here is Tidal
- * specific on purpose: bind a bus name in config only if you want to pin it.
+ * MPRIS is a D-Bus standard, so this works with any player that exposes one:
+ * a browser tab, VLC, Spotify. Nothing here is specific to one player: bind a
+ * bus name in config only to pin one.
  */
 
 const MPRIS_PREFIX = 'org.mpris.MediaPlayer2.';
@@ -23,12 +23,12 @@ export interface TrackInfo {
   title?: string;
   artist?: string;
   album?: string;
-  /** Local filesystem path to cover art, if we could get one. */
+  /** Local filesystem path to cover art, if one could be fetched. */
   artPath?: string;
 }
 
 let bus: dbus.MessageBus | null = null;
-/** Bus name of the last player we saw actually playing. */
+/** Bus name of the last player seen actually playing. */
 let lastActive: string | null = null;
 
 /** Told when the session bus connection is lost: each running subscribe(). */
@@ -37,11 +37,11 @@ const busLostListeners = new Set<() => void>();
 /**
  * The session bus connection, made on first use and again after one is lost.
  *
- * **A lost connection is dropped, never reused**. Without
- * this, dbus-next's `'error'` had no listener: at startup, before index.ts
- * installs its process handlers, that is a crash; after it, the error is
- * logged and the dead connection stays in use — now-playing faces frozen and
- * media presses going nowhere until the daemon restarts.
+ * **A lost connection is dropped, never reused.** With no `'error'` listener
+ * on it, dbus-next crashes the daemon at startup, before index.ts installs its
+ * process handlers; after that the error is only logged and the dead
+ * connection stays in use — now-playing faces frozen and media presses going
+ * nowhere until the daemon restarts.
  *
  * Both ways a connection dies are caught. `'error'` covers a failed connect
  * and a reset. A clean close — the broker shutting the socket — is only an
@@ -69,7 +69,7 @@ function getBus(): dbus.MessageBus {
  * Forget a connection that has failed, so the next use makes a new one. An
  * event from a connection already replaced is ignored.
  *
- * `[inference]`, from reading dbus-next: a call already waiting on the lost
+ * Untested, from reading dbus-next: a call already waiting on the lost
  * connection is never answered or rejected, so a press in flight at that
  * moment does nothing. Later presses use the new connection.
  */
@@ -93,8 +93,8 @@ const lostSubscriptions = new Set<() => void>();
 /**
  * Try again to follow players, for every subscription whose bus was lost and
  * has not come back. Called from index.ts's 60 s safety-net scan, so a bus
- * that stays away is retried without a timer of its own (CLAUDE.md, "no
- * timers at rest"). Does nothing while the bus is fine.
+ * that stays away is retried without a timer of its own: the daemon runs no
+ * timers at rest. Does nothing while the bus is fine.
  */
 export function retryLostBus(): void {
   for (const restart of [...lostSubscriptions]) restart();
@@ -119,9 +119,9 @@ const proxies = new Map<string, Promise<dbus.ProxyObject>>();
  * **Why.** dbus-next builds a proxy purely from an object's
  * introspection XML, and **Chromium publishes none**: `Introspect` on
  * `/org/mpris/MediaPlayer2` returns `<node></node>` while `Properties.Get`
- * answers correctly. `[confirmed]` on this machine against Brave (Flatpak) and
- * native `chromium-browser` alike — so it is Chromium's implementation, not the
- * Flatpak bus proxy, and every Chromium browser behaves this way.
+ * answers correctly. Tested with Brave (Flatpak) and native `chromium-browser`
+ * alike — so it is Chromium's implementation, not the Flatpak bus proxy, and
+ * every Chromium browser behaves this way.
  *
  * Discovering these buys nothing anyway: both interfaces are fixed by the MPRIS
  * and D-Bus specifications, so their members cannot vary by player. Supplying
@@ -239,7 +239,7 @@ async function getStatus(name: string): Promise<string> {
 /**
  * Resolution order: an explicit hint from config, then whatever is actually
  * playing, then the last thing that played, then anything at all. This is
- * why the media buttons keep working when you switch from Tidal to YouTube.
+ * why the media buttons keep working when you switch players.
  */
 export async function pickPlayer(hint?: string): Promise<string | null> {
   const players = await listPlayers();
@@ -282,8 +282,8 @@ async function cacheArt(url: string): Promise<string | undefined> {
   }
   // Write to a temporary file, then rename it into place. Rename is atomic, so
   // anyone reading `dest` sees no file or the whole image, never a partly
-  // written one. (Writing `dest` directly let a concurrent fetch or render read
-  // an empty file: "Input Buffer is empty".)
+  // written one. (Written directly, a concurrent fetch or render can read an
+  // empty file: "Input Buffer is empty".)
   const temp = `${dest}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
     await fs.mkdir(ART_CACHE_DIR, { recursive: true });
@@ -305,10 +305,10 @@ async function cacheArt(url: string): Promise<string | undefined> {
 /**
  * What a key face needs from one player, kept current by subscribe() from the
  * player's PropertiesChanged signal. Key faces read this and never make a
- * D-Bus call: before the cache, every refresh of a visible now-playing key
- * listed the bus's names, asked each player its status, and read status and
- * metadata again — about 6 ms of D-Bus work (measured), awaited
- * serially across a page repaint, so a hung player could stall every key.
+ * D-Bus call. Reading D-Bus on every refresh of a visible now-playing key —
+ * list the bus's names, ask each player its status, read status and metadata
+ * again — costs about 6 ms (measured), awaited serially across a page
+ * repaint, so a hung player could stall every key.
  *
  * Presses still read fresh (call() → pickPlayer()): a press is rare, and it
  * should act on the player as it is, as audio presses do.
@@ -416,8 +416,8 @@ type SignalSource = {
 
 /**
  * Fire `onChange` when any player's state changes, or when a player appears
- * or disappears. Watching every player rather than one avoids the classic bug
- * where the button goes stale because you restarted the music app.
+ * or disappears. Watching every player rather than one means a restarted
+ * player is picked up.
  *
  * Players are discovered once at start with ListNames, then from the bus's
  * NameOwnerChanged signal — no timer.
@@ -498,12 +498,9 @@ export function subscribe(onChange: () => void): () => void {
     if (attached.has(name) || stopped) return;
     const startedIn = generation;
     try {
-      // Through proxyFor(), so the player is built from STANDARD_MPRIS_XML.
-      // Until C1 this called getProxyObject() without it, so a Chromium
-      // player — which publishes no introspection data — got no listener and
-      // its key only caught up on the next refresh, despite the 2026-09-16
-      // fix saying otherwise. With faces reading this cache, a missing
-      // listener would mean a key that never updates at all.
+      // Through proxyFor(), so the player is built from STANDARD_MPRIS_XML: a
+      // Chromium player publishes no introspection data, and without it gets
+      // no listener — its key would never update.
       const obj = await proxyFor(name, OBJECT_PATH);
       if (startedIn !== generation || attached.has(name)) return;
       const props = obj.getInterface(PROPS_IFACE) as unknown as SignalSource;
@@ -511,7 +508,7 @@ export function subscribe(onChange: () => void): () => void {
       props.on('PropertiesChanged', handler);
       attached.set(name, { props, handler });
     } catch (err) {
-      // Not only "the player vanished before we attached", which is harmless.
+      // Not only the player vanishing before it was attached, which is harmless.
       warnOnce(name, `cannot follow its changes: ${(err as Error).message}`);
       return;
     }

@@ -69,7 +69,7 @@ export const page: ActionHandler = {
 /**
  * profile — switch the active profile on every connected deck.
  *
- *   { "type": "profile", "to": "FFXIV" }     by profile ID or name
+ *   { "type": "profile", "to": "Gaming" }    by profile ID or name
  *
  * Each deck the profile has a layout for goes to that layout's start page. A
  * deck it has no layout for keeps what it is showing.
@@ -92,7 +92,8 @@ export const profile: ActionHandler = {
  * nudges from its own level. The deck clamps the value to 5-100.
  *
  * A `delta` key draws `brightness-up` or `brightness-down`. The level is shown
- * only with `showLevel: true`, which is off by default.
+ * only with `showLevel: true` — off by default, so a default key is not a
+ * label drawn over an icon.
  */
 export const brightness: ActionHandler = {
   async execute(ctx, params: ActionDef) {
