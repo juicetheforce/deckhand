@@ -5,7 +5,7 @@
 import { parseCombo } from '../../../src/keymap.js';
 import type { StateSnapshot } from '../../../src/control/protocol.js';
 import type { DaemonView, DeckhandBridge, SharedImportReport, StoreView } from '../shared/bridge.js';
-import { iconUrl } from '../shared/icons.js';
+import { iconUrl, PAIR_ICON_FIELDS, type PairIconField } from '../shared/icons.js';
 
 /** Proof 0a: the daemon's keymap runs in the renderer, and a protocol type compiles here. */
 function sharedImports(): SharedImportReport {
@@ -1676,6 +1676,38 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   clear?.click();
   const cleared = await savedAs(4, { action: { ...labels, iconUnmuted: 'builtin:headset' } });
   out.micIcons = { afterMuted, afterUnmuted, gridShowsUnmuted, formSays, keySlotCurrent, cleared };
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+
+  // A latching toggle's two icons, chosen through the Icon tab's slots.
+  await selectKey(30);
+  if (!(await until(() => headings().includes('Toggle')))) throw new Error(`toggle: key 30 shows ${JSON.stringify(headings())}`);
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  if (!(await until(() => document.querySelector('.icon-slots') !== null))) throw new Error('toggle: the Icon tab has no slots');
+  const toggleSlot = (label: string) => {
+    const found = [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === label);
+    if (!found) throw new Error(`toggle: no "${label}" slot`);
+    return found;
+  };
+  const toggleSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  toggleSlot('While held down').click();
+  await sleep(100);
+  await chooseBuiltin('headset');
+  const toggleOn = await actionAs(30, { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset' });
+  toggleSlot('While up').click();
+  await sleep(100);
+  await chooseBuiltin('mic');
+  const toggleBoth = await actionAs(30, { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' });
+  out.toggleIcons = { toggleSlots, toggleOn, toggleBoth };
+  // Every pair field on the list gets past main's guard; only the key's action
+  // may refuse one it does not have. A field not on the list is refused by main.
+  const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', index: 30 };
+  const again = { iconOn: 'builtin:headset', iconOff: 'builtin:mic' } as Record<string, string>;
+  const pairGuard: Record<string, string> = {};
+  for (const field of [...PAIR_ICON_FIELDS, 'iconBogus']) {
+    const result = await api.commitIcon(at, { kind: 'file', path: again[field] ?? 'builtin:headset' }, null, field as PairIconField);
+    pairGuard[field] = result.ok ? 'ok' : result.error === 'not allowed' ? 'not allowed' : 'refused by the action';
+  }
+  out.pairGuard = pairGuard;
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
 
   // Now playing.

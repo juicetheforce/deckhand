@@ -8,6 +8,8 @@
  * app, so they are listed but never bundled.
  */
 
+import { PAIR_ICON_FIELDS } from './icons.js';
+
 export const BUNDLE_FORMAT = 'deckhand-export';
 /** Raised when a bundle changes in a way an older import could misread. */
 export const BUNDLE_VERSION = 1;
@@ -16,10 +18,11 @@ export const CONFIG_ENTRY = 'config.json';
 
 /**
  * Every config field that holds an icon: a key's own `icon`, and the state
- * pairs actions keep (src/shared/icons.ts, PairIconField). An export collects
- * these wherever they appear, not only where the editor shows them.
+ * pairs actions keep. Built from PAIR_ICON_FIELDS so a new pair is exported
+ * and imported without anyone remembering this list. An export collects these
+ * wherever they appear, not only where the editor shows them.
  */
-export const ICON_FIELDS = ['icon', 'iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused'] as const;
+export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS] as const;
 
 /** One icon path, exactly as the config writes it. */
 export interface BundledIcon {

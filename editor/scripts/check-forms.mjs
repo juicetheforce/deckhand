@@ -65,6 +65,7 @@ const BUTTONS = {
   14: { action: { type: 'hotkey', keys: 'ctrl+1' } },
   17: { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f23', state: 'up' } },
   19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 50 }, { type: 'media.control', method: 'next' }] } },
+  30: { action: { type: 'toggle', keys: 'shift' } },
 };
 const CONFIG = {
   decks: { [SERIAL]: {} },
@@ -152,6 +153,24 @@ if (r && !r.error) {
     const muted = previewed.find((p) => p.index === 4 && p.button.icon === 'builtin:speaker-muted');
     assert.ok(muted, `no preview of the muted icon on key 4: ${JSON.stringify(previewed)}`);
     assert.equal(muted.button.action, undefined, 'previewed with the action, which would draw the current state instead');
+  });
+  check("Toggle: both state icons are chosen through the Icon tab's slots and saved on the action", () => {
+    assert.deepEqual(r.toggleIcons, {
+      toggleSlots: ['Key icon', 'While held down', 'While up'],
+      toggleOn: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset' },
+      toggleBoth: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' },
+    });
+  });
+  check("every pair icon field gets past main's guard (only the key's action may refuse one); an unlisted field does not", () => {
+    assert.deepEqual(r.pairGuard, {
+      iconMuted: 'refused by the action',
+      iconUnmuted: 'refused by the action',
+      iconPlaying: 'refused by the action',
+      iconPaused: 'refused by the action',
+      iconOn: 'ok',
+      iconOff: 'ok',
+      iconBogus: 'not allowed',
+    });
   });
   check('Now playing: shows, art, pressing and idle label each write their one setting', () => {
     assert.deepEqual(r.mediaInfo, { type: 'media.info', show: 'title', showArt: false, pressAction: 'none', idleLabel: 'Quiet' });
@@ -300,6 +319,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     17: BUTTONS[17],
     18: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] } },
     19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] } },
+    30: { action: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' } },
   };
   assert.deepEqual(saved, expected);
 });

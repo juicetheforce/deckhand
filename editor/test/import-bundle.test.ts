@@ -121,6 +121,18 @@ await check('round trip to a new home: remapped to ~/, relocated from outside ho
   assert.equal(buttons[3].icon, 'builtin:play');
 });
 
+await check("a latching toggle's icons are relocated and rewritten like any other", async () => {
+  const toggle = configWith({ 0: { action: { type: 'toggle', keys: 'shift', iconOn: `${oldHome}/mic.png`, iconOff: '~/Pictures/dove.png' } } });
+  const plan = await planImport(readImport(await exportFromOldHome(toggle)));
+  assert.deepEqual(
+    plan.icons.map((i: { from: string; to: string }) => [i.from, i.to]),
+    [[`${oldHome}/mic.png`, '~/mic.png'], ['~/Pictures/dove.png', '~/Pictures/dove.png']],
+  );
+  const action = plan.config.profiles.ffxiv.layouts.SERIAL.pages.main.buttons[0].action;
+  assert.equal(action?.iconOn, '~/mic.png', 'iconOn not rewritten to the new home');
+  assert.equal(action?.iconOff, '~/Pictures/dove.png');
+});
+
 await check('the review facts: built-ins this version lacks, other strings naming the old home, profiles, decks', async () => {
   const plan = await planImport(readImport(await exportFromOldHome(CONFIG)));
   assert.deepEqual(plan.builtinsMissing, ['not-drawn-yet']);

@@ -66,6 +66,16 @@ await check('every icon field is found wherever it is: keys, action pairs, onRel
   assert.deepEqual(iconReferences(configWith({ 0: { icon: '~/x.png' }, 1: { icon: '~/x.png' } })), ['~/x.png']);
 });
 
+await check("a latching toggle's two icons are found and bundled", async () => {
+  const toggle = configWith({ 0: { action: { type: 'toggle', keys: 'shift', iconOn: '~/mic.svg', iconOff: 'builtin:toggle-off' } } });
+  assert.deepEqual(iconReferences(toggle), ['~/mic.svg', 'builtin:toggle-off']);
+  const { zip } = await buildExport(JSON.stringify(toggle, null, 2) + '\n', true);
+  const manifest = JSON.parse(strFromU8(unzipSync(zip)[MANIFEST_ENTRY]));
+  const bundled = manifest.icons.find((i: { path: string }) => i.path === '~/mic.svg');
+  assert.ok(bundled?.entry, `iconOn not bundled: ${JSON.stringify(manifest.icons)}`);
+  assert.deepEqual(Buffer.from(unzipSync(zip)[bundled.entry]), svg);
+});
+
 await check('with icons: config.json byte for byte, the manifest, and each file once, byte for byte', async () => {
   const { zip, manifest, iconFiles } = await buildExport(CONFIG_TEXT, true);
   const files = unzipSync(zip);

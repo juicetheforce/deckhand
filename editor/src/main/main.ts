@@ -17,7 +17,7 @@ import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, 
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
-import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, type PairIconField } from '../shared/icons.js';
+import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError } from './daemon-client.js';
@@ -290,9 +290,6 @@ async function commitIcon(
   if (preview) await daemonCall(() => daemon.previewClear(preview.serial, preview.key));
   return result;
 }
-
-/** Every pair icon field (src/shared/icons.ts), for checking what the renderer sends. */
-const PAIR_ICON_FIELDS: readonly unknown[] = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused'] satisfies PairIconField[];
 
 function isIconChoice(value: unknown): value is IconChoice {
   const v = value as IconChoice;
@@ -794,10 +791,10 @@ function registerIpc(): void {
   });
   ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown, slot: unknown) => {
     if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
-    if (slot !== null && !PAIR_ICON_FIELDS.includes(slot as PairIconField)) return { ok: false, error: 'not allowed' };
+    if (slot !== null && !isPairIconField(slot)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
     const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
-    return commitIcon(at, icon, target, slot as PairIconField | null);
+    return commitIcon(at, icon, target, slot);
   });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;

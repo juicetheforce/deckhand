@@ -23,7 +23,18 @@ export const BUILTIN_FOLDER = BUILTIN_PREFIX;
  * `media.control` between playing and paused. The daemon draws whichever
  * matches the state, and falls back to the key's own icon, then the default.
  */
-export type PairIconField = 'iconMuted' | 'iconUnmuted' | 'iconPlaying' | 'iconPaused' | 'iconOn' | 'iconOff';
+export const PAIR_ICON_FIELDS = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused', 'iconOn', 'iconOff'] as const;
+export type PairIconField = (typeof PAIR_ICON_FIELDS)[number];
+
+/**
+ * Whether a value names a pair icon. The one test for it: main's icon
+ * handler accepts exactly these, and export and import carry exactly these
+ * (ICON_FIELDS in backup.ts is built from the same list), so a field added
+ * above reaches all three.
+ */
+export function isPairIconField(value: unknown): value is PairIconField {
+  return (PAIR_ICON_FIELDS as readonly unknown[]).includes(value);
+}
 
 /** Which pair icons an action has; none for every other action. */
 export function pairIconFields(action: { type: string; method?: unknown } | undefined): readonly PairIconField[] {
