@@ -94,7 +94,10 @@ x.png` renders the editor to a PNG, and `node editor/scripts/empty-state.mjs
 `no-layout`, `deck-unplugged`), plus `normal` as the control case, against a
 scratch config, state directory and socket — so those states can be seen
 without unplugging a deck. Ctrl-C to finish: it closes to the tray like the
-installed one.
+installed one. `node editor/scripts/demo.mjs` opens the real editor on an
+invented setup — fake decks, layout, audio devices, player, icon folders and
+bookmarks, under its own `HOME` and a private session bus — for the README's
+screenshots; nothing in it is anyone's real configuration. Ctrl-C to finish.
 
 Traps in the checks themselves, each hit more than once:
 
@@ -234,6 +237,7 @@ Each of these looks arbitrary and is not.
 | `deckChoices()` / `knownDecks()` / `deckOptions()` | **a deck that is not plugged in is not listed, anywhere.** The editor's device lists derive from the first two, and Settings' Default deck list (`deckOptions()`, `editor/src/shared/settings.ts`) follows the same rule separately. The *stored* default may still name an absent deck. Accepted cost: unplugging the deck being edited moves the editor off it |
 | the config watcher, or anything written near `config.json` | it is safe only because it is non-recursive and filters on the file name |
 | a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
+| `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 
 ## Style
 

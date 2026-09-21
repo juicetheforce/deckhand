@@ -25,6 +25,11 @@
  * does, so "the rest still move" is testable. Playback streams
  * (`list sink-inputs`) are none.
  *
+ * With FAKE_PACTL_DEVICES naming a JSON file `{ "sinks": [...], "sources":
+ * [...] }` in the same shape, those devices are listed instead of the ones
+ * below — for the editor's demo (editor/scripts/demo.mjs), whose lists should
+ * look like a desk, not like test cases. No test sets it.
+ *
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
  */
@@ -35,7 +40,9 @@ if (process.env.FAKE_PACTL_LOG) appendFileSync(process.env.FAKE_PACTL_LOG, args.
 
 const port = (name, availability) => ({ name, description: name, type: 'Unknown', priority: 1, availability_group: '', availability });
 
-const sinks = [
+const replacement = process.env.FAKE_PACTL_DEVICES ? JSON.parse(readFileSync(process.env.FAKE_PACTL_DEVICES, 'utf8')) : null;
+
+const sinks = replacement?.sinks ?? [
   // A local device with an available port.
   { index: 1, name: 'alsa_output.usb-Example_Headset-00.analog-stereo', description: 'Example Headset Analog Stereo', flags: ['HARDWARE', 'DECIBEL_VOLUME', 'LATENCY'], monitor_source: 'alsa_output.usb-Example_Headset-00.analog-stereo.monitor', ports: [port('analog-output', 'available')], active_port: 'analog-output', mute: false, volume: { 'front-left': { value_percent: '40%' } } },
   // The same device's mono sink: both are listed; choosing between them is the user's call.
@@ -48,7 +55,7 @@ const sinks = [
   { index: 5, name: 'raop_sink.Example-Speaker.local.192.0.2.10.7000', description: 'Kitchen Speaker', flags: ['NETWORK', 'DECIBEL_VOLUME', 'LATENCY'], monitor_source: 'raop_sink.Example-Speaker.local.192.0.2.10.7000.monitor', ports: [], active_port: null, mute: false },
 ];
 
-const sources = [
+const sources = replacement?.sources ?? [
   // Monitors of every sink: left out of the source list.
   ...sinks.map((s, i) => ({ index: 100 + i, name: `${s.name}.monitor`, description: `Monitor of ${s.description}`, flags: s.flags, monitor_source: s.name, ports: [], active_port: null, mute: false })),
   // Real inputs.
