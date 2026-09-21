@@ -52,16 +52,18 @@ await daemon.attach(SERIAL, new FakeDeck());
 const session = daemon.sessions.get(SERIAL);
 
 // Two real orderings, made wide enough that the checks see them every run
-// rather than by luck (both were missed by a deliberate break otherwise):
+// rather than by luck (at their natural width a deliberate break of either
+// goes uncaught):
 // 1. The daemon answers a switch before its `state` event reaches the
 //    client. Delay state events, so a breadcrumb that resumes following on the
 //    reply always jumps back.
 const notify = daemon.control.notify.bind(daemon.control);
 daemon.control.notify = (name, snapshot) => (name === 'state' ? setTimeout(() => notify(name, snapshot), 150) : notify(name, snapshot));
 // 2. A reload takes the decks time to apply, and the daemon announces it only
-//    once they have it (src/index.ts reload(); before Ship it announced first,
-//    and the editor still retries showing a new page for that reason). Hold
-//    the apply back, so anything acting before the announcement fails.
+//    once they have it (src/index.ts reload()). An older daemon announced
+//    first, which is why the editor still retries showing a new page
+//    (showPage in src/main/main.ts). Hold the apply back, so anything acting
+//    before the announcement fails.
 const RELOAD_APPLY_DELAY_MS = 300;
 
 // Reload as src/index.ts does (the harness's reloadLikeTheDaemon).

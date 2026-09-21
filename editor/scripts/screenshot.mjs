@@ -3,7 +3,7 @@
 // installed daemon. Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused] [--kept <n>]
 //
 // --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
 // audio device forms; without it the daemon has no audio state to list.
@@ -26,11 +26,10 @@ import { runElectronCheck } from './lib/run-electron-check.mjs';
 
 // Keep the harness's live key faces (now playing, media) off the real session
 // bus, where they would read whatever players are running on the desktop: run
-// under dbus-run-session, a private and empty bus. (Pointing the bus address at
-// nothing instead crashed the daemon's mpris service — see docs/code-state.md.)
+// under dbus-run-session, a private and empty bus.
 // The private bus has no service directories: Electron asks the bus for the
 // desktop portal and accessibility at startup, and a normal session config
-// starts xdg-desktop-portal-kde and ksecretd on it, which then outlive the run
+// starts xdg-desktop-portal-kde and ksecretd on it, which then outlive the run.
 // With nothing to activate, those requests just fail.
 if (!process.env.DECKHAND_SCREENSHOT_PRIVATE_BUS) {
   const busConfig = path.join(os.tmpdir(), `deckhand-screenshot-bus-${process.pid}.conf`);
@@ -70,8 +69,9 @@ const { values } = parseArgs({
     deck: { type: 'string' },
     disconnected: { type: 'string' },
     tab: { type: 'string' },
-    // 'newprofile' or 'delete': open one of B1's panels before capturing;
-    // 'keymenu': B3's right-click menu on the last --select key;
+    // 'newprofile' or 'delete': open the New profile or Delete page panel
+    // before capturing; 'keymenu': the key's right-click menu on the last
+    // --select key;
     // 'keymenu-page' / 'keymenu-device' with that section opened.
     open: { type: 'string' },
     // Select a page tab by its label before anything else.
@@ -116,7 +116,7 @@ if (values['fake-audio']) {
 const daemon = await startDaemon(scratch, config, audioDeps);
 const serials = new Set(Object.values(config.profiles).flatMap((p) => Object.keys(p.layouts)));
 for (const serial of serials) {
-  if (serial === values.disconnected) continue; // left unattached, to show a disconnected deck
+  if (serial === values.disconnected) continue; // left unattached, as if unplugged
   const highest = Math.max(
     -1,
     ...Object.values(config.profiles)

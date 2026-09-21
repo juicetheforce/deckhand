@@ -36,7 +36,7 @@ const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audi
 await audio.refreshCache();
 const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 // The fake input helper, started as the daemon starts the real one: Test Run's
-// hotkey steps wait for it to be ready (without this they waited forever).
+// hotkey steps wait for it to be ready (without it they wait forever).
 const { input } = await import(pathToFileURL(path.join(repoRoot, 'dist/input.js')).href);
 input.start();
 

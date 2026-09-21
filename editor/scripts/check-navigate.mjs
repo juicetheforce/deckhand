@@ -1,9 +1,9 @@
 // The page and profile inspectors, end to end in real Electron.
 //
 // What this is for: a key bound in the editor has to actually move the deck
-// when it is pressed. Everything up to now proved the inspector writes
-// plausible JSON; this presses the key on a fake deck through the daemon's own
-// DeckSession and watches what happens.
+// when it is pressed. Writing plausible JSON is not enough: this presses the
+// key on a fake deck through the daemon's own DeckSession and watches what
+// happens.
 //
 // Usage: npm run check:navigate   (builds first)
 
@@ -68,8 +68,7 @@ const stopWatching = await reloadLikeTheDaemon(daemon);
 //
 // It waits for the daemon to have *reloaded* the key as well as for the
 // signal: the editor autosaves 400 ms after the last edit, so the press would
-// otherwise land on a key the daemon has never read (which is exactly what
-// happened on the first run).
+// otherwise land on a key the daemon has never read.
 let pressedProfileKey = false;
 const presser = setInterval(() => {
   const session = daemon.sessions.get(SERIAL);

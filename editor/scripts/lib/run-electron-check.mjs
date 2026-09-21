@@ -16,7 +16,8 @@ const editorRoot = installedEditor ?? path.join(import.meta.dirname, '..', '..')
 const electronBinary = installedEditor ? path.join(installedEditor, 'electron', 'electron') : electronPath;
 
 /**
- * @param {string} check  "shared" or "bridge"
+ * @param {string} check  the DECKHAND_EDITOR_CHECK mode, one per check script
+ *   ("shared", "bridge", "icons", "empty", "empty-select", "screenshot", …)
  * @param {{ configDir: string, stateDir: string, socket: string }} paths
  * @param {number} [timeoutMs]
  * @param {Record<string, string>} [extraEnv]  more environment for Electron (check-icons sets HOME)
@@ -36,7 +37,7 @@ export async function runElectronCheck(check, { configDir, stateDir, socket }, t
   if (!installedEditor) env.DECKHAND_BUILTIN_ICONS ??= path.join(editorRoot, '..', 'assets', 'icons');
   // VS Code sets ELECTRON_RUN_AS_NODE=1 for processes started from its
   // extension host; it turns the Electron binary into plain Node, with no
-  // BrowserWindow. Found when the first run of the shared-import check failed.
+  // BrowserWindow.
   delete env.ELECTRON_RUN_AS_NODE;
 
   const result = await new Promise((resolve, reject) => {

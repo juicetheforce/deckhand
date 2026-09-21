@@ -3,8 +3,8 @@
 // Driven like check-settings.mjs (scripts/lib/drive-editor.mjs), on a private
 // bus, against the control-socket test harness. HOME is a scratch directory —
 // for this process and the editor — so `~/` icon paths and the manifest's
-// `home` are scratch paths, never the maintainer's. The system save dialog cannot be
-// driven in a hidden window, so the editor is started with
+// `home` are scratch paths, never the real home directory's. The system save
+// dialog cannot be driven in a hidden window, so the editor is started with
 // DECKHAND_CHECK_EXPORT_PATH and DECKHAND_CHECK_IMPORT_PATH, which only a check
 // mode honours; everything else is the button a person clicks.
 //
@@ -338,8 +338,7 @@ const keptButton = (file, label) =>
   bare.profiles.default.layouts[XL].pages.main.buttons[10] = { label: 'AT-THE-CAP' };
   await fs.writeFile(importPath, JSON.stringify(bare, null, 2));
   // The configuration about to be replaced must not already be kept, or there
-  // is nothing to keep and the cap does not apply (which is the rule working,
-  // and is what this check first caught by accident).
+  // is nothing to keep and the cap does not apply (which is the rule working).
   await inPage(editor, 'editor', `window.deckhand.apply({ kind: 'setLabel', at: ${at}, label: 'NOT-YET-KEPT' }).then((x) => x.ok)`);
   await until(async () => (await fs.readFile(configFile, 'utf8')).includes('NOT-YET-KEPT'));
   r.capNeedsAKeptCopy = !(

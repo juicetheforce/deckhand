@@ -1,11 +1,11 @@
 // The editor as a launcher, end to end in real Electron.
 //
 // Runs itself under dbus-run-session on a private bus with no service
-// directories, so the tray icon registers there and never in the maintainer's panel —
-// and nothing the check starts outlives it. The editor runs in its "tray"
-// check mode (src/main/main.ts): the renderer is the ordinary editor, and this
-// script drives the lifecycle over stdin, one command per line, through the
-// tray's real click and menu handlers and a real window close.
+// directories, so the tray icon registers there and never in the desktop's
+// panel — and nothing the check starts outlives it. The editor runs in its
+// "tray" check mode (src/main/main.ts): the renderer is the ordinary editor,
+// and this script drives the lifecycle over stdin, one command per line,
+// through the tray's real click and menu handlers and a real window close.
 //
 // What is checked from outside the editor, not only from its own report: the
 // harness daemon sees the socket close and reopen; config.json holds an edit

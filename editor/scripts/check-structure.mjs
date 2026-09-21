@@ -1,7 +1,7 @@
-// Profiles and pages, end to end in real Electron against two
-// fake decks. The four things the maintainer checks on the real decks are checked here
-// first: opening switches nothing, a profile moves both decks, a page change
-// from elsewhere moves the breadcrumb, and closing changes nothing.
+// Profiles and pages, end to end in real Electron against two fake decks. The
+// four things a manual check on real decks looks at are checked here first:
+// opening switches nothing, a profile moves both decks, a page change from
+// elsewhere moves the breadcrumb, and closing changes nothing.
 //
 // Two decks is the point. check:live has one, and one deck cannot show the
 // difference between "the profile switched this deck" and "the profile
@@ -131,10 +131,9 @@ if (r && !r.error) {
   });
 
   check('the new-profile control offers the connected decks, all ticked', () => {
-    // Changed 2026-09-20 (the maintainer, scope §7): a deck that is not plugged in is
-    // not listed anywhere, so "Spare deck" is absent rather than shown with a
-    // "— not connected" marker. Everything offered is therefore connected,
-    // and so everything offered starts ticked.
+    // A deck that is not plugged in is not listed anywhere, so "Spare deck" is
+    // absent. Everything offered is connected, and so everything offered
+    // starts ticked.
     assert.deepEqual(r.ticksShown, ['Big deck', 'Little deck'], 'names come from config');
     assert.deepEqual(r.ticksCheckedByDefault, [true, true], 'connected decks start ticked, and only those');
   });

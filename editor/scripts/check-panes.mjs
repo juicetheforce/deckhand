@@ -1,7 +1,8 @@
 // The resizable panes in real Electron.
 //
 // Drags each divider through the UI and checks the limits. Widths are
-// deliberately **not** persisted, so this also checks the
+// deliberately **not** persisted: the window itself resizes, and a width is
+// set once in passing, so it is not worth storing. So this also checks the
 // editor opens at its defaults and writes no widths anywhere.
 //
 // Usage: npm run check:panes   (builds first)

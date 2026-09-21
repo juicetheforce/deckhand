@@ -1,6 +1,6 @@
 // Bulk operations — multi-select, duplicate, copy, paste, clear and
-// their shortcuts — end to end in real Electron against two fake decks shaped
-// like the real ones (XL 8×4, Original V2 5×3).
+// their shortcuts — end to end in real Electron against two fake decks, an XL
+// (8×4) and an Original V2 (5×3).
 //
 // Usage: npm run check:bulk   (builds first)
 

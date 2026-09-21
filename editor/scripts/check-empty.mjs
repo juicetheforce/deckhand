@@ -1,12 +1,11 @@
 // The editor's empty state, in real Electron.
 //
-// the maintainer found this by opening the editor on a machine with an empty
-// configuration and no hardware: three different situations — the daemon not
-// reachable, every deck unplugged, and nothing ever configured — all rendered
-// the same per-deck layout sentence, an empty device dropdown, no connection
-// indicator, and a button offering to "add a layout for this deck" for a deck
-// that did not exist. All three have been possible since M1; nobody noticed
-// because a deck has always been attached to the working machine.
+// Three situations must each say something different: the daemon not
+// reachable, every deck unplugged, and nothing ever configured. The failure
+// this guards against is all three rendering the same per-deck layout
+// sentence, an empty device dropdown, no connection indicator, and a button
+// offering to "add a layout for this deck" for a deck that does not exist. A
+// bug here goes unseen on any machine that always has a deck attached.
 //
 // Each situation gets its own daemon, its own config and its own editor
 // window, because they differ in how the editor *starts up*, not in anything
@@ -200,9 +199,8 @@ check('choosing the uncovered deck shows the same thing', () => {
   assert.match(chosen.addButton ?? '', /Add a layout for/);
 });
 check('say it once: the toolbar badge summarises, the card explains — two voices, not three', () => {
-  // scope §7: the badge is "the one summary" and is kept; the dropdown's
-  // per-row clause was dropped on 2026-09-20; the card is this piece's, and
-  // it is the only one that names what to do about it.
+  // The toolbar badge is the one summary; the device dropdown carries no
+  // per-row clause; the card is the only one that says what to do about it.
   assert.equal(chosen.warnBadges.length, 1, 'the ⚠ summary');
   assert.match(chosen.warnBadges[0], /not covered/);
   assert.equal(chosen.deviceOptions.filter((o) => o.includes('no layout')).length, 0, 'the dropdown clause stays gone');
@@ -211,11 +209,10 @@ check('say it once: the toolbar badge summarises, the card explains — two voic
 // ------------------------------- 5. a configured deck that is not plugged in
 
 console.log('\n5. this profile covers a deck that is not plugged in');
-// `[decided]` the maintainer 2026-09-20: it is not listed at all. "The list is the list"
-// — a deck's absence from it is what says it is missing, and a deck that has
-// been sold or replaced would otherwise sit there for ever. The state this
-// case used to check, `deck-unplugged`, is now unreachable by clicking: it
-// survives only as a guard for the instant the daemon's two lists disagree.
+// Not listed at all: a deck's absence from the list is what says it is
+// missing, and a sold or replaced deck would otherwise sit there for ever. The
+// `deck-unplugged` empty state is unreachable by clicking; it survives only as
+// a guard for the instant the daemon's two lists disagree.
 const gone = await situation({
   check: 'empty-select',
   config: configWith(XL, V2),
@@ -254,11 +251,12 @@ for (const [name, report] of [['no daemon', down], ['nothing configured', fresh]
   });
 }
 // And with nothing plugged in, the dropdown says so rather than listing
-// configured-but-absent decks (the case the maintainer raised: sold and replaced decks).
+// configured-but-absent decks (a sold or replaced deck would otherwise stay
+// listed).
 check('all-unplugged lists no decks at all, though two are configured', () => {
   assert.deepEqual(unplugged.deviceOptions, ['No decks']);
   assert.equal(unplugged.deviceDisabled, true);
-  // The card is now the only place those decks are named.
+  // The card is the only place those decks are named.
   assert.match(unplugged.detail, /My XL and My V2/);
 });
 

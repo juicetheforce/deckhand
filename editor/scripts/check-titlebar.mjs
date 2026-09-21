@@ -7,8 +7,8 @@
 //
 // What this cannot check: anything the compositor does — dragging, resizing
 // from the edges, double-click to maximise, the right-click window menu, and
-// focus. Check windows are never shown, so they are never focused; that is
-// the maintainer's to look at on the installed editor (docs/code-state.md).
+// focus. Check windows are never shown, so they are never focused; those need
+// checking by hand on an installed editor.
 //
 // Usage: npm run check:titlebar   (builds first)
 
@@ -129,9 +129,10 @@ try {
   r.restored = await until(async () => (await stateOf(editor)).maximised === false, 5000);
   r.labelWhenRestored = await until(async () => (await middleLabel(editor)) === 'Maximise', 5000);
 
-  // Minimise: that main was asked, and accepted it. Not whether the window ended up
-  // minimised — a check window is never shown, and minimising a window that was
-  // never mapped only sometimes takes (1 run in 6); that is the maintainer's to see.
+  // Minimise: that main was asked, and accepted it. Not whether the window
+  // ended up minimised — a check window is never shown, and minimising a window
+  // that was never mapped only sometimes takes (1 run in 6); that needs
+  // checking by hand.
   await inPage(editor, 'editor', clickBar('Minimise'));
   r.minimiseObeyed = await until(() => editor.reports.some((x) => x.event === 'windowControl' && x.action === 'minimise' && x.from === 'editor' && x.obeyed), 5000);
 

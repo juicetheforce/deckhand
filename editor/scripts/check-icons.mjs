@@ -95,8 +95,8 @@ const daemon = await startDaemon(scratch, CONFIG);
 const deck = new FakeDeck();
 await daemon.attach(SERIAL, deck);
 
-// Held back so the ordering below is seen every run: with the old order (the
-// `config` event before the decks had the reload), every icon choice cleared
+// Held back so the ordering below is exercised every run: if the `config`
+// event came before the decks had the reload, every icon choice would clear
 // its preview while the deck still held the old icon.
 const RELOAD_APPLY_DELAY_MS = 300;
 // Reload as src/index.ts does (the harness's reloadLikeTheDaemon).
@@ -187,8 +187,6 @@ if (r && !r.error) {
   });
   check("a key with an action and no icon draws its default in the grid; library rows draw theirs, all loaded", () => {
     assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
-    // 18 since 2026-09-17 (Cycle inputs); 19 since 2026-09-20 (M7's Toggle,
-    // which draws the up half of its pair in the library).
     assert.equal(r.libraryIcons.length, 19, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
     assert.ok(r.libraryIcons.includes('toggle-off'), 'Toggle should draw the up half of its pair');
     assert.ok(r.libraryIcons.includes('press-release') && r.libraryIcons.includes('now-playing'), JSON.stringify(r.libraryIcons));

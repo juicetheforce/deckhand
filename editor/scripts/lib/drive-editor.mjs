@@ -1,7 +1,8 @@
 // Drive a real editor from outside, for check-tray.mjs and check-settings.mjs:
 // the editor runs in its "tray" check mode (src/main/main.ts), takes one
 // command per line on stdin, and reports as `DECKHAND_TRAY {json}` on stdout.
-// It runs on a private session bus, so a tray icon never lands in the maintainer's panel.
+// It runs on a private session bus, so a tray icon never lands in the desktop's
+// panel.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';

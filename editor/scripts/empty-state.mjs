@@ -1,8 +1,7 @@
 // Open a real editor window in one of the empty states, to look at. Not a
 // check — check-empty.mjs is the check; this is for eyes.
 //
-// The point of it: the states this piece exists for cannot be seen on the
-// working machine without unplugging both decks, and the maintainer would rather not.
+// These states otherwise can only be seen by unplugging every deck.
 // Everything here is scratch — its own config, its own state directory and
 // its own socket — so the installed daemon keeps driving the real decks and
 // the installed editor is untouched. Because Electron's single-instance lock
@@ -19,8 +18,8 @@
 //   never-configured  the empty configuration, nothing plugged in
 //   all-unplugged     two decks configured, neither plugged in
 //   no-layout         a fresh install with one deck plugged into it
-//   deck-unplugged    two decks configured, one of them missing — which is
-//                     now shown by that deck simply not being in the list
+//   deck-unplugged    two decks configured, one of them missing — shown by
+//                     that deck being absent from the list
 //   normal            a configured deck, connected — the control case
 //
 // Press Ctrl-C in this terminal to finish. Closing the window is not enough:
@@ -153,10 +152,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     // leaving a window behind pointed at a directory just deleted is worse
     // than an abrupt exit for a scratch process.
     child.kill('SIGKILL');
-    // Wait for it to be gone before deleting. Electron's helper processes
-    // outlive the one that is killed by a moment and write to userData on
-    // their way out, which recreated the directory after it was removed and
-    // left an empty one behind every time.
+    // Wait for it to be gone before deleting (see the top of the file).
     void Promise.race([exited, new Promise((r) => setTimeout(r, 3000))])
       .then(() => cleanUp())
       .then(() => process.exit(0));
