@@ -4,6 +4,7 @@
 import { cpSync, mkdirSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { build } from 'esbuild';
+import { bundledPackages, lockPackages, writeNotices } from './third-party-notices.mjs';
 
 const root = path.join(import.meta.dirname, '..');
 
@@ -13,17 +14,18 @@ const common = {
   target: 'node22',
   external: ['electron'],
   sourcemap: true,
+  metafile: true,
   logLevel: 'warning',
 };
 
-await build({
+const main = await build({
   ...common,
   entryPoints: [path.join(root, 'src/main/main.ts')],
   outfile: path.join(root, 'dist/main/main.js'),
   format: 'esm',
 });
 
-await build({
+const preload = await build({
   ...common,
   entryPoints: [path.join(root, 'src/preload/preload.ts')],
   outfile: path.join(root, 'dist/preload/preload.cjs'),
@@ -38,3 +40,13 @@ mkdirSync(path.join(root, 'dist/icons'), { recursive: true });
 for (const file of readdirSync(logoPng).filter((f) => f.startsWith('tray'))) {
   cpSync(path.join(logoPng, file), path.join(root, 'dist/icons', file));
 }
+
+// The licences of everything bundled (third-party-notices.mjs says why).
+writeNotices(
+  [
+    ...lockPackages(root),
+    ...bundledPackages(main.metafile, process.cwd()),
+    ...bundledPackages(preload.metafile, process.cwd()),
+  ],
+  path.join(root, 'dist/THIRD-PARTY-NOTICES.txt'),
+);

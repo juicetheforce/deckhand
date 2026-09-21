@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Deckhand config editor (Electron). A config producer only: it writes config.json and talks to the daemon's socket.",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "main": "dist/main/main.js",
   "desktopName": "io.github.juicetheforce.Deckhand.desktop",

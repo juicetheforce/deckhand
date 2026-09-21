@@ -703,7 +703,8 @@ build_and_stage() {
 # directory, the editor's built-in icon lookup finds the daemon's
 # assets/icons/ (editor/src/main/builtin-icons.ts).
 #
-# Kept: dist/{main,preload,renderer}/, package.json (Electron reads "main" and
+# Kept: dist/{main,preload,renderer}/, dist/THIRD-PARTY-NOTICES.txt (the
+# licences of what the bundles contain), package.json (Electron reads "main" and
 # "type" from it) and Electron's own runtime, moved to editor/electron/. The
 # editor needs no other package at runtime: esbuild and Vite bundle everything
 # but electron itself.
@@ -715,7 +716,7 @@ build_editor() {
   cp "$REPO_DIR/editor/package.json" "$REPO_DIR/editor/package-lock.json" \
      "$REPO_DIR/editor/tsconfig.main.json" "$REPO_DIR/editor/tsconfig.renderer.json" \
      "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
-  cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
+  cp "$REPO_DIR/editor/scripts/build-main.mjs" "$REPO_DIR/editor/scripts/third-party-notices.mjs" "$editor_dir/scripts/"
   # The tray icon's PNGs, which the editor build copies into its dist/; the
   # title bar's logo, which Vite bundles into dist/renderer/;
   # and the application icon, png/apps/ and deckhand.svg, which
@@ -740,7 +741,7 @@ build_editor() {
   )
   [ -x "$editor_dir/electron/electron" ] || die "the editor's Electron binary is missing from $editor_dir/electron"
   check_electron_libraries "$editor_dir/electron/electron"
-  [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] && [ -f "$editor_dir/dist/icons/tray.png" ] \
+  [ -f "$editor_dir/dist/main/main.js" ] && [ -f "$editor_dir/dist/renderer/index.html" ] && [ -f "$editor_dir/dist/icons/tray.png" ] && [ -f "$editor_dir/dist/THIRD-PARTY-NOTICES.txt" ] \
     || die "the editor did not build into $editor_dir/dist"
 }
 
