@@ -46,7 +46,7 @@ export function SettingsWindow() {
         <select
           id="settings-default-deck"
           className="settings-select"
-          value={settings.defaultDeck ?? ''}
+          value={decks.some((d) => d.serial === settings.defaultDeck) ? settings.defaultDeck! : ''}
           onChange={(e) => change({ defaultDeck: e.target.value === '' ? null : e.target.value })}
         >
           <option value="">Automatic</option>

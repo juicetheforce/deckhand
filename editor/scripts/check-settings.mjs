@@ -145,6 +145,34 @@ await until(async () => (await stateOf(editor)).windowOpen);
 r.reopensOn = await openDeck(editor);
 r.accentAfterReopen = await editorAccent(editor);
 
+// Unplug the XL. The setting still names it — unplugging must not lose the
+// choice — but the list offers only what is plugged in, and until the XL is
+// back the editor opens as Automatic would. Plugged back in, it opens on the XL.
+await daemon.sessions.get(XL).close();
+daemon.sessions.delete(XL);
+daemon.events.state();
+r.unpluggedMovesToV2 = await until(async () => (await openDeck(editor)) === V2);
+await openSettings(editor);
+r.unpluggedShown = await inPage(
+  editor,
+  'settings',
+  `({ options: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent), value: document.querySelector('#settings-default-deck').value })`,
+);
+r.unpluggedStillSaved = (await prefs()).defaultDeck;
+await inPage(editor, 'settings', clickButton('Done'));
+await until(async () => !(await stateOf(editor)).settingsOpen);
+editor.send('close');
+await until(async () => !(await stateOf(editor)).windowOpen);
+editor.send('click');
+await until(async () => (await stateOf(editor)).windowOpen);
+r.unpluggedReopensOn = await openDeck(editor);
+await daemon.attach(XL, new FakeDeck());
+editor.send('close');
+await until(async () => !(await stateOf(editor)).windowOpen);
+editor.send('click');
+await until(async () => (await stateOf(editor)).windowOpen);
+r.replugReopensOn = await until(async () => (await openDeck(editor)) === XL);
+
 // Reset to defaults: all three back, the accent gone from the editor.
 await openSettings(editor);
 await inPage(editor, 'settings', clickButton('Reset to defaults'));
@@ -197,6 +225,15 @@ check('closing the editor closes the settings window with it', () => {
 check('reopened, the editor opens on the Default deck (the XL), in the chosen accent', () => {
   assert.equal(r.reopensOn, XL);
   assert.equal(r.accentAfterReopen, 'purple');
+});
+check('with the XL unplugged the setting still names it, but the list offers only the V2 and shows Automatic', () => {
+  assert.equal(r.unpluggedMovesToV2, true);
+  assert.deepEqual(r.unpluggedShown, { options: ['Automatic', 'Deck V2'], value: '' });
+  assert.equal(r.unpluggedStillSaved, XL);
+});
+check('reopened with the XL unplugged it opens on the first connected deck; with the XL back, on the XL', () => {
+  assert.equal(r.unpluggedReopensOn, V2);
+  assert.equal(r.replugReopensOn, true);
 });
 check('Reset to defaults puts all three back, on disk, in the window and in the editor', () => {
   assert.equal(r.reset, true);

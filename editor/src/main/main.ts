@@ -630,7 +630,7 @@ function registerIpc(): void {
   });
   ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
     if (!fromSettingsWindow(event)) return [];
-    return deckOptions(store?.state().config ?? null, daemon.view().decks, (await appSettings()).defaultDeck);
+    return deckOptions(store?.state().config ?? null, daemon.view().decks);
   });
   // --- Export (M5 piece 1) ---
   ipcMain.handle('exportConfig', async (event, includeIcons: unknown): Promise<ExportResult> => {

@@ -64,31 +64,31 @@ export function cleanSettingsPatch(patch: unknown): Partial<AppSettings> {
   return out;
 }
 
-/** A deck the Default deck setting can name. */
+/** A deck the Default deck setting offers. */
 export interface DeckOption {
   serial: string;
   /** Its name in config, else the model's product name, else the serial. */
   label: string;
-  connected: boolean;
 }
 
 /**
- * The decks the Default deck setting offers: every deck config.json knows —
- * named, or with a layout in any profile — then any connected deck it does
- * not. The one it is set to is always offered, even if nothing else knows it
- * any more, so opening the window never quietly changes the setting.
+ * The decks the Default deck setting offers: the connected ones, in the order
+ * config.json knows them, then any it does not. A deck that is not plugged in
+ * is not listed, like every other device list in the editor.
+ *
+ * The saved setting can still name an absent deck, so unplugging it does not
+ * lose the choice: this list only leaves it out. While it is absent the editor
+ * opens as Automatic would, on the first connected deck with a layout
+ * (reconcileSelection), and on the chosen deck again once it is back.
  */
-export function deckOptions(config: Config | null, decks: DecksResult | null, current: string | null): DeckOption[] {
-  const serials: string[] = [];
-  const add = (serial: string) => {
-    if (!serials.includes(serial)) serials.push(serial);
-  };
-  for (const serial of Object.keys(config?.decks ?? {})) add(serial);
-  for (const profile of Object.values(config?.profiles ?? {})) for (const serial of Object.keys(profile.layouts ?? {})) add(serial);
-  for (const deck of decks ?? []) add(deck.serial);
-  if (current !== null) add(current);
-  return serials.map((serial) => {
-    const geometry = decks?.find((d) => d.serial === serial);
-    return { serial, label: config?.decks?.[serial]?.name ?? geometry?.productName ?? serial, connected: geometry !== undefined };
-  });
+export function deckOptions(config: Config | null, decks: DecksResult | null): DeckOption[] {
+  const known = [...Object.keys(config?.decks ?? {}), ...Object.values(config?.profiles ?? {}).flatMap((p) => Object.keys(p.layouts ?? {}))];
+  const connected = [...(decks ?? [])].sort((a, b) => rank(known, a.serial) - rank(known, b.serial));
+  return connected.map((deck) => ({ serial: deck.serial, label: config?.decks?.[deck.serial]?.name ?? deck.productName ?? deck.serial }));
+}
+
+/** Where a serial first appears in config, or after all of them if it does not. */
+function rank(known: string[], serial: string): number {
+  const at = known.indexOf(serial);
+  return at === -1 ? known.length : at;
 }

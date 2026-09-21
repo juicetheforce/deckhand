@@ -41,26 +41,27 @@ await check('the accents are the four of mockup 6a, blue first', () => {
   assert.deepEqual(ACCENTS.map((a) => [a.name, a.hex]), [['blue', '#5b6ee8'], ['purple', '#8b5fd6'], ['teal', '#2e9e8f'], ['sky', '#4a8fd9']]);
 });
 
-await check('Default deck offers named decks, decks with a layout, connected decks, and the one it is set to — named where config names them', () => {
+await check('Default deck offers only connected decks — in config order, then any config does not know — named where config names them', () => {
   const config = {
     decks: { NAMED: { name: 'Stream Deck XL' } },
     profiles: { a: { name: 'A', layouts: { NAMED: { pages: {} }, LAYOUT_ONLY: { pages: {} } } }, b: { name: 'B', layouts: { OTHER_PROFILE: { pages: {} } } } },
   } as unknown as Config;
   const decks = [
-    { serial: 'NAMED', productName: 'Stream Deck XL' },
     { serial: 'PLUGGED_IN', productName: 'Stream Deck Mini' },
+    { serial: 'OTHER_PROFILE', productName: 'Stream Deck' },
+    { serial: 'NAMED', productName: 'Stream Deck XL' },
   ] as unknown as DecksResult;
   assert.deepEqual(
-    deckOptions(config, decks, 'GONE').map((d) => [d.serial, d.label, d.connected]),
+    deckOptions(config, decks).map((d) => [d.serial, d.label]),
     [
-      ['NAMED', 'Stream Deck XL', true],
-      ['LAYOUT_ONLY', 'LAYOUT_ONLY', false],
-      ['OTHER_PROFILE', 'OTHER_PROFILE', false],
-      ['PLUGGED_IN', 'Stream Deck Mini', true],
-      ['GONE', 'GONE', false],
+      ['NAMED', 'Stream Deck XL'],
+      ['OTHER_PROFILE', 'Stream Deck'],
+      ['PLUGGED_IN', 'Stream Deck Mini'],
     ],
   );
-  assert.deepEqual(deckOptions(null, null, null), []);
+  // LAYOUT_ONLY is configured and not plugged in: not offered.
+  assert.deepEqual(deckOptions(config, null), []);
+  assert.deepEqual(deckOptions(null, null), []);
 });
 
 console.log(failures === 0 ? '\nsettings: all checks passed' : `\nsettings: ${failures} check(s) failed`);
