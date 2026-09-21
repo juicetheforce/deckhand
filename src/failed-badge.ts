@@ -1,11 +1,10 @@
 /**
- * The failed-key badge (Ship piece 6): a red disc with a white X, with a dark
+ * The failed-key badge: a red disc with a white X, with a dark
  * ring so it holds over red icons and bright album art. The one drawing of it:
  * the daemon rasterises it over a key's face (src/render.ts), and the editor's
  * grid inlines it over the same key, so the mirror matches the deck.
  *
- * Pure and import-free, so the editor can import it (docs/code-state.md, M4
- * phase A proof 0a).
+ * Pure and import-free, so the editor can import it.
  *
  * 30% of the key, in its top-right corner: 22 px on a 72 px key, 29 on a 96 px
  * one. The maintainer looked at both on the decks (2026-09-18): the X reads at 72.

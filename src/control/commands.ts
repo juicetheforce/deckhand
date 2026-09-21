@@ -16,7 +16,7 @@ import {
 } from './server.js';
 
 /**
- * What each control-socket command does (docs/scope.md §7, "Commands").
+ * What each control-socket command does.
  * Everything the handlers need from the daemon comes in through ControlDeps,
  * so the smoke test can run them against fake decks.
  */
@@ -121,7 +121,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
   const cleanupRegistered = new WeakSet<Connection>();
 
   /**
-   * One socket action at a time across the whole daemon (stall protection 4).
+   * One socket action at a time across the whole daemon.
    * The input helper's queue is shared with physical key presses, so each
    * socket keystroke waiting in it is a delay for a press; with one socket
    * action at a time, a press waits behind at most one helper command.
@@ -327,7 +327,7 @@ export function requireAction(value: unknown, name: string): ActionDef {
 function requireButton(args: Record<string, unknown>, name: string): ButtonDef {
   const value = args[name];
   if (!isObject(value)) throw new ControlError('bad_request', `"${name}" must be a button object`);
-  // null is a real value here: a preview of a label-only button (scope §10).
+  // null is a real value here: a preview of a label-only button.
   if (value.icon !== undefined && value.icon !== null && typeof value.icon !== 'string') {
     throw new ControlError('bad_request', `"${name}.icon" must be a path`);
   }

@@ -4,7 +4,7 @@ import type { Config, Defaults, LayoutDef } from './types.js';
  * The parts of the config rules that need no file system: display defaults
  * and how page and profile references resolve. Imports nothing but types, so
  * the editor's renderer can use the daemon's own rules rather than a copy
- * (docs/code-state.md, M4 phase A). config.ts re-exports everything here.
+ * config.ts re-exports everything here.
  */
 
 export const DEFAULTS: Required<Defaults> = {

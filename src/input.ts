@@ -20,7 +20,7 @@ interface Pending {
  * Who asked for a key to be held: a deck key press, or an action run over the
  * control socket. Tracked so that everything a socket action holds down can
  * be released when it finishes, without releasing a key a physical deck
- * press is holding (docs/scope.md §7, action.run).
+ * press is holding.
  */
 export type InputSource = 'deck' | 'socket';
 
@@ -33,7 +33,7 @@ class InputBridge {
   private proc: ChildProcessWithoutNullStreams | null = null;
   private ready = false;
   private readyWaiters: Array<() => void> = [];
-  /** Told when the virtual keyboard goes: whatever thought a key was held is wrong (M7). */
+  /** Told when the virtual keyboard goes: whatever thought a key was held is wrong. */
   private keyboardLostListeners = new Set<() => void>();
   private queue: Pending[] = [];
   private restartTimer: NodeJS.Timeout | null = null;
@@ -73,7 +73,7 @@ class InputBridge {
       this.held.deck.clear();
       this.held.socket.clear();
       // A latched deck key would otherwise show itself as down with nothing
-      // holding it (M7, docs/scope.md §6).
+      // holding it.
       for (const listener of this.keyboardLostListeners) {
         try {
           listener();
@@ -174,7 +174,7 @@ class InputBridge {
 
   /**
    * Be told when the helper dies and takes the virtual keyboard with it, so
-   * state about what is held can be dropped (M7: a latched key). Returns an
+   * state about what is held can be dropped (a latched key). Returns an
    * unsubscribe.
    */
   onKeyboardLost(listener: () => void): () => void {

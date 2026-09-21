@@ -44,7 +44,7 @@ const unattached = new Map<string, DeckGeometry>();
  * Set by reload(), consumed by the next scan(): that one scan re-opens every
  * deck in `unattached` to see whether the new config covers it. Without it a
  * scan leaves them alone, which is what stops the safety-net poll opening an
- * unconfigured deck once a minute for ever (docs/scope.md §7, Portability).
+ * unconfigured deck once a minute for ever.
  *
  * Skipping `unattached` unconditionally is the obvious fix and is wrong: a
  * deck that has just been given a layout would then be skipped by the very
@@ -103,11 +103,10 @@ function emptyConfig(): Config {
  * the daemon starts lit rather than exiting. Returns false if there was
  * nothing to write.
  *
- * **With no deck connected the daemon still starts** (docs/scope.md §7,
- * Portability, `[decided]` the maintainer 2026-09-20). Installing before plugging the
- * hardware in is what anyone does who installs first and connects later, and
- * exiting here made systemd restart-loop and the installer roll the whole
- * install back — measured on Ubuntu 26.04, 2026-09-20. An empty configuration
+ * **With no deck connected the daemon still starts.** Installing before
+ * plugging the hardware in is what anyone does who installs first and
+ * connects later, and exiting here made systemd restart-loop and the
+ * installer roll the whole install back (measured). An empty configuration
  * is written instead, and a deck plugged in afterwards arrives through the
  * same udev path as any other hotplug: no profile has a layout for it, so it
  * lands in `unattached`, where the editor can see it and configure it.
@@ -292,13 +291,11 @@ async function scan(): Promise<void> {
     if (serial && sessions.has(serial)) continue;
     // Already known to have no layout: opening it again would read the same
     // serial, log the same warning and close it again, every 60 s for ever
-    // (measured on Ubuntu 26.04, 2026-09-20 — two decks, two journal lines a
-    // minute at rest). Only a config change can make it attachable, so only a
-    // reload's scan looks again. A deck that is unplugged meanwhile leaves
+    // (measured: two decks, two journal lines a minute at rest). Only a config
+    // change can make it attachable, so only a reload's scan looks again. A deck that is unplugged meanwhile leaves
     // `unattached` in the loop above, so replugging it is picked up as normal.
     // An enumeration entry with no serial cannot be matched and is opened as
-    // before: the serial is optional in the library's types, though both decks
-    // here report one (`[confirmed]` 2026-09-20).
+    // before: the serial is optional in the library's types.
     if (serial && !reevaluate && unattached.has(serial)) continue;
     await attach(device.path);
   }
@@ -340,7 +337,7 @@ async function reload(): Promise<void> {
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
     // An edited key is not the key that failed: its mark goes before the decks
-    // redraw with the new layout (Ship piece 6).
+    // redraw with the new layout.
     if (keyFailures.prune(next)) notifyState();
 
     const applyStarted = Date.now();
@@ -348,7 +345,7 @@ async function reload(): Promise<void> {
     // Announced only once every deck has the new layout. The editor takes this
     // event as "saved and on the decks" and clears its preview on it; sent
     // before applyReload, a cleared key was redrawn from the old layout and
-    // flashed its old icon until its deck's turn came (Ship, 2026-09-18).
+    // flashed its old icon until its deck's turn came.
     // Tests mirror this order: scripts/test/control-harness.mjs
     // reloadLikeTheDaemon().
     events?.config();

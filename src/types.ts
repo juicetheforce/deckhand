@@ -7,7 +7,7 @@ export interface ActionDef {
 
 export interface ButtonDef {
   /**
-   * Three states (docs/scope.md §10): **absent** means nothing is chosen, so
+   * Three states: **absent** means nothing is chosen, so
    * the action's built-in default renders (src/default-icons.ts); **null**
    * means deliberately no icon, for a label-only button; a **string** is an
    * absolute path, or ~/..., to any image file, resized to fit automatically —
@@ -95,7 +95,7 @@ export interface Display {
   labelSize: number;
   labelPosition: 'top' | 'bottom' | 'center';
   background: string;
-  /** The key's last press failed: drawn with a badge over everything else (Ship piece 6). */
+  /** The key's last press failed: drawn with a badge over everything else. */
   failed?: boolean;
 }
 
@@ -119,7 +119,7 @@ export interface DeckHandle {
   /** The ID of the page currently shown. */
   currentPage(): string;
   /**
-   * Latching toggle (M7, docs/scope.md §6): press once and the combo stays
+   * Latching toggle: press once and the combo stays
    * down, press again and it releases. The session owns the state because it
    * owns the lifecycle — leaving the page, the deck going away or the helper
    * restarting all have to release it, and nothing may leave a key held.

@@ -71,7 +71,7 @@ function labelSvg(display: Display, size: number): Buffer {
   return Buffer.from(svg);
 }
 
-/** The failed-key badge (Ship piece 6, src/failed-badge.ts), placed over a finished key. */
+/** The failed-key badge (src/failed-badge.ts), placed over a finished key. */
 function failedBadge(size: number): OverlayOptions {
   const { diameter, inset } = failedBadgePlacement(size);
   return { input: Buffer.from(failedBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
@@ -126,7 +126,7 @@ async function builtinLayer(name: BuiltinIcon, size: number): Promise<Buffer | n
  *
  * An icon that is set but cannot be drawn — the file is gone, unreadable, or
  * not an image — is normally drawn as the built-in 'missing' icon, with one
- * log line (docs/scope.md §3). With `strictIcon` it throws instead, and skips
+ * log line. With `strictIcon` it throws instead, and skips
  * the cache (which may hold an earlier placeholder render): the control
  * socket's preview uses this to tell the editor the file is bad.
  */

@@ -24,7 +24,7 @@ function confirmDefaultIs(requested: audio.Sink): void {
 }
 
 /**
- * A device as the editor stores it (docs/scope.md §3): the exact node the user
+ * A device as the editor stores it: the exact node the user
  * picked from the daemon's list, and its description at the time, for showing.
  */
 interface DeviceRef {
@@ -84,7 +84,7 @@ function confirmDefaultSourceIs(requested: audio.AudioDevice): void {
  *
  * `node` is what the editor writes: the exact device picked from the daemon's
  * list (`deckhand sinks`). If that device is not present the press logs and
- * does nothing — no fallback (docs/scope.md §3). `label` is for showing only.
+ * does nothing — no fallback. `label` is for showing only.
  * `match`, a substring of the description or node name, is kept for
  * hand-edited config and is ignored when `node` is set.
  *
@@ -209,17 +209,17 @@ export const cycle: ActionHandler = {
 };
 
 /**
- * audio.source — switch the default input (docs/scope.md §6).
+ * audio.source — switch the default input.
  *
  *   { "type": "audio.source", "node": "alsa_input.usb-…mono-fallback", "label": "USB Headset Mic" }
  *
  * A mirror of audio.sink, by `node` only: it is new, so there is no
  * hand-edited `match` to keep. A device that is not present logs and does
  * nothing. The key paints `activeBackground` while this input is the default,
- * so "why can nobody hear me" is a glance (§6).
+ * so "why can nobody hear me" is a glance.
  *
  * **Streams already recording move with it** unless `moveStreams: false`
- * (the maintainer, 2026-09-18), as audio.sink and audio.cycleSource do. Until then this
+ * as audio.sink and audio.cycleSource do. Until then this
  * action left them behind, which was the one place the four device actions
  * disagreed.
  */
@@ -251,7 +251,7 @@ export const source: ActionHandler = {
 
 /**
  * audio.cycleSource — rotate through a list of inputs with one button. The
- * mirror of audio.cycle (docs/scope.md §6), added 2026-09-17.
+ * mirror of audio.cycle.
  *
  *   { "type": "audio.cycleSource", "devices": [
  *       { "node": "alsa_input.usb-…mono-fallback", "label": "Headset Mic" },
@@ -261,14 +261,14 @@ export const source: ActionHandler = {
  * two entries make a toggle; if the default is not in the list it goes to the
  * first. Entries whose device is not present are skipped, and said so.
  *
- * **Recording streams are moved** unless `moveStreams: false` (the maintainer,
- * 2026-09-17). Without it the key face would change to the new microphone
+ * **Recording streams are moved** unless `moveStreams: false`.
+ * Without it the key face would change to the new microphone
  * while the application carried on recording from the old one — the input
  * version of the complaint audio.sink's moveStreams exists to answer.
  *
  * No `matches` fallback: audio.cycle carries one because it predates the
  * editor and hand-written config used it. This action is new, so there is no
- * hand-edited form to keep working (as audio.source, §6).
+ * hand-edited form to keep working (as audio.source).
  */
 export const cycleSource: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -355,9 +355,8 @@ export const micMute: ActionHandler = {
  *   { "type": "audio.volume", "delta": -5, "showLevel": true }
  *
  * The key draws its default icon (`speaker`, or `volume-down` for a negative
- * delta). The level is shown only with `showLevel: true` — off by default since
- * C1, so a default key is not a label drawn over an icon (docs/scope.md §7 C1
- * call 4).
+ * delta). The level is shown only with `showLevel: true` — off by default,
+ * so a default key is not a label drawn over an icon.
  */
 export const volume: ActionHandler = {
   async execute(ctx, params: ActionDef) {
@@ -381,8 +380,8 @@ export const volume: ActionHandler = {
  *     "iconUnmuted": "~/icons/speaker.png" }
  *
  * The same icon and label parameters as audio.micMute, but **no background
- * change**: output mute shows its state by the icon pair alone (the maintainer,
- * docs/scope.md §7 C1 call 6). The face follows the *default* output, so
+ * change**: output mute shows its state by the icon pair alone.
+ * The face follows the *default* output, so
  * switching outputs can change it.
  */
 export const mute: ActionHandler = {

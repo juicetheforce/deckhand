@@ -26,7 +26,7 @@ export interface Sink {
 
 /**
  * A sink or source as the control socket needs it to offer a device list
- * (docs/scope.md §7, audio.sinks / audio.sources). Everything is from
+ * (audio.sinks / audio.sources). Everything is from
  * `pactl -f json`; nothing is interpreted beyond what the fields say.
  */
 export interface AudioDevice {
@@ -39,7 +39,7 @@ export interface AudioDevice {
    * pactl's monitor_source field, whose meaning depends on the list:
    *   - on a source: the sink it monitors, or "" for a real input;
    *   - on a sink: the name of that sink's own monitor source, never "".
-   * Confirmed against pactl 17.0 on the laptop, 2026-09-14.
+   * Checked against pactl 17.0.
    */
   monitorSource: string;
   /** The active port's availability: "available", "not available", "availability unknown", or null with no ports. */
@@ -102,13 +102,13 @@ const warnedAmbiguous = new Set<string>();
 
 /**
  * Match a sink by case-insensitive substring against its description, or
- * failing that its node name. **For hand-edited config only** (docs/scope.md
- * §3): the editor writes the exact `node` the user picked, found with
+ * failing that its node name. **For hand-edited config only**:
+ * the editor writes the exact `node` the user picked, found with
  * findSinkByNode() instead.
  *
  * A substring that matches several sinks — a headset's stereo and mono sinks
  * usually share a word — takes the first, as it always has, and says so once
- * per substring (the maintainer, 2026-09-16). Called from describe() on every refresh,
+ * per substring. Called from describe() on every refresh,
  * hence once rather than every time.
  */
 export function findSinkIn(sinks: Sink[], match: string): Sink | null {
@@ -130,8 +130,8 @@ export async function findSink(match: string): Promise<Sink | null> {
 
 /**
  * The sink whose node name is exactly `node`, from a fresh list — or null if
- * that device is not present. No fallback of any kind (docs/scope.md §3: the
- * software applies no logic to what the user picked).
+ * that device is not present. No fallback of any kind: the
+ * software applies no logic to what the user picked.
  */
 export async function findSinkByNode(node: string): Promise<Sink | null> {
   return (await listSinks()).find((s) => s.name === node) ?? null;
@@ -155,7 +155,7 @@ export async function getDefaultSource(): Promise<string> {
  * The source (input) whose node name is exactly `node`, from a fresh list — or
  * null if it is not present. Like findSinkByNode(), no fallback. Monitor
  * sources are not refused here: the editor offers only real inputs, and a
- * hand-written monitor node is the user's call (docs/scope.md §3).
+ * hand-written monitor node is the user's call.
  */
 export async function findSourceByNode(node: string): Promise<AudioDevice | null> {
   return (await listSources()).find((d) => d.name === node) ?? null;
@@ -205,9 +205,9 @@ async function readState(): Promise<AudioState> {
 }
 
 /**
- * The device list the control socket offers (docs/scope.md §3 and §7):
- *   - devices flagged NETWORK are left out (§3: not a desktop-audio target);
- *   - monitor sources are left out of the source list (decision 2: a monitor
+ * The device list the control socket offers:
+ *   - devices flagged NETWORK are left out (not a desktop-audio target);
+ *   - monitor sources are left out of the source list (a monitor
  *     of a sink is not an input) — a source is a monitor when its
  *     monitor_source names a sink;
  *   - nothing else is filtered — an unplugged jack is listed as available: "no".
@@ -290,8 +290,8 @@ export async function setDefaultSink(sinkName: string, moveStreams = true): Prom
  *
  * Without moveStreams the key face changes to the new microphone while the
  * application carries on reading the old one: the input version of "I pressed
- * the button and nothing happened". `[confirmed]` on hardware 2026-09-17
- * (the maintainer): Discord followed the switch.
+ * the button and nothing happened". Tested on
+ * hardware: Discord followed the switch.
  */
 export async function setDefaultSource(sourceName: string, moveStreams = true): Promise<void> {
   await pactl(['set-default-source', sourceName]);

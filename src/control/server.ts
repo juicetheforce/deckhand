@@ -4,7 +4,7 @@ import path from 'node:path';
 
 /**
  * The control socket: newline-delimited JSON over a Unix stream socket
- * (docs/scope.md §7, "M3 protocol design"). This file is transport only —
+ * This file is transport only —
  * framing, limits, connections. What each command does is in commands.ts.
  *
  * Everything here runs on the same thread that handles deck key presses, so

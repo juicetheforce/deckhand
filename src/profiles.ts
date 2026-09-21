@@ -13,11 +13,11 @@ export class ProfileNotFoundError extends Error {
  * Which profile is active, and which profile's layout each deck is showing.
  *
  * Switching profile changes every deck the new profile has a layout for. A
- * deck it has no layout for keeps what it was showing (docs/scope.md §3), so a
+ * deck it has no layout for keeps what it was showing, so a
  * deck can be showing a different profile from the active one.
  *
  * Kept out of index.ts so the smoke test can drive it without starting the
- * daemon, and so the M3 socket can call the same switchTo().
+ * daemon, and so the control socket can call the same switchTo().
  */
 export class Profiles {
   private config: Config;

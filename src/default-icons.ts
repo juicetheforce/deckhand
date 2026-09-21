@@ -2,10 +2,10 @@ import type { ActionDef } from './types.js';
 
 /**
  * Built-in default icons: which one an action draws when its key has no icon
- * set (docs/scope.md §3, §7 "Phase C icon record", C1 calls).
+ * set.
  *
  * Pure on purpose — no file system, no sharp, no D-Bus — so the editor can
- * import the same mapping for its library and grid (phase C2) instead of
+ * import the same mapping for its library and grid instead of
  * keeping a copy that drifts. The daemon turns a name into a file in
  * src/builtin-icons.ts.
  */
@@ -47,7 +47,7 @@ export const BUILTIN_ICONS = [
   'speaker-out-muted',
   'stop',
   'text-macro',
-  // The latching toggle's two faces (M7): down and up.
+  // The latching toggle's two faces: down and up.
   'toggle',
   'toggle-off',
   'volume-down',
@@ -63,7 +63,7 @@ export interface IconState {
   playing?: boolean;
   /** media.info: no player, or nothing with a title or artist. */
   idle?: boolean;
-  /** toggle: the key is latched down (M7). */
+  /** toggle: the key is latched down. */
   latched?: boolean;
 }
 
@@ -79,17 +79,17 @@ const MEDIA_METHODS: Record<string, BuiltinIcon> = {
 /**
  * The built-in a key with this action draws on the deck when it has no icon of
  * its own, or null for none. A default depends on parameters and state, not
- * only the action type (§7): `page`'s `back`, the sign of a `delta`,
+ * only the action type: `page`'s `back`, the sign of a `delta`,
  * `media.control`'s `method`, and the mute or play state of the three pairs.
  *
  * Null for two reasons, kept apart in the comments below:
  *   - the face is its own content: `clock`'s time, `media.info`'s track while
- *     one plays (call 4);
- *   - `noop`, a deliberate spacer (call 6).
+ *     one plays;
+ *   - `noop`, a deliberate spacer.
  *
- * Every other action has a drawn icon since 2026-09-17. **A future action
+ * Every other action has a drawn icon. **A future action
  * whose icon is not drawn yet maps to null too — never to `missing`**, which
- * would put a broken-looking icon on keys that look fine (§7 C1).
+ * would put a broken-looking icon on keys that look fine.
  */
 export function defaultIconFor(action: ActionDef | undefined, state: IconState = {}): BuiltinIcon | null {
   if (!action) return null;
@@ -102,7 +102,7 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return 'multi-action';
     case 'keyHold': // Press/Release
       return 'press-release';
-    // The latching toggle (M7): down and up are two faces, as mute and play are.
+    // The latching toggle: down and up are two faces, as mute and play are.
     case 'toggle':
       return state.latched ? 'toggle' : 'toggle-off';
     case 'command':
@@ -115,22 +115,21 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       if (typeof action.delta === 'number') return action.delta < 0 ? 'brightness-down' : 'brightness-up';
       return 'brightness-set'; // set brightness (`value`)
     case 'media.info':
-      // The track and its art are the face while something plays (call 4);
-      // idle, the icon alone, with no "No music" label (the maintainer, 2026-09-16).
+      // The track and its art are the face while something plays;
+      // idle, the icon alone, with no "No music" label.
       return state.idle ? 'now-playing' : null;
-    case 'clock': // the time is the face (call 4)
-    case 'noop': // a spacer (call 6)
+    case 'clock': // the time is the face
+    case 'noop': // a spacer
       return null;
     case 'audio.sink':
-      // the maintainer drew this for it, 2026-09-17, replacing `speaker` (§7): a speaker
-      // and a headset, one of which the key picks.
+      // A speaker and a headset, one of which the key picks.
       return 'output-select';
     case 'audio.cycle':
       return 'output-cycle';
     case 'audio.cycleSource':
       return 'input-cycle';
     case 'audio.source':
-      // the maintainer drew this for it, 2026-09-17 (§10): a desk mic and a headset mic,
+      // A desk mic and a headset mic,
       // one of which the key picks. The old `input-select` — the same two with
       // swap arrows — was a cycle icon on a select action and is now
       // `input-cycle`.
@@ -138,13 +137,13 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     case 'audio.micMute':
       return state.muted ? 'mic-muted' : 'mic';
     case 'audio.volume':
-      // Volume up is `speaker` (the maintainer): the default delta is +5.
+      // Volume up is `speaker`: the default delta is +5.
       return typeof action.delta === 'number' && action.delta < 0 ? 'volume-down' : 'speaker';
     case 'audio.mute':
       return state.muted ? 'speaker-muted' : 'speaker';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
-      // Shows what a press will do: pause while playing (call 2).
+      // Shows what a press will do: pause while playing.
       if (method === 'playpause') return state.playing ? 'pause' : 'play';
       return MEDIA_METHODS[method] ?? null;
     }

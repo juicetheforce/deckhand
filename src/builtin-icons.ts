@@ -6,21 +6,20 @@ import type { BuiltinIcon } from './default-icons.js';
 export type { BuiltinIcon } from './default-icons.js';
 
 /**
- * Icons that belong to the app, not to the user's icon tree
- * (docs/scope.md §3): shipped in the repo's assets/icons/, copied into the
- * app directory by scripts/install.sh, and referenced here by name.
+ * Icons that belong to the app, not to the user's icon tree: shipped in the
+ * repo's assets/icons/, copied into the app directory by scripts/install.sh,
+ * and referenced here by name.
  *
  * A built-in's path never goes in config.json. The app directory is replaced
  * on every update and deleted on uninstall, so a config pointing into it
  * would break. The daemon draws a built-in in three cases:
  *
  *   - 'missing' — a key whose icon is set but cannot be drawn (the file is
- *     gone, unreadable, or not an image sharp can read). M4 phase A.
+ *     gone, unreadable, or not an image sharp can read).
  *   - an action's default, when the key has no icon set
- *     (src/default-icons.ts). M4 phase C1.
+ *     (src/default-icons.ts).
  *   - a key whose icon is `builtin:<name>` — a name, not a path, so it
- *     survives updates (§7 C1 call 5). What the icon picker writes for a
- *     built-in from phase C2.
+ *     survives updates. What the icon picker writes for a built-in.
  */
 
 /** The prefix of an icon that names a built-in rather than a file. */
@@ -57,7 +56,7 @@ const BUILTIN_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
  * BUILTIN_ICONS: an icon drawn later needs its file, not a code change, to be
  * chosen for a key. A name with no file — or a malformed one, which is given a
  * path that cannot exist — is a broken icon like any other, and draws
- * `missing` (§3).
+ * `missing`.
  */
 export function builtinRefPath(icon: string): string | null {
   if (!icon.startsWith(BUILTIN_PREFIX)) return null;

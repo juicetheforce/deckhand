@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { BackupStatus } from './control/protocol.js';
 
 /**
- * Rolling config backups (docs/scope.md §5).
+ * Rolling config backups.
  *
  * When a reload succeeds with a changed config, the config it replaces — the
  * previous good one, as file text — is saved here, unless the newest backup is

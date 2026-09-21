@@ -1,6 +1,6 @@
 /**
  * What a deck's controls look like, as the control socket reports it
- * (docs/scope.md §7, "decks"). Built from the library's CONTROLS array, so no
+ * Built from the library's CONTROLS array, so no
  * model is hardcoded here: the positions come from the device.
  */
 
@@ -32,12 +32,12 @@ export interface KeyPosition {
 
 /**
  * Names the library gives two different products, so it cannot tell them apart
- * (`[confirmed]` 2026-09-16 by reading `MODEL_NAMES` in
+ * (see `MODEL_NAMES` in
  * `@elgato-stream-deck/core/dist/id.js`: both `original` and `originalv2` are
  * "Stream Deck"). Only ambiguous models are listed; every other model keeps the
  * library's own name, so a deck this table has never heard of is unaffected and
  * nothing here is load-bearing for behaviour — geometry still comes from
- * CONTROLS (scope §3).
+ * CONTROLS.
  */
 const AMBIGUOUS_MODEL_NAMES: Record<string, string> = {
   original: 'Stream Deck Original',

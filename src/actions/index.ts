@@ -43,13 +43,12 @@ export const registry: Record<string, ActionHandler> = {
  *       { "type": "hotkey", "keys": "ctrl+alt+m" }
  *   ]}
  *
- * A step's `delayMs` is a pause **after** that step runs (docs/scope.md §6,
- * decided in v0.2; built in M4 phase C2) — how a sequence reads top to
- * bottom, and how the editor's step list shows it. Above, the output switches,
- * 150 ms pass, then the hotkey is sent.
+ * A step's `delayMs` is a pause **after** that step runs — how a sequence
+ * reads top to bottom, and how the editor's step list shows it. Above, the
+ * output switches, 150 ms pass, then the hotkey is sent.
  *
  * A step that fails is logged and the rest still run, as they always have;
- * then the multi action fails, naming the first failed step (Ship piece 6), so
+ * then the multi action fails, naming the first failed step, so
  * the key shows it failed rather than looking like it worked.
  *
  * Defined here rather than in its own file so it can reach the registry
@@ -84,7 +83,7 @@ export function isDynamic(action: ActionDef | undefined): boolean {
  * Run an action for a deck key. A failure is logged, not thrown — one bad
  * binding must never take the daemon down or wedge the deck — and returned:
  * its message, or null if the action succeeded, so the deck can mark a key
- * whose press failed (Ship piece 6). An unknown action type is a failure: the
+ * whose press failed. An unknown action type is a failure: the
  * key does nothing.
  */
 export async function runAction(ctx: ActionContext, action: ActionDef): Promise<string | null> {

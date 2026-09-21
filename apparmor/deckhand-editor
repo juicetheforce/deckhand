@@ -11,8 +11,8 @@
 # (/etc/apparmor.d/chrome, /etc/apparmor.d/code): unconfined, so it restricts
 # nothing that was not already restricted, but named, so the kernel can grant
 # it `userns`. The sandbox stays on — it is the namespace sandbox rather than
-# the setuid one (docs/scope.md §7, Portability, `[decided]` the maintainer 2026-09-20:
-# not a setuid-root chrome-sandbox, which does nothing on a nosuid mount).
+# the setuid one (deliberately not a setuid-root chrome-sandbox, which does
+# nothing on a nosuid mount).
 #
 # Installed by scripts/install.sh only where that sysctl is 1; removed by
 # "scripts/install.sh uninstall". The path is a glob so one profile covers

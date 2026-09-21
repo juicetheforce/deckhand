@@ -68,7 +68,7 @@ function isIdle(track: mpris.TrackInfo | null): boolean {
  *
  * showArt uses the album art from MPRIS metadata as the button image,
  * downloading remote art to a temp cache once per URL. Idle, the key draws the
- * `now-playing` icon and no label (the maintainer, 2026-09-16); `idleLabel` puts a label
+ * `now-playing` icon and no label; `idleLabel` puts a label
  * back.
  */
 export const info: ActionHandler = {

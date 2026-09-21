@@ -101,7 +101,7 @@ export class DeckSession implements DeckHandle {
   private closed = false;
   private heldRelease = new Map<number, ActionDef>();
   /**
-   * Latching toggles (M7, docs/scope.md §6): key index → the combo it holds
+   * Latching toggles: key index → the combo it holds
    * down. Memory only, like failure marks — a restart starts with the helper's
    * virtual keyboard new, so nothing is held.
    */
@@ -157,7 +157,7 @@ export class DeckSession implements DeckHandle {
     });
 
     // A latched key is only latched while there is a virtual keyboard holding
-    // it (M7): if the helper dies, the state goes with it.
+    // it: if the helper dies, the state goes with it.
     this.stopWatchingKeyboard = input.onKeyboardLost(() => this.forgetLatches());
 
     await this.setBrightness(this.brightness);
@@ -211,11 +211,11 @@ export class DeckSession implements DeckHandle {
   }
 
   /**
-   * Latch or unlatch a key's combo (M7). A second key latching a combo that
+   * Latch or unlatch a key's combo. A second key latching a combo that
    * overlaps one already latched is refused rather than allowed to steal the
    * release: `input`'s held keys are a set, not counted, so releasing one
    * would lift the other's key while its face still said it was down. The
-   * refusal fails the press, which badges the key (Ship piece 6).
+   * refusal fails the press, which badges the key.
    */
   async toggleLatch(index: number, combo: string): Promise<void> {
     const held = this.latched.get(index);
@@ -243,7 +243,7 @@ export class DeckSession implements DeckHandle {
     return this.latched.has(index);
   }
 
-  /** The keys latched down on this deck, for the control socket's status (M7). */
+  /** The keys latched down on this deck, for the control socket's status. */
   latchedKeys(): number[] {
     return [...this.latched.keys()].sort((a, b) => a - b);
   }
@@ -251,8 +251,7 @@ export class DeckSession implements DeckHandle {
   /**
    * Release every latched key, because the key that would release it is about
    * to be out of reach: the page or profile changing, the config replacing the
-   * key, a preview covering it, the deck going away (docs/scope.md §6, the maintainer
-   * 2026-09-20 — "definitely release on leaving page").
+   * key, a preview covering it, the deck going away.
    */
   private async releaseLatches(reason: string): Promise<void> {
     const held = [...this.latched.entries()];
@@ -273,7 +272,7 @@ export class DeckSession implements DeckHandle {
    * After a config reload that kept the page: a latch is kept only while the
    * key still carries the same toggle. Edited, cleared, swapped with another
    * key or pointed at another combo, and the key that would release it is
-   * gone (the maintainer, 2026-09-20).
+   * gone.
    */
   private async releaseLatchesOnChangedKeys(): Promise<void> {
     const buttons = this.currentButtons();
@@ -341,7 +340,7 @@ export class DeckSession implements DeckHandle {
 
   /**
    * Run a key's action (its press, or its release). A failure marks the key and
-   * a success clears its mark (Ship piece 6) — keyed by the page and profile
+   * a success clears its mark — keyed by the page and profile
    * it was pressed on, read before running, since a page or profile action
    * moves the deck. The repaint after every press, which was already here,
    * draws or removes the badge: no extra write, no timer.
@@ -389,7 +388,7 @@ export class DeckSession implements DeckHandle {
   private baseDisplay(button: ButtonDef | undefined): Display {
     return {
       // null (deliberately no icon) and absent both start with no icon layer
-      // here; drawKey() gives an absent one the action's default (scope §10).
+      // here; drawKey() gives an absent one the action's default.
       icon: button?.icon ?? undefined,
       iconFit: button?.iconFit ?? this.defaults.iconFit,
       label: button?.label,
@@ -423,7 +422,7 @@ export class DeckSession implements DeckHandle {
     // Not on a preview: it shows something unsaved, which has never been pressed.
     if (!this.previews.has(index) && this.failures.has(this.serial, this.profileOf(), this.page, index)) display.failed = true;
 
-    // The action's built-in default (docs/scope.md §3), in this order: an icon
+    // The action's built-in default, in this order: an icon
     // the action chose (iconMuted, album art) wins, then the key's own icon;
     // `icon: null` means deliberately none, so only an *absent* icon gets a
     // default; and a key with no action gets none — it stays blank.
@@ -488,7 +487,7 @@ export class DeckSession implements DeckHandle {
   }
 
   // -------------------------------------------------------------------------
-  // Previews: an unsaved button shown on a key (docs/scope.md §7, preview.set)
+  // Previews: an unsaved button shown on a key
   // -------------------------------------------------------------------------
 
   /** Keys showing a preview, by index. Survives page changes, profile switches and reloads. */
@@ -512,7 +511,7 @@ export class DeckSession implements DeckHandle {
    */
   async setPreview(index: number, button: ButtonDef): Promise<void> {
     // A previewed key does nothing when pressed (onKey), so a latch under one
-    // could not be released by pressing it (M7).
+    // could not be released by pressing it.
     if (this.latched.has(index)) await this.releaseLatches('a preview on the key');
     this.previews.set(index, button);
     this.onStateChange();

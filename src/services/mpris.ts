@@ -37,7 +37,7 @@ const busLostListeners = new Set<() => void>();
 /**
  * The session bus connection, made on first use and again after one is lost.
  *
- * **A lost connection is dropped, never reused** (Ship, 2026-09-18). Without
+ * **A lost connection is dropped, never reused**. Without
  * this, dbus-next's `'error'` had no listener: at startup, before index.ts
  * installs its process handlers, that is a crash; after it, the error is
  * logged and the dead connection stays in use — now-playing faces frozen and
@@ -46,7 +46,7 @@ const busLostListeners = new Set<() => void>();
  * Both ways a connection dies are caught. `'error'` covers a failed connect
  * and a reset. A clean close — the broker shutting the socket — is only an
  * `'end'` on the underlying connection, which dbus-next 0.10.2's MessageBus
- * does not forward (`[confirmed]` by reading lib/connection.js and
+ * does not forward (see lib/connection.js and
  * lib/bus.js), so it is read from the private `_connection`. scripts/
  * smoke-dbus-restart.mjs fails if a dbus-next update moves it.
  */
@@ -103,7 +103,7 @@ export function retryLostBus(): void {
 /**
  * Proxy objects, kept between calls. dbus-next's getProxyObject() introspects
  * the object over D-Bus and parses the reply XML every time it is called, and
- * a now-playing key calls it three times per refresh. Measured 2026-09-14
+ * a now-playing key calls it three times per refresh. Measured
  * against a real player: 13.5–16.5 ms CPU per getTrackInfo() as-is, ~6 ms
  * with proxies reused.
  *
@@ -116,7 +116,7 @@ const proxies = new Map<string, Promise<dbus.ProxyObject>>();
 /**
  * The standard MPRIS interfaces, written out rather than discovered.
  *
- * **Why (2026-09-16).** dbus-next builds a proxy purely from an object's
+ * **Why.** dbus-next builds a proxy purely from an object's
  * introspection XML, and **Chromium publishes none**: `Introspect` on
  * `/org/mpris/MediaPlayer2` returns `<node></node>` while `Properties.Get`
  * answers correctly. `[confirmed]` on this machine against Brave (Flatpak) and
@@ -160,8 +160,8 @@ const STANDARD_MPRIS_XML = `<node>
 
 /**
  * Players whose direct calls have failed, so a broken one is reported once
- * rather than on every refresh of a visible now-playing key (the maintainer,
- * 2026-09-16: a failure that vanishes silently is worse than one that is
+ * rather than on every refresh of a visible now-playing key
+ * (a failure that vanishes silently is worse than one that is
  * noisy, but once is enough). Cleared when the name leaves the bus, so a
  * player that is fixed and restarted can complain again.
  */
@@ -299,7 +299,7 @@ async function cacheArt(url: string): Promise<string | undefined> {
 }
 
 // ---------------------------------------------------------------------------
-// Player state cache for key faces (docs/scope.md §11 item 1, built C1)
+// Player state cache for key faces
 // ---------------------------------------------------------------------------
 
 /**
@@ -307,7 +307,7 @@ async function cacheArt(url: string): Promise<string | undefined> {
  * player's PropertiesChanged signal. Key faces read this and never make a
  * D-Bus call: before the cache, every refresh of a visible now-playing key
  * listed the bus's names, asked each player its status, and read status and
- * metadata again — about 6 ms of D-Bus work (measured 2026-09-14), awaited
+ * metadata again — about 6 ms of D-Bus work (measured), awaited
  * serially across a page repaint, so a hung player could stall every key.
  *
  * Presses still read fresh (call() → pickPlayer()): a press is rare, and it
@@ -420,8 +420,7 @@ type SignalSource = {
  * where the button goes stale because you restarted the music app.
  *
  * Players are discovered once at start with ListNames, then from the bus's
- * NameOwnerChanged signal — no timer. (This replaced a 10 s rescan, which
- * broke "no timers at rest"; see docs/scope.md §3.)
+ * NameOwnerChanged signal — no timer.
  */
 export function subscribe(onChange: () => void): () => void {
   let stopped = false;

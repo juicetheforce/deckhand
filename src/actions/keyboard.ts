@@ -63,7 +63,7 @@ export const keyHold: ActionHandler = {
 };
 
 /**
- * toggle — a latching key (M7, docs/scope.md §6). Press once and the combo
+ * toggle — a latching key. Press once and the combo
  * goes down and stays down; press again and it releases. Unlike `keyHold`,
  * which is momentary and follows the finger, the daemon holds the state and
  * ignores the physical release.
@@ -82,7 +82,7 @@ export const toggle: ActionHandler = {
     if (!combo) throw new Error('toggle action needs a "keys" value');
     // A latch is a deck key's state: it is released by pressing that key
     // again. Over the socket there is no key to press, and the socket's own
-    // rule is that an action it runs never leaves a key held (§7, M3).
+    // rule is that an action it runs never leaves a key held.
     if (ctx.source !== 'deck' || ctx.buttonIndex < 0) {
       throw new Error('a toggle latches a deck key, so it cannot be run from the control socket');
     }

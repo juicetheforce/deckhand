@@ -2,11 +2,11 @@ import type { KeyFailure } from './control/protocol.js';
 import type { ButtonDef, Config } from './types.js';
 
 /**
- * Keys whose last press failed (Ship piece 6, docs/scope.md §7). The deck draws
+ * Keys whose last press failed. The deck draws
  * a badge on them, and the control socket's status lists them, so the editor's
  * grid shows the same.
  *
- * What clears a mark, and what does not (the maintainer, 2026-09-18):
+ * What clears a mark, and what does not:
  * - the next press of that key that succeeds clears it;
  * - editing that key clears it — it is a different key now, not yet tried;
  * - no timer, and not a page or profile switch: a broken key stays marked until
