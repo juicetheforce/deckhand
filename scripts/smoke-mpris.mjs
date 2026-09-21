@@ -1,10 +1,9 @@
 /**
- * Offline test for the MPRIS player state cache (docs/scope.md §11 item 1, C1
- * piece 4): media key faces read player state kept current from
- * PropertiesChanged, and make no D-Bus call on a refresh. Runs itself under
- * dbus-run-session on a private bus with no service directories, with fake
- * players from scripts/test/fake-mpris-player.mjs — never the desktop's
- * players.
+ * Offline test for the MPRIS player state cache: media key faces read player
+ * state kept current from PropertiesChanged, and make no D-Bus call on a
+ * refresh. Runs itself under dbus-run-session on a private bus with no service
+ * directories, with fake players from scripts/test/fake-mpris-player.mjs —
+ * never the desktop's players.
  *
  *   npm run build:ts && node scripts/smoke-mpris.mjs
  */

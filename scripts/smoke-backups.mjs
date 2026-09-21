@@ -1,5 +1,5 @@
 /**
- * Offline test of rolling config backups (docs/scope.md §5, src/backups.ts).
+ * Offline test of rolling config backups (src/backups.ts).
  * No Stream Deck, helper or audio server; a scratch directory and a fake clock.
  *
  *   npm run build:ts && node scripts/smoke-backups.mjs      (npm run smoke runs it too)

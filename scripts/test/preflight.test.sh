@@ -1,5 +1,5 @@
 #!/bin/bash
-# The install preflight (Ship): preflight_checks, preflight, cmd_check and
+# The install preflight: preflight_checks, preflight, cmd_check and
 # check_electron_libraries from scripts/install.sh, against stub commands and
 # scratch paths. Sources install.sh's functions (everything above its "main"
 # section), so it tests the real code and touches nothing on this machine.
@@ -164,7 +164,7 @@ expect_warning "no tray"                      'export STUB_BUS_ABSENT=org.kde.St
 expect_warning "no KDE shortcut service"      'export STUB_BUS_ABSENT=org.kde.kglobalaccel'          'No KDE shortcut service'
 expect_warning "AppArmor userns restriction"  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"' 'The editor needs an AppArmor profile here'
 # The profile this install would add is the answer to that one, so once it is
-# in place there is nothing to warn about (docs/scope.md §7, Portability).
+# in place there is nothing to warn about.
 expect_clean   "userns restricted but the profile is installed" \
   'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; cp "$REPO/apparmor/deckhand-editor" "$S/installed.apparmor"'
 out="$(run 'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"; cp "$REPO/apparmor/deckhand-editor" "$S/installed.apparmor"')"
@@ -225,7 +225,7 @@ grep -q 'rc=1$' <<<"$out" && grep -q 'libdeckhandprobe.so' <<<"$out" \
   && ok "electron libraries: a missing one stops the install, named" || no "missing library — got: $out"
 
 
-# --- The offer to install what is missing (Portability) -----------------------
+# --- The offer to install what is missing ------------------------------------
 #
 # pm_stub <manager> <name>... — puts a fake package manager on PATH that knows
 # exactly those package names, logs any install it is asked to run to $S/pm.log,

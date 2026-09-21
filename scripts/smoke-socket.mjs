@@ -1,8 +1,7 @@
 /**
- * Offline test of the control socket (docs/scope.md §7, "M3 protocol design"),
- * over a real Unix socket, against fake decks, a fake input helper
- * (scripts/test/fake-input-helper.mjs) and a fake pactl
- * (scripts/test/fake-pactl.mjs). No Stream Deck, /dev/uinput or audio server.
+ * Offline test of the control socket, over a real Unix socket, against fake
+ * decks, a fake input helper (scripts/test/fake-input-helper.mjs) and a fake
+ * pactl (scripts/test/fake-pactl.mjs). No Stream Deck, /dev/uinput or audio server.
  *
  *   npm run build:ts && node scripts/smoke-socket.mjs      (npm run smoke runs it too)
  *

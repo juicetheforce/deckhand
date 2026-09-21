@@ -1,5 +1,5 @@
 /**
- * Offline test for audio keys that name a device (docs/scope.md §3, §7 C1):
+ * Offline test for audio keys that name a device:
  * audio.sink and audio.cycle by exact `node`, with substring `match` kept for
  * hand-edited config. Runs against scripts/test/fake-pactl.mjs with its state
  * file, so presses really change the fake server's default. No audio server.
@@ -262,7 +262,7 @@ console.log('audio.cycleSource by devices');
   check('two entries make a toggle', defaultSource() === PORTLESS);
   check('...and mic mute keys repaint, now showing another device', invalidated.includes('audio.micMute'));
 
-  // The point of the action (the maintainer, 2026-09-17): the recording application
+  // The point of the action: the recording application
   // follows, rather than the face changing while it stays on the old mic.
   await serverState({ defaultSource: HEADSET_MIC });
   await runActionOrThrow(context(), cycleIn);

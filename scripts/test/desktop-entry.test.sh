@@ -1,5 +1,5 @@
 #!/bin/bash
-# The editor's desktop entry and icon (Ship piece 5): install_desktop_entry and
+# The editor's desktop entry and icon: install_desktop_entry and
 # remove_desktop_entry from scripts/install.sh, run against a scratch HOME.
 # Sources install.sh's functions (everything above its "main" section), so it
 # tests the real code without building or touching the installed app.

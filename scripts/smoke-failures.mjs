@@ -1,5 +1,5 @@
 /**
- * Offline test of failed-key marking (Ship piece 6, docs/scope.md §7): a key
+ * Offline test of failed-key marking: a key
  * whose press failed wears a badge on the deck and is listed in the control
  * socket's status, until a press of it succeeds or it is edited.
  *

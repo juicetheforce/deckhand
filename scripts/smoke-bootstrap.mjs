@@ -1,6 +1,5 @@
 /**
- * Offline test: first run with no config.json and no Stream Deck connected
- * (docs/scope.md §7, Portability; `[decided]` the maintainer 2026-09-20).
+ * Offline test: first run with no config.json and no Stream Deck connected.
  *
  * The daemon must write a valid empty configuration and **stay up**. Before
  * 2026-09-20 it exited 1, which on a real machine made systemd restart-loop

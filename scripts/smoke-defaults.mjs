@@ -1,5 +1,5 @@
 /**
- * Offline test for built-in default icons (docs/scope.md §3, §7 C1 piece 5):
+ * Offline test for built-in default icons:
  * the mapping, `builtin:<name>` icons, and the order a key's icon is chosen in,
  * drawn through a real DeckSession on a fake deck. Audio state comes from
  * scripts/test/fake-pactl.mjs; no player is running, so play/pause is paused.

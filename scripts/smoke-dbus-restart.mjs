@@ -1,6 +1,6 @@
 /**
  * Offline test: the MPRIS service survives its session bus going away and
- * coming back (Ship, 2026-09-18; src/services/mpris.ts getBus()). Runs its own
+ * coming back (src/services/mpris.ts getBus()). Runs its own
  * dbus-daemon on a fixed socket path in a scratch directory, so the bus can be
  * stopped and started again at the same address — never the desktop's bus.
  *

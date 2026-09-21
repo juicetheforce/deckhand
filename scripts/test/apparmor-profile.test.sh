@@ -1,5 +1,5 @@
 #!/bin/bash
-# The editor's AppArmor profile (Portability, docs/scope.md §7):
+# The editor's AppArmor profile:
 # install_apparmor_profile and remove_apparmor_profile from scripts/install.sh,
 # against scratch paths and a recording `sudo` stub. Sources install.sh's
 # functions (everything above its "main" section), so it tests the real code —

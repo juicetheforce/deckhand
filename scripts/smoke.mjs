@@ -178,7 +178,7 @@ await sessionA.close();
 await sessionB.close();
 
 console.log('multi pauses after each step');
-// scope §6: a step's delayMs is a pause after it runs, not before. Brightness
+// A step's delayMs is a pause after it runs, not before. Brightness
 // steps are timestamped on the fake deck.
 {
   const multiLayout = {

@@ -124,7 +124,7 @@ export async function startDaemon(directory, config, extraDeps = {}) {
  * drop the failure marks of edited keys, apply it to the decks, then announce
  * it with the `config` event. The editor
  * clears a preview on that event, so the order is what stops a key flashing
- * its old icon (Ship, 2026-09-18). This is the one copy the checks share; keep
+ * its old icon. This is the one copy the checks share; keep
  * it in step with reload().
  *
  * `applyDelayMs` holds the apply back, so a check sees what depends on the

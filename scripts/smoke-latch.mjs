@@ -96,7 +96,7 @@ async function release(index) {
 // The bug these replace (found by reading, 2026-09-20): the page changing
 // under a finger *discarded* the pending release, so lifting the finger
 // released nothing and f24 stayed down with no key left to release it.
-console.log('a held key is released, never discarded (M7)');
+console.log('a held key is released, never discarded');
 
 await press(0);
 check('a Press/Release key holds its combo down while the finger is on it', (await keysDown()).includes(F24));
@@ -135,7 +135,7 @@ await press(0);
 await session.close();
 check('the deck closing — unplugged, or the daemon stopping — releases a held key', (await keysDown()).length === 0);
 
-// --- Latching toggles (M7, docs/scope.md §6) --------------------------------
+// --- Latching toggles --------------------------------------------------------
 
 console.log('\nlatching toggles');
 
@@ -232,7 +232,7 @@ check('both released', (await keysDown()).length === 0);
 // Every way off the page.
 await press2(0);
 await toggles.goToPage('two');
-check('leaving the page releases a latched key (the maintainer, 2026-09-20)', (await keysDown()).length === 0 && toggles.latchedKeys().length === 0);
+check('leaving the page releases a latched key', (await keysDown()).length === 0 && toggles.latchedKeys().length === 0);
 
 await toggles.goToPage('one');
 await press2(0);

@@ -1,8 +1,7 @@
 /**
- * Offline test for the missing-icon fallback (docs/scope.md §3): a key whose
- * icon is set but cannot be drawn shows the built-in 'missing' icon; strict
- * rendering (the control socket's preview) still refuses; everything else
- * renders as before.
+ * Offline test for the missing-icon fallback: a key whose icon is set but
+ * cannot be drawn shows the built-in 'missing' icon; strict rendering (the
+ * control socket's preview) still refuses; everything else renders as before.
  *
  *   npm run build:ts && node scripts/smoke-icons.mjs
  *
@@ -62,7 +61,7 @@ async function refuses(promise) {
   }
 }
 
-// --- files that cannot be drawn ---------------------------------------------
+// Files that cannot be drawn.
 
 const gone = path.join(TMP, 'gone.png');
 const corrupt = path.join(TMP, 'corrupt.png');

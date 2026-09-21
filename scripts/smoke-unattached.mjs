@@ -1,6 +1,6 @@
 /**
  * Offline test: decks coming and going — one that no profile has a layout
- * for, and one that does (docs/scope.md §7, Portability).
+ * for, and one that does.
  *
  * The defect this exists for, `[confirmed]` on Ubuntu 26.04 on 2026-09-20 by
  * journal timestamps exactly 60 s apart: `scan()` skipped a deck already in

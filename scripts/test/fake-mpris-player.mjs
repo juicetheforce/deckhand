@@ -7,8 +7,8 @@
  * and emits PropertiesChanged when a test changes them, as real players do.
  * Every call made to its object is recorded in `calls`, so a test can prove
  * that something made no D-Bus calls at all. With `emptyIntrospection` it
- * answers Introspect with `<node></node>`, as every Chromium browser does
- * (docs/code-state.md, Known gaps) — which dbus-next cannot build a proxy from.
+ * answers Introspect with `<node></node>`, as every Chromium browser does,
+ * which dbus-next cannot build a proxy from.
  */
 import dbus from 'dbus-next';
 

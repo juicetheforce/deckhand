@@ -6,13 +6,13 @@
  *
  *   node scripts/render-logo-png.mjs
  *
- * Which drawing at which size follows scope §7 (M4, "Deckhand logo"):
- * deckhand-small.svg for 16–32 px, the master from 48 px up.
+ * Which drawing at which size: deckhand-small.svg for 16–32 px, the master
+ * from 48 px up.
  *
- *   tray.png, tray@2x.png — the tray icon (Ship piece 2). Electron's
+ *   tray.png, tray@2x.png — the tray icon. Electron's
  *     nativeImage accepts PNG and JPEG only, and picks up the @2x file for a
  *     HiDPI panel by its name.
- *   apps/<size>.png — the application icon (Ship piece 5), one per hicolor
+ *   apps/<size>.png — the application icon, one per hicolor
  *     size. scripts/install.sh installs them, with deckhand.svg as the
  *     scalable one, into $XDG_DATA_HOME/icons/hicolor/. A desktop picks the
  *     exact size where one exists, so the small drawing is what shows at

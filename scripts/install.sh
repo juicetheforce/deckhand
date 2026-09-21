@@ -7,7 +7,7 @@
 #   scripts/install.sh uninstall [--purge]
 #   scripts/install.sh check                 (checks this machine, changes nothing)
 #
-# Layout (docs/scope.md §0), per user, nothing under /usr except the udev rule:
+# Layout, per user, nothing under /usr except the udev rule:
 #
 #   $XDG_DATA_HOME/deckhand/                  the app: dist/, node_modules/,
 #                                             helper/deckhand-input,
@@ -58,7 +58,7 @@ CLI_MARKER='# deckhand-cli-wrapper'
 # The editor's launcher, recognised the same way.
 EDITOR_LAUNCHER="$CLI_DIR/deckhand-editor"
 EDITOR_MARKER='# deckhand-editor-launcher'
-# The editor's desktop entry (Ship piece 5), recognised the same way.
+# The editor's desktop entry, recognised the same way.
 DESKTOP_MARKER='# deckhand-desktop-entry'
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -103,9 +103,9 @@ resolve_locations() {
 
 # --- Checks ------------------------------------------------------------------
 
-# The preflight (Ship, docs/scope.md §7): every requirement is checked before
-# anything is touched, and every unmet one is named in one report, rather than
-# the install stopping at the first and failing somewhere obscure later.
+# The preflight: every requirement is checked before anything is touched, and
+# every unmet one is named in one report, rather than the install stopping at
+# the first and failing somewhere obscure later.
 # "Missing" stops the install; "Warnings" do not — they are things that work
 # worse, not things that break the daemon. `scripts/install.sh check` prints
 # the same report and touches nothing, for pasting into a bug report.
@@ -145,9 +145,9 @@ sysctl_value() {
 }
 
 # Whether this machine denies unprivileged user namespaces to unconfined
-# programs, which is what stops the editor's Electron starting (docs/scope.md
-# §7, Portability). Ubuntu 24.04 and later set this; Fedora does not, and there
-# the profile is neither needed nor installed.
+# programs, which is what stops the editor's Electron starting. Ubuntu 24.04
+# and later set this; Fedora does not, and there the profile is neither needed
+# nor installed.
 userns_restricted() {
   [ "$(sysctl_value kernel/apparmor_restrict_unprivileged_userns)" = 1 ]
 }
@@ -300,7 +300,7 @@ preflight_checks() {
   fi
 
   if [ "$bus" = yes ]; then
-    # The tray (Ship piece 2) is a StatusNotifierItem: it needs a panel that
+    # The tray is a StatusNotifierItem: it needs a panel that
     # hosts them, which registers this name. GNOME has none without an
     # AppIndicator extension. Electron does not report the difference, so
     # closing the editor would hide it with no icon to click.
@@ -683,7 +683,7 @@ build_and_stage() {
   cp "$REPO_DIR/tsconfig.json" "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" \
      "$REPO_DIR/README.md" "$STAGE_DIR/"
   cp "$REPO_DIR/helper/deckhand-input.c" "$REPO_DIR/helper/Makefile" "$STAGE_DIR/helper/"
-  # Built-in icons (docs/scope.md §3): the daemon finds them beside dist/ and
+  # Built-in icons: the daemon finds them beside dist/ and
   # draws them only as fallbacks; config.json never points here, since this
   # directory is replaced on every update.
   mkdir -p "$STAGE_DIR/assets"
@@ -714,7 +714,7 @@ build_and_stage() {
 }
 
 # The editor goes inside the daemon's app directory, built from the same
-# checkout in the same run (docs/scope.md §7, Ship). It bundles daemon source —
+# checkout in the same run. It bundles daemon source —
 # config validation, the action registry, the default icons — so an editor
 # installed on its own could silently pair with a daemon from another commit.
 # Here the two are always one commit, and roll back together. Inside the app
@@ -735,9 +735,9 @@ build_editor() {
      "$REPO_DIR/editor/vite.config.ts" "$editor_dir/"
   cp "$REPO_DIR/editor/scripts/build-main.mjs" "$editor_dir/scripts/"
   # The tray icon's PNGs, which the editor build copies into its dist/; the
-  # title bar's logo, which Vite bundles into dist/renderer/ (Ship piece 4);
+  # title bar's logo, which Vite bundles into dist/renderer/;
   # and the application icon, png/apps/ and deckhand.svg, which
-  # install_desktop_entry installs from the app directory (Ship piece 5).
+  # install_desktop_entry installs from the app directory.
   mkdir -p "$STAGE_DIR/assets/logo"
   cp -r "$REPO_DIR/assets/logo/png" "$STAGE_DIR/assets/logo/png"
   cp "$REPO_DIR/assets/logo/deckhand-small.svg" "$REPO_DIR/assets/logo/deckhand.svg" "$STAGE_DIR/assets/logo/"
@@ -829,7 +829,7 @@ install_udev_rule() {
   report_device_access
 }
 
-# The AppArmor profile that lets the editor's Electron start (docs/scope.md §7).
+# The AppArmor profile that lets the editor's Electron start.
 # Only where user namespaces are restricted, and only when it is not already
 # there: on Fedora, and on a second run, this does nothing and asks for nothing.
 install_apparmor_profile() {
@@ -981,7 +981,7 @@ EOF
 # Writes ~/.local/bin/deckhand-editor, the same way as the CLI wrapper: the app
 # path resolved here, a marker line, never over a file Deckhand did not write.
 # ELECTRON_RUN_AS_NODE is cleared because a shell started from VS Code sets it,
-# and it turns Electron into plain Node with no window (CLAUDE.md).
+# and it turns Electron into plain Node with no window.
 install_editor_launcher() {
   case "$APP_DIR" in
     *"'"*)
@@ -1016,7 +1016,7 @@ remove_editor_launcher() {
   fi
 }
 
-# --- The editor's desktop entry and icon (Ship piece 5) ------------------------
+# --- The editor's desktop entry and icon -------------------------------------
 
 # The desktop file ID: "desktopName" in the installed editor/package.json,
 # without ".desktop". Electron reads the same field and reports it as the
@@ -1177,8 +1177,8 @@ cmd_uninstall() {
   rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR"
   rm -rf "${TMPDIR:-/tmp}/deckhand-art"
 
-  # App state, not the user's config: removed with the app, never asked about
-  # (docs/scope.md §0). Said out loud, because it holds the config backups.
+  # App state, not the user's config: removed with the app, never asked about.
+  # Said out loud, because it holds the config backups.
   if [ -d "$STATE_DIR" ]; then
     local backup_count
     backup_count="$(find "$STATE_DIR/backups" -maxdepth 1 -name 'config-*.json' 2>/dev/null | wc -l)"
