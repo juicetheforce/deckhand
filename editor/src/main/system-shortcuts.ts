@@ -2,11 +2,11 @@ import { execFile } from 'node:child_process';
 import type { SystemShortcut } from '../shared/bridge.js';
 
 /**
- * Whether a combo is a KDE global shortcut (docs/scope.md §10): asked of
+ * Whether a combo is a KDE global shortcut: asked of
  * KDE's shortcut service over D-Bus, `org.kde.kglobalaccel`
  * `getGlobalShortcutsByKey`, through `busctl --user --json=short` — read-only.
  *
- * Two limits, recorded in scope §10: a miss does not mean the combo is safe
+ * Two limits: a miss does not mean the combo is safe
  * (Alt+F6 was grabbed in proof 0b and the service does not know it), and keys
  * the layout remaps (F13–F18, F20–F23) cannot be found this way at all.
  * Without KDE's service — another desktop, no busctl — every lookup is a miss.
@@ -26,7 +26,7 @@ type QtEntry = readonly [qtName: string, value: number, keypad?: 'keypad'];
 /**
  * The editor's key names (src/shared/keys.ts) → Qt::Key. Each entry carries
  * the Qt enum name so test/system-shortcuts.test.ts can check every value
- * against Qt's qnamespace.h (fetched for the purpose, scope §10) rather than
+ * against Qt's qnamespace.h rather than
  * trusting this table. Keypad keys are the plain key plus KeypadModifier.
  */
 export const QT_KEYS: Readonly<Record<string, QtEntry>> = {

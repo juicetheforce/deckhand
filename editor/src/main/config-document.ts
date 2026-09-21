@@ -10,13 +10,13 @@ export type { ButtonLocation, Edit, EditResult };
 
 /**
  * The pure functions that apply the editor's edits (their types are in
- * src/shared/edits.ts) to a config (docs/scope.md §10). The renderer sends an Edit;
+ * src/shared/edits.ts) to a config. The renderer sends an Edit;
  * the main process applies it to a copy of the config, validates the result
  * with the daemon's own validateConfig, and autosaves (config-store.ts).
  *
  * Every edit changes only what it names. Nothing here reorders, normalises
  * or fills in defaults, because the config diff after an editing session must
- * show only what was changed (M4 phase A exit).
+ * show only what was changed.
  */
 
 /** An edit that cannot apply: a location that does not exist, a clashing name. */
@@ -53,7 +53,7 @@ function layoutAt(config: Config, profile: string, serial: string): LayoutDef {
 /**
  * An ID that is neither an existing ID nor an existing name — a name equal to
  * another entry's ID is refused by validateConfig, since the ID would always
- * win and the name could never be reached (docs/scope.md §5).
+ * win and the name could never be reached.
  */
 function freshId(prefix: string, entries: Record<string, { name?: string }>, env: EditEnvironment): string {
   let id: string;
@@ -160,11 +160,10 @@ function forEachAction(layout: LayoutDef, visit: (action: ActionDef) => void): v
 }
 
 /**
- * A rename keeps every link in the form its author wrote it (the maintainer,
- * 2026-09-19, M5): a link that reached the page **by name** gets the new
- * name; a link by ID is left alone. Pinning name links to the ID instead (the
- * rule from 2026-09-16) kept them working but made a hand-written config
- * unreadable — the one reason names resolve at all (docs/scope.md §5).
+ * A rename keeps every link in the form its author wrote it: a link that reached the page **by name** gets the new
+ * name; a link by ID is left alone. Pinning name links to the ID instead
+ * kept them working but made a hand-written config
+ * unreadable — the one reason names resolve at all.
  *
  * Call before the name changes, while the old one still resolves. The new
  * name resolves to the same page because the rename has already refused a
@@ -238,7 +237,7 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
     case 'setIcon': {
       const page = pageAt(config, edit.at);
       switch (edit.icon.kind) {
-        // Removing the key is what makes the action's default render (phase C).
+        // Removing the key is what makes the action's default render.
         case 'default':
           removeField(page, edit.at.index, 'icon');
           break;
@@ -416,8 +415,7 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       // is newer than the main process: the editor stays running in the tray
       // across `scripts/install.sh update`, and reopening its window loads the
       // new renderer from disk. Without this, the unknown edit changed nothing
-      // and reported success — M5 profile rename "did nothing" on the maintainer's first
-      // try, 2026-09-19. `never` makes a kind added to Edit without a case
+      // and reported success. `never` makes a kind added to Edit without a case
       // here a type error.
       const unknown: never = edit;
       throw new EditError(

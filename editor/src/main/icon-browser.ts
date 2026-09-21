@@ -7,12 +7,12 @@ import { toConfigPath } from './config-document.js';
 import { stamp } from './icon-files.js';
 
 /**
- * The file side of the icon picker (docs/scope.md §10): list a folder with a
+ * The file side of the icon picker: list a folder with a
  * count on each subfolder, search the tree below it, watch the open folder.
  * Plain Node, no Electron, so test/icon-picker.test.ts runs it directly.
  * Bookmarked folders are the editor's own preference (src/main/preferences.ts).
  *
- * Icons are plain paths (scope §3). Nothing here copies, imports or indexes
+ * Icons are plain paths. Nothing here copies, imports or indexes
  * anything: every listing and search reads the file system as it is now.
  */
 
@@ -32,8 +32,8 @@ function entry(folder: string, name: string, homeDir: string): IconFolderEntry {
 }
 
 /**
- * How many folders and images a subfolder holds, for the count on its tile
- * (mockup 5a). Hidden entries and files the editor does not show are left out,
+ * How many folders and images a subfolder holds, for the count on its tile.
+ * Hidden entries and files the editor does not show are left out,
  * so the number matches what opening it would list. An unreadable folder
  * counts as nothing rather than failing the listing around it.
  */
@@ -94,8 +94,8 @@ export interface SearchLimits {
 
 /**
  * Images anywhere below `root` whose file name contains `query`,
- * case-insensitively (scope §10: the filter searches the whole subtree, and
- * each match says where it lives). Hidden entries are skipped. Symlinked
+ * case-insensitively: the filter searches the whole subtree, and each match
+ * says where it lives. Hidden entries are skipped. Symlinked
  * folders are not followed, so a link back up the tree cannot loop.
  * Unreadable folders are skipped silently. `stillWanted` is asked between
  * folders, so a search replaced by a newer one stops early.
@@ -149,7 +149,7 @@ function sortMatches(matches: IconSearchMatch[]): IconSearchMatch[] {
  * The folder the picker opens on: the folder of the key's current icon if it
  * still exists, else the most recent folder that exists, else the first
  * fallback that exists (the caller passes Pictures, then home). Nothing is
- * hardcoded about any particular icon tree (scope §0).
+ * hardcoded about any particular icon tree.
  */
 export async function startFolder(currentIconPath: string | null, recent: string[], fallbacks: string[]): Promise<string> {
   const candidates = [...(currentIconPath ? [path.dirname(currentIconPath)] : []), ...recent, ...fallbacks];
@@ -209,8 +209,7 @@ export async function existingFolders(folders: string[], homeDir: string, keepMi
 }
 
 /**
- * Watches the one folder the picker has open (scope §10: the editor watches
- * the open folder instead of a refresh button). Not recursive. A burst of
+ * Watches the one folder the picker has open, instead of a refresh button. Not recursive. A burst of
  * changes (a file copied in, a folder unpacked) is reported once, 150 ms after
  * the last event: an event-started timer, nothing at rest.
  */

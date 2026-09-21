@@ -2,7 +2,7 @@ import type { Config } from '../../../src/types.js';
 import type { DecksResult } from '../../../src/control/protocol.js';
 
 /**
- * The editor's app settings (Ship piece 3, scope §7): what the settings window
+ * The editor's app settings: what the settings window
  * shows and changes. Kept in the editor's preferences file, never config.json
  * — they are about this editor, not about the decks. Pure, so main, both
  * renderers and the tests share one reading of what is stored.
@@ -10,16 +10,15 @@ import type { DecksResult } from '../../../src/control/protocol.js';
 export interface AppSettings {
   /** The deck the editor opens on, by serial; null is Automatic. */
   defaultDeck: string | null;
-  /** Closing the editor leaves it in the tray (Ship piece 2); off, closing quits. */
+  /** Closing the editor leaves it in the tray; off, closing quits. */
   closeToTray: boolean;
   accent: AccentName;
 }
 
 /**
  * The accent colours: a closed set, each checked once against the editor's
- * cool-tinted neutrals rather than any colour allowed (scope §10). The four
- * of mockup 6a. Blue is today's and the default, and needs no attribute; the
- * others set `data-accent` on the root element (styles.css).
+ * cool-tinted neutrals rather than any colour allowed. Blue is the default,
+ * and needs no attribute; the others set `data-accent` on the root element (styles.css).
  */
 export const ACCENTS = [
   { name: 'blue', label: 'Blue', hex: '#5b6ee8' },

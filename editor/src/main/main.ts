@@ -4,8 +4,7 @@ import os from 'node:os';
 import readline from 'node:readline';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
-// The daemon's own modules, imported rather than copied (docs/scope.md §7, M4
-// phase A proof 0a). Only modules with no dependencies beyond Node built-ins
+// The daemon's own modules, imported rather than copied. Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
 import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
@@ -34,7 +33,7 @@ import { findSystemShortcut } from './system-shortcuts.js';
 // Electron's state (cache, local storage, lock files) goes in the state
 // directory, never the default ~/.config/<app name>: that would sit next to
 // config.json, in a directory that may be synced. Uninstall already removes
-// the state directory. Must be set before the app is ready. (docs/scope.md §0)
+// the state directory. Must be set before the app is ready.
 app.setPath('userData', path.join(STATE_DIR, 'editor'));
 
 registerIconScheme(); // before the app is ready
@@ -46,11 +45,11 @@ registerIconScheme(); // before the app is ready
  * quits.
  */
 const CHECK = process.env.DECKHAND_EDITOR_CHECK ?? null;
-// Offscreen frames came back 0×0 with GPU rendering (2026-09-15).
+// Offscreen frames came back 0×0 with GPU rendering.
 if (CHECK === 'screenshot') app.disableHardwareAcceleration();
 
 /**
- * One editor at a time (Ship piece 2): launching it again while it is open or
+ * One editor at a time: launching it again while it is open or
  * in the tray brings that one forward ('second-instance', below) rather than
  * starting another. The lock is per userData directory, so the checks — each
  * with its own scratch state directory — never meet the maintainer's editor. The other
@@ -62,11 +61,11 @@ if (!IS_PRIMARY) app.quit();
 
 // No application menu: Electron's default one binds Ctrl+W, Ctrl+R, Ctrl+Q
 // and more, which would fire while the hotkey inspector is listening. With
-// it removed those combos reach the page and can be captured (scope §10, 0b).
+// it removed those combos reach the page and can be captured.
 Menu.setApplicationMenu(null);
 
 /**
- * Which build of the editor this process started from (M5, the maintainer 2026-09-19).
+ * Which build of the editor this process started from.
  * `scripts/install.sh update` swaps the app directory while an editor can sit
  * in the tray, so a page loaded later comes from the new build and talks to
  * this old main process — which once made profile rename silently do nothing.
@@ -110,7 +109,7 @@ function restartForNewInstall(): void {
 }
 
 let window: BrowserWindow | null = null;
-/** The settings window (Ship piece 3): a child of `window`, one at a time, closed with it. */
+/** The settings window: a child of `window`, one at a time, closed with it. */
 let settingsWindow: BrowserWindow | null = null;
 /** Screenshot check only: the most recent offscreen frame. */
 let lastFrame: Electron.NativeImage | null = null;
@@ -152,7 +151,7 @@ async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
 }
 
 /**
- * Show a page on a deck (scope §10, live switching). The page may exist only
+ * Show a page on a deck. The page may exist only
  * in edits not yet saved — a page just added — so save first, and if that
  * wrote the file, wait for the daemon to report the reload.
  *
@@ -187,7 +186,7 @@ async function showPage(serial: string, page: string): Promise<DaemonResult> {
 }
 
 /**
- * Make a profile active (scope §10, live switching). Mirrors showPage, and for
+ * Make a profile active. Mirrors showPage, and for
  * the same reason: the profile may exist only in edits not yet saved — one
  * just created — so save first, and wait for the daemon to report the reload.
  *
@@ -213,7 +212,7 @@ async function switchProfile(to: string): Promise<DaemonResult> {
 }
 
 /**
- * Multi action's Test Run (scope §10: it arms rather than fires). The renderer
+ * Multi action's Test Run. The renderer
  * counts down while the user clicks into the window the keys should reach;
  * this refuses if the editor still has focus when the count ends, so a test
  * never types into the editor. Electron knows its own focus — nothing
@@ -226,9 +225,9 @@ async function testRun(serial: string, action: ActionDef): Promise<DaemonResult>
   return daemonCall(() => daemon.runAction(serial, action));
 }
 
-// --- Icon picker (scope §10) -------------------------------------------------
+// --- Icon picker ------------------------------------------------------------
 
-// The editor's own preferences (scope §10), in Electron's userData — never
+// The editor's own preferences, in Electron's userData — never
 // beside config.json, which belongs to the daemon.
 const preferences = new Preferences(path.join(app.getPath('userData'), 'preferences.json'));
 const bookmarks = new Bookmarks(preferences);
@@ -269,7 +268,7 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
  * Choosing (or removing) an icon. The preview on the key is cleared only
  * after the daemon has reloaded the saved file, so the key goes straight from
  * the preview to the saved icon — and presses work again, since a previewed
- * key is inert (scope §7, M3 decision 3). `[confirmed]` 2026-09-15 by reading
+ * key is inert. `[confirmed]` 2026-09-15 by reading
  * src/index.ts, src/profiles.ts and src/deck.ts: reload() fires its config
  * event before applyReload() runs, and applyReload awaits each deck in turn,
  * so a key on a second deck can show its old icon until the first deck's full
@@ -332,12 +331,12 @@ function windowState(w: BrowserWindow): WindowState {
 }
 
 /**
- * Keep a frameless window's title bar in step with it (Ship piece 4). The page
+ * Keep a frameless window's title bar in step with it. The page
  * cannot see whether its window is maximised, so it is told, to draw restore
  * rather than maximise; and it is told about focus because nothing outside the
  * application dims an inactive window — KDE's own applications do it
  * themselves, through Qt's inactive palette, and a window drawing its own bar
- * takes that on (Fleuron, reportFocus). The page also reads the state once when
+ * takes that on. The page also reads the state once when
  * it mounts (windowState), because a reload is none of these events.
  */
 function reportWindowState(w: BrowserWindow): void {
@@ -354,7 +353,7 @@ async function appSettings(): Promise<AppSettings> {
   return readSettings(await preferences.read());
 }
 
-/** Tell both windows the settings changed, so each applies them at once ("Settings apply immediately", 6a). */
+/** Tell both windows the settings changed, so each applies them at once. */
 async function broadcastSettings(): Promise<void> {
   const settings = await appSettings();
   for (const w of [window, settingsWindow]) if (w && !w.isDestroyed()) w.webContents.send('appSettings', settings);
@@ -376,8 +375,8 @@ function openSettings(): void {
   }
   settingsWindow = new BrowserWindow({
     // A child of the editor's window, but on Wayland that does not keep it
-    // above: KWin puts it behind the editor like any other window (measured
-    // 2026-09-18, framed or not), and alwaysOnTop is unsupported on Wayland.
+    // above: KWin puts it behind the editor like any other window (measured,
+    // framed or not), and alwaysOnTop is unsupported on Wayland.
     // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
     // 6a's layout, with nothing below the footer: its 32 px title bar
@@ -390,7 +389,7 @@ function openSettings(): void {
     resizable: false,
     minimizable: false,
     maximizable: false,
-    // Its own bar, with a close button only (Ship piece 4; createWindow says why frameless).
+    // Its own bar, with a close button only (createWindow says why frameless).
     frame: false,
     title: 'Deckhand Settings',
     backgroundColor: '#0e1020',
@@ -420,14 +419,14 @@ function openSettings(): void {
 /**
  * Whether the settings window has lost focus since it last had it. Clicking
  * into the editor blurs the settings window and then focuses the editor, 1 ms
- * apart (measured 2026-09-18); a focus on the editor without that blur first is
+ * apart (measured); a focus on the editor without that blur first is
  * not a click away from Settings, and is ignored. Such focus events do arrive:
  * one closed a settings window moments after it opened, in the title bar check.
  */
 let settingsLeft = false;
 
 /**
- * Going back to the editor closes the settings window (the maintainer, 2026-09-18). It
+ * Going back to the editor closes the settings window. It
  * cannot stay above the editor on Wayland (openSettings), and left to go
  * behind it, it looked closed anyway. Nothing is lost: every setting is saved
  * the moment it changes.
@@ -453,7 +452,7 @@ function tildePath(file: string): string {
 }
 
 /**
- * Export the configuration as it is on disk (M5 piece 1, docs/scope.md §5):
+ * Export the configuration as it is on disk:
  * unsaved edits are saved first; any that cannot be (a conflict, a reformat
  * not yet allowed) are left out, and the result says so. The destination is
  * the system save dialog's — or, for checks only, DECKHAND_CHECK_EXPORT_PATH.
@@ -495,14 +494,14 @@ async function exportConfig(includeIcons: boolean): Promise<ExportResult> {
 }
 
 /**
- * The import waiting for confirmation (M5 piece 2): chosen and planned, not
+ * The import waiting for confirmation: chosen and planned, not
  * yet written. The plan stays here; the settings window sees only its review
  * and id, so a page can never hand main a list of places to write.
  */
 let pendingImport: { id: string; plan: ImportPlan } | null = null;
 
 /**
- * Choose a file and plan its import, writing nothing (docs/scope.md §5). The
+ * Choose a file and plan its import, writing nothing. The
  * file is the system open dialog's — or, for checks only,
  * DECKHAND_CHECK_IMPORT_PATH.
  */
@@ -564,7 +563,7 @@ async function planImportOf(source: string): Promise<ImportChoice> {
 }
 
 /**
- * The configurations kept before an import or a profile delete (M5 piece 2d).
+ * The configurations kept before an import or a profile delete.
  * Read for the list in Settings, so choosing one never means opening files.
  */
 async function keptConfigs(): Promise<KeptConfigList> {
@@ -574,8 +573,7 @@ async function keptConfigs(): Promise<KeptConfigList> {
 /**
  * Restore a kept configuration: planned as any other import, so it goes
  * through the same review and keeps the configuration it replaces. Restoring
- * is destructive too, and its undo is the copy that restoring makes (the maintainer,
- * 2026-09-19).
+ * is destructive too, and its undo is the copy that restoring makes.
  */
 async function planKeptRestore(file: string): Promise<ImportChoice> {
   try {
@@ -614,7 +612,7 @@ async function confirmImport(id: string): Promise<ImportResult> {
 }
 
 function registerIpc(): void {
-  // --- App settings (Ship piece 3) ---
+  // --- App settings ---
   ipcMain.handle('appSettings', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? appSettings() : DEFAULT_SETTINGS));
   ipcMain.handle('setAppSettings', async (event, patch: unknown) => {
     if (!fromSettingsWindow(event)) return appSettings();
@@ -632,7 +630,7 @@ function registerIpc(): void {
     if (!fromSettingsWindow(event)) return [];
     return deckOptions(store?.state().config ?? null, daemon.view().decks);
   });
-  // --- Export (M5 piece 1) ---
+  // --- Export ---
   ipcMain.handle('exportConfig', async (event, includeIcons: unknown): Promise<ExportResult> => {
     if (!fromSettingsWindow(event) || typeof includeIcons !== 'boolean') return { ok: false, error: 'not allowed' };
     return exportConfig(includeIcons);
@@ -675,7 +673,7 @@ function registerIpc(): void {
   ipcMain.handle('closeSettings', (event) => {
     if (fromSettingsWindow(event)) settingsWindow?.close();
   });
-  // --- The title bar (Ship piece 4) ---
+  // --- The title bar ---
   ipcMain.handle('windowControl', (event, action: unknown) => {
     const w = callingWindow(event);
     if (!w) return;
@@ -684,7 +682,7 @@ function registerIpc(): void {
     // the settings window is closed with the editor's (createWindow). The
     // launcher then takes it to the tray, or quits, from 'closed'.
     if (action === 'close') w.close();
-    // The settings window has a close button only (Ship piece 3).
+    // The settings window has a close button only.
     else if (w !== window) return trayCheckReport('windowControl', { action, from, obeyed: false });
     else if (action === 'minimise') w.minimize();
     // A toggle, like double-clicking the bar, which Chromium does by itself.
@@ -694,7 +692,7 @@ function registerIpc(): void {
     } else return trayCheckReport('windowControl', { action, from, obeyed: false });
     // The title bar check reads this rather than isMinimized(): a check window is
     // never shown, and minimising one that was never mapped only sometimes takes
-    // (1 run in 6, 2026-09-18).
+    // (1 run in 6).
     trayCheckReport('windowControl', { action, from, obeyed: true });
   });
   ipcMain.handle('windowState', (event): WindowState => {
@@ -859,7 +857,7 @@ function createWindow(): void {
     height: settingsShot ? SETTINGS_HEIGHT : 900,
     show: CHECK === null,
     /*
-     * The editor draws its own title bar (Ship piece 4, scope §10): frame:
+     * The editor draws its own title bar: frame:
      * false, or KWin draws its own above it and there are two. Kept opaque,
      * with the drop shadow left on — measured on this machine 2026-09-18,
      * Electron 44.3.0 on Wayland: opaque, transparent and shadowless frameless
@@ -876,8 +874,8 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      // capturePage() fails here with "UnknownVizError", shown or offscreen
-      // (seen 2026-09-15); offscreen rendering hands over frames through the
+      // capturePage() fails here with "UnknownVizError", shown or offscreen;
+      // offscreen rendering hands over frames through the
       // 'paint' event instead, which the screenshot check keeps.
       offscreen: CHECK === 'screenshot',
     },
@@ -922,7 +920,7 @@ app.on('before-quit', (event) => {
 });
 
 /**
- * What closing to the tray hands back (Ship piece 2): unsaved edits and
+ * What closing to the tray hands back: unsaved edits and
  * preferences are written, then config.json's watcher, the daemon socket and
  * the icon watchers are closed. A closed window runs no React cleanup, so the
  * icon watchers are closed here rather than left to the renderer.

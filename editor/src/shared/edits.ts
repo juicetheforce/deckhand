@@ -19,15 +19,14 @@ export type Edit =
   /** Set the key's press action, keeping icon, label and anything else on it. */
   | { kind: 'setAction'; at: ButtonLocation; action: ActionDef }
   /**
-   * An action dragged from the library onto a key — authoring (scope §10, the maintainer
-   * 2026-09-16): a button *is* its action, icon and label, so the drop replaces
+   * An action dragged from the library onto a key — authoring: a button *is* its action, icon and label, so the drop replaces
    * the action, removes any release action with it, and clears the icon and
    * the label, whatever was there. The action's default icon then renders.
    * Other fields (background, label style) stay.
    */
   | { kind: 'assignAction'; at: ButtonLocation; action: ActionDef }
   /**
-   * Press/Release (scope §10): `keyHold` down with these keys as the press
+   * Press/Release: `keyHold` down with these keys as the press
    * action and `keyHold` up with the same keys as the release action, together.
    * null removes both, keeping icon and label, like Clear hotkey.
    */
@@ -37,7 +36,7 @@ export type Edit =
   /** Set the key's icon to one of its three states. */
   | { kind: 'setIcon'; at: ButtonLocation; icon: IconChoice }
   /**
-   * One icon of a state pair, on the action (C2 call 4; `pairIconFields`). A
+   * One icon of a state pair, on the action (see `pairIconFields`). A
    * file or built-in sets it; `default` removes it. No `none`: the daemon has
    * no deliberately blank half.
    */
@@ -45,8 +44,7 @@ export type Edit =
   /** Set or (null or "") remove the label. */
   | { kind: 'setLabel'; at: ButtonLocation; label: string | null }
   /**
-   * How the label is drawn. The schema and src/render.ts have carried all
-   * three positions since v0.1; only the editor UI was missing. null removes
+   * How the label is drawn. null removes
    * the field, so the key falls back to `defaults` in config.
    */
   | {
@@ -59,16 +57,16 @@ export type Edit =
   | { kind: 'clearButton'; at: ButtonLocation }
   /**
    * Write whole buttons into slots on one page, or (null) empty them — every
-   * bulk operation of phase B3: paste, copy to page or device, duplicate,
+   * bulk operation: paste, copy to page or device, duplicate,
    * clear and swap (src/shared/bulk.ts decides what to write). One edit, so a
    * paste of ten keys is validated, saved and reloaded once, and a refused one
    * changes nothing at all.
    */
   | { kind: 'putButtons'; profile: string; serial: string; page: string; writes: ButtonWrite[] }
-  /** Bare "add page" (scope §7, phase A): a new, empty, named page in one layout. */
+  /** Bare "add page": a new, empty, named page in one layout. */
   | { kind: 'addPage'; profile: string; serial: string; name: string }
   /**
-   * A new profile (scope §7, phase B), with a layout for each of these decks.
+   * A new profile, with a layout for each of these decks.
    * A layout must hold at least one page to be valid, so each gets one empty
    * page named `pageName`, and starts on it.
    */
@@ -76,66 +74,62 @@ export type Edit =
   /** Give an existing profile a layout for a deck it does not cover, on the same terms. */
   | { kind: 'addLayout'; profile: string; serial: string; pageName: string }
   /**
-   * Delete a page (scope §7, B3, pulled forward from M5). Keys in the same
+   * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a
    * missing target logs and does nothing on the deck, so leaving them would
-   * leave keys that are invisibly dead (the maintainer, 2026-09-15). `startPage` is
+   * leave keys that are invisibly dead. `startPage` is
    * moved if it named this page, because validateConfig refuses one that does
    * not resolve. Refused for a layout's last page: a layout must keep one.
    */
   | { kind: 'deletePage'; profile: string; serial: string; page: string }
   /**
-   * Rename a deck (scope §10, the maintainer 2026-09-16). `decks.<serial>.name` is
-   * already in the schema; this is editor UI over an existing field, not a
-   * schema change. Deck config sits outside profiles, so a name set once
+   * Rename a deck (`decks.<serial>.name`). Deck config sits outside profiles, so a name set once
    * applies everywhere. null (or a blank name) removes it, and the deck falls
    * back to the model name the daemon reports.
    */
   | { kind: 'renameDeck'; serial: string; name: string | null }
   /**
-   * Rename a page. **Pulled forward from M5** (the maintainer, 2026-09-16) so the tab's
-   * right-click menu can carry Rename beside Delete, which is what lets the
-   * "⋯" button go.
+   * Rename a page.
    *
-   * Pages resolve by ID first and then by name (§5), and the editor writes
+   * Pages resolve by ID first and then by name, and the editor writes
    * IDs — but a hand-written `"to": "Combat"`, or a `startPage` naming the
    * page, would stop resolving the moment it is renamed. Those follow the
-   * page to its new name; links by ID are left as they are (the maintainer, 2026-09-19,
-   * replacing the 2026-09-16 rule of pinning them to the ID, which kept them
-   * working but made a hand-written config unreadable).
+   * page to its new name; links by ID are left as they are. Pinning name links
+   * to the ID would keep them working but make a hand-written config
+   * unreadable.
    */
   | { kind: 'renamePage'; profile: string; serial: string; page: string; name: string }
   /**
-   * Rename a profile (M5). The same rule as renamePage, over the whole config:
+   * Rename a profile. The same rule as renamePage, over the whole config:
    * a `profile` action resolves across every profile, so a key anywhere, and
    * `startProfile`, that named the profile follows it to the new name.
    */
   | { kind: 'renameProfile'; profile: string; name: string }
   /**
-   * Delete a profile (M5). Keys in the other profiles that switched to it lose
+   * Delete a profile. Keys in the other profiles that switched to it lose
    * that action, keeping icon and label; `startProfile` moves if it named
    * this one; a deck no remaining profile covers gets a fresh layout, whose
    * one page is called `pageName` — a deck with nothing on it is worse than a
-   * deck with a blank page (the maintainer, 2026-09-19). Refused for the last profile.
+   * deck with a blank page. Refused for the last profile.
    * The rules, and the planning the confirmation shows, are in
    * src/shared/profile-deletion.ts.
    */
   | { kind: 'deleteProfile'; profile: string; pageName: string };
 
 /**
- * A button's icon has three states, and they are not interchangeable
- * (docs/scope.md §10, the maintainer 2026-09-16). One field, three readings — rather
+ * A button's icon has three states, and they are not interchangeable.
+ * One field, three readings — rather
  * than a second flag that could disagree with the first.
  */
 export type IconChoice =
   /**
-   * This file — or a built-in: `path` is `builtin:<name>`, stored as is (scope
-   * §7 C1 call 5). Absolute paths under $HOME are stored as ~/...
+   * This file — or a built-in: `path` is `builtin:<name>`, stored as is.
+   * Absolute paths under $HOME are stored as ~/...
    */
   | { kind: 'file'; path: string }
   /** Deliberately none: writes `"icon": null`, so a label-only button stays label-only after phase C. */
   | { kind: 'none' }
-  /** Nothing chosen: removes the key, so the action's built-in default renders (phase C). */
+  /** Nothing chosen: removes the key, so the action's built-in default renders. */
   | { kind: 'default' };
 
 export type EditResult = { pageId?: string; profileId?: string };

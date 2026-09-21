@@ -4,11 +4,11 @@ import { MAX_BOOKMARKS } from '../shared/bridge.js';
 
 /**
  * The editor's own preferences — the first thing it persists that is not
- * config (docs/scope.md §10). Bookmarked icon folders today.
+ * config. Bookmarked icon folders today.
  *
  * **Never `config.json`.** That file is the daemon's, and these are the
  * editor's own preferences; it lives in Electron's `userData`, which is set
- * to `$XDG_STATE_HOME/deckhand/editor/` (scope §0), so uninstall takes it
+ * to `$XDG_STATE_HOME/deckhand/editor/`, so uninstall takes it
  * with the app and nothing the editor writes lands beside the config.
  *
  * Writes are debounced and `flush()` writes before the editor quits, because

@@ -1,5 +1,5 @@
 /**
- * The editor as a launcher (Ship piece 2, scope §7): a thing the maintainer opens, not a
+ * The editor as a launcher: a thing the maintainer opens, not a
  * resident process. Closing the window puts the editor in the tray and hands
  * back everything an open editor holds — config.json and its watcher, the
  * daemon socket, the icon watchers — so what is left at rest is the main
@@ -43,7 +43,7 @@ export interface LauncherDeps {
    * Whether the editor on disk is no longer the one this process started
    * from — `scripts/install.sh update` replaced it while the editor sat in the
    * tray. A window made now would load the new page against this old main
-   * process, which is the stale-editor bug of 2026-09-19 (M5).
+   * process.
    */
   installChanged(): boolean;
   /** Start the editor again from what is on disk: quit (writing unsaved edits) and relaunch. */

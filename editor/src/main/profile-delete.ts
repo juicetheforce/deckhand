@@ -1,7 +1,7 @@
 /**
- * Deleting a profile keeps the configuration first (M5, the maintainer 2026-09-19): a
+ * Deleting a profile keeps the configuration first: a
  * delete can take a deck's worth of keys with it, the editor has no undo, and
- * the rolling backups can be five minutes behind (docs/scope.md §5). The copy
+ * the rolling backups can be five minutes behind. The copy
  * is `before-delete-<time>.json`, a name the rolling rotation never matches,
  * so it is never deleted.
  *

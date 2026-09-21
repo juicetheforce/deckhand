@@ -4,7 +4,7 @@
   // That holds only while every daemon file the renderer imports — even for
   // types — imports nothing that touches Node. A type-only import of
   // src/control/commands.ts brought 18 daemon files and @types/node into this
-  // program (M4 phase A proof 0a), which is why socket types live in
+  // program, which is why socket types live in
   // src/control/protocol.ts. scripts/check-shared-imports.mjs checks it.
   "compilerOptions": {
     "target": "ES2022",

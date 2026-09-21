@@ -10,7 +10,7 @@ import { BUILTIN_PREFIX, builtinName } from '../shared/icons.js';
  *      (src/builtin-icons.ts). The checks set it, so they never depend on
  *      what is installed.
  *   2. The installed daemon's `$XDG_DATA_HOME/deckhand/assets/icons`, if it
- *      exists. Decided by the maintainer for Ship (scope §7, §10): one set of files,
+ *      exists. One set of files,
  *      shipped by one installer and already on disk, rather than asking the
  *      daemon over the socket.
  *   3. `assets/icons/` in the checkout, beside `editor/` — the editor's
@@ -26,7 +26,7 @@ import { BUILTIN_PREFIX, builtinName } from '../shared/icons.js';
  * repo's. That is deliberate — it matches what the deck draws — but it means
  * an icon redrawn in the repo's `assets/icons/` keeps its old look in the
  * development editor, and a newly added one shows as missing, until
- * `scripts/install.sh update` has run. Not a bug.
+ * `scripts/install.sh update` has run.
  * To preview repo icons before installing, start the editor with
  * DECKHAND_BUILTIN_ICONS pointing at the repo's `assets/icons`.
  *

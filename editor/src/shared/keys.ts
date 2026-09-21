@@ -1,5 +1,5 @@
 /**
- * Key naming for hotkey capture and "Type manually" (docs/scope.md §10).
+ * Key naming for hotkey capture and "Type manually".
  * Import-free apart from the daemon's own keymap, which has no imports: the
  * renderer uses this.
  *
@@ -138,8 +138,8 @@ export function canonicalCombo(text: string): string {
  * `shift`, a lone Right Shift `rightshift`, Ctrl then Shift `ctrl+shift`.
  * Null if any code is not a modifier key.
  *
- * For Press/Release, where holding a modifier on its own is a real binding
- * (the maintainer, 2026-09-18, found recording Left Shift). Hotkey capture does not use
+ * For Press/Release, where holding a modifier on its own is a real binding.
+ * Hotkey capture does not use
  * it: there a modifier going down is the start of a combo, not the combo.
  */
 export function loneModifierCombo(codes: readonly string[]): string | null {

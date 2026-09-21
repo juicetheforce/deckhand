@@ -11,8 +11,7 @@ import { applyEdit, serializeConfig, type EditEnvironment } from './config-docum
 export type { Conflict, StoreState };
 
 /**
- * The editor's copy of config.json, and the only code that writes it
- * (docs/scope.md §10, "Autosave").
+ * The editor's copy of config.json, and the only code that writes it.
  *
  * - Every edit is validated with the daemon's own validateConfig before it is
  *   accepted, so the editor never writes a config the daemon would refuse.
@@ -167,7 +166,7 @@ export class ConfigStore {
   }
 
   /**
-   * Replace the whole config (M5 import). In the queue, so no save or
+   * Replace the whole config (for import). In the queue, so no save or
    * external read interleaves: reads the text being replaced and hands it to
    * `keep` first — if that fails, nothing is written — then writes the new
    * config. Unsaved edits, a conflict and a pending reformat all go: the file

@@ -1,14 +1,13 @@
 /**
- * Where keys land in the bulk operations of M4 phase B3 (docs/scope.md §7,
- * §10): copy, paste, copy to page or device, duplicate, clear and swap.
+ * Where keys land in the bulk operations: copy, paste, copy to page or device, duplicate, clear and swap.
  *
  * Every operation comes down to "write these slots on this page", which is one
  * `putButtons` edit — so a paste of ten keys is validated, saved and reloaded
  * once, and can never land half-way. This module decides *what* to write; the
  * main process only writes it (config-document.ts).
  *
- * Positions are rows and columns from the daemon's geometry, never indices
- * (the maintainer, 2026-09-16): index 20 is a different place on the XL and nowhere on a
+ * Positions are rows and columns from the daemon's geometry, never indices:
+ * index 20 is a different place on the XL and nowhere on a
  * 15-key Original V2, so a key keeps its place in the grid and anything with no
  * place on the target is skipped and named.
  *
@@ -41,7 +40,7 @@ export interface ClipKey {
 
 /**
  * The editor's clipboard. It lives in the renderer's memory only: not the
- * system clipboard, and not saved (scope §10's "transient").
+ * system clipboard, and not saved.
  */
 export interface Clipboard {
   keys: ClipKey[];
@@ -116,10 +115,10 @@ export function copyKeys(page: PageDef, grid: KeyGrid, indices: Iterable<number>
 
 /**
  * Where a clipboard lands on a deck with `grid`, with its top-left corner at
- * `anchor`, into `layout`. Occupied keys are replaced (scope §10: replace, no
- * confirmation). A key whose position is off the target deck is skipped. A
+ * `anchor`, into `layout`. Occupied keys are replaced, without
+ * confirmation. A key whose position is off the target deck is skipped. A
  * `page` action that does not resolve in `layout` is dropped, keeping the rest
- * of the key (scope §7, B3).
+ * of the key.
  */
 export function placeClipboard(clip: Clipboard, anchor: { row: number; column: number }, grid: KeyGrid, layout: LayoutDef): Placement {
   const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
@@ -205,13 +204,13 @@ export function duplicateKeys(page: PageDef, grid: KeyGrid, indices: Iterable<nu
   return { ok: true, writes, created };
 }
 
-/** Clear button, for every selected key: an empty, dark slot (scope §10). No confirmation, however many (the maintainer, 2026-09-16). */
+/** Clear button, for every selected key: an empty, dark slot. No confirmation, however many. */
 export function clearKeys(page: PageDef, indices: Iterable<number>): ButtonWrite[] {
   return [...new Set(indices)].filter((i) => page.buttons[String(i)] !== undefined).map((index) => ({ index, button: null }));
 }
 
 /**
- * Key onto key (scope §10): the whole button moves, and dropping onto an
+ * Key onto key: the whole button moves, and dropping onto an
  * occupied key swaps the two. Nothing is cleared or defaulted.
  */
 export function swapKeys(page: PageDef, from: number, to: number): ButtonWrite[] {

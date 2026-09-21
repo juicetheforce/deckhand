@@ -1,6 +1,5 @@
 /**
- * Export and import of the whole configuration (M5, docs/scope.md §5 "Backup
- * has two halves", §7). No Node imports: the renderer uses these types.
+ * Export and import of the whole configuration. No Node imports: the renderer uses these types.
  *
  * An export is a .zip holding `config.json` byte for byte, a manifest
  * (`deckhand-export.json`), and — unless it is config only — every icon file
@@ -68,8 +67,7 @@ export const RESTORED_FOLDER = '~/Deckhand icons (restored)';
 
 /**
  * Limits on a bundle, checked against what the zip declares before anything
- * is unzipped: fflate allocates each entry at its declared size (docs/
- * code-state.md, M5 piece 2). Generous for real use — the maintainer's export is 31
+ * is unzipped: fflate allocates each entry at its declared size. Generous for real use — the maintainer's export is 31
  * files and 4.6 MB.
  */
 export const IMPORT_LIMITS = { entries: 5000, entryBytes: 50 * 1024 * 1024, totalBytes: 500 * 1024 * 1024 } as const;
@@ -140,7 +138,7 @@ export type ImportResult =
   | { ok: false; error: string };
 
 /**
- * The configurations kept before something replaced one (M5): an import's and
+ * The configurations kept before something replaced one: an import's and
  * a profile delete's. The rules — never deleted except by the maintainer, a cap that
  * refuses rather than rotates, no second copy of identical bytes — are in
  * src/main/kept-configs.ts.

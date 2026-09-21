@@ -7,8 +7,7 @@ import { iconFilePath } from './builtin-icons.js';
  *
  * Chromium never re-requests an image whose URL has not changed, so a key's
  * icon in the grid would keep showing whatever it loaded first — even after
- * the file is renamed away or put back (found by the maintainer on the real decks,
- * 2026-09-15). Each file gets a stamp (its modification time and size, or
+ * the file is renamed away or put back. Each file gets a stamp (its modification time and size, or
  * "missing"); the renderer puts the stamp in the icon URL, so a changed file
  * is a new URL and is fetched again.
  *

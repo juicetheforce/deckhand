@@ -1,16 +1,16 @@
 import { Menu, Tray, nativeImage } from 'electron';
 
 /**
- * The tray icon: a launcher, not a status indicator (Ship piece 2, scope §7).
+ * The tray icon: a launcher, not a status indicator.
  * A left-click opens the editor; the menu offers Open and Quit.
  *
- * **A single click, not a double-click** (the maintainer, 2026-09-18). Electron's
+ * **A single click, not a double-click.** Electron's
  * `'double-click'` is macOS and Windows only; on Linux the one click event is
  * `'click'`, sent by a KDE panel on a single left-click. Emulating a double
  * click from two of them was rejected — it would make a single click wait to
- * see whether a second one comes. Scope §7 has the reasons.
+ * see whether a second one comes.
  *
- * Two platform facts, from Fleuron's tray (scope §7): nativeImage takes PNG
+ * Two platform facts: nativeImage takes PNG
  * and JPEG only, so the icon is a PNG rendered from the logo
  * (scripts/render-logo-png.mjs); and nothing can say whether the icon is
  * actually visible — constructing it means it registered, not that a panel

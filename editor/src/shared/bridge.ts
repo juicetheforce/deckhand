@@ -57,7 +57,7 @@ export interface DaemonView {
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
-/** A KDE global shortcut a combo is bound to (scope §10). `component` is the display name ("KWin"). */
+/** A KDE global shortcut a combo is bound to. `component` is the display name ("KWin"). */
 export interface SystemShortcut {
   component: string;
   componentId: string;
@@ -79,7 +79,7 @@ export interface IconFolderEntry {
   configPath: string;
   /** Images only: the file's stamp, for the icon URL (src/main/icon-files.ts). */
   stamp?: string;
-  /** Folders in a listing: how many folders and images it holds, for its tile (mockup 5a). */
+  /** Folders in a listing: how many folders and images it holds, for its tile. */
   items?: number;
   /** Bookmarks only: the folder is no longer there. */
   missing?: boolean;
@@ -111,7 +111,7 @@ export interface EditorSnapshot {
   daemon: DaemonView;
 }
 
-/** What the renderer reports back in the shared-import check (proof 0a). */
+/** What the renderer reports back in the shared-import check. */
 export interface SharedImportReport {
   parseCombo: number[];
   /** A value typed with StateSnapshot from the daemon's src/control/protocol.ts. */
@@ -138,16 +138,16 @@ export interface DeckhandBridge {
   resolveConflict(choice: 'file' | 'mine'): Promise<void>;
   /** Try opening config.json again after it could not be opened. */
   reopenConfig(): Promise<StoreView>;
-  /** Make a profile active on the decks (live switching, scope §10). */
+  /** Make a profile active on the decks. */
   switchProfile(to: string): Promise<DaemonResult>;
   /** Show a page on a deck, saving any unsaved edits first so a new page exists for the daemon. */
   showPage(serial: string, page: string): Promise<DaemonResult>;
-  /** The KDE global shortcut a combo is bound to, or null — including when KDE's service is not there (scope §10). */
+  /** The KDE global shortcut a combo is bound to, or null — including when KDE's service is not there. */
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
   previewClear(serial: string, key?: number): Promise<DaemonResult>;
   /**
-   * Multi action's Test Run (scope §10): run the action on a deck now — but
+   * Multi action's Test Run: run the action on a deck now — but
    * refused, code "focused", while the editor's window has focus, so a test
    * never types into the editor itself.
    */
@@ -185,15 +185,15 @@ export interface DeckhandBridge {
   /** Images below a folder whose name contains the query. A newer call supersedes an unfinished one. */
   searchIcons(folder: string, query: string): Promise<IconSearchResult>;
   /**
-   * Set a key's icon to one of its three states (scope §10) — or, with `slot`,
-   * one icon of its action's state pair (C2) — save, and once the daemon has
+   * Set a key's icon to one of its three states — or, with `slot`,
+   * one icon of its action's state pair — save, and once the daemon has
    * reloaded, clear the preview on that key — so the key shows the saved icon
    * and responds to presses again. Remembers the icon's folder as recent.
    */
   commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null, slot: PairIconField | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
   /**
-   * App settings (Ship piece 3), in the editor's preferences file. Both
+   * App settings, in the editor's preferences file. Both
    * windows can read them; only the settings window changes them, and every
    * change reaches both windows through onAppSettings.
    */
@@ -203,7 +203,7 @@ export interface DeckhandBridge {
   /** The decks the Default deck setting offers (settings window only). */
   settingsDecks(): Promise<DeckOption[]>;
   /**
-   * Export the whole configuration as a .zip (M5 piece 1; settings window
+   * Export the whole configuration as a .zip (settings window
    * only): with every icon file it names, or config only. Asks where to save.
    */
   exportConfig(includeIcons: boolean): Promise<ExportResult>;
@@ -212,15 +212,15 @@ export interface DeckhandBridge {
    * settings window only). Writes nothing: the review says what would happen.
    */
   /**
-   * Delete a profile (M5), keeping a copy of config.json first: a delete can
-   * take 60 keys with it, and the rolling backups can be up to 5 minutes old
-   * (docs/scope.md §5). The copy is `before-delete-<time>.json`, which the
+   * Delete a profile, keeping a copy of config.json first: a delete can
+   * take 60 keys with it, and the rolling backups can be up to 5 minutes old.
+   * The copy is `before-delete-<time>.json`, which the
    * rolling rotation never deletes; restore it from Settings.
    * What it will change is planProfileDeletion() in the renderer — the same
    * code the delete itself runs.
    */
   deleteProfile(profile: string, pageName: string): Promise<DeleteProfileResult>;
-  /** The configurations kept before an import or a profile delete, newest first (M5 piece 2d). */
+  /** The configurations kept before an import or a profile delete, newest first. */
   keptConfigs(): Promise<KeptConfigList>;
   /** Restore one: planned like any import, so the same review shows and the replaced config is kept. */
   restoreKeptConfig(file: string): Promise<ImportChoice>;
@@ -237,7 +237,7 @@ export interface DeckhandBridge {
   onAppSettings(callback: (settings: AppSettings) => void): () => void;
 
   /**
-   * The window's own title bar (Ship piece 4): both windows are frameless, so
+   * The window's own title bar: both windows are frameless, so
    * the page asks the main process to minimise, maximise or close the window
    * it is in. The settings window may only close.
    */

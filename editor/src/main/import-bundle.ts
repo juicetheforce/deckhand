@@ -21,7 +21,7 @@ import { BUILTIN_PREFIX, isShownIcon } from '../shared/icons.js';
 import { iconReferences } from './export-bundle.js';
 
 /**
- * Import (M5 piece 2, docs/scope.md §5). Three steps, kept apart so nothing
+ * Import. Three steps, kept apart so nothing
  * is written until the review has been seen and confirmed:
  *
  *   readImport()   the file's bytes → a checked config, manifest and icons
@@ -106,7 +106,7 @@ export function readImport(bytes: Uint8Array): ReadImport {
   }
 
   // fflate allocates each entry at the size the zip declares, and never grows
-  // it (docs/code-state.md, M5 piece 2), so limiting the declared sizes
+  // it, so limiting the declared sizes
   // limits memory. Entries that are not part of an export are never unzipped.
   let entries = 0;
   let total = 0;

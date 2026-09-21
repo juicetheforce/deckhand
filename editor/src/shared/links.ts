@@ -1,6 +1,6 @@
 /**
  * What points at a page, so deleting one can say what it breaks and then fix
- * it (docs/scope.md §7, M4 phase B, B1).
+ * it.
  *
  * Scope is one layout, deliberately. A `page` action resolves its target
  * inside the layout of the deck it fired from — `ctx.deck.goToPage(to)` in
@@ -73,10 +73,10 @@ export function pageLinks(layout: LayoutDef, pageId: string): PageLink[] {
 }
 
 /**
- * An action with its navigation that goes nowhere *in this layout* taken out
- * (docs/scope.md §7, B3): a key copied to another deck keeps its icon and label
+ * An action with its navigation that goes nowhere *in this layout* taken out:
+ * a key copied to another deck keeps its icon and label
  * but loses a `page` action whose target does not resolve there, the same
- * treatment as page delete (the maintainer, 2026-09-16). A `multi` loses only the steps
+ * treatment as page delete. A `multi` loses only the steps
  * that go nowhere, and is removed if none are left.
  *
  * `back: true` names no page, so it always stays; a target that does resolve
@@ -120,7 +120,7 @@ export function leavesPage(action: unknown, layout: LayoutDef): boolean {
 }
 
 /**
- * Pages in this layout with no key that can leave them — scope §10's guard: no
+ * Pages in this layout with no key that can leave them. The guard: no
  * key is auto-reserved for Back (on a 15-key deck that is a slot you cannot
  * spare), so the editor warns instead.
  *

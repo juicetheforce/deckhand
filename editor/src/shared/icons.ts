@@ -4,21 +4,21 @@ import { BUILTIN_ICONS, type BuiltinIcon } from '../../../src/default-icons.js';
 export const ICON_SCHEME = 'deckhand-icon';
 
 /**
- * How a key names a built-in icon: `builtin:<name>` (scope §7 C1 call 5).
+ * How a key names a built-in icon: `builtin:<name>`.
  * The same string as BUILTIN_PREFIX in src/builtin-icons.ts, which the renderer
  * cannot import (it uses node:path); test/icon-picker.test.ts checks they agree.
  */
 export const BUILTIN_PREFIX = 'builtin:';
 
 /**
- * The icon picker's pinned "Built-in" section (scope §10), as a folder: the
+ * The icon picker's pinned "Built-in" section, as a folder: the
  * picker's place, history and listing carry this in place of a path. A label,
  * not a second browser — the same grid, filter and navigation as any folder.
  */
 export const BUILTIN_FOLDER = BUILTIN_PREFIX;
 
 /**
- * The icons of a state pair, kept on the action (C2 call 4): `audio.micMute`
+ * The icons of a state pair, kept on the action: `audio.micMute`
  * and `audio.mute` swap between muted and unmuted, a play/pause
  * `media.control` between playing and paused. The daemon draws whichever
  * matches the state, and falls back to the key's own icon, then the default.
@@ -41,7 +41,7 @@ export function pairIconFields(action: { type: string; method?: unknown } | unde
   if (!action) return [];
   if (action.type === 'audio.micMute' || action.type === 'audio.mute') return ['iconMuted', 'iconUnmuted'];
   if (action.type === 'media.control' && String(action.method ?? 'playpause').toLowerCase() === 'playpause') return ['iconPlaying', 'iconPaused'];
-  // M7's latching toggle: down and up (docs/scope.md §6).
+  // The latching toggle: held down and released.
   if (action.type === 'toggle') return ['iconOn', 'iconOff'];
   return [];
 }
@@ -80,9 +80,7 @@ export function iconUrl(configPath: string, stamp?: string): string {
  * thumbnail) and the daemon's sharp (the deck). sharp also reads TIFF and
  * HEIF, which Chromium cannot show, so those are left out.
  *
- * The icon picker lists only these and silently leaves everything else out
- * (scope §10: greyed only if cheap, otherwise filtered — filtered, recorded
- * in docs/code-state.md).
+ * The icon picker lists only these and silently leaves everything else out.
  */
 export const ICON_CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.png': 'image/png',

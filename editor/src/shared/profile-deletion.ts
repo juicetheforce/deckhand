@@ -1,10 +1,10 @@
 /**
- * Deleting a profile (M5, docs/scope.md §7), as one pure function that both
+ * Deleting a profile, as one pure function that both
  * the confirmation and the edit run — the confirmation on a copy — so what the
  * confirmation names is what the delete does. Page delete once had the two
  * decide separately, and they disagreed (docs/code-state.md, B1).
  *
- * What a delete does, decided by the maintainer 2026-09-19:
+ * What a delete does:
  * - Refused for the last profile: the daemon refuses a config with none.
  * - Keys in the other profiles that switch to it lose that action and keep
  *   their icon and label, as page delete does; in a multi, only that step

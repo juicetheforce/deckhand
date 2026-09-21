@@ -6,10 +6,9 @@ import type { DaemonView } from '../shared/bridge.js';
 export type { DaemonView };
 
 /**
- * The editor's connection to the daemon's control socket (docs/scope.md §7,
- * "M3 protocol design"). Main process only.
+ * The editor's connection to the daemon's control socket. Main process only.
  *
- * The editor is a config producer (scope §3): it reads state and geometry,
+ * The editor is a config producer: it reads state and geometry,
  * shows previews, and never controls the daemon's lifecycle. Config reaches
  * the daemon only through config.json (config-store.ts), never this socket.
  *
@@ -109,15 +108,14 @@ export class DaemonClient {
     await this.request('preview.clear', key === undefined ? { serial } : { serial, key });
   }
 
-  /** Make a profile active on the decks (scope §10, live switching). */
+  /** Make a profile active on the decks. */
   async switchProfile(to: string): Promise<SwitchResult> {
     return (await this.request('profile.switch', { to })) as SwitchResult;
   }
 
   /**
    * Show a page on one deck, by page ID. Uses action.run with a page action —
-   * the M3 socket has no page command, and this needs none (confirmed against
-   * the harness, docs/scope.md §10). Like every socket action it gets "busy"
+   * the socket has no page command, and this needs none. Like every socket action it gets "busy"
    * while another socket action runs.
    */
   async showPage(serial: string, page: string): Promise<void> {

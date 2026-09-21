@@ -1,11 +1,11 @@
 /**
- * The configurations Deckhand keeps before it replaces one (M5): an import's
+ * The configurations Deckhand keeps before it replaces one: an import's
  * `before-import-<time>.json` and a profile delete's `before-delete-<time>.json`,
  * in `$XDG_STATE_HOME/deckhand/backups/`.
  *
  * They are exempt from the rolling rotation (src/backups.ts deletes only
  * `config-<time>.json`), which is what makes them reliable and also means they
- * would accumulate forever. The rules, `[decided]` the maintainer 2026-09-19:
+ * would accumulate forever. The rules:
  *
  * - **A kept copy is never deleted except by the maintainer**, from the list in Settings.
  *   The rolling backups drop the oldest because the newest snapshot is the
@@ -46,7 +46,7 @@ function keptNameParts(name: string): { reason: KeptReason; keptAt: string } | n
 
 /**
  * What a kept copy holds, so the list can be read without opening files
- * (the maintainer, 2026-09-19: a timestamp alone means guessing). Anything unreadable
+ * (a timestamp alone means guessing). Anything unreadable
  * is described rather than hidden — it is still restorable, and the import's
  * own review is what checks it.
  */
@@ -128,7 +128,7 @@ export function keptConfigPath(dir: string, file: string): string {
   return path.join(dir, file);
 }
 
-/** Delete one kept configuration — the only thing that removes one (the maintainer, 2026-09-19). */
+/** Delete one kept configuration — the only thing that removes one. */
 export async function deleteKeptConfig(dir: string, file: string): Promise<void> {
   await fs.unlink(keptConfigPath(dir, file));
 }
