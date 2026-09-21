@@ -192,7 +192,7 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
   const iconMissing = iconId !== null && missingIcon === iconId;
   const classes = [
     'key',
-    `key-${kind}`,
+    kind === 'bound' ? '' : `key-${kind}`,
     selected ? 'key-selected' : '',
     hasScreen ? '' : 'key-no-screen',
     dragging ? 'key-dragging' : '',

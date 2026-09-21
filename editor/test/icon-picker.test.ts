@@ -171,7 +171,7 @@ await check('search: a replaced search stops between folders; an empty query fin
   assert.deepEqual(await searchFolder(icons, '   ', home), { matches: [], truncated: false, cancelled: false });
 });
 
-await check('start folder: the icon\'s folder, else a recent one that exists, else the first fallback that exists', async () => {
+await check('start folder: the icon\'s folder, else a bookmark that exists, else the first fallback that exists', async () => {
   const bear = path.join(icons, 'FFXIV/IconKit Battle(Set)/BEAR');
   assert.equal(await startFolder(path.join(bear, 'Flame_IV.png'), [icons], [home]), bear);
   assert.equal(await startFolder(path.join(icons, 'gone/x.png'), ['/nope', icons], [home]), icons);

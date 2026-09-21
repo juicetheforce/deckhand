@@ -147,12 +147,12 @@ function sortMatches(matches: IconSearchMatch[]): IconSearchMatch[] {
 
 /**
  * The folder the picker opens on: the folder of the key's current icon if it
- * still exists, else the first of `recent` that exists (the caller passes
- * the bookmarks, newest first), else the first fallback that exists (the caller passes Pictures, then home). Nothing is
- * hardcoded about any particular icon tree.
+ * still exists, else the first bookmark that exists (the caller passes them
+ * newest first), else the first fallback that exists (the caller passes
+ * Pictures, then home). Nothing is hardcoded about any particular icon tree.
  */
-export async function startFolder(currentIconPath: string | null, recent: string[], fallbacks: string[]): Promise<string> {
-  const candidates = [...(currentIconPath ? [path.dirname(currentIconPath)] : []), ...recent, ...fallbacks];
+export async function startFolder(currentIconPath: string | null, bookmarks: string[], fallbacks: string[]): Promise<string> {
+  const candidates = [...(currentIconPath ? [path.dirname(currentIconPath)] : []), ...bookmarks, ...fallbacks];
   for (const candidate of candidates) {
     if (!path.isAbsolute(candidate)) continue;
     try {

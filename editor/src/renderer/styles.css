@@ -10,6 +10,8 @@
   /* The accent as r, g, b, for translucent uses: rgba(var(--accent-rgb), a). */
   --accent-rgb: 91, 110, 232;
   --accent-soft: rgba(var(--accent-rgb), 0.25);
+  /* A lighter accent for line glyphs on the dark glass: the settings gear. */
+  --accent-glyph: color-mix(in srgb, var(--accent) 70%, white);
   --amber: #e8b45a;
   --green: #5bc28a;
   --red: #e85a6e;
@@ -2421,4 +2423,8 @@ body.settings-body {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+}
+
+.settings-glyph {
+  color: var(--accent-glyph);
 }

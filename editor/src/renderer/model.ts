@@ -346,20 +346,18 @@ export function canSwitchDeck(daemon: DaemonView, serial: string): boolean {
   return daemon.connected && (daemon.status?.decks.some((d) => d.serial === serial && d.connected && d.page !== undefined) ?? false);
 }
 
-export type KeyKind = 'empty' | 'unbound' | 'hotkey' | 'other';
+export type KeyKind = 'empty' | 'unbound' | 'bound';
 
 /**
  * - empty: no button.
  * - unbound: shows something (icon, label or background) but does nothing on
  *   press — marked in the grid, since it looks like a bound key.
- * - hotkey: a hotkey action.
- * - other: any other action.
+ * - bound: has an action.
  */
 export function keyKind(button: ButtonDef | undefined): KeyKind {
   if (!button || Object.keys(button).length === 0) return 'empty';
   if (!button.action && !button.onRelease) return 'unbound';
-  if (button.action?.type === 'hotkey') return 'hotkey';
-  return 'other';
+  return 'bound';
 }
 
 export interface KeyFace {

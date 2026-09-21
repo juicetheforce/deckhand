@@ -444,9 +444,9 @@ await check('key kinds: empty, unbound (shows something, does nothing), hotkey, 
   assert.equal(keyKind({ icon: '~/x.png' }), 'unbound');
   assert.equal(keyKind({ label: 'x' }), 'unbound');
   assert.equal(keyKind({ background: '#123456' }), 'unbound');
-  assert.equal(keyKind({ action: { type: 'hotkey', keys: 'ctrl+1' } }), 'hotkey');
-  assert.equal(keyKind({ action: { type: 'media.info' } }), 'other');
-  assert.equal(keyKind({ onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } }), 'other', 'onRelease alone is bound');
+  assert.equal(keyKind({ action: { type: 'hotkey', keys: 'ctrl+1' } }), 'bound');
+  assert.equal(keyKind({ action: { type: 'media.info' } }), 'bound');
+  assert.equal(keyKind({ onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } }), 'bound', 'onRelease alone is bound');
 });
 
 await check("key faces use the button's values, then config defaults, then the daemon's DEFAULTS", () => {

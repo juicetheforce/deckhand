@@ -467,11 +467,12 @@ function megabytes(bytes: number): string {
 /** The settings gear, drawn inline. */
 export function SettingsGlyph({ size }: { size: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#8f9cf0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className="settings-glyph" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path
         d="M12 2.8 L13.8 2.8 L14.4 5.3 A7 7 0 0 1 16.6 6.6 L19 5.8 L19.9 7.4 L18.1 9.2 A7 7 0 0 1 18.1 11.8 L19.9 13.6 L19 15.2 L16.6 14.4 A7 7 0 0 1 14.4 15.7 L13.8 18.2 L12 18.2 L10.2 18.2 L9.6 15.7 A7 7 0 0 1 7.4 14.4 L5 15.2 L4.1 13.6 L5.9 11.8 A7 7 0 0 1 5.9 9.2 L4.1 7.4 L5 5.8 L7.4 6.6 A7 7 0 0 1 9.6 5.3 L10.2 2.8 Z"
         transform="translate(0 1.5)"
-        fill="rgba(143,156,240,.18)"
+        fill="currentColor"
+        fillOpacity={0.18}
       />
       <circle cx="12" cy="12" r="2.7" />
     </svg>
