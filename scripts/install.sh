@@ -4,6 +4,7 @@
 #
 #   scripts/install.sh install [--dirty]
 #   scripts/install.sh update  [--dirty]     (same as install)
+#   scripts/install.sh upgrade               (moves a release checkout to the newest release, then updates)
 #   scripts/install.sh uninstall [--purge]
 #   scripts/install.sh check                 (checks this machine, changes nothing)
 #
@@ -66,7 +67,7 @@ warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '3,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -918,6 +919,57 @@ cmd_install() {
     warn "no Stream Deck attached yet — is one plugged in?"
 }
 
+# --- upgrade -----------------------------------------------------------------
+#
+# Moves a release checkout (a detached HEAD at a tag, as the README's install
+# makes) to the newest release tag, then runs *that* release's install.sh.
+#
+# The hand-off is an exec, so the old script's install logic never runs
+# against the new checkout. The old file is also never read again after the
+# checkout: this whole function, and main's case below, are parsed before any
+# of it runs, so it does not matter how git replaces the file.
+#
+# Only tags of exactly the form vMAJOR.MINOR.PATCH count; a pre-release such
+# as v0.3.0-rc1 is ignored. The remote is assumed to be "origin", which is
+# what the README's clone creates.
+
+cmd_upgrade() {
+  [ $# -eq 0 ] || usage
+
+  if ! git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "not a git checkout; upgrade needs the clone the install was made from."
+  fi
+  local branch
+  if branch="$(git -C "$REPO_DIR" symbolic-ref --quiet --short HEAD)"; then
+    die "the checkout is on the branch \"$branch\", not a release. Upgrade only moves a release checkout; for a branch, pull and run \"scripts/install.sh update\"."
+  fi
+  if [ -n "$(git -C "$REPO_DIR" status --porcelain)" ]; then
+    git -C "$REPO_DIR" status --short >&2
+    die "the checkout has uncommitted changes (above). Upgrade will not move it."
+  fi
+
+  say "Fetching releases"
+  git -C "$REPO_DIR" fetch --quiet --tags origin
+
+  local newest
+  # "|| true": with no matching tag, grep fails, and under pipefail that would
+  # end the script here, silently, instead of at the message below.
+  newest="$(git -C "$REPO_DIR" tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+  [ -n "$newest" ] || die "no release tags found."
+
+  # "Already there" means the newest release is in HEAD's history, not only
+  # that HEAD is that release, so a checkout past it is never moved backwards.
+  if git -C "$REPO_DIR" merge-base --is-ancestor "$newest" HEAD; then
+    say "Already up to date: $newest is the newest release."
+    exit 0
+  fi
+
+  say "Moving the checkout to $newest"
+  git -C "$REPO_DIR" -c advice.detachedHead=false checkout --quiet "$newest"
+  say "Handing over to $newest's install script"
+  exec "$REPO_DIR/scripts/install.sh" update
+}
+
 # --- CLI wrapper -------------------------------------------------------------
 
 cli_is_ours() {
@@ -1195,6 +1247,7 @@ cmd_uninstall() {
 command="$1"; shift
 case "$command" in
   install|update) cmd_install "$@" ;;
+  upgrade)        cmd_upgrade "$@" ;;
   uninstall)      cmd_uninstall "$@" ;;
   check)          cmd_check "$@" ;;
   *)              usage ;;

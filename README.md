@@ -149,16 +149,16 @@ at a time, so a script flooding it can't hold up a key press on a deck.
 
 ## Update and uninstall
 
-To update to a newer release, check it out in the clone and run the update
-(replace `v0.2.0` with the release you want — they are listed on the
-repository's Releases page):
+To update to the newest release:
 
 ```bash
-cd ~/.local/src/deckhand && git fetch --tags && git checkout v0.2.0 && scripts/install.sh update
+~/.local/src/deckhand/scripts/install.sh upgrade
 ```
 
-`update` builds from the checkout and refuses one with uncommitted changes, so
-what runs can always be traced to a release.
+`upgrade` fetches the release tags, moves the clone to the newest one, and
+runs that release's install script. It refuses a clone with uncommitted
+changes, so what runs can always be traced to a release. Pre-releases are
+skipped.
 
 ```bash
 ~/.local/src/deckhand/scripts/install.sh uninstall          # asks whether to also remove your config
