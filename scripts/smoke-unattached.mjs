@@ -1,6 +1,6 @@
 /**
- * Offline test: a connected deck that no profile has a layout for
- * (docs/scope.md §7, Portability).
+ * Offline test: decks coming and going — one that no profile has a layout
+ * for, and one that does (docs/scope.md §7, Portability).
  *
  * The defect this exists for, `[confirmed]` on Ubuntu 26.04 on 2026-09-20 by
  * journal timestamps exactly 60 s apart: `scan()` skipped a deck already in
@@ -15,6 +15,14 @@
  * strands a deck that is later given a layout, so the reverse is checked here
  * too, in both directions: a layout added must light the deck with no replug,
  * and a layout removed must put it back where the editor can still see it.
+ *
+ * The last section is the **configured** deck's round trip, added 2026-09-20
+ * when the maintainer asked what happens to a deck that is unplugged now that the
+ * editor stops listing it ("people sell, replace, or upgrade decks"): nothing
+ * may be lost. It is a common path, not an edge case — any deck taken to
+ * another machine, or a cable pulled — and the "absence is the indicator"
+ * rule leans on it, because a deck the editor has stopped showing must still
+ * be all there when it comes back.
  *
  * This spawns the real `dist/index.js`, because scan(), reload() and their
  * ordering are the thing under test and only a live process runs them. The
@@ -82,6 +90,30 @@ const WITH_LAYOUT = {
       name: 'Default',
       layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: { 0: { label: 'Hi' } } } } } },
     },
+  },
+  startProfile: 'default',
+};
+
+/**
+ * A configured deck with something worth losing: two pages, buttons on both,
+ * a name of its own, and a second profile that also covers it.
+ */
+const RICH_CONFIG = {
+  decks: { [SERIAL]: { name: 'My named deck' } },
+  profiles: {
+    default: {
+      name: 'Default',
+      layouts: {
+        [SERIAL]: {
+          startPage: 'main',
+          pages: {
+            main: { name: 'Main', buttons: { 0: { label: 'Jump', action: { type: 'hotkey', keys: 'space' } }, 3: { label: 'Sprint' } } },
+            combat: { name: 'Combat', buttons: { 1: { label: 'Attack' } } },
+          },
+        },
+      },
+    },
+    other: { name: 'Other', layouts: { [SERIAL]: { startPage: 'alt', pages: { alt: { name: 'Alt', buttons: { 2: { label: 'Alt key' } } } } } } },
   },
   startProfile: 'default',
 };
@@ -228,6 +260,58 @@ check('and it is unconfigured, as the config says', (await deckStatus())?.config
 const openedReplugged = await opens();
 await forceScan(3);
 check('after which scans leave it alone once more', (await opens()) === openedReplugged);
+
+console.log('\na configured deck, unplugged and plugged back in');
+
+// The question this answers (the maintainer, 2026-09-20): the editor no longer lists a
+// deck that is not plugged in, so does unplugging one lose anything? Nothing
+// may be lost — not the layout, not the pages, not the buttons, not the name.
+await writeConfig(RICH_CONFIG);
+const richAttached = await until(async () => typeof (await deckStatus())?.page === 'string', 10_000);
+check('the rich config attaches it', richAttached);
+
+// Put it somewhere that is not where it starts, so "it came back as it was"
+// means something: another page of its own.
+await client.request('action.run', { serial: SERIAL, action: { type: 'page', to: 'combat' } });
+await until(async () => (await deckStatus())?.page === 'combat', 5000);
+check('it is showing its second page', (await deckStatus())?.page === 'combat');
+
+const configOnDisk = await fs.readFile(CONFIG_PATH, 'utf8');
+
+await plug([]);
+await forceScan();
+// A *configured* deck stays in `status` while it is away — that is the daemon
+// saying "I know this deck, it is just not here". What empties is the
+// geometry list, and geometry is what the editor's device list is built from,
+// which is why the deck disappears from the dropdown without being forgotten.
+const away = await deckStatus();
+check('the daemon still knows the deck exists', away !== null && away.configured === true);
+check('and reports it as not connected', away?.connected === false);
+check('with no page or profile, because it has no session', away?.page === undefined && away?.profile === undefined);
+check('it leaves the geometry list, which is what the editor lists from', (await geometry()) === null);
+check('config.json is untouched while it is away', (await fs.readFile(CONFIG_PATH, 'utf8')) === configOnDisk);
+
+await plug([DEVICE]);
+await forceScan();
+const backAgain = await until(async () => typeof (await deckStatus())?.page === 'string', 10_000);
+check('plugging it back in attaches it again, with no restart', backAgain);
+const back = await deckStatus();
+check('it is connected and configured, as it always was', back?.connected === true && back?.configured === true);
+check('on a profile that covers it', back?.profile === 'default');
+// Which profile it returns to is remembered in memory only (src/profiles.ts
+// `shown`), so a daemon restart starts from startProfile instead. The config
+// is unaffected either way; only this transient resets.
+check('showing one of its own pages', ['main', 'combat'].includes(back?.page));
+check('its geometry is back on the wire', (await geometry())?.keyCount === 32);
+check('config.json is still untouched — nothing was pruned', (await fs.readFile(CONFIG_PATH, 'utf8')) === configOnDisk);
+
+// And the layout itself, read back from the file rather than from the socket.
+const onDisk = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+const pages = onDisk.profiles?.default?.layouts?.[SERIAL]?.pages ?? {};
+check('both its pages survived', Object.keys(pages).sort().join(',') === 'combat,main');
+check('the buttons on both survived', pages.main?.buttons?.['0']?.label === 'Jump' && pages.combat?.buttons?.['1']?.label === 'Attack');
+check('the name it was given survived', onDisk.decks?.[SERIAL]?.name === 'My named deck');
+check('the second profile still covers it', onDisk.profiles?.other?.layouts?.[SERIAL] !== undefined);
 
 client.close();
 child.kill('SIGTERM');
