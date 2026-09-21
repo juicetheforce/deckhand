@@ -19,8 +19,8 @@ interface ListenProps {
 }
 
 /**
- * The hotkey inspector (scope §10): record by pressing the combo, Type
- * manually, Re-record and Clear hotkey — plus hold and repeat (C2). A hotkey
+ * The hotkey inspector: record by pressing the combo, Type
+ * manually, Re-record and Clear hotkey — plus hold and repeat. A hotkey
  * sequence (`keys` as a list) and `gapMs` stay read-only: Multi action does
  * sequences.
  */
@@ -103,7 +103,6 @@ export function ComboCapture({
     onListening();
   }, [listenRequest]);
 
-  // Is the saved combo a KDE shortcut? Checked whenever it changes.
   const [savedShortcut, setSavedShortcut] = useState<SystemShortcut | null>(null);
   useEffect(() => {
     let alive = true;
@@ -155,12 +154,11 @@ export function ComboCapture({
       if (event.repeat) return;
       down.add(event.code);
       // Every key records, Esc included — it is a real binding (close a
-      // window, open a menu). Only the Cancel button stops listening (the maintainer,
-      // 2026-09-15).
+      // window, open a menu). Only the Cancel button stops listening.
       const captured = captureKey(event);
       if (captured.kind === 'modifier') {
         if (!chord.includes(event.code)) chord.push(event.code);
-        // Shown by code: a modifier's own keydown may not carry its flag (Meta's does not, scope §10).
+        // Shown by code: a modifier's own keydown may not carry its flag (Meta's does not).
         setMode((m) => (m.kind === 'listening' && !m.held.includes(captured.modifier) ? { ...m, held: [...m.held, captured.modifier] } : m));
       } else if (captured.kind === 'unknown') {
         spoiled = true;
@@ -300,7 +298,7 @@ function RemapNote({ combo }: { combo: string }) {
 }
 
 /**
- * Press/Release (scope §10): the key held while the deck key is held. Written
+ * Press/Release: the key held while the deck key is held. Written
  * as a pair — `keyHold` down as the press action, `keyHold` up with the same
  * keys as the release action — which is what the daemon runs (a hand-written
  * `keyHold` down with no release would hold the key forever).
@@ -334,7 +332,7 @@ export function PressReleaseForm({ at, button, editingBlocked, run, listenReques
 }
 
 /**
- * Toggle (M7, docs/scope.md §6): one combo, latched. Press once and it stays
+ * Toggle: one combo, latched. Press once and it stays
  * down; press again and it releases. The same capture as Press/Release —
  * including lone modifiers, which is what a latch is usually for — but it
  * writes one action, with no release action: the daemon holds the state and

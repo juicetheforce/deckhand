@@ -14,7 +14,7 @@ export interface FormProps {
 
 /**
  * The action a form writes: the key's action if it is already of this type,
- * else a new one (a library pick retargeting the key, C2 call 3), with `patch`
+ * else a new one (a library pick retargeting the key), with `patch`
  * applied. A patch value of `undefined` removes that setting, so a choice that
  * matches the daemon's default leaves nothing behind in config.json.
  */

@@ -13,8 +13,8 @@ import { NumberSetting, actionOf, nextAction } from './controls.js';
 const TEST_COUNTDOWN_S = 3;
 
 /**
- * Multi action (scope §10): a step list — drag-handled rows, a delay after
- * each step (§6), the running total in both figures, and Test Run, which arms
+ * Multi action: a step list — drag-handled rows, a delay after
+ * each step, the running total in both figures, and Test Run, which arms
  * rather than fires. A step is edited with the same form a key of that action
  * uses; its edits come back here and are written into `steps`.
  */
@@ -106,7 +106,7 @@ export function MultiForm(p: ActionFormProps) {
   }, []);
 
   // Test Run: count down while the user clicks into the target window, then
-  // ask main to run it — refused if the editor still has focus (scope §10).
+  // ask main to run it — refused if the editor still has focus.
   const [countdown, setCountdown] = useState<number | null>(null);
   const [testMessage, setTestMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);

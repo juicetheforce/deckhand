@@ -2,7 +2,7 @@
  * What the shell shows, worked out from the config and the daemon view.
  * Pure functions with no DOM, so test/renderer-model.test.ts runs them in Node.
  *
- * Device knowledge comes from the daemon (scope §3): key positions and counts
+ * Device knowledge comes from the daemon: key positions and counts
  * are read from `decks` geometry, never assumed.
  */
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
@@ -18,8 +18,8 @@ export type DeckGeometryWithSerial = DecksResult[number];
 
 /**
  * The keys on the page being edited whose last press on the deck failed, with
- * the error (Ship piece 6). The deck draws a badge on them, and the grid
- * mirrors the deck (scope §10), so the grid draws one too. Keyed by the
+ * the error. The deck draws a badge on them, and the grid mirrors the deck,
+ * so the grid draws one too. Keyed by the
  * selection's profile and page, not by what the deck shows: a key failed on
  * a page stays failed while the deck is elsewhere.
  */
@@ -40,7 +40,7 @@ export interface Selection {
    */
   key: number | null;
   /**
-   * Every selected key, `key` included (M4 phase B3, multi-select). Empty
+   * Every selected key, `key` included. Empty
    * exactly when `key` is null.
    */
   keys: number[];
@@ -74,17 +74,15 @@ export function geometryFor(daemon: DaemonView, serial: string): DeckGeometryWit
  * The Device dropdown: **only decks that are plugged in right now** — those
  * this profile has a layout for, in config order, then the rest.
  *
- * `[decided]` the maintainer 2026-09-20: a deck that is not connected is not listed at
- * all. "The list is the list" — it is a list of devices to work on, not a
+ * A deck that is not connected is not listed at all. "The list is the list" — it is a list of devices to work on, not a
  * status display, and **its absence is the indicator that it is missing.**
  * The case that settles it is a deck that has been sold, replaced or
  * upgraded: its serial stays in `config.json` for ever, and it would sit in
- * this dropdown for ever with it. This replaced an earlier, smaller decision
- * to keep a "— not connected" marker on such a row (scope §7).
+ * this dropdown for ever with it.
  *
  * Nothing is lost by it: a layout can only be edited with the deck present,
  * because the grid is drawn from the geometry the daemon reads off the device
- * (scope §3). Every entry this returns therefore has geometry, and
+ * Every entry this returns therefore has geometry, and
  * `connected` is true on all of them — kept on the type because the daemon's
  * `decks` and `status` lists can disagree for an instant, so callers still
  * guard.
@@ -104,7 +102,7 @@ export function deckChoices(config: Config, profile: string, daemon: DaemonView)
  * The decks a new profile may cover: **the connected ones**, named in config
  * first. Unlike deckChoices this is not scoped to a profile.
  *
- * Same rule and the same reason as deckChoices (the maintainer, 2026-09-20): a deck
+ * Same rule and the same reason as deckChoices: a deck
  * that is not plugged in is not offered. Ticking a sold deck into a new
  * profile would write a layout nobody can edit or see. With none connected
  * the panel already says "No decks are known yet. Plug one in."
@@ -124,7 +122,7 @@ export function knownDecks(config: Config, daemon: DaemonView): DeckChoice[] {
   });
 }
 
-/** What deleting a page would do, for the confirmation (scope §7, B1). */
+/** What deleting a page would do, for the confirmation. */
 export interface PageDeletion {
   /** Keys in this layout that navigate to it, and would lose that action. */
   links: PageLink[];
@@ -224,7 +222,7 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
 }
 
 /**
- * The breadcrumb follows the deck (scope §10, live switching): when the
+ * The breadcrumb follows the deck: when the
  * selected deck is showing a page, the selection moves to that profile and
  * page, unconditionally. The selected key is kept only if the page did not
  * change. A deck with nothing to report (disconnected, no session, daemon
@@ -262,7 +260,7 @@ export function deckForProfile(config: Config, daemon: DaemonView, profile: stri
 }
 
 /**
- * The keys selected after clicking one (M4 phase B3), the way a file manager
+ * The keys selected after clicking one, the way a file manager
  * selects icons:
  * - a plain click selects that key alone;
  * - Ctrl+click adds it, or takes it out if it was selected;
@@ -301,7 +299,7 @@ function joinNames(names: string[]): string {
 
 /**
  * What a paste or copy did, in words — the status line has to name what was
- * skipped and what lost its navigation (the maintainer, 2026-09-16), because neither is
+ * skipped and what lost its navigation, because neither is
  * visible on the grid being looked at.
  */
 export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string): string {
@@ -321,7 +319,7 @@ export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement
   return parts.join(' ');
 }
 
-/** A deck keys can be copied to, with its pages (M4 phase B3, Copy to device). */
+/** A deck that Copy to device can send keys to, with its pages. */
 export interface DeviceTarget {
   serial: string;
   label: string;
@@ -357,7 +355,7 @@ export type KeyKind = 'empty' | 'unbound' | 'hotkey' | 'other';
 /**
  * - empty: no button.
  * - unbound: shows something (icon, label or background) but does nothing on
- *   press — marked in the grid, since it looks like a bound key (scope §10).
+ *   press — marked in the grid, since it looks like a bound key.
  * - hotkey: editable in phase A.
  * - other: any other action; read-only in phase A.
  */
@@ -380,14 +378,14 @@ export interface KeyFace {
 }
 
 /**
- * The icon a key shows, as the config would write it (scope §3, §10): its own
+ * The icon a key shows, as the config would write it: its own
  * icon — a path or `builtin:<name>` — when it has one; none when `icon` is
  * `null`; otherwise its action's built-in default, from the same
  * `defaultIconFor` the daemon draws with. A key with no action has no default.
  *
  * The editor has no mute or play state, so a state pair shows its resting
  * half (`mic`, `speaker`, `play`), and now playing shows its idle icon. The
- * deck is the truth (§10).
+ * deck is the truth.
  */
 export function faceIcon(button: ButtonDef | undefined, latched = false): string | null {
   if (!button) return null;
@@ -395,7 +393,7 @@ export function faceIcon(button: ButtonDef | undefined, latched = false): string
   const action = button.action;
   // A state pair's own icon comes first on the deck (src/deck.ts); the grid
   // shows the resting half's — except a toggle, whose state the daemon reports
-  // per key, so the grid can show the half the deck is really showing (M7).
+  // per key, so the grid can show the half the deck is really showing.
   const toggleIcon = action?.type === 'toggle' ? (latched ? action.iconOn : action.iconOff) : undefined;
   const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : toggleIcon;
   if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
@@ -405,10 +403,10 @@ export function faceIcon(button: ButtonDef | undefined, latched = false): string
 }
 
 /**
- * The keys this deck is holding down right now (M7), from the daemon's status.
+ * The keys this deck is holding down right now, from the daemon's status.
  * Only while the grid is showing the page the deck is on: a latch is released
  * when the deck leaves the page, so a latch on another page cannot exist, and
- * drawing one would be a lie. The deck is the truth (§10).
+ * drawing one would be a lie. The deck is the truth.
  */
 export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): number[] {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
@@ -417,9 +415,8 @@ export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'pr
 }
 
 /**
- * An approximation of the key face (scope §10: the grid is an approximation,
- * the deck is the truth). Live faces — clock time, track, active output — are
- * not drawn; default icons are (faceIcon).
+ * An approximation of the key face; the deck is the truth. Live faces — clock
+ * time, track, active output — are not drawn; default icons are (faceIcon).
  */
 export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
@@ -438,8 +435,7 @@ export function keyFace(config: Config, button: ButtonDef | undefined, iconSize:
 /**
  * The fields each editable action type may carry. An action with anything else
  * on it is shown read-only, so editing it here cannot silently drop settings
- * the inspector has no field for (scope §10, phase A's rule for hotkey,
- * extended to page and profile in phase B).
+ * the inspector has no field for.
  */
 const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // A sequence (keys as a list) and gapMs stay read-only: Multi action does sequences.
@@ -457,8 +453,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   multi: ['steps'],
   page: ['to', 'back'],
   profile: ['to'],
-  // C2 piece 4 (docs/code-state.md): settings left out here — `player`,
-  // `maxChars`, the mute backgrounds — keep a hand-edited key read-only.
+  // Settings left out here — `player`, `maxChars`, the mute backgrounds —
+  // keep a hand-edited key read-only.
   clock: ['format'],
   noop: [],
   brightness: ['delta', 'value', 'showLevel'],
@@ -467,7 +463,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'audio.mute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
   'media.control': ['method', 'iconPlaying', 'iconPaused'],
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
-  // `match` / `matches` are hand-edited config only (scope §3): a key using them stays read-only.
+  // `match` / `matches` are hand-edited config only: a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
@@ -528,7 +524,7 @@ const nonEmpty = (value: unknown): boolean => typeof value === 'string' && value
 /**
  * Whether an action lacks a setting it cannot run without — what an action
  * dragged from the library has until its form is filled in. The grid marks
- * such a key "not set up" (C2 call 7): it shows its default icon and looks
+ * such a key "not set up": it shows its default icon and looks
  * placed, while a press only logs an error.
  *
  * Mirrors the refusals in the daemon's src/actions/ — a copy, so
@@ -647,8 +643,8 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
     return {
       kind: 'daemon-down',
       title: 'The Deckhand daemon is not running',
-      // Carries what the Notices banner would otherwise repeat underneath
-      // (scope §7, "say it once"): App.tsx hides that one while this shows.
+      // Carries what the Notices banner would otherwise repeat underneath:
+      // App.tsx hides that one while this shows.
       detail: `${daemon.problem ?? 'The editor cannot reach it'}. Until it starts, the editor cannot see any deck. Your edits are still saved, and the decks pick them up when it runs.`,
       canAddLayout: false,
     };

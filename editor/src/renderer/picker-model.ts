@@ -73,7 +73,7 @@ export interface ElidedCrumbs {
 }
 
 /**
- * The breadcrumb field has a fixed height and cannot wrap (mockup 5a), so a
+ * The breadcrumb field has a fixed height and cannot wrap, so a
  * deep path keeps its root and its last `tail` segments and drops the middle.
  * The folder you are in is always the last one.
  */

@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-// One bundle, two windows: the settings window loads it with ?view=settings (Ship piece 3).
+// One bundle, two windows: the settings window loads it with ?view=settings.
 const view = new URLSearchParams(window.location.search).get('view');
 if (view === 'settings') {
   document.title = 'Deckhand Settings';
@@ -27,7 +27,7 @@ window.deckhand.onAppSettings((s) => applyAccent(s.accent));
 
 // The title bar sits outside App, so the window can be moved and closed
 // whatever App is showing — loading, or config.json that could not be opened.
-// The logo at 18 px is deckhand-small.svg, the one drawn for 16–32 px (scope §7).
+// The logo at 18 px is deckhand-small.svg, the one drawn for 16–32 px.
 const editor = (
   <div className="window">
     <TitleBar>
@@ -39,7 +39,6 @@ const editor = (
   </div>
 );
 
-// The settings window's bar has a close button only (Ship piece 3), after 6a.
 const settings = (
   <div className="window">
     <TitleBar closeOnly>

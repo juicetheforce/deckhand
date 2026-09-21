@@ -1,9 +1,9 @@
 /**
- * The three-pane layout's widths (docs/scope.md §10). The panes are
+ * The three-pane layout's widths. The panes are
  * draggable: the library and the inspector are given widths, the grid takes
  * what is left. Pure, so test/panes.test.ts runs it in Node.
  *
- * **Widths are not persisted** (the maintainer, 2026-09-15): the window itself resizes,
+ * **Widths are not persisted**: the window itself resizes,
  * and this is something set once in passing, not worth a stored dimension. A
  * fresh editor opens at the defaults.
  *

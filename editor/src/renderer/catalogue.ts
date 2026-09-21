@@ -1,6 +1,6 @@
 /**
- * The action library (docs/scope.md §6, §10): the whole catalogue, grouped,
- * so an action is visible to someone who does not know it exists (§2).
+ * The action library: the whole catalogue, grouped, so an action is visible
+ * to someone who does not know it exists.
  * Every type here is checked against the daemon's registry by
  * test/renderer-model.test.ts.
  *
@@ -15,13 +15,12 @@ export interface CatalogueEntry {
   name: string;
   description: string;
   /**
-   * Extra words the search box matches, beyond the name and description
-   * (the maintainer, 2026-09-16). §2's discoverability point applied to search: someone
-   * looking for `audio.sink` types "headphones" or "output", not the name the
+   * Extra words the search box matches, beyond the name and description:
+   * someone looking for `audio.sink` types "headphones" or "output", not the name the
    * daemon uses. Only terms the name and description do not already contain
    * are listed — "Switch the default output" already answers "output".
    *
-   * Deliberate overlaps, approved by the maintainer: "headphones"/"speakers" hit three
+   * Deliberate overlaps: "headphones"/"speakers" hit three
    * audio actions, "macro" hits Type text and Multi action, "mute" hits both
    * mute keys. Ambiguous words should find every action they could mean. No
    * media player names: they date, and go wrong when the player changes.
@@ -42,7 +41,6 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
       { type: 'text', name: 'Type text', description: 'Type a string, US layout', aliases: ['phrase', 'paste', 'autotype', 'macro'] },
       { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', aliases: ['momentary', 'ptt', 'push to talk'] },
-      // M7's latching toggle (scope §6).
       { type: 'toggle', name: 'Toggle', description: 'Press to hold a key down, press again to release', aliases: ['latch', 'latching', 'sticky', 'sprint'] },
       { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
     ],
@@ -86,9 +84,9 @@ export const CATALOGUE: CatalogueGroup[] = [
 
 /**
  * Entries matching a search, with their group. Matches the name, the
- * description and the aliases, and **ignores whether the group is collapsed**
- * (the maintainer, 2026-09-16): collapsing everything to keep the library tidy must make
- * search more useful, not break it. An empty query matches nothing here — the
+ * description and the aliases, and **ignores whether the group is collapsed**:
+ * collapsing everything to keep the library tidy must make search more
+ * useful, not break it. An empty query matches nothing here — the
  * caller shows the ordinary grouped list instead, restoring the collapse state
  * the user had.
  */

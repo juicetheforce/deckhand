@@ -115,7 +115,7 @@ export function SettingsWindow() {
 }
 
 /**
- * Export (M5 piece 1, scope §5). With icons is the default, and is not
+ * Export. With icons is the default, and is not
  * remembered: a config-only restore onto a fresh install is a deck of blank
  * buttons, so each export starts from the safe choice.
  */
@@ -184,7 +184,7 @@ function ExportStatus({ result }: { result: ExportResult | null }) {
 }
 
 /**
- * Import (M5 piece 2, scope §5). Choosing a file writes nothing: main plans
+ * Import. Choosing a file writes nothing: main plans
  * the import and this shows the review — every relocated icon and where it
  * will go included — until Replace configuration or Cancel.
  */
@@ -192,7 +192,7 @@ function ImportAndKept() {
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<ImportReview | null>(null);
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
-  // The kept configurations (M5 piece 2d), reread whenever one is made or removed.
+  // The kept configurations, reread whenever one is made or removed.
   const [kept, setKept] = useState<KeptConfigList | null>(null);
   const refreshKept = () => void window.deckhand.keptConfigs().then(setKept);
   useEffect(refreshKept, []);
@@ -201,7 +201,7 @@ function ImportAndKept() {
    * Choosing a file and restoring a kept one are the same thing: main plans
    * the import and this shows the review, which writes nothing until it is
    * confirmed. So restoring keeps the configuration it replaces too, and says
-   * what it is replacing first (the maintainer, 2026-09-19).
+   * what it is replacing first.
    */
   const choose = async (call: () => Promise<ImportChoice> = () => window.deckhand.chooseImport()) => {
     setBusy(true);
@@ -265,9 +265,9 @@ function ImportAndKept() {
 }
 
 /**
- * The configurations kept before a profile delete or an import (M5 piece 2d).
+ * The configurations kept before a profile delete or an import.
  * Each entry says what is in it — profiles by name, decks, keys — because
- * choosing between two timestamps means guessing (the maintainer, 2026-09-19). They are
+ * choosing between two timestamps means guessing. They are
  * never deleted automatically: Delete here is the only thing that removes one,
  * and at the cap a delete or import refuses rather than drop the oldest.
  */
@@ -465,7 +465,7 @@ function megabytes(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** the maintainer's settings.svg from the mockups (screen 6a and the icon set), drawn inline. */
+/** The settings gear, drawn inline. */
 export function SettingsGlyph({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#8f9cf0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

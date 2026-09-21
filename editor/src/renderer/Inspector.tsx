@@ -50,7 +50,7 @@ export interface Pick {
 }
 
 /**
- * The selected key (scope §10): a form for its action (one file per action in
+ * The selected key: a form for its action (one file per action in
  * inspector/), its label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
@@ -151,7 +151,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
   // whatever the key already has. A key with no action shows the hotkey
-  // editor, as it did in phase A.
+  // editor.
   // Seeded from the key's own action, not left null, so an edit that
   // momentarily removes the action — switching "Back" to "A page" — does not
   // drop the editor back to Hotkey underneath the user. Per key: the component
@@ -162,7 +162,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   // A library pick of Hotkey asks the hotkey form to start listening.
   const [listenRequest, setListenRequest] = useState(false);
   // Which icon the Icon tab chooses: the key's own (null), or one of its
-  // action's state pair (C2 call 4). A pair field the action no longer has
+  // action's state pair. A pair field the action no longer has
   // falls back to the key's own.
   const pairFields = pairIconFields(button?.action);
   const [slotChosen, setSlot] = useState<PairIconField | null>(null);
@@ -182,7 +182,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
     // Hotkey and Press/Release start doing something at once: they listen.
     if (pick.type === 'hotkey' || pick.type === 'keyHold') setListenRequest(true);
     // An action with nothing to choose (Clock, Mic mute, …) is complete as it
-    // is, so a click writes it — keeping icon and label (C2 call 3). One that
+    // is, so a click writes it — keeping icon and label. One that
     // needs a setting is written when the setting is chosen.
     else if (button?.action?.type !== pick.type && !actionIncomplete({ type: pick.type })) {
       void run({ kind: 'setAction', at, action: { type: pick.type } });
@@ -266,10 +266,8 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
         <section className="inspector-section">
           <h3 className="section-heading">Label</h3>
           <LabelField label={button?.label ?? ''} disabled={editingBlocked} onSave={(label) => void run({ kind: 'setLabel', at, label })} />
-          {/* A label with no icon is a finished button, not a placeholder
-              (scope §2), so these are worth having whether or not an icon is
-              set. All three have been in the schema and the renderer since
-              v0.1; only the UI was missing. */}
+          {/* A label with no icon is a finished button, not a placeholder,
+              so these are worth having whether or not an icon is set. */}
           <LabelStyle at={at} button={button} defaults={labelDefaults} disabled={editingBlocked} run={run} />
         </section>
       )}

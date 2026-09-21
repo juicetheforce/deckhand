@@ -10,7 +10,7 @@ import { bookmarkLabel, elideCrumbs, folderCrumbs, moveCursor, parentFolder, typ
 /**
  * Where the picker is: kept by the inspector across keys, so assigning icons
  * to key after key stays in one folder. `past` and `future` are what the back
- * and forward buttons walk (mockup 5a).
+ * and forward buttons walk.
  */
 export interface PickerPlace {
   folder: string | null;
@@ -26,7 +26,7 @@ interface Props {
   button: ButtonDef | undefined;
   /**
    * Which icon is being chosen: the key's own (null), or one of its action's
-   * state pair (C2 call 4), written with setActionIcon.
+   * state pair, written with setActionIcon.
    */
   slot: PairIconField | null;
   editingBlocked: boolean;
@@ -56,7 +56,7 @@ const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
  * than a line of text: fixed height, so it cannot wrap — a long path loses its
  * middle, and the ellipsis opens it out. Config stores the plain path (scope §3).
  *
- * **Selecting an icon is choosing it** (the maintainer, 2026-09-16). It goes on the deck
+ * **Selecting an icon is choosing it**. It goes on the deck
  * (preview.set, which is also how a file the daemon cannot draw is found out)
  * and is saved at once, so the deck and the grid never disagree. There is no
  * Assign: it only resolved a disagreement this picker used to create. The one
@@ -72,7 +72,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
   const [search, setSearch] = useState<{ matches: IconSearchMatch[]; truncated: boolean } | null>(null);
   const [searching, setSearching] = useState(false);
   const [bookmarks, setBookmarks] = useState<IconFolderEntry[]>([]);
-  /** Bumped by the ↻ button to read the open folder again (mockup 5a). */
+  /** Bumped by the ↻ button to read the open folder again. */
   const [refreshToken, setRefreshToken] = useState(0);
   /** The elided middle of a deep path has been opened out; the field scrolls sideways rather than wrapping. */
   const [pathExpanded, setPathExpanded] = useState(false);
@@ -99,11 +99,11 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
   useEffect(() => {
     void window.deckhand.bookmarks().then(setBookmarks);
     return () => {
-      // Leaving the key, the page or the tab ends the preview (scope §10).
+      // Leaving the key, the page or the tab ends the preview.
       // While a choice is still saving, the save carries on without the
       // picker and clears the preview itself once the daemon has the saved
       // icon (commitIcon in main), so it is left to that: cleared here, the
-      // key showed its old icon until the save landed (Ship, 2026-09-18).
+      // key showed its old icon until the save landed.
       if (!saving.current) {
         if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
         previewing.current = false;
@@ -193,7 +193,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
   /**
    * Save choices one at a time, newest first. A file goes on the deck before it
    * is saved: the deck shows it at once, and a file the daemon refuses to draw
-   * (render_failed) is marked and never saved (scope §10). commitIcon then
+   * (render_failed) is marked and never saved. commitIcon then
    * saves, waits for the daemon's reload and clears the preview, so the key
    * goes straight from the preview to the saved icon.
    *
@@ -213,8 +213,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           // Marked before the request goes out: leaving the key while it is in
           // flight must still clear it. The daemon records a preview as soon as
           // the request arrives, so a clear sent after it always removes it;
-          // clearing a key with no preview is harmless. (A check that left
-          // mid-flight found this.)
+          // clearing a key with no preview is harmless.
           previewing.current = true;
           // A state icon is previewed as the key's icon, without the action:
           // the action would draw whichever of its pair matches the state now.
@@ -285,7 +284,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
 
   return (
     <div className="picker">
-      {/* Band 1 (mockup 5a): history, the path field, refresh. One row, fixed height. */}
+      {/* Band 1: history, the path field, refresh. One row, fixed height. */}
       <div className="picker-bar">
         <button className="picker-nav" disabled={place.past.length === 0} title="Back" aria-label="Back" onClick={goBack}>
           ←
@@ -339,10 +338,10 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
         </button>
       </div>
 
-      {/* One row of saved places (mockup 5a): bookmarks, not recents, which drift (the maintainer, 2026-09-15). */}
+      {/* One row of saved places: bookmarks, not recents, which drift. */}
       <div className="picker-bookmarks" aria-label="Bookmarks">
         <span className="picker-bookmarks-label">BOOKMARKS</span>
-        {/* Pinned first (scope §10): the icons that ship with Deckhand, opened
+        {/* Pinned first: the icons that ship with Deckhand, opened
             like any folder — a label, not a second browser. Saved as
             builtin:<name>, so the choice survives updates. */}
         <button
@@ -381,7 +380,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
       </div>
 
       {/* Band 3: the filter, full width and unmissable — it is what makes a deep
-          tree usable, so it is not a glyph tucked into another control (the maintainer). */}
+          tree usable, so it is not a glyph tucked into another control. */}
       <input
         className="picker-filter"
         aria-label="Filter icons"
@@ -475,10 +474,10 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
         {message && <p className="field-error">{message}</p>}
         {!canPreview && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
         <div className="button-row picker-actions">
-          {/* The one action (the maintainer, 2026-09-16). It removes the icon path, so the
-              action's built-in default renders (phase C) — it is not "no icon":
-              a deliberately blank, label-only key is None on the Key tab, a
-              separate state (scope §10). "Clear icon", not a bare "Clear", beside
+          {/* The one action. It removes the icon path, so the action's built-in
+              default renders — it is not "no icon": a deliberately blank,
+              label-only key is None on the Key tab, a separate state.
+              "Clear icon", not a bare "Clear", beside
               the Key tab's Clear hotkey and Clear button. */}
           {currentIcon !== undefined && (
             <button

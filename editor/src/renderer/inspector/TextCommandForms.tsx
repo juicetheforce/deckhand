@@ -3,14 +3,14 @@ import { formatDuration, textDurationMs } from '../../shared/durations.js';
 import { TextSetting, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * Type text and Run command (scope §6): both are one piece of text.
+ * Type text and Run command: both are one piece of text.
  */
 
 /**
  * text: typed with the US layout (src/keymap.ts). A character that layout
  * cannot type is refused here rather than saved, since the daemon would refuse
  * the whole press. Shows roughly how long typing takes: capitals and shifted
- * symbols get the game-safe combo timing (docs/code-state.md).
+ * symbols get the game-safe combo timing.
  */
 export function TextForm({ at, button, disabled, run }: FormProps) {
   const action = actionOf('text', button);

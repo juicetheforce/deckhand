@@ -13,13 +13,12 @@ export interface ActionDrag {
 }
 
 /**
- * Dragging an action from the library onto a key (scope §10: authoring — the
+ * Dragging an action from the library onto a key (authoring: the
  * drop replaces the action and clears the icon and the label).
  *
  * Pointer events and `elementFromPoint`, like the key-onto-key drag in
  * DeckGrid.tsx and the pane dividers: nothing depends on the platform's
- * drag-and-drop path. The two drags are kept apart on purpose (the maintainer,
- * 2026-09-16): this one authors a button, that one moves one. Escape cancels.
+ * drag-and-drop path. The two drags are kept apart on purpose: this one authors a button, that one moves one. Escape cancels.
  */
 export function useActionDrag(onDrop: (type: string, index: number) => void) {
   const press = useRef<{ type: string; pointerId: number; x: number; y: number } | null>(null);

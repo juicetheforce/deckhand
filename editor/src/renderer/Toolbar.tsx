@@ -20,7 +20,7 @@ interface Props {
   onRenameDeck: (serial: string, name: string | null) => Promise<string | null>;
   /** Rename a page. Returns an error to show, or null. */
   onRenamePage: (page: string, name: string) => Promise<string | null>;
-  /** Rename a profile (M5). Returns an error to show, or null. */
+  /** Rename a profile. Returns an error to show, or null. */
   onRenameProfile: (profile: string, name: string) => Promise<string | null>;
   /** Ask to delete a profile; App shows the confirmation, which names everything that changes. */
   onDeleteProfile: (profile: string) => void;
@@ -32,9 +32,9 @@ export type AddPageResult = { ok: true; page: string } | { ok: false; error: str
 export type AddProfileResult = { ok: true; profile: string } | { ok: false; error: string };
 
 /**
- * Breadcrumb — profile → device → page (scope §10). Choosing a profile or a
- * page shows it on the decks, and the breadcrumb follows the decks when they
- * change from elsewhere (live switching, 2026-09-15). The selected profile is
+ * Breadcrumb — profile → device → page. Choosing a profile or a page shows it
+ * on the decks, and the breadcrumb follows the decks when they change from
+ * elsewhere. The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
 export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage }: Props) {
@@ -42,11 +42,11 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const pill = connectionPill(config, daemon, selection);
   const layout = layoutFor(config, selection.profile, selection.serial);
-  // The guard (scope §10): no key is auto-reserved for Back, so a page you
+  // The guard: no key is auto-reserved for Back, so a page you
   // cannot leave is flagged on its tab instead.
   const stranded = layout ? new Set(pagesWithNoWayOff(layout)) : new Set<string>();
   // The same treatment for a profile that leaves a connected deck showing
-  // whatever it had (scope §3).
+  // whatever it had.
   const uncovered = profileCoverage(config, daemon, selection.profile).uncoveredConnected;
 
   return (
@@ -75,12 +75,11 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
             so matching on rendered text does not break when the row grows. */}
         <select data-crumb="device" value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })} disabled={decks.length === 0}>
           {/* An empty dropdown reads as a working editor with nothing chosen
-              yet, which is what the maintainer saw on a machine with no deck (scope §7).
-              Say there is nothing to choose from. */}
+              yet. Say there is nothing to choose from. */}
           {decks.length === 0 && <option value="">No decks</option>}
           {/* No connection marker, and no disconnected decks to mark: the
               list is a list of devices to work on, and a deck's absence from
-              it is what says it is not there (the maintainer, 2026-09-20, scope §7). */}
+              it is what says it is not there. */}
           {decks.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label}
@@ -118,7 +117,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
                 onDelete={() => onDeletePage(p.id)}
               />
               {/* One pencil, on the selected tab only: a control per tab would
-                  multiply with every page created (the maintainer, 2026-09-19). */}
+                  multiply with every page created. */}
               {p.id === selection.page && (
                 <RenameControl
                   key={`page:${p.id}`}
@@ -151,7 +150,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           ⚠ {uncovered.length === 1 ? `${uncovered[0]} not covered` : `${uncovered.length} decks not covered`}
         </span>
       )}
-      {/* App settings (Ship piece 3): its own window, a child of this one. Left of the pill (the maintainer). */}
+      {/* App settings: its own window, a child of this one. */}
       <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
         <SettingsGlyph size={18} />
       </button>
@@ -190,8 +189,7 @@ function useCloseMenu(open: boolean, wrap: RefObject<HTMLElement | null>, close:
 
 /**
  * Name a new page. Reached from the "+" menu, which is the trigger — so this
- * shows the field straight away rather than another button behind the first
- * (which is what it did when the toolbar had its own "+ Page").
+ * shows the field straight away rather than another button behind the first.
  */
 function AddPage({ disabled, onAdd, onAdded }: { disabled: boolean; onAdd: (name: string) => Promise<AddPageResult>; onAdded: (page: string) => void }) {
   const [name, setName] = useState('');
@@ -243,7 +241,7 @@ function PageTab({
 }: {
   label: string;
   selected: boolean;
-  /** No key on this page can leave it (scope §10's guard). */
+  /** No key on this page can leave it (the guard). */
   stranded: boolean;
   disabled: boolean;
   onSelect: () => void;
@@ -277,9 +275,9 @@ function PageTab({
           </span>
         )}
       </button>
-      {/* Right-click is the way to delete (the maintainer, 2026-09-16): a per-tab
-          button costs a slot on every page ever created. Rename is the pencil
-          beside the selected tab, as for profile and device (2026-09-19). */}
+      {/* Right-click is the way to delete: a per-tab button costs a slot on
+          every page ever created. Rename is the pencil beside the selected
+          tab, as for profile and device. */}
       {menu && (
         <ul className="tab-menu" role="menu">
           <li>
@@ -300,12 +298,6 @@ function PageTab({
   );
 }
 
-/**
- * Create a profile (scope §7, B1). The deck checkboxes are the point, not a
- * detail: §2 records that the maintainer never found profiles in StreamController, so the
- * control that makes one has to say plainly that it covers both decks at once.
- * Connected decks start checked.
- */
 /**
  * Create a profile, reached from the "+" menu which owns the positioning
  * wrapper. The deck checkboxes are the point, not a detail: §2 records that
@@ -492,11 +484,10 @@ function AddMenu({
 }
 
 /**
- * The Profile dropdown, and the right-click that deletes (M5, the maintainer
- * 2026-09-19). Rename is the pencil beside it; delete hides behind the
- * gesture, deliberately: "a permanent delete control in the toolbar sits one
+ * The Profile dropdown, and the right-click that deletes. Rename is the pencil
+ * beside it; delete hides behind the gesture, deliberately: "a permanent delete control in the toolbar sits one
  * misclick from wiping 60 keys", and deleting a profile is an operation on
- * something already on screen (scope §10). The same menu a page tab has.
+ * something already on screen. The same menu a page tab has.
  */
 function ProfileCrumb({
   config,
@@ -554,9 +545,8 @@ function ProfileCrumb({
 }
 
 /**
- * Rename by pencil — the one control for profile, device and page (the maintainer,
- * 2026-09-19): a visible pencil beside the thing, which becomes a field in its
- * place. Enter or leaving the field saves; Escape cancels; a refusal (a name
+ * Rename by pencil — the one control for profile, device and page: a visible
+ * pencil beside the thing, which becomes a field in its place. Enter or leaving the field saves; Escape cancels; a refusal (a name
  * already in use, a blank one) stays open and says why.
  */
 function RenameControl({

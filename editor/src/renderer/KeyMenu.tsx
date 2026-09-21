@@ -4,13 +4,13 @@ import type { Bulk } from './useBulk.js';
 import { clipboardSummary, type Choice, type DeviceTarget } from './model.js';
 
 /**
- * The right-click menu on a key (mockup 2a; scope §10). Bulk operations are
+ * The right-click menu on a key. Bulk operations are
  * *operations* on something already on screen, so a gesture is allowed to hold
- * them (§10, "operations can hide; capabilities cannot") — and the same
+ * them ("operations can hide; capabilities cannot") — and the same
  * operations are on the inspector when several keys are selected, with their
  * shortcuts written beside them, for someone who never right-clicks.
  *
- * "Copy to page ▸" and "Copy to device ▸" (mockup 2a) open *inside* the menu
+ * "Copy to page ▸" and "Copy to device ▸" open *inside* the menu
  * rather than as a fly-out beside it: a fly-out from a key at the right edge of
  * the window has nowhere to go, and one list that grows is easier to aim at.
  */
@@ -185,7 +185,7 @@ function MenuItem({
 /**
  * The line under the grid: what the clipboard holds, and what the last bulk
  * operation did. Shown only while there is something to say — no permanent
- * status chrome (scope §10).
+ * status chrome.
  */
 export function BulkStatus({ bulk }: { bulk: Bulk }) {
   if (bulk.clipboard === null && bulk.message === null) return null;

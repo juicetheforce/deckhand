@@ -42,12 +42,12 @@ export interface Bulk {
 }
 
 /**
- * The bulk operations of M4 phase B3 over the selected keys (scope §7, §10).
+ * The bulk operations over the selected keys.
  * Where keys land is decided by src/shared/bulk.ts; this only gathers what it
  * needs, sends one `putButtons` edit, and says what happened.
  *
  * The clipboard is this renderer's memory: not the system clipboard, and not
- * saved, so it is gone when the editor closes (scope §10, "transient").
+ * saved, so it is gone when the editor closes.
  */
 export function useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys }: BulkContext): Bulk {
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
@@ -108,7 +108,7 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       }
       setMessage(null);
       // The copy is what gets edited next — a new icon, a new keybind — so it
-      // becomes the selection (§2: duplicate-and-edit is the FFXIV workload).
+      // becomes the selection.
       selectKeys(duplication.created);
     },
 

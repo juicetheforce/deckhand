@@ -1,7 +1,7 @@
 import { pairIconFields, type PairIconField } from '../../shared/icons.js';
 import { Checkbox, PairIcons, Row, Segmented, TextSetting, actionOf, nextAction, type FormProps } from './controls.js';
 
-/** The Media forms (scope §6): Media control and Now playing. Both follow whichever player is playing. */
+/** The Media forms: Media control and Now playing. Both follow whichever player is playing. */
 
 const METHODS = [
   { value: 'playpause', label: 'Play / pause' },

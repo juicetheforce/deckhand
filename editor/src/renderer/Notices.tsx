@@ -6,14 +6,14 @@ interface Props {
   /** The last live switch that failed; cleared by the next one that works. */
   switchError: string | null;
   /**
-   * The empty state under this is already saying the daemon is not running
-   * (scope §7, "say it once"), so this banner would be the second voice.
+   * The empty state under this is already saying the daemon is not running,
+   * so this banner would be the second voice.
    */
   daemonSaidBelow: boolean;
 }
 
 /**
- * Transient notices only — no permanent status chrome (scope §10). Each one
+ * Transient notices only — no permanent status chrome. Each one
  * is shown only while its condition holds.
  */
 export function Notices({ store, daemon, switchError, daemonSaidBelow }: Props) {

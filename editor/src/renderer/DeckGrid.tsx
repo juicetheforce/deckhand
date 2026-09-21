@@ -14,7 +14,7 @@ interface Props {
   iconStamps: Record<string, string>;
   /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
   failedKeys: Record<number, string>;
-  /** Keys the deck is holding down right now (M7, model.ts latchedKeysOn). */
+  /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
   latchedKeys: number[];
   selectedKeys: number[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
@@ -31,7 +31,7 @@ interface Props {
 const DRAG_THRESHOLD_PX = 6;
 
 /**
- * Key onto key (scope §10): drag a button and drop it on another key to move
+ * Key onto key: drag a button and drop it on another key to move
  * it; an occupied key swaps. Only the key under the pointer moves, even with
  * several selected — a block of keys moves by Copy, Paste and Clear.
  *
@@ -167,15 +167,15 @@ interface KeyProps {
   iconSize: number | null;
   button: ButtonDef | undefined;
   iconStamps: Record<string, string>;
-  /** The error, if this key's last press on the deck failed (Ship piece 6). */
+  /** The error, if this key's last press on the deck failed. */
   failure: string | undefined;
-  /** This key is latched down on the deck right now (M7). */
+  /** This key is latched down on the deck right now. */
   latched: boolean;
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
   onPointerDown: (occupied: boolean, e: ReactPointerEvent) => void;
-  /** This key is being dragged (drawn dimmed, as in mockup 2a). */
+  /** This key is being dragged (drawn dimmed). */
   dragging: boolean;
   /** A dragged key is over this one (drawn as the dashed drop target). */
   dropTarget: boolean;
@@ -232,7 +232,7 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
         />
       )}
       {iconMissing && (
-        // The same built-in the deck draws for an icon it cannot read (scope §3).
+        // The same built-in the deck draws for an icon it cannot read.
         <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} draggable={false} />
       )}
       {face.label && (

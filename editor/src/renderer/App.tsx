@@ -77,7 +77,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   /** The action last picked from the library, for the inspector to configure. */
   const [pick, setPick] = useState<Pick | null>(null);
 
-  // Follow the decks (scope §10): any change to the config or to what the
+  // Follow the decks: any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
   useEffect(() => {
     if (inFlight > 0) return;
@@ -91,9 +91,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   /**
    * Send a switch and hold the breadcrumb on the choice until the daemon's
    * state shows it. The daemon replies to a switch before its merged `state`
-   * event arrives, so resuming on the reply let the breadcrumb jump back for a
-   * moment (caught by scripts/check-live.mjs). At most a second, then follow
-   * whatever the deck reports.
+   * event arrives, so resuming on the reply would let the breadcrumb jump back
+   * for a moment. At most a second, then follow whatever the deck reports.
    */
   const sendSwitch = async (call: () => Promise<DaemonResult>, shows: (view: DaemonView) => boolean) => {
     setInFlight((n) => n + 1);
@@ -150,17 +149,16 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   const layout = layoutFor(config, selection.profile, selection.serial);
   const page = layout?.pages[selection.page];
   const geometry = geometryFor(daemon, selection.serial);
-  /** Why there is no grid, or null when there is one (scope §7, Portability). */
+  /** Why there is no grid, or null when there is one. */
   const nothing = emptyState(config, daemon, selection);
 
-  // Bulk operations over the selected keys (M4 phase B3).
   const selectKeys = (keys: number[]) =>
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
   const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // An action dragged from the library onto a key: a new button there (scope
-  // §10). Written first, then the key is selected and its form shown — the
+  // An action dragged from the library onto a key: a new button there.
+  // Written first, then the key is selected and its form shown — the
   // pick comes after the write so the inspector sees the new action.
   const actionDrag = useActionDrag((type, index) => {
     if (editingBlocked || !page) return;
@@ -186,17 +184,17 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
     onSelectNone: () => selectKeys([]),
   });
 
-  // Pane widths (scope §10): dragged by the dividers, and deliberately not
-  // persisted — a fresh editor opens at the defaults (the maintainer, 2026-09-15).
+  // Pane widths: dragged by the dividers, and deliberately not persisted — a
+  // fresh editor opens at the defaults.
   const [paneWidths, setPaneWidths] = useState<PaneWidths>(DEFAULT_PANE_WIDTHS);
   const resizePane = (pane: PaneName, width: number) => setPaneWidths((current) => ({ ...current, [pane]: width }));
 
   // Icon files on this page are watched while it is shown, so a file renamed
-  // away or put back reaches the grid (the maintainer, 2026-09-15). The stamp goes in
+  // away or put back reaches the grid. The stamp goes in
   // the icon URL; without it Chromium keeps the image it loaded first. Default
   // icons count: they are files too, in the checkout's assets/icons/.
   const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
-  // Both halves of a state pair the daemon reports per key (a toggle, M7), so
+  // Both halves of a state pair the daemon reports per key (a toggle), so
   // the icon it flips to is stamped too rather than fetched unstamped.
   // Not `.map(faceIcon)`: that passes the array index as the second argument.
   const pageIcons = page
@@ -272,7 +270,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
     if (!result.ok) setSwitchError(`Could not delete the page: ${result.error}`);
   };
 
-  // Deleting a profile (M5). The confirmation runs the same planning the
+  // Deleting a profile. The confirmation runs the same planning the
   // delete does (shared/profile-deletion.ts) on this config, so what it names
   // is what will happen. The card stays open afterwards to say where the
   // configuration it replaced was kept.
@@ -347,11 +345,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
               a second time is the redundancy the maintainer called pointless. */}
           <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
           <div className="well">
-            {/* One place says why there is no grid (scope §7, Portability).
-                Before 2026-09-20 three different situations — no daemon, no
-                deck plugged in, nothing ever configured — all rendered the
-                same per-deck layout sentence and an "Add a layout for this
-                deck" button for a deck that did not exist. */}
+            {/* One place says why there is no grid (model.ts emptyState). */}
             {nothing && (
               <div className="no-layout" data-empty-state={nothing.kind}>
                 <p className="empty-title">{nothing.title}</p>
@@ -451,7 +445,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
 /**
  * What is being dragged, following the pointer. Rendered into document.body:
  * inside a glass pane, `backdrop-filter` makes the pane the containing block
- * for `position: fixed` (the key menu hit this).
+ * for `position: fixed`.
  */
 function DragLabel({ drag }: { drag: ActionDrag }) {
   const icon = libraryIcon(drag.type);
@@ -465,14 +459,14 @@ function DragLabel({ drag }: { drag: ActionDrag }) {
 }
 
 /**
- * Deleting a profile (M5): what it will change, named before it happens —
+ * Deleting a profile: what it will change, named before it happens —
  * every key that loses its switch, where Deckhand will start, a deck that
  * would otherwise be left with no layout, and any page left with no way off.
  * The plan comes from the same code the delete runs (shared/profile-deletion.ts).
  *
  * After it is done the card stays, to say where the configuration it replaced
  * was kept: a delete can take a deck's worth of keys with it, and the editor
- * has no undo (scope §5).
+ * has no undo.
  */
 function DeleteProfile({
   name,
@@ -583,7 +577,7 @@ function DeleteProfile({
 
 /**
  * The delete confirmation. It names every key that navigates to this page,
- * because deleting clears those actions (the maintainer, 2026-09-15): the daemon logs and
+ * because deleting clears those actions: the daemon logs and
  * does nothing for a page action whose target is gone, so leaving them would
  * leave keys that are dead without looking it. It also says where the deck will
  * start afterwards, which can change even when nothing pointed at the page.
@@ -649,7 +643,7 @@ function DeletePage({
 }
 
 /**
- * Ctrl+C, Ctrl+V, Ctrl+D, Delete, Ctrl+A and Escape on the grid (scope §10).
+ * Ctrl+C, Ctrl+V, Ctrl+D, Delete, Ctrl+A and Escape on the grid.
  *
  * Never while typing in a field — Ctrl+C there copies text — and never while
  * the hotkey inspector is recording, when Escape or Delete is the combo being

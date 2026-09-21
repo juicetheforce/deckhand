@@ -1,11 +1,11 @@
 import { Checkbox, NumberSetting, Row, Segmented, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * The small System forms (scope §6): Clock, Nothing and Brightness. Grouped
+ * The small System forms: Clock, Nothing and Brightness. Grouped
  * by the library section they sit in, since each is a few controls.
  */
 
-/** clock: the time is the key's face, so the grid does not draw it (scope §10). */
+/** clock: the time is the key's face, so the grid does not draw it. */
 export function ClockForm({ at, button, disabled, run }: FormProps) {
   const action = actionOf('clock', button);
   const format = action?.format === 'HH:mm:ss' ? 'HH:mm:ss' : 'HH:mm';
@@ -30,7 +30,7 @@ export function ClockForm({ at, button, disabled, run }: FormProps) {
   );
 }
 
-/** noop: a deliberate spacer — no default icon either (§7 C1 call 6). */
+/** noop: a deliberate spacer — no default icon either. */
 export function NoopForm() {
   return (
     <section className="inspector-section">

@@ -77,7 +77,7 @@ export function stepSummary(step: ActionDef, pages: Choice[], profiles: Choice[]
   }
 }
 
-/** "delays 750 ms · about 1.2 s total" (scope §10: both figures, because each combo itself takes time). */
+/** "delays 750 ms · about 1.2 s total" (both figures, because each combo itself takes time). */
 export function multiTotal(steps: readonly ActionDef[]): string {
   const delays = steps.reduce((ms, s) => ms + (typeof s.delayMs === 'number' ? s.delayMs : 0), 0);
   const total = steps.reduce((ms, s) => ms + actionDurationMs(withoutDelay(s)), delays);

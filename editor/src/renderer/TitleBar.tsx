@@ -2,15 +2,14 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { WindowAction, WindowState } from '../shared/bridge.js';
 
 /**
- * The window's own title bar (Ship piece 4, scope §10), after mockups 2a and
- * 6a. Both windows are frameless, so this is the only bar they have.
+ * The window's own title bar. Both windows are frameless, so this is the only bar they have.
  *
  * - **Dragging** is styles.css: the bar is `-webkit-app-region: drag` and its
  *   buttons `no-drag`. Double-clicking it maximises and right-clicking it opens
  *   KWin's window menu — Chromium and the compositor do both, nothing here
- *   does (measured 2026-09-18, scope §10).
+ *   does (measured).
  * - **Buttons on the right**, minimise, maximise, close: Breeze's default order,
- *   hardcoded rather than read from kwinrc (the maintainer, 2026-09-18). The settings
+ *   hardcoded rather than read from kwinrc. The settings
  *   window has close only.
  * - **Maximise shows where it goes**: the maximise mark while restored, the
  *   restore mark while maximised.
@@ -18,8 +17,8 @@ import type { WindowAction, WindowState } from '../shared/bridge.js';
  *   application dims it (main.ts, reportWindowState).
  *
  * `children` is what sits on the left: the logo in the editor, the gear and
- * "Settings" in the settings window. The middle stays empty (the maintainer: the
- * breadcrumb below already says which profile and deck).
+ * "Settings" in the settings window. The middle stays empty: the
+ * breadcrumb below already says which profile and deck.
  */
 export function TitleBar({ closeOnly = false, children }: { closeOnly?: boolean; children: ReactNode }) {
   const [state, setState] = useState<WindowState>({ maximised: false, focused: true });

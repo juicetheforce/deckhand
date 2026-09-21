@@ -18,10 +18,10 @@ import { CATALOGUE, libraryIcon, searchCatalogue, type CatalogueEntry } from './
  *   (the maintainer, 2026-09-16) — the same call as showing unrenderable files in the
  *   icon picker. The tooltip distinguishes "needs daemon work" from "works by
  *   hand, only the form is missing".
- * - **Sections collapse, and default to expanded** (the maintainer, 2026-09-16).
+ * - **Sections collapse, and default to expanded**.
  *   Collapsing is something you choose, not something you inherit. The state
  *   lives in the editor's preferences store, never config.json.
- * - **Search looks inside collapsed sections** (the maintainer, 2026-09-16). Collapse
+ * - **Search looks inside collapsed sections**. Collapse
  *   helps when scanning, search when you know what you want, and collapsing
  *   everything has to make search *more* useful. So a query replaces the
  *   grouped list entirely with a flat list of matches, wherever they live;
@@ -141,7 +141,7 @@ function Entry({
       onPointerDown={(e) => onDragStart?.(entry.type, e)}
       onClick={() => onPick(entry.type)}
     >
-      {/* The same built-in the deck draws for a key with no icon of its own (scope §10). */}
+      {/* The same built-in the deck draws for a key with no icon of its own. */}
       {icon === null ? (
         <span className="library-icon" aria-hidden="true" />
       ) : (

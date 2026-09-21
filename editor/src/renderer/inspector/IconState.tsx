@@ -3,17 +3,17 @@ import type { IconChoice } from '../../shared/edits.js';
 import { builtinName } from '../../shared/icons.js';
 
 /**
- * A button's icon has three states and they are not interchangeable
- * (scope §10): absent means "use the action's built-in default", null means
+ * A button's icon has three states and they are not interchangeable:
+ * absent means "use the action's built-in default", null means
  * "deliberately none — label only", and a string is that file. They are shown
  * as one segmented control rather than two buttons, because **the state has to
- * be visible rather than inferred from which control was pressed last** (the maintainer,
- * 2026-09-16). On a key with no action, Default and None draw the same, so the
- * sub-line says which it is.
+ * be visible rather than inferred from which control was pressed last**. On a
+ * key with no action, Default and None draw the same, so the sub-line says
+ * which it is.
  *
- * No segment is ever disabled (the maintainer, 2026-09-16): going from a file to
- * "deliberately none" must be one click, not clear-then-tick. Choosing None
- * with a file set discards the path, which is what was asked for.
+ * No segment is ever disabled: going from a file to "deliberately none" must
+ * be one click, not clear-then-tick. Choosing None with a file set discards
+ * the path, which is what was asked for.
  */
 export function IconState({
   button,
