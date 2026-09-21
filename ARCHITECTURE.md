@@ -37,7 +37,8 @@ editor (Electron/React) — config producer only
   `systemd --user` service, as **plain Node, not inside Electron**. The daemon
   depends on native modules (`node-hid`, `sharp`), which would have to be
   rebuilt against Electron's ABI on every Electron update. The component that
-  has to just work does not take that risk.
+  has to just work does not take that risk. A release carries its own Node for
+  the daemon, as it carries its own Electron for the editor.
 - **The input helper** (`helper/deckhand-input.c`, about 250 lines, no
   dependencies beyond libc and the kernel headers) is a resident process that
   owns one `uinput` virtual keyboard. It receives **numeric keycodes only** on
@@ -159,9 +160,25 @@ removes that rule, because it lets any of the user's processes synthesise
 keystrokes.
 
 **One install script, not a package per distribution.** `scripts/install.sh`
-checks what a machine needs and names everything missing at once. It installs
-only from a clean git checkout, so what runs can always be traced to a
-commit, and it rolls back if the new copy does not stay up. Where the kernel
+checks what a machine needs and names everything missing at once, and rolls
+back if the new copy does not stay up. It installs two ways, sharing
+everything after the app directory is staged:
+
+- **A release** (what end users get): the script attached to a GitHub release
+  downloads that release's prebuilt package, checks it against the release's
+  `SHA256SUMS`, and proves its binaries load on the machine before touching
+  anything installed. Nothing is compiled there, so a user needs no Node,
+  npm or compiler. `scripts/release.sh` builds releases only from a clean,
+  annotated tag, from `git archive` of it, so a release contains nothing that
+  is not in a commit. The one binary Deckhand compiles, the input helper, is
+  compiled on AlmaLinux 8 (glibc 2.28); every other native file is an upstream
+  prebuild. Then every binary in the package is read, and the release is
+  refused if any needs a newer glibc or libstdc++ than the floor — a failure on
+  the maintainer's machine instead of a stranger's. Before publishing, the
+  package is loaded in containers of the distributions it claims, installed
+  the way a user installs it, and the tests are run against that install.
+- **A developer install**: from a clean git checkout, built on the machine,
+  so what runs can always be traced to a commit. Where the kernel
 restricts unprivileged user namespaces (Ubuntu 24.04 and later), it adds an
 AppArmor profile for the editor's own Electron rather than a setuid sandbox
 helper. A setuid binary under a home directory silently does nothing on a

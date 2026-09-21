@@ -5,7 +5,8 @@ format, every action, the `deckhand` command, the control socket, and working
 on the code. Why things are the way they are is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-- [Installing](#installing)
+- [Installing](#installing): [the release install](#the-release-install),
+  [the developer install](#developer-install), [building a release](#building-a-release)
 - [Updating and uninstalling](#updating-and-uninstalling)
 - [Using it](#using-it)
 - [The deckhand command](#the-deckhand-command)
@@ -17,88 +18,142 @@ on the code. Why things are the way they are is in
 
 ## Installing
 
-The one command from the README clones a release into `~/.local/src/deckhand`
-and runs its install script. Keep the clone: updating and uninstalling run
-from it.
+### The release install
 
-The script checks the machine first. If something is missing, it names
-everything missing at once and offers one command to install it for your
-distribution — shown in full, run only if you say yes:
+This is what the README's line does:
 
-```
-Some of that can come from this machine's own packages:
-  sudo dnf install -y make gcc pulseaudio-utils
-Run this now? [y/N]
+```bash
+curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash
 ```
 
-`~/.local/src/deckhand/scripts/install.sh check` prints the same report and
-changes nothing. The script knows apt, dnf and pacman; elsewhere it names what
-is missing and leaves the installing to you.
+The script is the one attached to the newest release, and it installs that
+release. In order, stopping at the first thing that fails, with nothing
+changed:
 
-It then builds Deckhand and installs it for your user only:
+1. **Checks the machine** and names everything missing at once. If a package
+   can supply what is missing, it offers one command to install it for your
+   distribution — shown in full, run only if you say yes:
+
+   ```
+   Some of that can come from this machine's own packages:
+     sudo dnf install -y libusb1 pulseaudio-utils
+   Run this now? [y/N]
+   ```
+
+   It knows apt, dnf and pacman; elsewhere it names what is missing and leaves
+   the installing to you. Piped from `curl`, it asks at your terminal; with no
+   terminal at all it prints the command and stops.
+2. **Downloads** the release's package (about 130 MB) and `SHA256SUMS`.
+3. **Checks the download** against `SHA256SUMS`. That catches a corrupted,
+   cut-short or wrong file, and that is all it does: the checksums come from
+   the same GitHub release as the package, so they do not prove who made it.
+4. **Unpacks it and proves it runs here**: the bundled Node starts, the
+   device and image libraries load, and the editor's Electron finds its
+   libraries.
+5. **Installs it**, starts the service, and puts back the previous version
+   if the new one does not stay up.
+
+`curl -fsSL …/install.sh | bash -s -- check` runs only step 1 and changes
+nothing. Running the line again on the version already installed says so and
+stops; `bash -s -- install --reinstall` installs it again.
+
+It installs for your user only:
 
 | What | Where |
 | --- | --- |
-| The daemon, the key-injection helper and the editor | `~/.local/share/deckhand/` |
+| The daemon, its Node, the key-injection helper and the editor | `~/.local/share/deckhand/` |
 | The systemd user service | `~/.local/share/systemd/user/deckhand.service` |
-| The `deckhand` and `deckhand-editor` commands | `~/.local/bin/` |
+| The `deckhand`, `deckhand-editor` and `deckhand-uninstall` commands | `~/.local/bin/` |
 | The editor's desktop entry and icon | `~/.local/share/applications/`, `~/.local/share/icons/` |
 | A udev rule giving your user the decks and `/dev/uinput` | `/etc/udev/rules.d/60-deckhand.rules` |
 
 **`sudo` is asked for only to write the udev rule**, and only when it is
 missing or has changed — and, on distributions that restrict unprivileged user
 namespaces (Ubuntu 24.04 and later), once to add an AppArmor profile that
-lets the editor start. The script starts the service, enables it with your
-desktop session, and reports whether your user can open `/dev/uinput` and each
-connected deck. If the new copy doesn't stay running, it puts the previous
-installation back and shows the log.
+lets the editor start. The installer reports whether your user can open
+`/dev/uinput` and each connected deck.
 
-### Requirements
+#### Requirements
 
-The install script checks all of these.
+The installer checks all of these.
 
-- Node.js 22.12 or newer, from your distribution's packages, at
-  `/usr/bin/node` (the service runs that path), plus `npm`.
-- `gcc` and `make`, and your distribution's kernel headers, to build the
-  key-injection helper.
+- An x86_64 machine with glibc 2.28 or newer: any current Fedora, Ubuntu,
+  Debian, Arch or RHEL-family distribution. Each release is checked to load on
+  AlmaLinux 8, Debian 11 and 12, Ubuntu 22.04 to 26.04, Fedora 44 and Arch
+  before it is published.
+- libusb 1.0, which the Stream Deck library links against (`libusb1` on
+  Fedora, `libusb-1.0-0` on Debian and Ubuntu).
 - `pactl`, for the audio keys. That is **pulseaudio-utils** on Fedora, Debian
   and Ubuntu — a machine running PipeWire may still not have the command.
 - A desktop session with a systemd user manager and a session D-Bus.
-- Network access during the install, for `npm ci` and the editor's Electron.
+- `curl`, `tar`, `xz` and `sha256sum`, to download and check the package.
 - For the editor's tray icon, a panel that hosts StatusNotifierItem icons.
   KDE Plasma does, and so does Ubuntu's GNOME; plain GNOME needs the
-  AppIndicator extension. The install script warns when there is none.
+  AppIndicator extension. The installer warns when there is none.
 
-Two things it will not do for you:
+It will not fix what no package fixes: `/dev/uinput` missing (`sudo modprobe
+uinput`), a desktop that never reaches `graphical-session.target`, a session
+with no seat.
 
-- **Replace a Node that is present but too old**, or one not at
-  `/usr/bin/node`. If your distribution's Node is older than 22.12 — Debian
-  stable ships 20 — you need nvm or a third-party repository.
-- **Fix what no package fixes**: `/dev/uinput` missing (`sudo modprobe
-  uinput`), a desktop that never reaches `graphical-session.target`, a session
-  with no seat.
+### Developer install
+
+Building from source, for working on Deckhand or for a machine a release does
+not cover (anything but x86_64):
+
+```bash
+git clone https://github.com/juicetheforce/deckhand ~/src/deckhand
+~/src/deckhand/scripts/install.sh install
+```
+
+It builds from the checkout and installs to the same places as a release. It
+refuses a checkout with uncommitted changes, so what runs can always be traced
+to a commit. `scripts/install.sh check` prints its preflight and changes
+nothing. On top of the release's requirements (bar curl and xz), it needs:
+
+- Node.js 22.12 or newer, from your distribution's packages, at
+  `/usr/bin/node` — the service runs the Node the install was built with —
+  plus `npm`. If your distribution's Node is older, you need nvm or a
+  third-party repository; the installer will not replace it.
+- `gcc` and `make`, and your distribution's kernel headers, to build the
+  key-injection helper.
+- Network access during the install, for `npm ci` and the editor's Electron.
+
+To follow releases from source, clone a tag instead
+(`git -c advice.detachedHead=false clone --depth 1 --branch <tag> …`; git
+may print `warning: refs/tags/<tag> … is not a commit!`, which is harmless)
+and update with `scripts/install.sh upgrade`, which moves the clone to the
+newest release tag and installs it.
+
+### Building a release
+
+For maintainers. `scripts/release.sh build <vX.Y.Z>` builds only from a clean
+checkout at that annotated tag, from `git archive` of the tag. It uses the
+official Node, compiles the key-injection helper on AlmaLinux 8 (glibc 2.28),
+and refuses the release if any binary in the package needs a newer glibc or
+libstdc++, or if a shipped package carries no licence.
+`bash scripts/test/release-ships.sh <vX.Y.Z>` then tests what ships: it loads
+the package in containers of the distributions above, pipes its installer,
+installs it on the machine, and runs the tests against that install.
+`scripts/release.sh publish <vX.Y.Z>` uploads it with `gh`.
 
 ## Updating and uninstalling
 
-```bash
-~/.local/src/deckhand/scripts/install.sh upgrade
-```
+**Update a release install by running the install line again.** It installs
+the newest release, or says the one installed is already the newest.
 
-`upgrade` fetches the release tags, moves the clone to the newest one, and
-runs that release's install script. It refuses a clone with uncommitted
-changes, so what runs can always be traced to a release. Pre-releases are
-skipped. `install.sh update` reinstalls whatever the clone has checked out.
+**Uninstall**, with no network needed:
 
 ```bash
-~/.local/src/deckhand/scripts/install.sh uninstall          # asks whether to also remove your config
-~/.local/src/deckhand/scripts/install.sh uninstall --purge  # removes your config without asking
+deckhand-uninstall          # asks whether to also remove your config
+deckhand-uninstall --purge  # removes your config without asking
 ```
 
 Uninstall removes the service, the installed copy, the commands, the desktop
 entry and Deckhand's udev rule. The rule always goes, because it gives every
 program you run access to `/dev/uinput`. It also removes
 `~/.local/state/deckhand/`, backups included — that is the app's state, not
-your config. Then delete `~/.local/src/deckhand`.
+your config. A developer install is removed the same way; the checkout is
+yours to delete.
 
 Day to day:
 
@@ -306,9 +361,9 @@ waits on a client: one that stops reading is disconnected.
 ## Troubleshooting
 
 **Deck not found.** `deckhand decks` lists what the daemon can see. If a deck
-is missing, run `~/.local/src/deckhand/scripts/install.sh update`, which
-reinstalls the udev rule if needed and reports access per device, then replug
-the deck.
+is missing, run the install line again with `bash -s -- install --reinstall`
+(or `scripts/install.sh update` in a developer install), which reinstalls the
+udev rule if needed and reports access per device, then replug the deck.
 
 **Keys do nothing.** Look for `[input] virtual keyboard ready` in
 `journalctl --user -u deckhand`. If it's missing, `/dev/uinput` isn't
@@ -328,8 +383,8 @@ log; if the socket could not be created, the log says why, and the decks keep
 working without it.
 
 **The editor doesn't open on Ubuntu.** It needs the AppArmor profile the
-installer adds; run `~/.local/src/deckhand/scripts/install.sh update` again
-and read what it reports.
+installer adds; run the install line again with `bash -s -- install
+--reinstall` and read what it reports.
 
 ## Developing
 

@@ -55,33 +55,32 @@ Settings:
 
 ## Install
 
-Tested on Fedora 44 (KDE Plasma) and Ubuntu 26.04 (GNOME), both on Wayland.
-You need Node.js 22.12 or newer from your distribution, a C compiler,
-`pactl`, and a desktop session with systemd. The installer checks all of it
-first, names anything missing, and offers the command to install it.
-
-One command, as your normal user:
+One line, as your normal user:
 
 ```bash
-git -c advice.detachedHead=false clone --depth 1 --branch v0.1.0 https://github.com/juicetheforce/deckhand ~/.local/src/deckhand && ~/.local/src/deckhand/scripts/install.sh install
+curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash
 ```
 
-Git may print `warning: refs/tags/v0.1.0 … is not a commit!` while cloning.
-It's harmless: a release is a tag rather than a branch, and the clone is
-complete.
+It downloads a prebuilt release (about 130 MB) and installs it for your user
+only. Nothing is compiled on your machine, and it brings its own Node.js. You
+need an x86_64 machine with glibc 2.28 or newer, a desktop session with
+systemd, and `pactl` for the audio keys. The installer checks first, names
+anything missing, and offers the command to install it.
 
-Everything installs for your user only. `sudo` is asked for once, to add a
-udev rule that gives you access to the decks, and on Ubuntu once more for an
-AppArmor profile the editor needs. Then open **Deckhand** from your
-application menu.
+The download is checked against the release's `SHA256SUMS`. That catches a
+corrupted or cut-short download, and that is all it does: the checksums come
+from the same GitHub release as the download, so they don't prove who made it.
 
-To update to the newest release:
+`sudo` is asked for once, to add a udev rule that gives you access to the
+decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then
+open **Deckhand** from your application menu.
 
-```bash
-~/.local/src/deckhand/scripts/install.sh upgrade
-```
+To update, run the same line again. To remove it: `deckhand-uninstall`.
 
-To remove it: `~/.local/src/deckhand/scripts/install.sh uninstall`.
+I use it every day on Fedora 44 (KDE Plasma), and it has run on Ubuntu 26.04
+(GNOME). Each release is checked to load on AlmaLinux 8, Debian 11 and 12,
+Ubuntu 22.04 to 26.04, Fedora 44 and Arch before it is published. To build it
+from source instead, see [the developer install](REFERENCE.md#developer-install).
 
 ## What it doesn't do, and why
 
@@ -100,6 +99,7 @@ And what it doesn't do well yet:
 - **Dials, the Plus's touch strip, and the Neo's extra buttons** are ignored.
 - **Decks without screens, such as the Pedal**, haven't been tried and
   probably don't work.
+- **x86_64 only.** On other machines, install from source.
 - **Typed text assumes a US keyboard layout.**
 - **Audio devices with non-English names** show their system name instead,
   because `pactl` doesn't report the description. They still work.

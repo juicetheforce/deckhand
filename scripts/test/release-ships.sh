@@ -30,6 +30,10 @@ OUT="$REPO/release/$V"
 ASSET="deckhand-$V-linux-x64.tar.xz"
 S="$(mktemp -d)"
 trap 'rm -rf "$S"' EXIT
+# A failing test's whole log is kept here; only its last lines are printed.
+LOGS="$REPO/release/$V-ships-logs"
+rm -rf "$LOGS"; mkdir -p "$LOGS"
+keep() { cp "$1" "$LOGS/$2.log"; echo "      full log: $LOGS/$2.log"; }
 fail=0; ok() { echo "PASS  $1"; }; no() { echo "FAIL  $1"; fail=1; }
 section() { printf '\n== %s\n' "$1"; }
 
@@ -143,15 +147,15 @@ ln -s "$APP/node_modules" "$T/node_modules"
 cp -r "$REPO/scripts" "$T/scripts"
 export PATH="$APP/runtime:$PATH"   # the fakes' #!/usr/bin/env node finds the bundled one
 for smoke in $(node -p "require('$REPO/package.json').scripts.smoke" | grep -o 'scripts/smoke[a-z-]*\.mjs'); do
-  (cd "$T" && timeout 600 "$APP/runtime/node" "$smoke" > "$S/smoke.log" 2>&1) \
-    && ok "$smoke" || no "$smoke — $(tail -3 "$S/smoke.log" | tr '\n' ' ')"
+  if (cd "$T" && timeout 600 "$APP/runtime/node" "$smoke" > "$S/smoke.log" 2>&1); then ok "$smoke"
+  else no "$smoke — $(tail -3 "$S/smoke.log" | tr '\n' ' ')"; keep "$S/smoke.log" "$(basename "$smoke" .mjs)"; fi
 done
 
 section "the editor checks, against the installed editor and its Electron"
 for check in $(node -p "Object.keys(require('$REPO/editor/package.json').scripts).filter(k => k.startsWith('check:')).join(' ')"); do
   script="$(node -p "require('$REPO/editor/package.json').scripts['$check'].match(/scripts\/check-[a-z-]+\.mjs/)[0]")"
-  (cd "$REPO/editor" && DECKHAND_CHECK_INSTALLED_EDITOR="$APP/editor" timeout 600 node "$script" > "$S/check.log" 2>&1) \
-    && ok "$check" || no "$check — $(tail -3 "$S/check.log" | tr '\n' ' ')"
+  if (cd "$REPO/editor" && DECKHAND_CHECK_INSTALLED_EDITOR="$APP/editor" timeout 600 node "$script" > "$S/check.log" 2>&1); then ok "$check"
+  else no "$check — $(tail -3 "$S/check.log" | tr '\n' ' ')"; keep "$S/check.log" "${check#check:}"; fi
 done
 
 printf '\n'
