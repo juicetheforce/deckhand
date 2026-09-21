@@ -2,3 +2,8 @@ node_modules/
 dist/
 helper/deckhand-input
 *.log
+
+# The maintainer's private working documents: their own git repository,
+# nested here. CLAUDE.local.md imports from it.
+docs/
+CLAUDE.local.md
