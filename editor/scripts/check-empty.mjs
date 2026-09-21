@@ -79,7 +79,9 @@ async function situation({ config, noDaemon = false, setUp = async () => undefin
 
   const output = await runElectronCheck(checkName, { configDir, stateDir: path.join(scratch, 'state'), socket }, 40_000);
   await daemon?.stop();
-  await fs.rm(scratch, { recursive: true, force: true });
+  // Retries: Electron's helper processes write to userData for a moment after
+  // the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
+  await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 
   assert.equal(output.code, 0, `electron exited ${output.code}\nstderr:\n${output.stderr}`);
   const report = output.report?.renderer;

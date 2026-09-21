@@ -125,6 +125,8 @@ check('the renderer type check reads no Node types and no daemon dependencies', 
   assert.deepEqual(leaked.slice(0, 3), [], `${leaked.length} file(s), e.g.`);
 });
 
-await fs.rm(scratch, { recursive: true, force: true });
+// Retries: Electron's helper processes write to userData for a moment after
+// the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
+await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

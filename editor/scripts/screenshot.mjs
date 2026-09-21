@@ -186,7 +186,9 @@ const output = await runElectronCheck('screenshot', {
 });
 
 await daemon.stop();
-await fs.rm(scratch, { recursive: true, force: true });
+// Retries: Electron's helper processes write to userData for a moment after
+// the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
+await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 if (!output.report) {
   console.error(`no report\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`);
   process.exit(1);

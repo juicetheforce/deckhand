@@ -270,7 +270,9 @@ check('closing the editor left both decks where they were, not on the start prof
 
 stopWatching();
 await daemon.stop();
-await fs.rm(scratch, { recursive: true, force: true });
+// Retries: Electron's helper processes write to userData for a moment after
+// the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
+await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 if (failures > 0) console.log(`\nrenderer report:\n${JSON.stringify(r, null, 2)}`);
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

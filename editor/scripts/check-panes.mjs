@@ -89,6 +89,8 @@ const configEntries = (await fs.readdir(configDir)).sort();
 check('the config directory holds only config.json', () => assert.deepEqual(configEntries, ['config.json']));
 
 await daemon.stop();
-await fs.rm(scratch, { recursive: true, force: true });
+// Retries: Electron's helper processes write to userData for a moment after
+// the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
+await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
