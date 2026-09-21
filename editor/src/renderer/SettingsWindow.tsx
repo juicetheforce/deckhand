@@ -3,15 +3,14 @@ import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon,
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 
 /**
- * The settings window (Ship piece 3, scope §7), after mockup 6a: DEVICES,
- * BEHAVIOR and APPEARANCE, one card per setting, and a footer. BACKUP (M5)
- * is not in 6a: export and import of the whole configuration. Everything
- * else applies at once; an import alone waits for its review to be confirmed. Every change is
- * saved at once and reaches the editor behind it at once — there is nothing to
- * apply — so Done only closes the window.
+ * The settings window: DEVICES, BEHAVIOR, APPEARANCE and BACKUP (export and
+ * import of the whole configuration), one card per setting, and a footer.
+ * Every change is saved at once and reaches the editor behind it at once,
+ * except an import, which waits for its review to be confirmed — so Done only
+ * closes the window.
  *
  * It runs in its own window, a child of the editor's, frameless, under its
- * own title bar with a close button only (main.tsx, TitleBar.tsx; piece 4).
+ * own title bar with a close button only (main.tsx, TitleBar.tsx).
  */
 export function SettingsWindow() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -64,7 +63,7 @@ export function SettingsWindow() {
           <label className="settings-title" htmlFor="settings-close-to-tray">
             Close to system tray
           </label>
-          {/* Not 6a's "Keeps keys active": the daemon runs the keys whatever the editor does (scope §7). */}
+          {/* Not "Keeps keys active": the daemon runs the keys whatever the editor does. */}
           <span className="settings-sub">Closing the editor leaves Deckhand in the system tray</span>
         </div>
         <input

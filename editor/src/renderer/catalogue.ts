@@ -104,12 +104,11 @@ export function searchCatalogue(query: string): Array<{ group: CatalogueGroup; e
 }
 
 /**
- * The icon a library row shows (scope §10: the library shows each action's
- * default icon). The deck's own default, for a representative setting where
- * the default depends on one — Go to page shows `forward`, Brightness
- * `brightness-up`. Two library-side exceptions (docs/code-state.md, C2 notes):
- * Clock and Now playing show `clock` and `now-playing`, though on the deck their
- * face is the time or the track (§7 C1 call 4). Nothing has none: it is a spacer.
+ * The icon a library row shows: the deck's own default, for a representative
+ * setting where the default depends on one — Go to page shows `forward`,
+ * Brightness `brightness-up`. Clock and Now playing show `clock` and
+ * `now-playing`, though on the deck their face is the time or the track.
+ * Nothing has none: it is a spacer.
  */
 export function libraryIcon(type: string): BuiltinIcon | null {
   if (type === 'clock') return 'clock';

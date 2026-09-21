@@ -86,13 +86,11 @@ export function elideCrumbs(crumbs: Crumb[], tail = 2): ElidedCrumbs {
 }
 
 /**
- * What a bookmark chip says: **the folder's own name**, nothing else (the maintainer,
- * 2026-09-15 — the path made the chip needlessly long). The full path is in
- * the chip's tooltip.
+ * What a bookmark chip says: **the folder's own name**, nothing else; the
+ * full path made chips needlessly long, and is in the chip's tooltip.
  *
- * The cost, which the maintainer hit before and chose to accept: two bookmarks whose
- * folders share a name read the same, as his `03_Attack/Job` and `02_Support/Job`
- * both read "Job".
+ * The accepted cost: two bookmarks whose folders share a name read the same,
+ * as `dps/Job` and `healer/Job` both read "Job".
  */
 export function bookmarkLabel(configPath: string, max = 18): string {
   const leaf = configPath.split('/').filter((p) => p !== '').at(-1) ?? configPath;

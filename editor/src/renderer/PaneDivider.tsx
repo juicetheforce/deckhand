@@ -12,12 +12,12 @@ interface Props {
 const KEY_STEP = 16;
 
 /**
- * The draggable divider between two panes (scope §10). Both panes felt
- * cramped at fixed widths, the icon picker most of all (the maintainer, 2026-09-15).
+ * The draggable divider between two panes: the icon picker in particular
+ * needs more room than a fixed width gives.
  *
  * Pointer capture rather than window listeners: the pointer keeps reporting to
  * this element even when it leaves it, so a fast drag cannot lose the pane.
- * Arrow keys move it too, because a 6-pixel drag target is no way to reach
+ * Arrow keys move it too, because a drag target a few pixels wide is no way to reach
  * something from the keyboard; double-click returns it to its default.
  */
 export function PaneDivider({ pane, width, onResize, label }: Props) {

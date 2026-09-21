@@ -13,12 +13,11 @@
  */
 
 /**
- * The pencil, from `edit.svg` in the design mockups.
+ * The pencil.
  *
- * Drawn as in the mockup, with one deliberate change: the source hard-codes the
- * periwinkle `#8f9cf0`, and this takes `currentColor` instead. A fixed colour
- * would stay bright while the button is disabled — which it is whenever editing
- * is blocked — and that would be a lie about whether it can be clicked.
+ * Drawn with `currentColor` rather than a fixed colour: a fixed colour would
+ * stay bright while the button is disabled — which it is whenever editing is
+ * blocked — and that would be a lie about whether it can be clicked.
  */
 export function EditIcon({ size = 16 }: { size?: number }) {
   return (
@@ -34,7 +33,7 @@ export function EditIcon({ size = 16 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* The pencil body, with the mockup's translucent fill. */}
+      {/* The pencil body, with a translucent fill. */}
       <path d="M14.5 5.5 L18.5 9.5 L9 19 H5 V15 Z" fill="currentColor" fillOpacity={0.18} />
       {/* The ferrule. */}
       <path d="M12.8 7.2 L16.8 11.2" />

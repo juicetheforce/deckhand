@@ -41,8 +41,8 @@ type Item = { kind: 'folder'; entry: IconFolderEntry } | { kind: 'image'; entry:
 const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
 
 /**
- * The icon picker, an inspector tab (scope §10), laid out as mockup 5a — four
- * bands and no more, so the grid keeps the height:
+ * The icon picker, an inspector tab, in five bands and no more, so the grid
+ * keeps the height:
  *
  *   1. one row: back, forward, up, the path field, refresh;
  *   2. the bookmarks row;
@@ -50,17 +50,16 @@ const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
  *   4. the grid;
  *   5. the bottom bar: what is shown, and the actions.
  *
- * Five bands, not 5a's four: the filter keeps a field of its own, because it
- * is what makes a tree of hundreds of icons usable and a glyph inside another
- * control hid it (the maintainer, 2026-09-15). The path field is still a control rather
- * than a line of text: fixed height, so it cannot wrap — a long path loses its
- * middle, and the ellipsis opens it out. Config stores the plain path (scope §3).
+ * The filter has a field of its own, because it is what makes a tree of
+ * hundreds of icons usable and a glyph inside another control hides it. The
+ * path field is a control rather than a line of text: fixed height, so it
+ * cannot wrap — a long path loses its middle, and the ellipsis opens it out.
+ * Config stores the plain path.
  *
- * **Selecting an icon is choosing it**. It goes on the deck
- * (preview.set, which is also how a file the daemon cannot draw is found out)
- * and is saved at once, so the deck and the grid never disagree. There is no
- * Assign: it only resolved a disagreement this picker used to create. The one
- * action left is Clear icon.
+ * **Selecting an icon is choosing it**. It goes on the deck (preview.set,
+ * which is also how a file the daemon cannot draw is found out) and is saved
+ * at once, so the deck and the grid never disagree. The only action is Clear
+ * icon.
  */
 export function IconPicker({ at, button, slot, editingBlocked, canPreview, place, onPlace }: Props) {
   const { folder, query } = place;
@@ -91,7 +90,8 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
   const latest = useRef<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  // Open somewhere: the key's icon's folder, a recent folder, Pictures, home.
+  // Open somewhere: the Built-in section for a built-in icon, else the icon's
+  // folder, else the newest bookmark that still exists, Pictures, home.
   useEffect(() => {
     if (folder === null) void window.deckhand.iconStartFolder(currentIcon ?? null).then((f) => onPlace({ ...place, folder: f, query: '' }));
   }, [folder]);
@@ -102,8 +102,8 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
       // Leaving the key, the page or the tab ends the preview.
       // While a choice is still saving, the save carries on without the
       // picker and clears the preview itself once the daemon has the saved
-      // icon (commitIcon in main), so it is left to that: cleared here, the
-      // key showed its old icon until the save landed.
+      // icon (commitIcon in main), so it is left to that. Clearing here would
+      // show the key's old icon until the save lands.
       if (!saving.current) {
         if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
         previewing.current = false;
@@ -379,8 +379,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           ))}
       </div>
 
-      {/* Band 3: the filter, full width and unmissable — it is what makes a deep
-          tree usable, so it is not a glyph tucked into another control. */}
+      {/* Band 3: the filter, full width. */}
       <input
         className="picker-filter"
         aria-label="Filter icons"
@@ -431,8 +430,8 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
                 />
               )}
               <span className="picker-name">{entry.name}</span>
-              {/* 5a writes "4 items"; six columns in this pane leave room for the
-                  number alone, so the words live in the tooltip. */}
+              {/* The count alone: six columns leave no room for the words, so
+                  they live in the tooltip. */}
               {item.kind === 'folder' && (
                 <span className="picker-count" title={entry.items === 1 ? '1 item' : `${entry.items ?? 0} items`}>
                   {entry.items ?? 0}

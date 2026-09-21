@@ -192,7 +192,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // Icon files on this page are watched while it is shown, so a file renamed
   // away or put back reaches the grid. The stamp goes in
   // the icon URL; without it Chromium keeps the image it loaded first. Default
-  // icons count: they are files too, in the checkout's assets/icons/.
+  // icons count: they are files too, in the app's assets/icons/.
   const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
   // Both halves of a state pair the daemon reports per key (a toggle), so
   // the icon it flips to is stamped too rather than fetched unstamped.
@@ -340,9 +340,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
-          {/* Say it once (scope §7): when the empty state below is already
-              explaining that the daemon is not running, the banner saying so
-              a second time is the redundancy the maintainer called pointless. */}
+          {/* Say it once: when the empty state below already explains that
+              the daemon is not running, the banner would only repeat it. */}
           <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
           <div className="well">
             {/* One place says why there is no grid (model.ts emptyState). */}
@@ -648,8 +647,7 @@ function DeletePage({
  * Never while typing in a field — Ctrl+C there copies text — and never while
  * the hotkey inspector is recording, when Escape or Delete is the combo being
  * recorded. That is an explicit flag (key-capture.ts) rather than trust in
- * listener order; check:bulk sends keys both to the focused element and to
- * window itself, where the order differed.
+ * listener order, which differs for a key dispatched at `window` itself.
  */
 function useBulkShortcuts(handlers: {
   enabled: boolean;

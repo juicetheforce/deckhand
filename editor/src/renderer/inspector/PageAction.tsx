@@ -3,10 +3,9 @@ import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import type { Choice } from '../model.js';
 
 /**
- * "Go to page": a plain list of page names in this deck's layout,
- * not the mockups' thumbnails, plus Back. The target is written as the page's
- * ID, so renaming a page never breaks the link — but a link
- * hand-written as a name is still recognised here, since that is how the
+ * "Go to page": a plain list of page names in this deck's layout, plus Back.
+ * The target is written as the page's ID, so renaming a page never breaks the
+ * link — but a link hand-written as a name is still recognised here, since that is how the
  * daemon resolves it.
  */
 export function PageAction({

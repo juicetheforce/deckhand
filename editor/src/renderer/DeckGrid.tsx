@@ -50,7 +50,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
   const moveRef = useRef(onMoveKey);
   moveRef.current = onMoveKey;
-  // A drag that ends back on its own key still produces a click there; it is not a click.
+  // A drag that ends back on its own key still produces a click there; it is not a selection click.
   const suppressClick = useRef(false);
 
   // Added once for the grid's lifetime. Each returns at once unless a key was pressed.
@@ -82,10 +82,9 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
     };
     const cancel = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !press.current) return;
-      // Cancelling a drag must not also clear the selection. Two guards, and
-      // either alone holds (a check break removed each in turn; only removing
-      // both failed): stopping it here keeps it from the grid's bubble-phase
-      // shortcuts, and they also ignore an event already prevented.
+      // Cancelling a drag must not also clear the selection. Two guards, either
+      // of which alone holds: stopping it here keeps it from the grid's
+      // bubble-phase shortcuts, and they also ignore an event already prevented.
       e.stopPropagation();
       e.preventDefault();
       press.current = null;

@@ -1,7 +1,7 @@
 import { pairIconFields, type PairIconField } from '../../shared/icons.js';
 import { Checkbox, NumberSetting, PairIcons, Row, Segmented, TextSetting, actionOf, nextAction, type FormProps } from './controls.js';
 
-/** The Audio forms that need no device (scope §6): Volume, Mic mute and Mute output. The device pickers are their own piece. */
+/** The Audio forms that need no device: Volume, Mic mute and Mute output. The device pickers are in DeviceForms.tsx. */
 
 export function VolumeForm({ at, button, disabled, run }: FormProps) {
   const action = actionOf('audio.volume', button);

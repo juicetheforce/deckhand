@@ -194,9 +194,9 @@ export function pageChoices(layout: LayoutDef): Choice[] {
  * pick a sensible one: the daemon's active profile, the first connected deck
  * with a layout in it, and that layout's start page (the daemon's own rule).
  *
- * `preferredDeck` is the Default deck setting (Ship piece 3), passed when a
- * window opens: that deck if the profile has a layout for it, connected or
- * not; otherwise the rule above, for this opening only (the maintainer, 2026-09-18).
+ * `preferredDeck` is the Default deck setting, passed when a window opens:
+ * that deck if it is connected and the profile has a layout for it; otherwise
+ * the rule above, for this opening only.
  */
 export function reconcileSelection(config: Config, daemon: DaemonView, current: Selection | null, preferredDeck: string | null = null): Selection {
   const profiles = Object.keys(config.profiles);
@@ -230,14 +230,10 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
  */
 export function followDeck(config: Config, daemon: DaemonView, current: Selection): Selection {
   // Settle on a deck that exists *first*, then follow that one. Following
-  // `current.serial` directly is wrong whenever the selection does not name a
-  // deck that is here — which became reachable on 2026-09-20, when the Device
-  // dropdown stopped listing disconnected decks: until the daemon reports its
-  // decks there is nothing to select, so the serial is "", the lookup below
-  // finds nothing, and the editor settles on the layout's start page instead
-  // of the page the deck is really showing. That is scope §10's "the
-  // breadcrumb follows the decks" failing exactly when the window opens.
-  // Caught by check:structure, deterministically, three runs out of three.
+  // `current.serial` directly misses the deck's real page whenever the
+  // selection names no deck that is here: until the daemon reports its decks
+  // the serial is "", the lookup below finds nothing, and the editor would
+  // open on the layout's start page instead of the page the deck is showing.
   const settled = reconcileSelection(config, daemon, current);
   const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === settled.serial) : undefined;
   if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
@@ -356,8 +352,8 @@ export type KeyKind = 'empty' | 'unbound' | 'hotkey' | 'other';
  * - empty: no button.
  * - unbound: shows something (icon, label or background) but does nothing on
  *   press — marked in the grid, since it looks like a bound key.
- * - hotkey: editable in phase A.
- * - other: any other action; read-only in phase A.
+ * - hotkey: a hotkey action.
+ * - other: any other action.
  */
 export function keyKind(button: ButtonDef | undefined): KeyKind {
   if (!button || Object.keys(button).length === 0) return 'empty';
@@ -389,7 +385,6 @@ export interface KeyFace {
  */
 export function faceIcon(button: ButtonDef | undefined, latched = false): string | null {
   if (!button) return null;
-  // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   const action = button.action;
   // A state pair's own icon comes first on the deck (src/deck.ts); the grid
   // shows the resting half's — except a toggle, whose state the daemon reports
@@ -397,6 +392,7 @@ export function faceIcon(button: ButtonDef | undefined, latched = false): string
   const toggleIcon = action?.type === 'toggle' ? (latched ? action.iconOn : action.iconOff) : undefined;
   const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : toggleIcon;
   if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
+  // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
   const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : { latched });
   return name === null ? null : builtinRef(name);
@@ -445,9 +441,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   command: ['command'],
   // With its release action; see isPressRelease.
   keyHold: ['keys', 'state'],
-  // M7's latching toggle: the combo, and the icon pair the picker sets
-  // (shared/icons.ts pairIconFields). The label pair stays hand-edited, as
-  // the mute pairs' did.
+  // The toggle: the combo, and the icon pair the picker sets (shared/icons.ts
+  // pairIconFields). `labelOn`/`labelOff` and the backgrounds stay hand-edited.
   toggle: ['keys', 'iconOn', 'iconOff'],
   // Each step is checked on its own (MultiForm.tsx); one it cannot edit is shown read-only.
   multi: ['steps'],
@@ -480,9 +475,9 @@ export function hasForm(type: string): boolean {
  * a form. True for a key with no action — it can become anything — and for a
  * key with **another** action: a library pick retargets it, and the form
  * writes the new action once its setting is chosen, keeping icon and label
- * (C2 call 3). For an action already of that type, only if it carries fields
- * the form has a control for, so editing cannot silently drop one. Anything
- * with onRelease is read-only: a two-phase key has no form yet.
+ * For an action already of that type, only if it carries fields the form has
+ * a control for, so editing cannot silently drop one. A key with onRelease is
+ * editable only as the Press/Release pair.
  */
 export function actionEditable(button: ButtonDef | undefined, type: string): boolean {
   const fields = EDITABLE_FIELDS[type];
@@ -560,8 +555,7 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.node);
     case 'audio.cycle':
       return !(Array.isArray(action.devices) && action.devices.length >= 2) && !(Array.isArray(action.matches) && action.matches.length >= 2);
-    // No `matches` form: audio.cycleSource is new, so there is no hand-edited
-    // config to keep working (scope §6).
+    // No `matches` form for audio.cycleSource: it has only ever taken `devices`.
     case 'audio.cycleSource':
       return !(Array.isArray(action.devices) && action.devices.length >= 2);
     default:
@@ -570,10 +564,9 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
 }
 
 /**
- * The decks a profile covers, by their display names — §2's discoverability
- * point, which asks that a profile say plainly that it changes both decks.
- * `connected` decks it does not cover are what the uncovered-deck warning
- * needs (scope §10).
+ * The decks a profile covers, by display name, so the UI can say plainly which
+ * decks a profile switch changes. Connected decks it does not cover feed the
+ * uncovered-deck warning.
  */
 export function profileCoverage(
   config: Config,
@@ -595,9 +588,7 @@ function configuredSerials(config: Config): string[] {
 }
 
 /**
- * Why there is no grid to show (docs/scope.md §7, Portability). Five
- * situations, four of which used to render as the same per-deck layout
- * language about a deck that was not there:
+ * Why there is no grid to show. Five situations, each said differently:
  *
  * - `daemon-down` — the socket is not answering, so **nothing** is known:
  *   not which decks exist, not whether any is plugged in.
@@ -606,23 +597,21 @@ function configuredSerials(config: Config): string[] {
  *   install with no hardware writes.
  * - `all-unplugged` — decks are configured; **none** is plugged in.
  * - `no-layout` — a deck **is** plugged in and this profile has no layout for
- *   it. The one case where the old sentence was true, and the only one where
- *   offering to add a layout means anything.
+ *   it. The only case where offering to add a layout means anything.
  * - `deck-unplugged` — **a guard, not a state you can reach by clicking.**
- *   Since 2026-09-20 the Device dropdown lists only connected decks, so the
- *   selection is always a deck that is present; this covers the instant in
- *   which the daemon's `decks` and `status` lists disagree, rather than a
- *   deck someone selected and unplugged. Kept because drawing a grid with no
- *   geometry is the alternative.
+ *   The Device dropdown lists only connected decks, so the selection is
+ *   always a deck that is present; this covers the instant in which the
+ *   daemon's `decks` and `status` lists disagree, rather than a deck someone
+ *   selected and unplugged. Kept because drawing a grid with no geometry is
+ *   the alternative.
  *
  * The order matters as much as the list. "Nothing is connected" is tested
- * before anything per-deck, because with nothing plugged in the breadcrumb
- * still has some deck selected, and naming that one alone understates it —
- * which is the per-deck language the maintainer objected to.
+ * before anything per-deck, because with nothing plugged in the selection
+ * names no deck (or, for an instant, a stale one), and a per-deck sentence
+ * would either be about a deck that is not there or name one deck while
+ * every deck is missing.
  *
- * The first three were indistinguishable on screen and have all been possible
- * since M1; nobody noticed because a deck has always been attached to the
- * working machine. Null means there is a grid to draw.
+ * Null means there is a grid to draw.
  */
 export type EmptyStateKind = 'daemon-down' | 'never-configured' | 'all-unplugged' | 'no-layout' | 'deck-unplugged';
 
@@ -650,10 +639,9 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
     };
   }
 
-  // Before anything per-deck: with nothing plugged in at all, naming the one
-  // deck the breadcrumb happens to have selected understates it, and that is
-  // the per-deck language the maintainer objected to. Say what is true of the whole
-  // machine, then name the decks it is waiting for.
+  // Before anything per-deck: with nothing plugged in at all, a sentence about
+  // one deck understates it. Say what is true of the whole machine, then name
+  // the decks it is waiting for.
   if ((daemon.decks ?? []).length === 0) {
     const configured = configuredSerials(config);
     if (configured.length === 0) {
@@ -686,8 +674,8 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
     };
   }
 
-  // A real, connected deck this profile does not cover. The sentence the maintainer
-  // quoted, kept because here it is true (scope §7, and the maintainer 2026-09-20).
+  // A real, connected deck this profile does not cover: the one case where
+  // this sentence is true and adding a layout makes sense.
   const name = deckLabel(config, daemon, selection.serial);
   return {
     kind: 'no-layout',
@@ -698,9 +686,8 @@ export function emptyState(config: Config, daemon: DaemonView, selection: Pick<S
 }
 
 /**
- * The toolbar's connection state (scope §7). It used to render only when a
- * deck was selected, so the one situation that most needed a connection
- * indicator — nothing connected at all — was the one that showed none.
+ * The toolbar's connection state. It does not depend on a deck being
+ * selected: the case that most needs it, nothing connected at all, has none.
  */
 export type ConnectionState = 'daemon-down' | 'no-decks' | 'connected' | 'disconnected';
 
@@ -712,10 +699,8 @@ export interface ConnectionPill {
 export function connectionPill(config: Config, daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial'>): ConnectionPill {
   if (!daemon.connected) return { state: 'daemon-down', label: 'Daemon not running' };
   // The same precedence emptyState() uses, so the pill and the card can never
-  // disagree: with nothing plugged in at all, "Not connected" would name the
-  // one deck the breadcrumb happens to have selected and imply the others are
-  // fine. A configured deck is always selected, so this is not the same as
-  // having no deck to select.
+  // disagree: with nothing plugged in at all, "Not connected" would read as
+  // being about the selected deck and imply the others are fine.
   if ((daemon.decks ?? []).length === 0) return { state: 'no-decks', label: 'No decks connected' };
   // Past here at least one deck is plugged in, so "No decks connected" would
   // be false: a selection that is not among them is a *stale* selection, and

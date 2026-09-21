@@ -50,8 +50,8 @@ export interface Pick {
 }
 
 /**
- * The selected key: a form for its action (one file per action in
- * inspector/), its label and icon state, and Clear button. An action with no
+ * The selected key: a form for its action (the forms are in inspector/), its
+ * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
 export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apply }: Props) {
@@ -101,14 +101,14 @@ export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pic
 
 /**
  * How to select several keys, said where someone looking at the inspector will
- * read it. Multi-select is a gesture, so it is written down rather than left
- * for someone to already know (scope §10: capabilities cannot hide).
+ * read it. Multi-select is a gesture, and a capability must not hide behind
+ * one, so it is written down rather than left for someone to already know.
  */
 const SELECTING_SEVERAL = 'Ctrl+click adds a key to the selection, Shift+click selects a run of keys, and right-click shows what you can do with them.';
 
 /**
- * Several keys selected (M4 phase B3). No fields: editing one label across ten
- * keys is not a B3 operation. The same operations as the right-click menu,
+ * Several keys selected. No fields: there is no editing one label across ten
+ * keys. The same operations as the right-click menu,
  * with their shortcuts, so they can be found without right-clicking.
  */
 function SeveralKeys({ count, bulk, editingBlocked }: { count: number; bulk: Bulk; editingBlocked: boolean }) {

@@ -2,8 +2,8 @@ import type { AudioList, PickableDevice } from '../../../../src/control/protocol
 import { Checkbox, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * The audio device forms: Output device, Input device and Cycle
- * outputs. The rule they follow: **the user picks from the daemon's live list,
+ * The audio device forms: Output device, Input device, Cycle outputs and
+ * Cycle inputs. The rule they follow: **the user picks from the daemon's live list,
  * and the editor writes that exact node with its description as `label`** —
  * never a match string, and no logic about which device was meant. A headset's
  * stereo and mono sinks are both listed; choosing is the user's call.

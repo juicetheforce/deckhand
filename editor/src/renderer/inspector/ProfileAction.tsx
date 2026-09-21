@@ -4,10 +4,9 @@ import type { Choice } from '../model.js';
 
 /**
  * "Switch profile": a list of profiles, each saying which decks it changes.
- * §2 records that the maintainer never discovered profiles in StreamController, so the
- * key that switches them has to state plainly that it moves both decks — and
- * warn when one it does not cover is plugged in, which keeps its old layout
- * (scope §3).
+ * Profiles are easy to miss, so the key that switches them has to say plainly
+ * which decks it moves, and warn when a plugged-in deck it does not cover
+ * keeps its old layout.
  */
 export function ProfileAction({
   at,

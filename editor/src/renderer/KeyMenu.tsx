@@ -125,13 +125,9 @@ function Submenu({ label, expanded, disabled, title, onToggle }: { label: string
 /**
  * One deck under "Copy to device": its name, then its pages.
  *
- * Every deck here is connected, because deviceTargets() comes from
- * deckChoices(), which lists only plugged-in decks (the maintainer, 2026-09-20). This
- * used to list a disconnected deck greyed out with "— not connected", on §2's
- * "say why, do not hide"; that is reversed for this menu, because the reason
- * it could not be picked was that it was not there, and not being there is
- * now said by not being listed. `connected` is still checked: the daemon's
- * `decks` and `status` lists can disagree for an instant.
+ * Every deck here is connected: deviceTargets() comes from deckChoices(),
+ * which lists only plugged-in decks. `connected` is still checked because the
+ * daemon's `decks` and `status` lists can disagree for an instant.
  */
 function DeviceGroup({ device, onPick }: { device: DeviceTarget; onPick: (page: string) => void }) {
   return (

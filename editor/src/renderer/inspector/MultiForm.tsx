@@ -42,7 +42,7 @@ export function MultiForm(p: ActionFormProps) {
     else return false; // no step form sends anything else
     // Forms build on the step they were given, delay included (nextAction), so
     // this rarely adds anything; it holds for a form that does not. Either alone
-    // keeps the delay — a check break removing one did not fail, removing both did.
+    // keeps the delay.
     if (typeof current.delayMs === 'number' && next.delayMs === undefined) next = { ...next, delayMs: current.delayMs };
     return writeSteps(now.map((s, j) => (j === i ? next : s)));
   };

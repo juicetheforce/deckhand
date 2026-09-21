@@ -153,8 +153,9 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
 
     clear: async () => {
       if (!ready || selection.keys.length === 0) return;
-      // No confirmation, however many (the maintainer, 2026-09-16); scope §5 records
-      // what the undo net does and does not cover.
+      // No confirmation, however many keys. The only undo is the daemon's
+      // rolling backups (src/backups.ts), taken at most every five minutes, so
+      // restoring one can also lose other recent edits.
       const failure = await put(clearKeys(page, selection.keys));
       setMessage(failure === null ? null : `Could not clear: ${failure}`);
     },

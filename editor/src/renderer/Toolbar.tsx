@@ -154,10 +154,8 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
       <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
         <SettingsGlyph size={18} />
       </button>
-      {/* The connection state (scope §10, changed 2026-09-15; always shown
-          since 2026-09-20). It used to render only with a deck selected, so
-          the one case that most needed it — nothing connected at all — was
-          the one that showed nothing (scope §7, Portability). */}
+      {/* The connection state, always shown: nothing connected at all is
+          the case that most needs it, and then no deck is selected. */}
       <span className={`pill pill-${pill.state}`} role="status" data-connection={pill.state}>
         <span className="pill-dot" aria-hidden="true" />
         {pill.label}
@@ -226,10 +224,8 @@ function AddPage({ disabled, onAdd, onAdded }: { disabled: boolean; onAdd: (name
 }
 
 /**
- * A page tab, and the menu that deletes it. Two ways in, because §2 wants
- * discoverability on return rather than efficiency of repeated use: right-click
- * anywhere on the tab, or the ⋯ button, which only the selected tab shows so
- * the row stays quiet. Deleting is confirmed by App, which names what it clears.
+ * A page tab, and the right-click menu that deletes it. Deleting is confirmed
+ * by App, which names what it clears.
  */
 function PageTab({
   label,
@@ -258,9 +254,8 @@ function PageTab({
       <button
         className={selected ? 'tab tab-selected' : 'tab'}
         /* The plain page name, for checks to select by. The tab's textContent
-           carries decoration — the guard badge today, default icons in phase C
-           — so matching on rendered text breaks whenever the tab grows
-           something (it broke check:live and check:icons, 2026-09-16). */
+           carries decoration (the guard badge), so matching on rendered text
+           breaks whenever the tab grows something. */
         data-tab={label}
         onClick={onSelect}
         onContextMenu={(e) => {
@@ -300,10 +295,9 @@ function PageTab({
 
 /**
  * Create a profile, reached from the "+" menu which owns the positioning
- * wrapper. The deck checkboxes are the point, not a detail: §2 records that
- * the maintainer never found profiles in StreamController, so the control that makes one
- * has to say plainly that it covers both decks at once. Connected decks start
- * ticked.
+ * wrapper. The deck checkboxes are the point, not a detail: profiles are easy
+ * to miss, so the control that makes one says plainly which decks it switches
+ * together. Connected decks start ticked.
  */
 function NewProfile({
   decks,
@@ -371,16 +365,15 @@ function NewProfile({
 }
 
 /**
- * One "+" for both new pages and new profiles (the maintainer, 2026-09-16). The toolbar
- * is the row that fills up as pages are added — FFXIV alone is three or four
- * tabs per device — so two labelled buttons is space the tabs will want.
+ * One "+" for both new pages and new profiles. The toolbar is the row that
+ * fills up as pages are added, so two labelled buttons take space the tabs
+ * will want.
  *
- * It is a button with a menu, not a right-click: §2's distinction is that
- * *operations* on something you can already see may hide behind a gesture, but
- * a *capability* may not. The maintainer never found profiles in StreamController
- * because nothing said the concept existed, and right-clicking does not help
- * when you do not know what to right-click. Clicking "+" is the obvious move
- * when you want to add something, and the menu then names both concepts.
+ * It is a button with a menu, not a right-click: *operations* on something you
+ * can already see may hide behind a gesture, but a *capability* may not.
+ * Nobody right-clicks for a concept they do not know exists. Clicking "+" is
+ * the obvious move when you want to add something, and the menu then names
+ * both concepts.
  */
 function AddMenu({
   canAddPage,
@@ -485,9 +478,9 @@ function AddMenu({
 
 /**
  * The Profile dropdown, and the right-click that deletes. Rename is the pencil
- * beside it; delete hides behind the gesture, deliberately: "a permanent delete control in the toolbar sits one
- * misclick from wiping 60 keys", and deleting a profile is an operation on
- * something already on screen. The same menu a page tab has.
+ * beside it; delete hides behind the gesture, deliberately: a permanent delete
+ * control in the toolbar sits one misclick from wiping a profile, and deleting
+ * a profile is an operation on something already on screen. The same menu a page tab has.
  */
 function ProfileCrumb({
   config,

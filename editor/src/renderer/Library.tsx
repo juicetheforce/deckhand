@@ -3,26 +3,17 @@ import { builtinRef, iconUrl } from '../shared/icons.js';
 import { CATALOGUE, libraryIcon, searchCatalogue, type CatalogueEntry } from './catalogue.js';
 
 /**
- * The action library: the whole §6 catalogue, grouped (scope §10), each row
- * with its action's default icon (phase C2). Design
- * rules here all come from §2's discoverability point — an action nobody can
- * see is one nobody finds, and the maintainer never discovered profiles in
- * StreamController because nothing surfaced them:
+ * The action library: the whole catalogue, grouped, each row with its
+ * action's default icon. The rules below follow from one idea: an action
+ * nobody can see is one nobody finds.
  *
  * - **One action per row**, not a grid of tiles. In a 230 px pane two columns
- *   leave no room for a readable name beside an icon. Legibility over density
- *   (the maintainer, 2026-09-16). Each row carries its action's default icon (C2); the
- *   coloured rail each group used to have is gone with them — **the icons say
- *   what the colour did** (the maintainer, 2026-09-17).
- * - **Entries with no inspector are greyed with a reason, never hidden**
- *   (the maintainer, 2026-09-16) — the same call as showing unrenderable files in the
- *   icon picker. The tooltip distinguishes "needs daemon work" from "works by
- *   hand, only the form is missing".
- * - **Sections collapse, and default to expanded**.
- *   Collapsing is something you choose, not something you inherit. The state
- *   lives in the editor's preferences store, never config.json.
- * - **Search looks inside collapsed sections**. Collapse
- *   helps when scanning, search when you know what you want, and collapsing
+ *   leave no room for a readable name beside an icon. Legibility over density.
+ *   The icons carry what a group colour would, so the groups have none.
+ * - **Sections collapse, and default to expanded**. Collapsing is something
+ *   you choose, not something you inherit. The state lives in the editor's
+ *   preferences store, never config.json.
+ * - **Search looks inside collapsed sections**. Collapse helps when scanning, search when you know what you want, and collapsing
  *   everything has to make search *more* useful. So a query replaces the
  *   grouped list entirely with a flat list of matches, wherever they live;
  *   clearing it restores exactly the collapse state you had, because that
