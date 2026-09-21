@@ -57,6 +57,13 @@ for tool in make cc udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
 # sudo runs what it is handed: the offer below builds a "sudo <manager> ..."
 # command, and the test has to see the manager receive it.
 stub sudo 'exec "$@"'
+# What a release's preflight looks at instead of the build tools. uname answers
+# -m from the stub and everything else from the real one.
+stub uname 'if [ "$1" = -m ]; then echo "${STUB_ARCH:-x86_64}"; else exec /usr/bin/uname "$@"; fi'
+stub getconf '[ -n "${STUB_NO_GLIBC:-}" ] && exit 1; echo "glibc ${STUB_GLIBC:-2.39}"'
+stub ldconfig '[ "$1" = -p ] || exit 0; [ -n "${STUB_NO_LIBUSB:-}" ] || printf "\tlibusb-1.0.so.0 (libc6,x86-64) => /usr/lib64/libusb-1.0.so.0\n"; printf "\tlibc.so.6 (libc6,x86-64) => /lib64/libc.so.6\n"'
+for tool in curl xz tar sha256sum; do stub "$tool" 'exit 0'; done
+for tool in grep head; do ln -s "$(command -v "$tool")" "$S/stubs.orig/$tool"; done
 
 # --- One run -------------------------------------------------------------------
 # run '<setup>' — a fresh copy of the stubs and scratch paths, the setup
@@ -491,5 +498,26 @@ else
     no "offered more than once — got: $out"
   fi
 fi
+
+# --- A release's preflight -------------------------------------------------------
+# RELEASE_VERSION stamped, as scripts/release.sh stamps it: no checkout, no
+# build tools, and the release's own requirements instead.
+REL='RELEASE_VERSION=v9.9.9; UDEV_RULE_SRC=""; APPARMOR_PROFILE_SRC=""'
+expect_clean   "release: nothing missing, with no node, npm, make, cc or header at all" \
+  "$REL"'; rm "$S/stubs/node" "$S/stubs/npm" "$S/stubs/make" "$S/stubs/cc"; UINPUT_HEADER="$S/none.h"'
+expect_missing "release: not x86_64"          "$REL"'; export STUB_ARCH=aarch64'   'built for x86_64 only'
+expect_missing "release: glibc 2.27"          "$REL"'; export STUB_GLIBC=2.27'     'has glibc 2.27; .* need 2.28 or newer'
+expect_clean   "release: glibc 2.28, the floor itself" "$REL"'; export STUB_GLIBC=2.28'
+expect_clean   "release: glibc 2.100 (compared as versions, not as text)" "$REL"'; export STUB_GLIBC=2.100'
+expect_missing "release: no glibc (musl)"     "$REL"'; export STUB_NO_GLIBC=1'     "Cannot find this machine's glibc"
+expect_missing "release: no libusb-1.0"       "$REL"'; export STUB_NO_LIBUSB=1'    'libusb-1.0: the Stream Deck library'
+expect_missing "release: no curl"             "$REL"'; rm "$S/stubs/curl"'       'curl: needed to download'
+expect_missing "release: no xz"               "$REL"'; rm "$S/stubs/xz"'         'xz: needed to unpack'
+out="$(run "$REL"'; export STUB_NO_LIBUSB=1; pm_stub dnf libusb1')"
+grep -qx 'C: sudo dnf install -y libusb1' <<<"$out" && ok "release: the offer resolves libusb to libusb1 on dnf" || no "release libusb offer — got: $out"
+out="$(entry "$REL"'; pm_stub dnf libusb1 curl xz pulseaudio-utils' cmd_check)"
+grep -q 'rc=0$' <<<"$out" && grep -q 'deckhand  release v9.9.9' <<<"$out" && ! grep -q '^  node ' <<<"$out" \
+  && grep -qx '  packages  dnf: libusb=libusb1 curl=curl xz=xz pactl=pulseaudio-utils' <<<"$out" \
+  && ok "release: check's header names the release and only its own requirements" || no "release header — got: $out"
 
 exit $fail

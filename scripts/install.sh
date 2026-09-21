@@ -33,6 +33,15 @@
 #                                             without asking (it goes with the
 #                                             app, not with your config)
 #
+# Two ways to install, one script. From a git checkout it builds Deckhand (the
+# developer install). As a release's install.sh — RELEASE_VERSION below stamped
+# by scripts/release.sh — it downloads that release's prebuilt package, checks
+# it against the release's SHA256SUMS, and installs it; nothing is built:
+#
+#   curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash
+#
+# Everything after the app directory is staged is the same for both.
+#
 # Run it from a git checkout of Deckhand, as your normal user (not root).
 # It checks for prerequisites before anything is changed, and names everything
 # missing at once rather than stopping at the first. For the ones a package can
@@ -41,6 +50,13 @@
 
 set -euo pipefail
 
+# Empty in the repository. scripts/release.sh writes the release's tag here in
+# the copy it attaches to a release; that copy installs the prebuilt package.
+RELEASE_VERSION=""
+# The glibc every binary in a release is checked against when it is built
+# (scripts/release.sh), and so the oldest a machine may have to install one.
+RELEASE_GLIBC_FLOOR=2.28
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UDEV_RULE_SRC="$REPO_DIR/udev/60-deckhand.rules"
 UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
@@ -48,6 +64,13 @@ UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
 # Installed only where the kernel is restricting them; see apparmor_needed().
 APPARMOR_PROFILE_SRC="$REPO_DIR/apparmor/deckhand-editor"
 APPARMOR_PROFILE_DST="/etc/apparmor.d/deckhand-editor"
+# A release has no checkout: its rule and profile arrive in the package, and
+# cmd_install points these at the staged copies once it is unpacked. Until
+# then they name nothing, which the preflight treats as "may need sudo".
+if [ -n "$RELEASE_VERSION" ]; then
+  UDEV_RULE_SRC=""
+  APPARMOR_PROFILE_SRC=""
+fi
 
 # How long the service must stay up, without restarting, to count as started.
 START_SETTLE_SECONDS=8
@@ -72,7 +95,19 @@ say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
+is_release() { [ -n "$RELEASE_VERSION" ]; }
+
 usage() {
+  if is_release; then
+    cat >&2 <<USAGE
+Deckhand $RELEASE_VERSION installer.
+
+  install.sh [install] [--reinstall]   (the default; also updates an older install)
+  install.sh check                     (checks this machine, changes nothing)
+  install.sh uninstall [--purge]       (deckhand-uninstall does the same)
+USAGE
+    exit 2
+  fi
   cat >&2 <<'USAGE'
 Deckhand install / update / uninstall — the daemon and the editor.
 
@@ -191,8 +226,10 @@ preflight_checks() {
 
   [ "$(id -u)" -ne 0 ] \
     || missing - "Running as root. Run this as your normal user; it asks for sudo only for the udev rule."
-  [ -f "$REPO_DIR/package.json" ] && [ -f "$UDEV_RULE_SRC" ] \
-    || missing - "Not a Deckhand checkout: run this script from inside one."
+  if ! is_release; then
+    [ -f "$REPO_DIR/package.json" ] && [ -f "$UDEV_RULE_SRC" ] \
+      || missing - "Not a Deckhand checkout: run this script from inside one."
+  fi
 
   # systemd user session: the daemon is a systemd --user service, started with
   # the graphical session (systemd/deckhand.service is WantedBy
@@ -242,7 +279,9 @@ preflight_checks() {
   # conflict nobody asked it to, and installing a package was never going to
   # fix a node that is simply somewhere else. Upgrading or rearranging an
   # existing Node is the owner's business.
-  if ! has_command node; then
+  if is_release; then
+    release_checks
+  elif ! has_command node; then
     missing node "node: install Node.js 22.12 or newer from your distribution's packages (the service runs $SERVICE_NODE)."
   elif [ "$(command -v node)" != "$SERVICE_NODE" ]; then
     missing - "node on your PATH is $(command -v node), but the service runs $SERVICE_NODE. Native modules built with one would not load in the other. Install Node.js 22.12 or newer from your distribution's packages, and make it the node on PATH."
@@ -258,11 +297,13 @@ preflight_checks() {
       missing - "Node.js $version is too old; Deckhand needs 22.12 or newer."
     fi
   fi
-  has_command npm  || missing npm "npm: install it (some distributions package it apart from Node.js)."
-  has_command make || missing make "make: needed to build the key-injection helper."
-  has_command cc   || missing cc "A C compiler (cc): install gcc, to build the key-injection helper."
-  [ -f "$UINPUT_HEADER" ] \
-    || missing uinput-header "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
+  if ! is_release; then
+    has_command npm  || missing npm "npm: install it (some distributions package it apart from Node.js)."
+    has_command make || missing make "make: needed to build the key-injection helper."
+    has_command cc   || missing cc "A C compiler (cc): install gcc, to build the key-injection helper."
+    [ -f "$UINPUT_HEADER" ] \
+      || missing uinput-header "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
+  fi
 
   # The virtual keyboard. Whether it is writable is the udev rule's business,
   # reported after it is installed; here it only has to exist.
@@ -324,6 +365,43 @@ preflight_checks() {
     bus_name_has_owner org.kde.kglobalaccel \
       || caution "No KDE shortcut service (org.kde.kglobalaccel): the editor cannot warn when a hotkey is already a desktop shortcut. Everything else works."
   fi
+}
+
+# What a release needs instead of a build toolchain: a machine its prebuilt
+# binaries run on, the one system library they link that a desktop may lack,
+# and the tools to download and check the package. Node, npm, a compiler and
+# kernel headers are not needed: nothing is built here.
+release_checks() {
+  local arch glibc
+  arch="$(uname -m)"
+  [ "$arch" = x86_64 ] \
+    || missing - "This machine is $arch. Deckhand's releases are built for x86_64 only; on $arch, install from source (the developer install in REFERENCE.md)."
+
+  glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null || true)"
+  glibc="${glibc#glibc }"
+  if ! [[ "$glibc" =~ ^[0-9]+\.[0-9]+ ]]; then
+    missing - "Cannot find this machine's glibc version (getconf GNU_LIBC_VERSION). Deckhand's releases need glibc $RELEASE_GLIBC_FLOOR or newer; a system on another C library (musl) cannot run them."
+  elif [ "$(printf '%s\n%s\n' "$RELEASE_GLIBC_FLOOR" "$glibc" | sort -V | head -n 1)" != "$RELEASE_GLIBC_FLOOR" ]; then
+    missing - "This machine has glibc $glibc; Deckhand's releases need $RELEASE_GLIBC_FLOOR or newer."
+  fi
+
+  # The Stream Deck library's HID backend links libusb-1.0 (and libudev, which
+  # comes with systemd). ldconfig's cache is where the loader looks.
+  local ldconfig
+  ldconfig="$(command -v ldconfig || true)"
+  for candidate in /sbin/ldconfig /usr/sbin/ldconfig; do
+    [ -n "$ldconfig" ] || { [ -x "$candidate" ] && ldconfig="$candidate"; }
+  done
+  if [ -z "$ldconfig" ]; then
+    caution "ldconfig was not found, so libusb-1.0 was not checked. If it is missing, the install stops after the download and names it."
+  elif ! "$ldconfig" -p 2>/dev/null | grep -q 'libusb-1\.0\.so\.0 '; then
+    missing libusb "libusb-1.0: the Stream Deck library links against it. Install your distribution's libusb 1.0 package."
+  fi
+
+  has_command curl      || missing curl "curl: needed to download the release."
+  has_command xz        || missing xz "xz: needed to unpack the release."
+  has_command tar       || missing - "tar: needed to unpack the release."
+  has_command sha256sum || missing - "sha256sum (coreutils): needed to check the download."
 }
 
 # --- Offering to install what is missing --------------------------------------
@@ -397,6 +475,19 @@ pkg_candidates() {   # pkg_candidates <manager> <key> -> candidate names, best f
     dnf:npm)               echo "nodejs24-npm-bin nodejs22-npm-bin npm" ;;  # checked: Fedora 44
     pacman:npm)            echo "npm" ;;
 
+    # A release's requirements.
+    apt:libusb)            echo "libusb-1.0-0" ;;
+    dnf:libusb)            echo "libusb1" ;;                   # checked: Fedora 44
+    pacman:libusb)         echo "libusb" ;;
+
+    apt:curl)              echo "curl" ;;
+    dnf:curl)              echo "curl" ;;
+    pacman:curl)           echo "curl" ;;
+
+    apt:xz)                echo "xz-utils" ;;
+    dnf:xz)                echo "xz" ;;
+    pacman:xz)             echo "xz" ;;
+
     # Only ever asked for where AppArmor restricts user namespaces, which is
     # the apt family; Fedora never reaches this check.
     apt:apparmor-parser)   echo "apparmor" ;;
@@ -448,8 +539,14 @@ install_command() {   # install_command <manager> <package>...
 }
 
 # Every requirement key the table has cells for, in the order the preflight
-# checks them. The header walks all of them; the offer only the missing ones.
-PACKAGE_KEYS="node npm make cc uinput-header pactl apparmor-parser"
+# checks them — each install's own: a release needs none of the build tools,
+# a build from a checkout none of the download tools. The header walks all of
+# them; the offer only the missing ones.
+package_keys() {
+  if is_release; then echo "libusb curl xz pactl apparmor-parser"
+  else echo "node npm make cc uinput-header pactl apparmor-parser"
+  fi
+}
 
 # The package this machine would install for one requirement: the first of
 # its candidates the manager knows. Prints nothing if there is no cell for it
@@ -475,7 +572,7 @@ package_summary() {
     echo "none this script knows (it knows apt, dnf and pacman)"
     return 0
   fi
-  for key in $PACKAGE_KEYS; do
+  for key in $(package_keys); do
     if [ -z "$(pkg_candidates "$manager" "$key")" ]; then continue; fi
     found="$(resolve_key "$manager" "$key")"
     line="$line $key=${found:-?}"
@@ -580,6 +677,16 @@ preflight_header() {
   fi
   desktop="$(manager_env XDG_CURRENT_DESKTOP || true)"
   session="$(manager_env XDG_SESSION_TYPE || true)"
+  if is_release; then
+    printf '  %-9s %s\n' \
+      "deckhand" "release $RELEASE_VERSION" \
+      "distro"   "${distro:-unknown}" \
+      "kernel"   "$(uname -r) $(uname -m)" \
+      "glibc"    "$( (getconf GNU_LIBC_VERSION) 2>/dev/null || echo unknown)" \
+      "desktop"  "${desktop:-${XDG_CURRENT_DESKTOP:-unknown}} (${session:-${XDG_SESSION_TYPE:-unknown}})" \
+      "packages" "$(package_summary)"
+    return 0
+  fi
   commit="$(git -C "$REPO_DIR" describe --always --dirty 2>/dev/null || echo "not a git checkout")"
   printf '  %-9s %s\n' \
     "deckhand" "$commit" \
@@ -622,6 +729,9 @@ preflight() {
   fi
   if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ]; then
     preflight_header >&2
+    if is_release; then
+      die "nothing was changed. Fix what is listed above and run the install line again."
+    fi
     die "nothing was changed. Fix what is listed above and run this again; 'scripts/install.sh check' re-checks without installing."
   fi
 }
@@ -724,6 +834,74 @@ stage_install_files() {
   install -D -m 644 "$REPO_DIR/udev/60-deckhand.rules" "$STAGE_DIR/udev/60-deckhand.rules"
   install -D -m 644 "$REPO_DIR/apparmor/deckhand-editor" "$STAGE_DIR/apparmor/deckhand-editor"
   install -D -m 644 "$REPO_DIR/systemd/deckhand.service" "$STAGE_DIR/systemd/deckhand.service"
+}
+
+# --- A release: download, check, unpack -----------------------------------------
+#
+# The package and SHA256SUMS come from the release this script belongs to, so
+# script and package always match. DECKHAND_RELEASE_BASE points elsewhere (a
+# file:// directory, for testing a package before it is published).
+#
+# What the check proves, and what it does not: the package is byte for byte
+# the one SHA256SUMS names — not corrupt, not cut short, not a different
+# file. It does not prove who made it. SHA256SUMS comes from the same GitHub
+# release, so whoever could replace the package could replace the sums too.
+
+release_asset() { printf 'deckhand-%s-linux-x64.tar.xz' "$RELEASE_VERSION"; }
+release_base() { printf '%s' "${DECKHAND_RELEASE_BASE:-https://github.com/juicetheforce/deckhand/releases/download/$RELEASE_VERSION}"; }
+
+download_and_stage() {
+  local base asset dl line
+  base="$(release_base)"
+  asset="$(release_asset)"
+  dl="$(mktemp -d "${TMPDIR:-/tmp}/deckhand-download.XXXXXX")"
+  say "Downloading Deckhand $RELEASE_VERSION"
+  curl -fsSL --retry 2 -o "$dl/SHA256SUMS" "$base/SHA256SUMS" \
+    || { rm -rf "$dl"; die "could not download $base/SHA256SUMS; nothing was changed."; }
+  curl -fL --retry 2 --progress-bar -o "$dl/$asset" "$base/$asset" \
+    || { rm -rf "$dl"; die "could not download $base/$asset; nothing was changed."; }
+
+  say "Checking the download against SHA256SUMS"
+  line="$(grep -E "^[0-9a-f]{64}  $asset\$" "$dl/SHA256SUMS" || true)"
+  [ -n "$line" ] || { rm -rf "$dl"; die "SHA256SUMS has no line for $asset; nothing was changed."; }
+  if ! (cd "$dl" && printf '%s\n' "$line" | sha256sum -c --quiet - >/dev/null 2>&1); then
+    rm -rf "$dl"
+    die "the download does not match its checksum: it is corrupt, incomplete, or not the file SHA256SUMS names. Nothing was changed; run the install line again."
+  fi
+
+  say "Unpacking into $STAGE_DIR"
+  rm -rf "$STAGE_DIR"
+  mkdir -p "$STAGE_DIR"
+  if ! tar -xJf "$dl/$asset" -C "$STAGE_DIR" --strip-components=1 --no-same-owner; then
+    rm -rf "$dl" "$STAGE_DIR"
+    die "could not unpack $asset; nothing was changed."
+  fi
+  rm -rf "$dl"
+  local inside
+  inside="$(cat "$STAGE_DIR/VERSION" 2>/dev/null || echo 'no version')"
+  [ "$inside" = "$RELEASE_VERSION" ] \
+    || { rm -rf "$STAGE_DIR"; die "the package says it is $inside, not $RELEASE_VERSION; nothing was changed."; }
+  check_release_stage
+}
+
+# The preflight cannot see the binaries until they are here. Before anything
+# installed is touched: the bundled Node runs, the daemon's native modules load
+# (their system libraries are present), and Electron finds its libraries.
+check_release_stage() {
+  local node="$STAGE_DIR/runtime/node" absent
+  # Each looked for by name: ldd on a file that is not there reports no missing
+  # library, so the Electron check below would pass a package without Electron.
+  local part
+  for part in runtime/node helper/deckhand-input editor/electron/electron; do
+    [ -x "$STAGE_DIR/$part" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete ($part missing); nothing was changed."; }
+  done
+  [ -f "$STAGE_DIR/dist/index.js" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete (dist/index.js missing); nothing was changed."; }
+  if ! (cd "$STAGE_DIR" && "$node" -e 'require("./node_modules/sharp"); require("./node_modules/node-hid"); require("./node_modules/@elgato-stream-deck/node")' >/dev/null 2>&1); then
+    absent="$(find "$STAGE_DIR/node_modules" -name '*.node' -path '*linux-x64*' -exec ldd {} \; 2>/dev/null | awk '/=> not found/ { print $1 }' | sort -u | tr '\n' ' ')" || true
+    rm -rf "$STAGE_DIR"
+    die "Deckhand's device and image modules do not load on this machine${absent:+ — missing: ${absent% }}. Nothing was changed."
+  fi
+  check_electron_libraries "$STAGE_DIR/editor/electron/electron"
 }
 
 # The editor goes inside the daemon's app directory, built from the same
@@ -899,20 +1077,31 @@ rollback() {
 }
 
 cmd_install() {
-  local allow_dirty=no
+  local allow_dirty=no reinstall=no
   for arg in "$@"; do
     case "$arg" in
-      --dirty) allow_dirty=yes ;;
+      --dirty) is_release && usage; allow_dirty=yes ;;
+      --reinstall) is_release || usage; reinstall=yes ;;
       *) usage ;;
     esac
   done
 
   preflight
   resolve_locations
-  check_clean_checkout "$allow_dirty"
-  # Nothing below touches the running daemon until the swap, so a failed build
-  # or npm ci leaves everything as it was.
-  build_and_stage
+  # Nothing below touches the running daemon until the swap, so a failed
+  # download, check, unpack or build leaves everything as it was.
+  if is_release; then
+    if [ "$reinstall" = no ] && [ "$(cat "$APP_DIR/VERSION" 2>/dev/null)" = "$RELEASE_VERSION" ]; then
+      say "Deckhand $RELEASE_VERSION is already installed. Nothing to do (install --reinstall installs it again)."
+      return 0
+    fi
+    download_and_stage
+    UDEV_RULE_SRC="$STAGE_DIR/udev/60-deckhand.rules"
+    APPARMOR_PROFILE_SRC="$STAGE_DIR/apparmor/deckhand-editor"
+  else
+    check_clean_checkout "$allow_dirty"
+    build_and_stage
+  fi
   install_udev_rule
   install_apparmor_profile
 
@@ -966,6 +1155,9 @@ cmd_install() {
 
 cmd_upgrade() {
   [ $# -eq 0 ] || usage
+  if is_release; then
+    die "this is a release install: to update, run the install line again — curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash"
+  fi
 
   if ! git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     die "not a git checkout; upgrade needs the clone the install was made from."
@@ -1336,6 +1528,8 @@ main() {
   if [ ! -t 0 ] && { true </dev/tty; } 2>/dev/null; then
     exec </dev/tty
   fi
+  # A release's install line passes no arguments: installing is the default.
+  if [ $# -eq 0 ] && is_release; then set -- install; fi
   [ $# -ge 1 ] || usage
   local command="$1"; shift
   case "$command" in

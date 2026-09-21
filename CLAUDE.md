@@ -88,6 +88,8 @@ tests the installer's desktop entry and icon against a scratch HOME;
 `bash scripts/test/uninstaller.test.sh` the `deckhand-uninstall` it leaves;
 `bash scripts/test/pipe.test.sh` the script piped into bash, as `curl … | bash`
 runs it, with a terminal and without one.
+`bash scripts/test/release-install.test.sh` a release's download, checksum
+and unpack against a fake package, every way it can be wrong.
 `scripts/install.sh check` runs the preflight for real and changes nothing.
 
 For looking rather than checking: `node editor/scripts/screenshot.mjs --out
