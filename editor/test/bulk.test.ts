@@ -1,4 +1,4 @@
-// Offline test of where bulk operations put keys (M4 phase B3, src/shared/bulk.ts).
+// Offline test of where bulk operations put keys (src/shared/bulk.ts).
 // Pure functions, plain Node. The geometries are the two real decks' shapes —
 // XL 8×4 and Original V2 5×3, row-major as the library reports them — because
 // the cross-geometry cases are the point.

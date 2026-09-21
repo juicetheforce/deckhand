@@ -1,4 +1,4 @@
-// Export (M5 piece 1, src/main/export-bundle.ts): which icon paths a config
+// Export (src/main/export-bundle.ts): which icon paths a config
 // names, what goes in the zip, and what is refused. Runs against a scratch
 // HOME, so `~/` and the manifest's `home` are the scratch directory.
 
@@ -20,7 +20,7 @@ const { CONFIG_ENTRY, MANIFEST_ENTRY } = await import('../src/shared/backup.js')
 
 let failures = 0;
 // Awaits the check body: an async body passed to a check that does not await
-// can never fail (CLAUDE.md, "Known landmines").
+// can never fail.
 async function check(name: string, fn: () => Promise<void> | void): Promise<void> {
   try {
     await fn();

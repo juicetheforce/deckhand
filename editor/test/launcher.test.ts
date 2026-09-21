@@ -1,4 +1,4 @@
-// The launcher lifecycle (Ship piece 2, src/main/launcher.ts) with fakes: open
+// The launcher lifecycle (src/main/launcher.ts) with fakes: open
 // or focus, close to the tray releasing everything, reopen, quit — and the
 // orderings a person can produce with a tray icon, such as clicking it while a
 // close is still writing edits. The same lifecycle in real Electron is
@@ -182,7 +182,7 @@ await check('an open that fails does not wedge the launcher: the next one works'
 });
 
 await check('reopened from the tray after an install: restarts instead of making a window, and nothing opens after', async () => {
-  // The 2026-09-19 bug: a window made now would load the new page against
+  // A window made now would load the new page against
   // this old main process.
   const h = harness();
   await h.launcher.open();

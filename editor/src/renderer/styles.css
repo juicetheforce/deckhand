@@ -1,8 +1,7 @@
 /*
- * Visual reference: mockups 2a–2c (docs/scope.md §10). One glass surface per
- * functional region, gradients only in the background layer, a darker
- * non-glass well behind the grid. Accent #5b6ee8; amber navigation; green
- * media; red destructive.
+ * One glass surface per functional region, gradients only in the background
+ * layer, a darker non-glass well behind the grid. Accent #5b6ee8; amber
+ * navigation; green media; red destructive.
  */
 
 :root {
@@ -105,7 +104,7 @@ button:disabled {
   color: var(--text-muted);
 }
 
-/* The window's own title bar (Ship piece 4), after mockup 2a: TitleBar.tsx */
+/* The window's own title bar: TitleBar.tsx */
 
 .window {
   display: flex;
@@ -123,7 +122,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   flex: none;
-  /* Thinner than 2a's 44 px (the maintainer, 2026-09-18): close to the logo's height. */
+  /* Close to the logo's height. */
   height: 32px;
   padding: 0 4px 0 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -174,7 +173,7 @@ button:disabled {
   color: var(--text);
 }
 
-/* Close lifts to red on hover rather than filling red (Fleuron's treatment). */
+/* Close lifts to red on hover rather than filling red. */
 .titlebar-close:hover {
   color: var(--red);
 }
@@ -182,7 +181,7 @@ button:disabled {
 /*
  * Behind another window the bar recedes, as KDE's own applications do
  * themselves: the logo and buttons fade. The toolbar below is left alone —
- * dimmed, its controls read as disabled (tried 2026-09-18).
+ * dimmed, its controls read as disabled.
  */
 .titlebar[data-focused='false'] .titlebar-start,
 .titlebar[data-focused='false'] .titlebar-button:not(:hover) {
@@ -266,7 +265,7 @@ button:disabled {
   border-color: rgba(232, 90, 110, 0.4);
 }
 
-/* No deck at all, and no daemon (scope §7, Portability). Amber rather than
+/* No deck at all, and no daemon. Amber rather than
    red: nothing is broken, there is just nothing there — red is for a deck
    this profile expects and cannot find. */
 .pill-no-decks {
@@ -375,7 +374,7 @@ button:disabled {
 }
 
 /* With the icon picker open the inspector is a column, so the picker's grid
-   can take the height instead of the page scrolling (mockup 5a). */
+   can take the height instead of the page scrolling. */
 .inspector:has(.picker) {
   display: flex;
   flex-direction: column;
@@ -474,8 +473,8 @@ button:disabled {
   aspect-ratio: 1;
   container-type: inline-size;
   border-radius: 14px;
-  /* Against the near-black well these were too faint to read as buttons
-     (the maintainer, 2026-09-16): 0.09 → 0.22 and 2px, and the dashed empties likewise. */
+  /* Against the near-black well these were too faint to read as buttons:
+     0.09 → 0.22 and 2px, and the dashed empties likewise. */
   border: 2px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.055);
   padding: 0;
@@ -545,14 +544,14 @@ button:disabled {
   font-style: italic;
 }
 
-/* An inert key that looks placed (scope §10). Editor only. */
+/* An inert key that looks placed. Editor only. */
 .key-unbound {
   border: 1px dashed var(--amber);
 }
 
 /*
  * Top left, for both marks ("no action", "not set up"): the top right is the
- * failed-key badge's, as on the deck (Ship piece 6). "Not set up" and a failure
+ * failed-key badge's, as on the deck. "Not set up" and a failure
  * can be on the same key — pressing it fails — so they must not share a corner.
  */
 .key-mark {
@@ -568,7 +567,7 @@ button:disabled {
 }
 
 /*
- * The failed-key badge (Ship piece 6), where and as big as the deck draws it:
+ * The failed-key badge, where and as big as the deck draws it:
  * 30% of the key, inset 4%, top right (src/failed-badge.ts). The key's width
  * is its container, as for the label.
  */
@@ -838,7 +837,7 @@ button:disabled {
   color: var(--text);
 }
 
-/* Icon picker (scope §10) */
+/* Icon picker */
 
 .picker {
   /* The grid's columns come from this element's width (below). */
@@ -920,7 +919,7 @@ button:disabled {
 
 /* Band 2: the saved places. Chips carry their parent folder, because leaf
    names collide in a tree of job folders, and the row wraps rather than
-   scrolling — three bookmarks must never need a scrollbar (the maintainer). */
+   scrolling — three bookmarks must never need a scrollbar. */
 .picker-bookmarks {
   display: flex;
   align-items: center;
@@ -966,7 +965,7 @@ button:disabled {
   text-decoration: line-through;
 }
 
-/* Rounded rectangles, as mockup 2c draws them — not pills (the maintainer, 2026-09-15). */
+/* Rounded rectangles, not pills. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -1007,7 +1006,7 @@ button:disabled {
   gap: 3px;
 }
 
-/* Back, forward, up and refresh (mockup 5a), at its sizes scaled to this pane. */
+/* Back, forward, up and refresh, at its sizes scaled to this pane. */
 .picker-nav {
   display: inline-flex;
   align-items: center;
@@ -1092,8 +1091,8 @@ button:disabled {
 .picker-grid {
   display: grid;
   /* **Tiles keep their size; the column count changes** — 6, 5, 4, 3 as the
-     pane narrows (the maintainer, 2026-09-15: icons are picked by sight, so the image
-     has to stay legible). Six is the most, so a wide pane grows the tiles
+     pane narrows (icons are picked by sight, so the image has to stay
+     legible). Six is the most, so a wide pane grows the tiles
      rather than adding a seventh column.
      n columns need n × 44px + (n − 1) × 5px: 289, 240, 191 for 6, 5, 4.
      Container queries rather than a ResizeObserver: a hidden window never
@@ -1170,7 +1169,7 @@ button:disabled {
   cursor: pointer;
 }
 
-/* Pane dividers (scope §10): the library and inspector are draggable. */
+/* Pane dividers: the library and inspector are draggable. */
 
 .pane-divider {
   display: flex;
@@ -1200,7 +1199,7 @@ button:disabled {
   outline-offset: -1px;
 }
 
-/* How many items a subfolder holds (mockup 5a). One line, whatever the pane's width. */
+/* How many items a subfolder holds. One line, whatever the pane's width. */
 .picker-count {
   max-width: 100%;
   font-size: 9px;
@@ -1249,7 +1248,7 @@ button:disabled {
   }
 }
 
-/* Profiles and pages (M4 phase B, B1) */
+/* Profiles and pages */
 
 .crumb-add {
   background: transparent;
@@ -1370,7 +1369,7 @@ button:disabled {
   text-align: center;
 }
 
-/* The one line that says which situation this is (scope §7, Portability):
+/* The one line that says which situation this is:
    larger than the explanation under it, so the state is readable at a glance
    rather than needing the paragraph read. */
 .empty-title {
@@ -1392,7 +1391,7 @@ button:disabled {
   border-radius: var(--radius);
   border: 1px solid rgba(232, 90, 110, 0.45);
   /* Opaque, not glass: it sits over the grid, and the keys behind it made the
-     text hard to read (looked at, 2026-09-15). */
+     text hard to read. */
   background: #14141c;
   display: flex;
   flex-direction: column;
@@ -1414,7 +1413,7 @@ button:disabled {
   padding: 2px 0;
 }
 
-/* Action targets — Go to page, Switch profile (M4 phase B, B2) */
+/* Action targets — Go to page, Switch profile */
 
 .target-list {
   list-style: none;
@@ -1455,7 +1454,7 @@ button:disabled {
   color: var(--text-muted);
 }
 
-/* Collapsible library sections (M4 phase B, B2) */
+/* Collapsible library sections */
 
 .library-toggle {
   display: flex;
@@ -1491,7 +1490,7 @@ button:disabled {
   color: var(--text-muted);
 }
 
-/* Library search (M4 phase B, B2) */
+/* Library search */
 
 .library-header input {
   width: 100%;
@@ -1571,7 +1570,7 @@ button:disabled {
   background: transparent;
 }
 
-/* Label appearance (M4 phase B) */
+/* Label appearance */
 
 .label-style {
   margin-top: 10px;
@@ -1901,7 +1900,7 @@ button:disabled {
   color: var(--text);
 }
 
-/* Navigation guards (M4 phase B, B2) */
+/* Navigation guards */
 
 .tab-warn {
   margin-left: 5px;
@@ -1972,14 +1971,14 @@ button:disabled {
   min-width: 220px;
 }
 
-/* A key the deck is holding down (M7's latching toggle) */
+/* A key the deck is holding down (a latched toggle) */
 
 .key-latched {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* Kept configurations (M5 piece 2d) */
+/* Kept configurations */
 
 .kept-list {
   list-style: none;
@@ -2033,7 +2032,7 @@ button:disabled {
   border-color: var(--red);
 }
 
-/* Bulk operations (M4 phase B3): multi-select, the key menu, the status line */
+/* Bulk operations: multi-select, the key menu, the status line */
 
 .key {
   /* Shift+click selects a run of keys; without this it also selects label text. */
@@ -2147,7 +2146,7 @@ button:disabled {
   margin-left: auto;
 }
 
-/* Key onto key (M4 phase B3): a dimmed dragged key and a dashed drop target, as mockup 2a draws them. */
+/* Key onto key: a dimmed dragged key and a dashed drop target. */
 
 .key-dragging {
   opacity: 0.4;
@@ -2179,7 +2178,7 @@ button:disabled {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* --- The settings gear, in the toolbar beside the connection pill (Ship piece 3) --- */
+/* The settings gear, in the toolbar beside the connection pill */
 
 .toolbar-settings {
   display: inline-flex;
@@ -2198,7 +2197,7 @@ button:disabled {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* --- The settings window, after mockup 6a (Ship piece 3) --- */
+/* The settings window */
 
 /* The settings scroll under the bar, never with it (the window is not resizable, so only a very large font would need it). */
 .settings-body .window-body {
@@ -2206,7 +2205,7 @@ button:disabled {
 }
 
 body.settings-body {
-  /* 6a's plane and its glow, which stays blue whatever the accent (see :root above). */
+  /* The plane and its glow, which stays blue whatever the accent (see :root above). */
   background:
     radial-gradient(400px 280px at 50% -70px, rgba(91, 110, 232, 0.16), transparent 70%),
     linear-gradient(155deg, #131628, #0e1020);

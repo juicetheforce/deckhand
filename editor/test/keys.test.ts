@@ -1,5 +1,5 @@
 // Key naming for capture and Type manually, checked against the daemon's own
-// KEYS table and parseCombo (M4 phase A, step 4).
+// KEYS table and parseCombo.
 
 import assert from 'node:assert/strict';
 import { KEYS, parseCombo } from '../../src/keymap.js';

@@ -1,4 +1,4 @@
-// Offline test of the editor's config store (M4 phase A, step 1).
+// Offline test of the editor's config store.
 // Bundled by scripts/run-tests.mjs and run with plain Node — no Electron.
 //
 // Uses the daemon's real watchConfig() from the built dist/config.js to count
@@ -317,7 +317,7 @@ await check('addPage never reuses an existing page ID', async () => {
   store.close();
 });
 
-console.log('label appearance (M4 phase B)');
+console.log('label appearance');
 
 await check('setLabelStyle writes position, colour and size, and null removes each again', async () => {
   const file = await configFile(EXAMPLE);
@@ -358,7 +358,7 @@ await check('setLabelStyle refuses values the renderer could not use', async () 
 });
 
 await check("the icon's three states are distinct in the file, and each is reachable in one edit", async () => {
-  // scope §10: absent = use the action's default; null = deliberately none;
+  // Absent = use the action's default; null = deliberately none;
   // a string = that file. One field, three readings.
   const store = await openStore(await configFile(EXAMPLE));
   const where = at(0); // starts with an icon path
@@ -394,7 +394,7 @@ await check('a null icon survives a save and reload as null, not as an absent ke
 });
 
 await check('a label-only button is expressible: removing the icon keeps the label and the action', async () => {
-  // scope §2/§10: a label with no icon is a finished button, not a placeholder.
+  // A label with no icon is a finished button, not a placeholder.
   const store = await openStore(await configFile(EXAMPLE));
   const where = at(0); // { label: "Output A", icon: "~/...", action: audio.sink }
   assert.equal(store.apply({ kind: 'setIcon', at: where, icon: { kind: 'default' } }).ok, true);
@@ -405,7 +405,7 @@ await check('a label-only button is expressible: removing the icon keeps the lab
   store.close();
 });
 
-console.log('renaming a deck (M4 phase B)');
+console.log('renaming a deck');
 
 await check('renameDeck writes decks.<serial>.name, and clearing it removes the field', async () => {
   const file = await configFile(EXAMPLE);
@@ -446,7 +446,7 @@ await check('a deck the config has never mentioned can be named', async () => {
   store.close();
 });
 
-console.log('add profile and add layout (M4 phase B, B1)');
+console.log('add profile and add layout');
 
 const XL_SERIAL = 'REPLACE-WITH-XL-SERIAL';
 const V2_SERIAL = 'REPLACE-WITH-ORIGINAL-V2-SERIAL';
@@ -545,12 +545,12 @@ await check('a profile added in the editor is one the daemon accepts and can be 
   store.close();
 });
 
-console.log('rename page (pulled forward from M5, 2026-09-16)');
+console.log('rename page');
 
 await check('renaming a page takes links that reached it by name to the new name, and leaves ID links alone', async () => {
   // The editor writes IDs, but a hand-written link uses the name — and a
-  // startPage may too. They follow the page in the form they were written
-  // (the maintainer, 2026-09-19): a name stays a name, so the file stays readable.
+  // startPage may too. They follow the page in the form they were written: a
+  // name stays a name, so the file stays readable.
   const byName: Config = {
     profiles: {
       p1: {
@@ -621,7 +621,7 @@ await check('renaming refuses a clash, a blank name, and an unknown page', async
   store.close();
 });
 
-console.log('rename profile (M5)');
+console.log('rename profile');
 
 /** Two profiles on two decks, linked to each other by name and by ID, in keys, a multi and startProfile. */
 function profileLinkConfig(): Config {
@@ -720,7 +720,7 @@ await check('an edit this editor does not know is refused with why, never report
   store.close();
 });
 
-console.log('delete profile (M5)');
+console.log('delete profile');
 
 const DA = 'DECK-A';
 const DB = 'DECK-B';
@@ -863,7 +863,7 @@ await check('the last profile cannot be deleted, and an unknown one is refused',
   assert.equal(store.state().dirty, false, 'a refused delete wrote something');
 });
 
-console.log('delete page (M4 phase B, B1)');
+console.log('delete page');
 
 await check('deleting a page takes the navigation off keys that pointed at it, keeping icon and label', async () => {
   const file = await configFile(EXAMPLE);
@@ -1339,7 +1339,7 @@ await check('a symlinked config.json is refused — and the daemon really does n
   assert.equal(reloads, 0, 'the daemon saw a write through the symlink, so the refusal is unnecessary');
 });
 
-console.log('putButtons — every bulk operation (M4 phase B3)');
+console.log('putButtons — every bulk operation');
 
 await check('putButtons writes and empties exactly the slots it names, and the diff shows only those', async () => {
   const file = await configFile(EXAMPLE);

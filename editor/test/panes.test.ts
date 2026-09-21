@@ -1,4 +1,4 @@
-// The resizable panes (M4 phase A refinements; scope §10): the width maths.
+// The resizable panes: the width maths.
 // Widths are deliberately not persisted, so there is no state file here.
 
 import assert from 'node:assert/strict';

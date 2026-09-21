@@ -1,4 +1,4 @@
-// Import (M5 piece 2, src/main/import-bundle.ts, and ConfigStore.replace):
+// Import (src/main/import-bundle.ts, and ConfigStore.replace):
 // reading a bundle, planning each icon, writing only into empty places inside
 // home — and refusing what a hostile bundle tries. Exports are made under one
 // scratch home and imported under another, as a reinstall with a different
@@ -256,7 +256,7 @@ await check('a zip declaring an entry larger than the limit is refused before it
 });
 
 // fflate returns such an entry silently truncated to its declared size, with
-// no error (probed 2026-09-19): the checksum is the only thing that notices.
+// no error: the checksum is the only thing that notices.
 await check('a zip declaring an entry smaller than it is: fflate truncates it silently, and the checksum refuses it', () => {
   const data = Buffer.alloc(64 * 1024, 7); // deflates well, so the entry is compressed
   const zip = handmade(configWith({ 0: { icon: '~/x.png' } }), [{ path: '~/x.png', entry: 'icons/001-x.png', data }]);

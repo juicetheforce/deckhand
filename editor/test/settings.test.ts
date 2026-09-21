@@ -1,4 +1,4 @@
-// The app settings (Ship piece 3, src/shared/settings.ts): what is stored is
+// The app settings (src/shared/settings.ts): what is stored is
 // read safely, what the settings window sends is cleaned, and the Default deck
 // list offers every deck the editor knows.
 
@@ -37,7 +37,7 @@ await check('a change from the settings window keeps only valid settings', () =>
   assert.deepEqual(cleanSettingsPatch('accent'), {});
 });
 
-await check('the accents are the four of mockup 6a, blue first', () => {
+await check('the four accents, blue first', () => {
   assert.deepEqual(ACCENTS.map((a) => [a.name, a.hex]), [['blue', '#5b6ee8'], ['purple', '#8b5fd6'], ['teal', '#2e9e8f'], ['sky', '#4a8fd9']]);
 });
 

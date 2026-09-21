@@ -1,4 +1,4 @@
-// The KDE global-shortcut lookup (M4 phase A, step 4; scope §10).
+// The KDE global-shortcut lookup.
 //
 // Always: the Qt key table's coverage, the codes built for a combo, and the
 // lookup against a fake busctl.

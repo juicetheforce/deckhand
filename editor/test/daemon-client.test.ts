@@ -1,5 +1,5 @@
-// Offline test of the editor's daemon client (M4 phase A, step 2), against
-// the M3 test harness: real DeckSessions on fake decks behind a real
+// Offline test of the editor's daemon client, against the daemon's test
+// harness: real DeckSessions on fake decks behind a real
 // ControlServer on a scratch socket (scripts/test/control-harness.mjs).
 
 import assert from 'node:assert/strict';

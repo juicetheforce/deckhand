@@ -1,4 +1,4 @@
-// Offline test of the shell's pure logic (M4 phase A, step 3): the action
+// Offline test of the shell's pure logic: the action
 // catalogue against the daemon's real registry, key kinds, key faces, the
 // Device dropdown and how the selection survives changes. No DOM, no Electron.
 
@@ -98,7 +98,7 @@ await check("every catalogue entry is an action the daemon's registry has", () =
   assert.equal(new Set(listed).size, listed.length, 'an action is listed twice');
 });
 
-await check("every action in the daemon's registry is in the catalogue (scope §2: nothing invisible)", () => {
+await check("every action in the daemon's registry is in the catalogue: nothing invisible", () => {
   const listed = new Set(CATALOGUE.flatMap((g) => g.entries.map((e) => e.type)));
   assert.deepEqual(Object.keys(registry).filter((type) => !listed.has(type)), []);
 });
@@ -112,7 +112,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
   assert.deepEqual(types.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
 });
 
-console.log('the navigation guard (M4 phase B, B2)');
+console.log('the navigation guard');
 
 const layoutOf = (pages: Record<string, unknown>, startPage = Object.keys(pages)[0]) =>
   ({ startPage, pages } as never);
@@ -155,12 +155,12 @@ await check('a single-page layout is never flagged — there is nowhere to go', 
   assert.deepEqual(pagesWithNoWayOff(xl), [], 'the example config has no stranded page');
 });
 
-console.log('library search (M4 phase B, B2)');
+console.log('library search');
 
 const names = (q: string) => searchCatalogue(q).map((m) => m.entry.name).sort();
 
 await check('search matches aliases, not just the names the daemon uses', () => {
-  // The §2 case: nobody types "audio.sink".
+  // Nobody types "audio.sink".
   assert.deepEqual(names('headphones'), ['Cycle outputs', 'Output device']);
   assert.deepEqual(names('skip'), ['Media control']);
   assert.deepEqual(names('forward'), ['Go to page']);
@@ -212,7 +212,7 @@ await check('an action is editable only when the inspector knows every field on 
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'page'), true);
   assert.equal(actionEditable({ action: { type: 'page', back: true } }, 'page'), true);
   assert.equal(actionEditable({ action: { type: 'profile', to: 'x' } }, 'profile'), true);
-  // Another type: a library pick retargets the key (C2 call 3) — but only to a type with a form.
+  // Another type: a library pick retargets the key — but only to a type with a form.
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'profile'), true);
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' } }, 'x-no-form'), false);
   assert.equal(actionEditable(undefined, 'x-no-form'), false, 'no form, nothing to edit it with');
@@ -226,7 +226,7 @@ await check('an action is editable only when the inspector knows every field on 
   // hotkey keeps phase A's rule: single combos only, never a sequence.
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1' } }, 'hotkey'), true);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
-  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2, holdMs: 300 } }, 'hotkey'), true, 'hold and repeat have controls (C2)');
+  assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2, holdMs: 300 } }, 'hotkey'), true, 'hold and repeat have controls');
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', gapMs: 50 } }, 'hotkey'), false, 'gapMs has none');
   // Press/Release: only the exact pair its form writes.
   const pair = { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f24', state: 'up' } };
@@ -329,7 +329,7 @@ await check('profileCoverage names the decks a profile changes, and the connecte
   assert.deepEqual(profileCoverage(EXAMPLE, daemonView([XL]), 'prof_game').uncoveredConnected, []);
 });
 
-console.log('the empty state (scope §7, Portability)');
+console.log('the empty state');
 
 /** The empty configuration the daemon writes on a first install with no deck attached. */
 const EMPTY_CONFIG: Config = { profiles: { default: { name: 'Default', layouts: {} } }, startProfile: 'default' };
@@ -422,7 +422,7 @@ await check('the connection pill always has something to say', () => {
 });
 
 await check('the empty state agrees with what the daemon reports on the wire', () => {
-  // scope §7: stateSnapshot already distinguishes these, so the editor must
+  // stateSnapshot already distinguishes these, so the editor must
   // not invent a fourth answer. A connected-but-unconfigured deck is
   // connected: true, configured: false — which is exactly 'no-layout'.
   const view = daemonView([XL]);
@@ -460,7 +460,7 @@ await check("key faces use the button's values, then config defaults, then the d
   assert.deepEqual([own.background, own.labelPosition, own.icon, own.iconFit], ['#2a1f3d', 'top', '~/a.png', 'contain']);
 });
 
-await check("key faces draw the action's default when no icon is set, as the deck does (C2)", () => {
+await check("key faces draw the action's default when no icon is set, as the deck does", () => {
   const icon = (button: Parameters<typeof keyFace>[1]) => keyFace(EXAMPLE, button, 96).icon;
   const hotkey = { type: 'hotkey', keys: 'ctrl+1' };
   assert.equal(icon({ action: hotkey }), 'builtin:key-combo', 'absent: the default');
@@ -512,7 +512,7 @@ await check('icon URLs carry paths with spaces, parentheses and ~ intact', () =>
 console.log('breadcrumb and selection');
 
 await check('Device dropdown: only connected decks — layouts first, then the rest; names from config', () => {
-  // the maintainer 2026-09-20: a deck that is not plugged in is not listed at all. The
+  // A deck that is not plugged in is not listed at all. The
   // XL has a layout in this profile and is absent, so it does not appear —
   // its absence is what says it is missing, and a sold or replaced deck would
   // otherwise sit in this list for ever.
@@ -693,10 +693,10 @@ await check('a switch is sent only for a connected deck with a session, with the
   assert.equal(canSwitchDeck(view, XL), false);
 });
 
-console.log('profiles and pages (M4 phase B, B1)');
+console.log('profiles and pages');
 
 await check('knownDecks offers only connected decks to a new profile', async () => {
-  // the maintainer 2026-09-20, the same rule as deckChoices: ticking a deck that is not
+  // The same rule as deckChoices: ticking a deck that is not
   // here would write a layout nobody can edit or see.
   const both = knownDecks(EXAMPLE, daemonView([XL]));
   assert.deepEqual(
@@ -752,7 +752,7 @@ await check('pageDeletion reports a start page moving even when no key pointed a
   assert.equal(d.startPageAfter, 'second');
 });
 
-console.log('multi-select and bulk messages (M4 phase B3)');
+console.log('multi-select and bulk messages');
 
 const GRID = { keys: Array.from({ length: 32 }, (_, i) => ({ index: i, row: Math.floor(i / 8), column: i % 8 })) };
 const none = { key: null, keys: [] as number[] };
@@ -823,7 +823,7 @@ await check('Copy to device offers the other connected decks this profile covers
   );
 });
 
-await check('latched keys: only while the grid shows the page the deck is on (M7)', () => {
+await check('latched keys: only while the grid shows the page the deck is on', () => {
   const view = daemonView([XL, V2]);
   const xl = view.status!.decks.find((d) => d.serial === XL)!;
   xl.profile = 'default';
@@ -832,16 +832,16 @@ await check('latched keys: only while the grid shows the page the deck is on (M7
   view.status!.decks.find((d) => d.serial === V2)!.latched = [1];
   assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), [2, 5]);
   // A latch is released when the deck leaves the page, so one on a page the
-  // deck is not showing cannot exist: drawing it would be a lie (§10).
+  // deck is not showing cannot exist: drawing it would be a lie.
   assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), []);
   assert.deepEqual(latchedKeysOn(view, { profile: 'raid', serial: XL, page: 'main' }), []);
   assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: V2, page: 'main' }), [], 'the other deck reports no page here');
-  assert.deepEqual(latchedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), [], 'a daemon from before M7 sends no list');
+  assert.deepEqual(latchedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), [], 'an older daemon sends no list');
   const offline: DaemonView = { connected: false, problem: 'x', status: null, decks: null };
   assert.deepEqual(latchedKeysOn(offline, { profile: 'default', serial: XL, page: 'main' }), []);
 });
 
-await check("a toggle's face follows the latch: its own icons, or the built-in pair (M7)", () => {
+await check("a toggle's face follows the latch: its own icons, or the built-in pair", () => {
   const plain = { action: { type: 'toggle', keys: 'shift' } };
   assert.equal(faceIcon(plain, false), 'builtin:toggle-off');
   assert.equal(faceIcon(plain, true), 'builtin:toggle', 'the grid should show the half the deck is showing');
@@ -852,7 +852,7 @@ await check("a toggle's face follows the latch: its own icons, or the built-in p
   assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, true), '~/mine.png');
 });
 
-await check('failed keys: only those on the page being edited, from the deck being edited, with their errors (Ship piece 6)', () => {
+await check('failed keys: only those on the page being edited, from the deck being edited, with their errors', () => {
   const view = daemonView([XL, V2]);
   const xl = view.status!.decks.find((d) => d.serial === XL)!;
   xl.failed = [
@@ -863,7 +863,7 @@ await check('failed keys: only those on the page being edited, from the deck bei
   view.status!.decks.find((d) => d.serial === V2)!.failed = [{ profile: 'default', page: 'main', key: 5, error: 'other deck' }];
   assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), { 3: 'no' });
   assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), { 1: 'other page' });
-  assert.deepEqual(failedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'a daemon from before piece 6 sends no list');
+  assert.deepEqual(failedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'an older daemon sends no list');
   const offline: DaemonView = { connected: false, problem: 'x', status: null, decks: null };
   assert.deepEqual(failedKeysOn(offline, { profile: 'default', serial: XL, page: 'main' }), {});
 });

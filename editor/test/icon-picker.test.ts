@@ -1,4 +1,4 @@
-// The icon picker's file side and pure helpers (M4 phase A, step 5; scope §10).
+// The icon picker's file side and pure helpers.
 //
 // Always: listing, search, start folder, recent folders and the folder
 // watcher against a scratch tree shaped like the maintainer's (nested job folders,

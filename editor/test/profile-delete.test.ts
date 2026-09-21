@@ -1,4 +1,4 @@
-// Deleting a profile keeps the configuration first (M5, src/main/profile-delete.ts).
+// Deleting a profile keeps the configuration first (src/main/profile-delete.ts).
 // The order is what matters: nothing is deleted unless the copy was written,
 // and the copy holds what was there before, including edits not yet autosaved.
 
@@ -69,7 +69,7 @@ async function harness(scratch: string, { flushFails = false } = {}) {
   return { deps, log, configPath, current: () => config };
 }
 
-console.log('delete profile: the configuration is kept first (M5)');
+console.log('delete profile: the configuration is kept first');
 
 await check('the copy is written before the delete, and holds the unsaved edit too', async () => {
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-del-'));

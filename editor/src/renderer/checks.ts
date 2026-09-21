@@ -7,7 +7,7 @@ import type { StateSnapshot } from '../../../src/control/protocol.js';
 import type { DaemonView, DeckhandBridge, SharedImportReport, StoreView } from '../shared/bridge.js';
 import { iconUrl, PAIR_ICON_FIELDS, type PairIconField } from '../shared/icons.js';
 
-/** Proof 0a: the daemon's keymap runs in the renderer, and a protocol type compiles here. */
+/** The daemon's keymap runs in the renderer, and a protocol type compiles here. */
 function sharedImports(): SharedImportReport {
   const snapshot: StateSnapshot = { activeProfile: { id: 'default', name: 'Default' }, decks: [] };
   const profileId = snapshot.activeProfile?.id ?? 'none';
@@ -52,7 +52,7 @@ function waitFor<T>(subscribe: (cb: (v: T) => void) => () => void, first: T, con
 }
 
 /**
- * Step 2: every bridge call, end to end through the preload and main process,
+ * Every bridge call, end to end through the preload and main process,
  * against a real config file and the test daemon. The Node side of
  * scripts/check-bridge.mjs checks the file and the fake deck afterwards.
  */
@@ -99,7 +99,7 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   );
   out.storeEventPushed = await eventually(() => storeEvents.some((v) => v.open && !v.state.dirty));
 
-  // The icon protocol (step 3): an image loads; a non-image file in the same
+  // The icon protocol: an image loads; a non-image file in the same
   // folder and a missing image do not; page script cannot read icons as bytes.
   const icon = snap.store.state.config.profiles[profile].layouts[serial].pages.main?.buttons['0']?.icon;
   const loads = (url: string) =>
@@ -127,7 +127,7 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * Step 3: let the shell render against the test daemon, optionally select a
+ * Let the shell render against the test daemon, optionally select a
  * key, wait for icons to load, and report what is on screen; main then
  * captures the window (scripts/screenshot.mjs).
  */
@@ -156,7 +156,7 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     await new Promise((r) => setTimeout(r, 400));
   }
   const selectIndex = new URLSearchParams(window.location.search).get('selectKey');
-  // "3" selects one key; "3,4,5" Ctrl+clicks the rest in (B3's multi-select).
+  // "3" selects one key; "3,4,5" Ctrl+clicks the rest in.
   const selectIndices = selectIndex === null ? [] : selectIndex.split(',').map(Number);
   for (const [n, index] of selectIndices.entries()) {
     document.querySelectorAll<HTMLButtonElement>('.key')[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: n > 0 }));
@@ -182,7 +182,7 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   if (open === 'newprofile') {
     await openAddMenu('New profile');
   } else if ((open === 'keymenu' || open === 'keymenu-device' || open === 'keymenu-page') && selectIndices.length > 0) {
-    // B3's right-click menu, on the last selected key.
+    // The key's right-click menu, on the last selected key.
     const key = document.querySelectorAll<HTMLButtonElement>('.key')[selectIndices[selectIndices.length - 1]];
     const rect = key.getBoundingClientRect();
     key.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2 }));
@@ -239,7 +239,7 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
 }
 
 /**
- * Live switching (scope §10), driven through the real UI: clicks, the
+ * Live switching, driven through the real UI: clicks, the
  * profile dropdown, "+ Page". scripts/check-live.mjs runs the harness daemon,
  * moves the deck itself once (standing in for a deck press) and checks the
  * deck afterwards.
@@ -274,7 +274,7 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // Read "opens on" only once the daemon's status has reached the page: the
   // selection starts on the deck's start page and follows the deck in an
   // effect after the status arrives. Read as soon as the grid drew, it raced
-  // that and failed about one run in three (found in Ship, 2026-09-18). Not
+  // that and failed about one run in three. Not
   // waiting for the expected tab, which would make the check unable to fail.
   await until(() => document.querySelector('.toolbar .pill-connected') !== null);
   await sleep(100);
@@ -332,7 +332,7 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * Step 4: the hotkey inspector, through the real UI, with synthetic key
+ * The hotkey inspector, through the real UI, with synthetic key
  * events (capture reads event.code and the modifier flags, which synthetic
  * events carry). scripts/check-hotkey.mjs puts a fake busctl on PATH that
  * reports ctrl+f1 as a KWin shortcut, and checks the saved file afterwards.
@@ -486,7 +486,7 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * Step 5: the icon picker, through the real UI. scripts/check-icons.mjs runs
+ * The icon picker, through the real UI. scripts/check-icons.mjs runs
  * the harness daemon with HOME pointed at a scratch icon tree, writes a file
  * into the open folder when this check signals for it (a preview on key 31),
  * and checks the saved config, the editor's preferences file and the deck
@@ -555,7 +555,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   });
   out.goodIconNotMissing = document.querySelectorAll('.key')[1]?.querySelector('.key-icon-missing') === null;
 
-  // 2b. Default icons (C2): key 0 has an action and no icon, so the grid draws
+  // 2b. Default icons: key 0 has an action and no icon, so the grid draws
   //     its built-in default, loaded through the icon protocol; the library's
   //     rows draw theirs.
   const loadedDefault = (index: number, name: string) => {
@@ -577,7 +577,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.blmItems = names();
   out.currentMarked = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
 
-  // 4. Selecting an image chooses it (the maintainer, 2026-09-16): saved as ~/..., the
+  // 4. Selecting an image chooses it: saved as ~/..., the
   //    grid shows it, and the deck's preview is cleared once the daemon has
   //    reloaded — so the deck, the grid and the file agree. No Assign.
   const gridIcon = (index: number) => document.querySelectorAll('.key')[index]?.querySelector<HTMLImageElement>('img.key-icon')?.src ?? '';
@@ -594,7 +594,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.arrowRight = await until(async () => selectedName() === 'Flame_IV.png' && (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
   out.bookmarksSeeded = [...document.querySelectorAll('.picker-bookmarks .chip')].map((c) => c.textContent?.trim());
 
-  // 6b. Bookmarks (mockup 5a): the open folder can be kept, and removed again.
+  // 6b. Bookmarks: the open folder can be kept, and removed again.
   await click('+ Bookmark this folder');
   out.bookmarkAdded = await until(() => [...document.querySelectorAll('.picker-bookmarks .chip')].some((c) => c.textContent?.includes('BEAR')));
   out.bookmarkButtonTurnsIntoRemove = button('− Remove bookmark') !== undefined && button('+ Bookmark this folder') === undefined;
@@ -614,7 +614,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
   await api.previewClear(serial, 31);
 
-  // 8b. Back, forward and up (mockup 5a), and the count on a folder tile.
+  // 8b. Back, forward and up, and the count on a folder tile.
   const crumbNow = () => document.querySelector('.picker-crumb-here')?.textContent;
   await click('↑');
   out.upWentToParent = await until(() => crumbNow() === 'FFXIV');
@@ -643,7 +643,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.gridColumns = (await settledTracks()).columns;
   out.tileWidth = (await settledTracks()).tile;
 
-  // Narrowing the pane must drop a column, not shrink the tiles (the maintainer, 2026-09-15).
+  // Narrowing the pane must drop a column, not shrink the tiles.
   const inspectorDivider = document.querySelectorAll<HTMLElement>('.pane-divider')[1];
   const dragDivider = async (dx: number) => {
     const box = inspectorDivider.getBoundingClientRect();
@@ -732,7 +732,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.keyZeroCleared = await until(async () => (await saved())?.['0'] !== undefined && (await iconOf('0')) === undefined);
 
   // 16. A key's icon file renamed away, then back, reaches the grid with no
-  // navigation at all (the maintainer saw the stale icon on the real decks). The script
+  // navigation at all. The script
   // renames when it sees a preview on key 30 (away) and key 29 (back).
   const keyIcon = () => document.querySelectorAll('.key')[1]?.querySelector<HTMLImageElement>('img');
   const iconIsMissing = () => keyIcon()?.src.includes('missing') === true && keyIcon()?.classList.contains('key-icon-missing') === true;
@@ -748,7 +748,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
   await api.previewClear(serial, 29);
 
-  // 16b. The pinned Built-in section (scope §10): the first chip, then the same
+  // 16b. The pinned Built-in section: the first chip, then the same
   //      grid, filter and history as any folder; choosing writes builtin:<name>.
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
@@ -776,7 +776,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await click('←');
   out.builtinBackLeaves = await until(() => crumbs() !== 'Built-in' && crumbs() !== '');
 
-  // 17. "Clear icon" removes only the icon (scope §10: it writes the absent state, not None).
+  // 17. "Clear icon" removes only the icon (it writes the absent state, not None).
   await selectKey(1);
   if (!document.querySelector('.picker')) await click('Icon');
   await click('Clear icon');
@@ -882,7 +882,7 @@ async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * The empty state (scope §7, Portability): what the editor actually says when
+ * The empty state: what the editor actually says when
  * there is no grid to show. One run per situation — scripts/check-empty.mjs
  * sets each one up and starts a fresh editor for it — so this only has to
  * report what is on screen, and the Node side decides whether it is right.
@@ -974,7 +974,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   // Read "opens on" only once the daemon's status has reached the page: the
   // selection starts on the deck's start page and follows the deck in an
   // effect after the status arrives. Read as soon as the grid drew, it raced
-  // that and failed about one run in three (found in Ship, 2026-09-18). Not
+  // that and failed about one run in three. Not
   // waiting for the expected tab, which would make the check unable to fail.
   await until(() => document.querySelector('.toolbar .pill-connected') !== null);
   await sleep(100);
@@ -1032,8 +1032,8 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   [...document.querySelectorAll<HTMLButtonElement>('.confirm-card button')].find((b) => b.textContent === 'Delete page')!.click();
   out.pageGone = await until(() => tab('Second') === undefined);
 
-  // 7. Rename the profile being shown with the pencil beside it (M5; the maintainer,
-  //    2026-09-19: rename is a visible pencil for profile, device and page).
+  // 7. Rename the profile being shown with the pencil beside it (rename is a
+  //    visible pencil for profile, device and page).
   //    The script's config links to it by name from the other profile; the
   //    Node side checks that link followed.
   const profileSelect = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
@@ -1085,7 +1085,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   out.pageRenamed = await until(() => tab('Start') !== undefined && tab('Main') === undefined);
   await sleep(300);
 
-  // 9. Delete a profile (M5): from the right-click menu on the Profile
+  // 9. Delete a profile: from the right-click menu on the Profile
   //    dropdown, with a confirmation naming what it changes. The fixture has a
   //    key switching to it by name, a deck only it covers, and a page whose
   //    only way off is a key switching to it.
@@ -1128,7 +1128,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
 }
 
 /**
- * M4 phase B, B2: the page and profile inspectors, driven through the real UI.
+ * The page and profile inspectors, driven through the real UI.
  * The point is that a key configured here really works — the deck moves when
  * the harness presses it — rather than the inspector merely writing plausible
  * JSON.
@@ -1225,7 +1225,7 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * M4 phase B3: bulk operations through the real UI, against two fake decks of
+ * Bulk operations through the real UI, against two fake decks of
  * the real shapes. The Node side (scripts/check-bulk.mjs) checks the saved file.
  */
 async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -1457,7 +1457,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   await sleep(600);
   out.emptyNotDragged = JSON.stringify(await buttons()) === keysBeforeCancel;
 
-  // 11g. An action from the library onto a key (C2): authoring — a new button.
+  // 11g. An action from the library onto a key: authoring — a new button.
   const libraryRow = (type: string) => document.querySelector<HTMLButtonElement>(`.library-entry[data-action-type="${type}"]`)!;
   const dragAction = async (type: string, to: number, before?: () => void) => {
     const r = libraryRow(type).getBoundingClientRect();
@@ -1513,7 +1513,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   await sleep(600);
   out.actionEscapeCancels = { unchanged: JSON.stringify(await buttons()) === beforeActionCancel, selected: selected(), ghostGone: document.querySelector('.action-drag') === null };
 
-  // e. Clicking an action retargets the selected key and keeps icon and label (C2 call 3).
+  // e. Clicking an action retargets the selected key and keeps icon and label.
   click(24);
   await until(() => selected().join() === '24' && title() === 'Key 25');
   libraryRow('profile').click();
@@ -1535,7 +1535,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   return out;
 }
 
-/** C2: each action form writes exactly the settings it names (scripts/check-forms.mjs). */
+/** Each action form writes exactly the settings it names (scripts/check-forms.mjs). */
 async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -2006,7 +2006,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const clickedAt = Date.now();
   const countdownShown = await until(() => document.querySelector('.inspector .test-countdown') !== null, 2000);
   await until(() => document.querySelector('.inspector .test-result') !== null, 8000);
-  // Scope §10: it arms rather than fires — nothing is sent for the whole countdown.
+  // It arms rather than fires — nothing is sent for the whole countdown.
   const testAfterMs = Date.now() - clickedAt;
   out.multi = { writes: multiWrites, markWhileEmpty, total, summaries, countdownShown, testAfterMs, testResult: document.querySelector('.inspector .test-result')?.textContent ?? null };
 

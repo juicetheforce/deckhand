@@ -34,7 +34,7 @@ function config(profiles: string[], keys: number): string {
   });
 }
 
-console.log('kept configurations (M5 piece 2d)');
+console.log('kept configurations');
 
 await check('the list says what is in each copy, newest first, and ignores the rolling backups', async () => {
   const dir = await scratch();
