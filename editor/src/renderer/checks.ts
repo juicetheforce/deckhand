@@ -1,6 +1,6 @@
-// Check modes, run only when main loads the page with ?check=<name>
-// (scripts/check-shared-imports.mjs, scripts/check-bridge.mjs). Not part of
-// the editor's normal behaviour.
+// Check modes, run only when main loads the page with ?check=<name> (the
+// editor's scripts/check-*.mjs and scripts/screenshot.mjs). Bundled, but inert
+// without the query.
 
 import { parseCombo } from '../../../src/keymap.js';
 import type { StateSnapshot } from '../../../src/control/protocol.js';
@@ -26,7 +26,7 @@ async function openAddMenu(item: 'New page' | 'New profile'): Promise<void> {
   await new Promise((r) => setTimeout(r, 120));
 }
 
-/** Right-click a page tab and pick from its menu — the only way in since the "⋯" went. */
+/** Right-click a page tab and pick from its menu: the tab has no other way in. */
 async function openTabMenu(page: string, item: 'Delete page'): Promise<void> {
   const tab = document.querySelector<HTMLButtonElement>(`.tab[data-tab="${page}"]`)!;
   tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -177,7 +177,8 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  // B1's panels, so they can be looked at (scope §7, phase B).
+  // Open a panel (new profile, a key's menu, the delete confirmation) so it can
+  // be looked at.
   const open = new URLSearchParams(window.location.search).get('open');
   if (open === 'newprofile') {
     await openAddMenu('New profile');
@@ -204,8 +205,8 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
       img.addEventListener('load', () => resolve(), { once: true });
       img.addEventListener('error', () => resolve(), { once: true });
     });
-  // Lazy-loaded thumbnails below the fold never load, so waiting for every image would hang (seen with the icon picker); wait at most 5 s.
-  // Only images inside the window are waited for: lazy thumbnails below the fold never load.
+  // Only images inside the window are waited for: lazy thumbnails below the fold
+  // never load, so waiting for every image would hang. Even so, wait at most 5 s.
   const inView = images.filter((img) => {
     const rect = img.getBoundingClientRect();
     return rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
@@ -716,7 +717,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // 15. A page change ends the preview — even one still in flight: the thumbnail
   // and the page tab are clicked in the same tick, so the picker is gone before
-  // the preview's reply arrives (this ordering was a real bug, seen once by luck).
+  // the preview's reply arrives.
   await until(() => item('fishing.png') !== undefined);
   item('fishing.png')!.click();
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
@@ -808,11 +809,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
 }
 
 /**
- * The resizable panes (scope §10), through the real UI: the widths the editor
- * starts with come from its state file, dragging a divider changes them and
- * stops at the limits, double-click restores the default, and arrow keys move
- * it too. scripts/check-panes.mjs seeds the state file and reads it back
- * afterwards.
+ * The resizable panes, through the real UI: the editor opens at the default
+ * widths, dragging a divider changes them and stops at the limits,
+ * double-click restores the default, and arrow keys move it too.
+ * scripts/check-panes.mjs checks that no widths are written anywhere.
  */
 async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -848,7 +848,7 @@ async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
   };
 
   await until(() => document.querySelector('.panes') !== null && dividers().length === 2);
-  await sleep(300); // the stored widths arrive from main just after the first paint
+  await sleep(300);
   out.startingWidths = widths();
   out.dividerCount = dividers().length;
 
@@ -877,7 +877,7 @@ async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.finalWidths = widths();
   // The grid between them keeps a width of its own.
   out.gridColumnPositive = columns()[2] > 100;
-  await sleep(600); // let the debounced write reach the state file before quitting
+  await sleep(600); // time for any stray write to land, so "no widths written" means something
   return out;
 }
 
@@ -944,9 +944,9 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
 }
 
 /**
- * M4 phase B, B1: profiles and pages, driven through the real UI against two
- * decks. Deliberately the same four things the maintainer checks by hand on the real
- * decks, so the hardware run confirms rather than discovers.
+ * Profiles and pages, driven through the real UI against two decks.
+ * Deliberately the same things checked by hand on real decks, so a hardware
+ * run confirms rather than discovers.
  */
 async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -1014,7 +1014,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   //    to the script with a preview, as check-live does, since nothing in this
   //    config has a page key to press.
   // The deck being edited, from the Device dropdown — not decks()[0], which is
-  // whichever deck the daemon lists first (it was the other one).
+  // whichever deck the daemon lists first.
   const serial = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value;
   tab('Second')!.click();
   out.onSecond = await until(async () => (await deckAt(serial))?.page === 'second');
@@ -1069,7 +1069,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
 
   // 8. Rename a page with the pencil beside its tab; a key on another page
   //    links to it by name. Only the selected tab has one, and the tab's
-  //    right-click menu no longer offers Rename.
+  //    right-click menu does not offer Rename.
   tab('Main')!.click();
   await until(() => selectedTab() === 'Main');
   out.pagePencils = [...document.querySelectorAll('.toolbar button.icon-button')].filter((b) => b.getAttribute('aria-label')?.startsWith('Rename page')).map((b) => b.getAttribute('aria-label'));
@@ -1177,7 +1177,7 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // 3. The guard clears once Main has a way off, and Second keeps its badge.
   //    Waited for: the store updates before React re-renders, so reading the
-  //    DOM straight after the save read the old badges (seen on the first run).
+  //    DOM straight after the save reads the old badges.
   await until(() => tab('Main')?.textContent === 'Main'); // no badge left on it
   out.tabsAfterLinking = [...document.querySelectorAll('.tab')].map((t) => t.textContent);
 
@@ -1758,8 +1758,8 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await api.previewClear(serial, 31);
   device('alsa_input.usb-Example_Headset-00.mono-fallback')!.click();
   const picked = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' });
-  // Input device moves recording streams since 2026-09-18, as Output device
-  // moves playing ones: the checkbox is on both forms now.
+  // Input device moves recording streams, as Output device moves playing
+  // ones: both forms have the checkbox.
   const inputMove = [...document.querySelectorAll<HTMLLabelElement>('.inspector .form-check')].find((l) => l.textContent?.includes('recording'))!.querySelector('input')!;
   inputMove.click();
   const movePref = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic', moveStreams: false });
@@ -1834,8 +1834,8 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   libraryClick('text');
   await until(() => document.querySelector('.inspector textarea') !== null);
   // A hidden window delivers no focus events for focus()/blur(), and React's
-  // onFocus/onBlur listen for focusin/focusout: dispatch those (a break that
-  // wrote on blur first passed because focus() and blur() did nothing).
+  // onFocus/onBlur listen for focusin/focusout: dispatch those, or a check of
+  // the save-on-blur path tests nothing.
   textarea().dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
   textarea().dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   await sleep(600);
@@ -1879,9 +1879,8 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const pressCleared = await savedAs(15, null);
   out.pressRelease = { listening, saved: pressSaved, phases, cleared: pressCleared };
 
-  // Press/Release records a modifier on its own when it is let go (Ship,
-  // 2026-09-18: recording Left Shift showed it held and released, and saved
-  // nothing). Each sequence is keydown/keyup by code, as the capture reads it.
+  // Press/Release records a modifier on its own when it is let go: a lone Left
+  // Shift must be saved, not dropped. Each sequence is keydown/keyup by code, as the capture reads it.
   const keyEvent = (type: 'keydown' | 'keyup', code: string, mods: Partial<Record<'ctrlKey' | 'shiftKey', boolean>> = {}) =>
     window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true, ...mods }));
   const holdPair = (keys: string) => ({ action: { type: 'keyHold', keys, state: 'down' }, onRelease: { type: 'keyHold', keys, state: 'up' } });

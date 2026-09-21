@@ -710,8 +710,8 @@ await check('renaming a profile refuses a clash, a blank name, and an unknown pr
 
 await check('an edit this editor does not know is refused with why, never reported as done', async () => {
   // A window newer than the main process sends edits the main process has no
-  // case for (the editor survives an install in the tray). This once fell
-  // through the switch, changed nothing, and reported success.
+  // case for (the editor survives an install in the tray). Falling through
+  // the switch would change nothing and report success.
   const store = await openStore(await configFile(serializeConfig(profileLinkConfig())));
   const result = store.apply({ kind: 'somethingNewer', profile: 'prof_raid' } as unknown as Edit);
   assert.equal(result.ok, false, 'an unknown edit was reported as done');
@@ -933,8 +933,8 @@ await check('only the layout that owns the page is scanned, and a multi loses ju
               combat: { name: 'Combat', buttons: { '0': { action: { type: 'page', back: true } } } },
             },
           },
-          // Another deck with a page of the same ID *and* name — normal, and
-          // what the maintainer's own config does with "main". Its key resolves inside
+          // Another deck with a page of the same ID *and* name — normal: "main"
+          // on every deck is common. Its key resolves inside
           // its own layout, so deleting this one must not touch it.
           [OTHER]: {
             startPage: 'own',
@@ -1072,10 +1072,9 @@ async function exitShapedEdit(label: string, text: string): Promise<void> {
 }
 
 /**
- * Phase A shows other action types read-only, but their icon and label stay
- * editable. Every key whose action is not a hotkey (or that has onRelease):
- * set a new icon and label, then remove both — the action, onRelease and
- * every other field must come through untouched.
+ * Every key whose action is not a hotkey (or that has onRelease): set a new
+ * icon and label, then remove both — the action, onRelease and every other
+ * field must come through untouched.
  */
 async function iconAndLabelOnOtherActions(label: string, text: string): Promise<void> {
   await check(`${label}: icon and label edits on non-hotkey keys leave their actions and other fields untouched`, async () => {

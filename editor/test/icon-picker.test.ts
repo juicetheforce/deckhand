@@ -1,7 +1,7 @@
 // The icon picker's file side and pure helpers.
 //
-// Always: listing, search, start folder, recent folders and the folder
-// watcher against a scratch tree shaped like the maintainer's (nested job folders,
+// Always: listing, search, start folder, bookmarks and the folder watcher
+// against a scratch tree shaped like a real icon collection (nested folders,
 // names with spaces and parentheses, the same name in two formats, files the
 // daemon cannot draw); breadcrumbs and arrow-key movement.
 // DECKHAND_TEST_REAL_ICONS=<folder>: a read-only search of a real icon tree,

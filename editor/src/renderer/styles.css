@@ -24,12 +24,11 @@
 }
 
 /*
- * The accent colours (Ship piece 3, scope §10): a closed set, from mockup 6a,
- * chosen in the settings window (src/shared/settings.ts ACCENTS). Blue above
- * is the default and needs no attribute. Only the accent changes: the cool
- * neutrals and the body's blue glow stay, which §10 records as a validated
- * look (Fleuron: a background hue chosen separately from the accent), not an
- * oversight — the glow keeps its literal colour on purpose.
+ * The accent colours: a closed set, chosen in the settings window
+ * (src/shared/settings.ts ACCENTS). Blue above is the default and needs no
+ * attribute. Only the accent changes: the cool neutrals and the body's blue
+ * glow stay, deliberately — the background hue is chosen separately from the
+ * accent, so the glow keeps its literal colour on purpose, not by oversight.
  */
 :root[data-accent='purple'] {
   --accent: #8b5fd6;
@@ -127,9 +126,9 @@ button:disabled {
   padding: 0 4px 0 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   /*
-   * No background of its own: the bar is the window's background. A tint when
-   * focused was tried and dropped — accent or blue, a bar a different colour
-   * from the rest of the app looked wrong (the maintainer, 2026-09-18).
+   * No background of its own: the bar is the window's background. Not tinted
+   * when focused either: a bar coloured differently from the rest of the app,
+   * accent or blue, looks wrong.
    */
   /* The bar moves the window; its buttons are no-drag, below. */
   -webkit-app-region: drag;
@@ -349,11 +348,9 @@ button:disabled {
   overflow-y: auto;
 }
 
-/* The library is a fixed header (search) above a scrolling body, rather than
-   one scrolling column with a sticky box masked by a gradient. The gradient
-   was a square background over a rounded pane, which showed at the corners
-   (the maintainer, 2026-09-16), and masking is the wrong answer anyway: nothing should
-   pass behind the search box at all. */
+/* The library is a fixed header (search) above a scrolling body, not a sticky
+   box masked by a gradient: a square gradient shows at a rounded pane's
+   corners, and nothing should pass behind the search box at all. */
 .library {
   padding: 14px;
   display: flex;
@@ -473,8 +470,8 @@ button:disabled {
   aspect-ratio: 1;
   container-type: inline-size;
   border-radius: 14px;
-  /* Against the near-black well these were too faint to read as buttons:
-     0.09 → 0.22 and 2px, and the dashed empties likewise. */
+  /* Against the near-black well, fainter borders do not read as buttons; the
+     dashed empties likewise. */
   border: 2px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.055);
   padding: 0;
@@ -847,7 +844,7 @@ button:disabled {
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  /* Four bands (mockup 5a): bar, bookmarks, grid, bottom. The grid takes the height. */
+  /* Five bands: bar, bookmarks, filter, grid, bottom. The grid takes the height. */
   flex: 1;
   min-height: 0;
 }
@@ -918,7 +915,7 @@ button:disabled {
 }
 
 /* Band 2: the saved places. Chips carry their parent folder, because leaf
-   names collide in a tree of job folders, and the row wraps rather than
+   names collide in a deep tree, and the row wraps rather than
    scrolling — three bookmarks must never need a scrollbar. */
 .picker-bookmarks {
   display: flex;
@@ -1082,12 +1079,7 @@ button:disabled {
   background: #14152a;
 }
 
-/* Band 4: the grid takes the height the other bands do not need.
-   **Tiles keep their size; the column count changes** — 6 at the default pane
-   width, then 5, 4, 3 as it narrows (the maintainer, 2026-09-15: icons are picked by
-   sight, so the image must stay legible). auto-fill drops a column when one
-   no longer fits at TILE_MIN; the max-width stops it ever exceeding six, and
-   a tile growing past TILE_MAX. */
+/* Band 4: the grid takes the height the other bands do not need. */
 .picker-grid {
   display: grid;
   /* **Tiles keep their size; the column count changes** — 6, 5, 4, 3 as the
@@ -1215,7 +1207,7 @@ button:disabled {
   font-weight: 600;
 }
 
-/* Band 4 (mockup 5a): what is shown, and the actions — under the grid. */
+/* Band 5: what is shown, and the actions — under the grid. */
 .picker-bottom {
   flex: 0 0 auto;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
@@ -1533,11 +1525,10 @@ button:disabled {
   pointer-events: none;
 }
 
-/* Scrollbars (2026-09-16). Eight areas scroll — the library, the stage well,
-   the icon grid, the inspector, the target and link lists — and every one was
-   on Chromium's default, which is a light-on-grey bar against a dark glass UI.
-   Styled here once rather than per pane. One element opts out deliberately —
-   the icon picker's path field, which scrolls sideways and must show no bar. */
+/* Scrollbars, styled once here rather than per pane: Chromium's default is a
+   light-on-grey bar against a dark glass UI. One element opts out
+   deliberately — the icon picker's path field, which scrolls sideways and
+   must show no bar. */
 
 * {
   scrollbar-width: thin;
@@ -1924,7 +1915,7 @@ button:disabled {
   font-size: 11px;
 }
 
-/* One "+" for pages and profiles; rename on the tab menu (2026-09-16) */
+/* One "+" for pages and profiles */
 
 .add-menu-wrap {
   position: relative;
@@ -2041,7 +2032,7 @@ button:disabled {
 
 .key-menu {
   /* Rendered into document.body (KeyMenu.tsx): inside a glass pane, whose
-     backdrop-filter makes it the containing block, "fixed" was not fixed. */
+     backdrop-filter makes it the containing block, "fixed" is not fixed. */
   position: fixed;
   z-index: 50;
   list-style: none;

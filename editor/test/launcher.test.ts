@@ -158,7 +158,7 @@ await check('opened again before the close is handled: the new window keeps what
   const h = harness();
   await h.launcher.open();
   h.windows[0].close();
-  await h.launcher.open(); // queued before the close's turn? No: the close queued first — so this runs after it.
+  await h.launcher.open(); // runs after the close's turn, which queued first
   await settle();
   // Either order is safe; what must hold is that the editor ends open and holding, with one window live.
   assert.deepEqual(h.launcher.state(), { windowOpen: true, holding: true });

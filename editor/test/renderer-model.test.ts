@@ -220,10 +220,11 @@ await check('an action is editable only when the inspector knows every field on 
   assert.equal(actionEditable({ action: { type: 'hotkey' } }, 'hotkey'), true);
   // A field the inspector would silently drop.
   assert.equal(actionEditable({ action: { type: 'page', to: 'x', unknownThing: 1 } }, 'page'), false);
-  // onRelease makes it a two-phase key, which is phase C.
+  // onRelease makes it a two-phase key, which the inspector has no control for
+  // (Press/Release aside, below).
   assert.equal(actionEditable({ action: { type: 'page', to: 'x' }, onRelease: { type: 'noop' } }, 'page'), false);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'f24' }, onRelease: { type: 'noop' } }, 'page'), false, 'not even to retarget');
-  // hotkey keeps phase A's rule: single combos only, never a sequence.
+  // hotkey: single combos only, never a sequence.
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1' } }, 'hotkey'), true);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: ['ctrl+1', 'ctrl+2'] } }, 'hotkey'), false);
   assert.equal(actionEditable({ action: { type: 'hotkey', keys: 'ctrl+1', repeat: 2, holdMs: 300 } }, 'hotkey'), true, 'hold and repeat have controls');
@@ -358,7 +359,7 @@ await check('the three states that used to render identically are told apart', (
   assert.match(unplugged.detail, /XL and Original V2/, 'it names the decks it is waiting for');
   assert.equal(unplugged.canAddLayout, false);
 
-  // All three differ in what they say, which is the whole point of the piece.
+  // All three differ in what they say.
   const said = [down, fresh, unplugged].map((s) => `${s.title}|${s.detail}`);
   assert.equal(new Set(said).size, 3, 'two of them say the same thing');
 });
@@ -366,7 +367,7 @@ await check('the three states that used to render identically are told apart', (
 await check('a connected deck this profile does not cover is the one case that offers a layout', () => {
   // prof_game covers the XL only, so with the V2 selected and plugged in
   // there is a real deck to add a layout for — the one situation in which
-  // the old sentence was true.
+  // "add a layout for this deck" is right.
   const state = emptyState(EXAMPLE, daemonView([XL, V2]), { profile: 'prof_game', serial: V2 })!;
   assert.equal(state.kind, 'no-layout');
   assert.equal(state.canAddLayout, true);
@@ -390,15 +391,15 @@ await check('there is no empty state when there is a grid to draw', () => {
 });
 
 await check('a layout the daemon cannot confirm is the daemon\'s fault, not the cable\'s', () => {
-  // The deck has a layout, so the old code said "this deck is not connected"
-  // — but with no daemon the editor has no idea whether it is plugged in.
+  // The deck has a layout, but with no daemon the editor cannot know whether
+  // it is plugged in, so it must not say "this deck is not connected".
   const state = emptyState(EXAMPLE, NO_DAEMON, { profile: 'default', serial: XL })!;
   assert.equal(state.kind, 'daemon-down');
 });
 
 await check('the connection pill always has something to say', () => {
-  // The bug: it rendered only when a deck was selected, so the one case that
-  // most needed an indicator — nothing connected — showed none.
+  // It must render with no deck selected: nothing connected is the case that
+  // most needs an indicator.
   assert.deepEqual(connectionPill(EMPTY_CONFIG, NO_DAEMON, { profile: 'default', serial: '' }), {
     state: 'daemon-down',
     label: 'Daemon not running',
@@ -410,7 +411,7 @@ await check('the connection pill always has something to say', () => {
   assert.equal(connectionPill(EXAMPLE, daemonView([XL, V2]), { profile: 'default', serial: XL }).state, 'connected');
   // One deck absent while another is there: naming the absent one is right.
   // A selection that is not among the connected decks: stale, because the
-  // list no longer offers it. "Not connected" is true of it; "No decks
+  // list does not offer it. "Not connected" is true of it; "No decks
   // connected" would be false, since the XL is here.
   assert.equal(connectionPill(EXAMPLE, daemonView([XL]), { profile: 'default', serial: V2 }).state, 'disconnected');
   // With nothing plugged in at all, the pill and the card must agree.
@@ -532,9 +533,6 @@ await check('Device dropdown: only connected decks — layouts first, then the r
 });
 
 await check("initial selection: the daemon's active profile, a connected deck with a layout, its start page", () => {
-  // prof_game only has an XL layout and the XL is not plugged in, so there is
-  // no deck to select at all — the editor shows the empty state rather than
-  // opening on a deck nobody can edit (the maintainer 2026-09-20).
   // prof_game only has an XL layout and the XL is not plugged in. The V2 is,
   // so it is listed even though this profile does not cover it — that is the
   // 'no-layout' empty state, with a real deck to add a layout for.
@@ -557,10 +555,9 @@ await check("initial selection: the daemon's active profile, a connected deck wi
 });
 
 await check('the Default deck setting: opened on that deck when it is plugged in; Automatic when the profile has no layout for it', () => {
-  // Changed 2026-09-20 with "only connected decks are listed": the setting can
-  // still name a deck that is not here, but it cannot open on one, because
-  // there is nothing to edit without the deck's geometry. It falls back to the
-  // automatic rule instead.
+  // The setting can still name a deck that is not here, but it cannot open on
+  // one — there is nothing to edit without the deck's geometry — so it falls
+  // back to the automatic rule.
   const absent = reconcileSelection(EXAMPLE, daemonView([V2]), null, XL);
   assert.deepEqual([absent.profile, absent.serial, absent.page], ['default', V2, 'main'], 'the XL is not here; the rule picks the V2');
   const s = reconcileSelection(EXAMPLE, daemonView([XL, V2]), null, XL);
@@ -581,14 +578,12 @@ await check('the Default deck setting: opened on that deck when it is plugged in
 await check('a selection that still exists is kept, key included, across config and daemon changes', () => {
   const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current), current);
-  // **Changed 2026-09-20, and it is a real cost.** This used to assert that
-  // "a deck unplugging does not move the editor off its page". Now that only
-  // connected decks are listed, the deck you were editing stops being a thing
-  // that can be selected, so unplugging it moves the selection — to another
-  // connected deck, or to nothing — and your page and key selection go with
-  // it. Replugging does not bring you back. Accepted by the maintainer's rule that a
-  // disconnected deck is not listed; recorded here so it is not mistaken for
-  // a regression, and so the cost is visible if it ever needs revisiting.
+  // **A deck unplugging moves the editor off it, and that is a real cost.**
+  // Only connected decks are listed, so the deck being edited stops being
+  // something that can be selected: the selection moves to another connected
+  // deck, or to nothing, and the page and key selection go with it.
+  // Replugging does not bring it back. A deliberate cost of not listing
+  // disconnected decks, not a regression.
   const unplugged = reconcileSelection(EXAMPLE, daemonView([]), current);
   assert.deepEqual([unplugged.serial, unplugged.page, unplugged.key], ['', '', null], 'nothing is left to select');
   const other = reconcileSelection(EXAMPLE, daemonView([V2]), current);
@@ -637,8 +632,7 @@ await check('when the deck has not moved, the selected key stays (mid-edit)', ()
 
 await check('nothing to follow — daemon not connected — leaves the selection alone', () => {
   const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
-  // Another deck moving used to leave the selection alone outright. It still
-  // does not *follow* that deck, but with the XL no longer plugged in the
+  // Another deck moving is not *followed*, but with the XL unplugged the
   // selection cannot stay on it either (see the note above): it lands on the
   // deck that is there, at that deck's own page.
   const moved = followDeck(EXAMPLE, showing([{ serial: V2, profile: 'default', page: 'main' }]), current);
@@ -653,11 +647,10 @@ await check('nothing to follow — daemon not connected — leaves the selection
 
 await check('the first decks to arrive are followed, not just settled on', () => {
   // The window opens before the daemon has reported anything, so the selection
-  // names no deck at all — reachable since disconnected decks stopped being
-  // listed (2026-09-20). Following `current.serial` then looked up "", found
-  // nothing, and left the editor on the layout's start page instead of the
-  // page the deck is really showing. check:structure caught it; this is the
-  // same thing without Electron.
+  // names no deck at all. Following `current.serial` would look up "", find
+  // nothing, and leave the editor on the layout's start page instead of the
+  // page the deck is really showing: reconcile first, then follow.
+  // check:structure covers the same thing in Electron.
   const nothingYet: Selection = { profile: 'default', serial: '', page: '', key: null, keys: [] };
   const arrived = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), nothingYet);
   assert.deepEqual([arrived.serial, arrived.page], [XL, 'games'], 'it must follow the deck it just settled on');
@@ -810,10 +803,9 @@ await check('a paste message names what was skipped and what lost its navigation
 
 await check('Copy to device offers the other connected decks this profile covers, with their pages', () => {
   const selection = { profile: 'default', serial: XL, page: 'main', key: 0, keys: [0] };
-  // Changed 2026-09-20: a disconnected deck used to be listed and greyed out,
-  // with "— not connected" as the reason (§2, "say why, do not hide"). It is
-  // not listed at all now — keys land by row and column, so a deck that is
-  // not here was never a possible target, and its absence is the reason.
+  // A disconnected deck is not listed: keys land by row and column, so a deck
+  // that is not here was never a possible target, and its absence is the
+  // reason.
   assert.deepEqual(deviceTargets(EXAMPLE, daemonView([XL]), selection), [], 'the V2 is not here, so it is not offered');
   const both = deviceTargets(EXAMPLE, daemonView([XL, V2]), selection);
   assert.deepEqual(

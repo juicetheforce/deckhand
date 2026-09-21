@@ -1,6 +1,6 @@
-// The configurations kept before an import or a profile delete (M5 piece 2d,
-// src/main/kept-configs.ts). The rules the maintainer decided on 2026-09-19: never
-// deleted except by him, a cap that refuses rather than rotates, and no second
+// The configurations kept before an import or a profile delete
+// (src/main/kept-configs.ts). The rules: never deleted except by hand, from
+// the list in Settings; a cap that refuses rather than rotates; and no second
 // copy of identical bytes.
 
 import assert from 'node:assert/strict';

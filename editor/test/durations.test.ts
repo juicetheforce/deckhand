@@ -1,5 +1,5 @@
-// The duration estimates (src/shared/durations.ts) against the measurements
-// they come from (docs/code-state.md, "Cost of the combo timing on text").
+// The duration estimates (src/shared/durations.ts) against the runs they were
+// derived from, measured through the real helper.
 import assert from 'node:assert/strict';
 import { COMBO_TAP_MS, SINGLE_TAP_MS, actionDurationMs, comboTapMs, formatDuration, textDurationMs } from '../src/shared/durations.js';
 

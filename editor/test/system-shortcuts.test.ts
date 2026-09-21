@@ -5,7 +5,7 @@
 // DECKHAND_QT_HEADER=<path to Qt 6.11 qnamespace.h>: every table value checked
 // against the header's enum.
 // DECKHAND_TEST_REAL_KGLOBALACCEL=1: the lookup against the real KDE service,
-// for every combo proof 0b measured.
+// for every measured KDE combo in test/fixtures/kde-shortcut-batches.mjs.
 
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
@@ -115,12 +115,12 @@ await check('no KDE, no busctl, a timeout or garbage: no warning, no throw', asy
 });
 
 if (process.env.DECKHAND_TEST_REAL_KGLOBALACCEL === '1') {
-  console.log('against the real KDE shortcut service (proof 0b combos)');
+  console.log('against the real KDE shortcut service (the measured KDE combos)');
   const { BATCHES } = (await import(pathToFileURL(path.join(REPO, 'editor/test/fixtures/kde-shortcut-batches.mjs')).href)) as {
     BATCHES: Record<string, { combos: string[] }>;
   };
   const { canonicalCombo } = await import('../src/shared/keys.js');
-  // 0b: batches 3 and 4 were all grabbed; of batches 1 and 2, only alt+f2 (KRunner),
+  // Measured: batches 3 and 4 were all grabbed; of batches 1 and 2, only alt+f2 (KRunner),
   // alt+f6 (owner unknown) and the layout-remapped F13, F20, F21, F22.
   const grabbed = [...BATCHES[3].combos, ...BATCHES[4].combos, 'alt+f2'];
   const reached = [...BATCHES[1].combos, ...BATCHES[2].combos].filter((c) => !['alt+f2', 'alt+f6', 'f13', 'f20', 'f21', 'f22'].includes(c));
@@ -128,15 +128,15 @@ if (process.env.DECKHAND_TEST_REAL_KGLOBALACCEL === '1') {
   for (const combo of [...new Set([...grabbed, ...reached, 'alt+f6', 'f13', 'f20', 'f21', 'f22'])]) {
     results.set(combo, (await findSystemShortcut(canonicalCombo(combo)))?.component ?? null);
   }
-  await check(`every combo 0b saw reach the window (${reached.length}) has no KDE shortcut — no false warnings`, () => {
+  await check(`every combo measured reaching the window (${reached.length}) has no KDE shortcut — no false warnings`, () => {
     assert.deepEqual(reached.filter((c) => results.get(c) !== null).map((c) => `${c} → ${results.get(c)}`), []);
   });
-  await check(`the combos 0b saw grabbed (${grabbed.length}): which KDE knows`, () => {
+  await check(`the combos measured as grabbed (${grabbed.length}): which KDE knows`, () => {
     const found = grabbed.filter((c) => results.get(c) !== null);
     const missed = grabbed.filter((c) => results.get(c) === null);
     console.log(`       found ${found.length}: ${found.map((c) => `${c}(${results.get(c)})`).join(' ')}`);
     console.log(`       missed ${missed.length}: ${missed.join(' ')}`);
-    assert.deepEqual(missed, [], 'grabbed in 0b but not found');
+    assert.deepEqual(missed, [], 'measured as grabbed but not found');
   });
   await check("the recorded limits: Alt+F6 and the layout-remapped F-keys are grabbed but KDE's service does not know them", () => {
     assert.deepEqual(['alt+f6', 'f13', 'f20', 'f21', 'f22'].map((c) => results.get(c)), [null, null, null, null, null]);
