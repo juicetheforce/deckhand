@@ -61,7 +61,9 @@ stub sudo 'exec "$@"'
 # -m from the stub and everything else from the real one.
 stub uname 'if [ "$1" = -m ]; then echo "${STUB_ARCH:-x86_64}"; else exec /usr/bin/uname "$@"; fi'
 stub getconf '[ -n "${STUB_NO_GLIBC:-}" ] && exit 1; echo "glibc ${STUB_GLIBC:-2.39}"'
-stub ldconfig '[ "$1" = -p ] || exit 0; [ -n "${STUB_NO_LIBUSB:-}" ] || printf "\tlibusb-1.0.so.0 (libc6,x86-64) => /usr/lib64/libusb-1.0.so.0\n"; printf "\tlibc.so.6 (libc6,x86-64) => /lib64/libc.so.6\n"'
+# Like the real one: libusb near the top of a long list, so a check that stops
+# reading at the first match leaves ldconfig writing into a closed pipe.
+stub ldconfig '[ "$1" = -p ] || exit 0; echo "5000 libs found in cache"; [ -n "${STUB_NO_LIBUSB:-}" ] || printf "\tlibusb-1.0.so.0 (libc6,x86-64) => /usr/lib64/libusb-1.0.so.0\n"; i=0; while [ $i -lt 5000 ]; do printf "\tlibfiller%s.so.1 (libc6,x86-64) => /usr/lib64/libfiller%s.so.1\n" $i $i; i=$((i + 1)); done'
 for tool in curl xz tar sha256sum; do stub "$tool" 'exit 0'; done
 for tool in grep head; do ln -s "$(command -v "$tool")" "$S/stubs.orig/$tool"; done
 

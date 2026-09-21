@@ -57,7 +57,9 @@ RELEASE_VERSION=""
 # (scripts/release.sh), and so the oldest a machine may have to install one.
 RELEASE_GLIBC_FLOOR=2.28
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Piped (`curl … | bash`) there is no file, so BASH_SOURCE is empty; a release
+# never uses REPO_DIR, and ":-" keeps set -u from stopping on it.
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." && pwd)"
 UDEV_RULE_SRC="$REPO_DIR/udev/60-deckhand.rules"
 UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
 # The AppArmor profile that lets the editor's Electron have a user namespace.
@@ -394,7 +396,10 @@ release_checks() {
   done
   if [ -z "$ldconfig" ]; then
     caution "ldconfig was not found, so libusb-1.0 was not checked. If it is missing, the install stops after the download and names it."
-  elif ! "$ldconfig" -p 2>/dev/null | grep -q 'libusb-1\.0\.so\.0 '; then
+  elif ! grep -q 'libusb-1\.0\.so\.0 ' <<<"$("$ldconfig" -p 2>/dev/null || true)"; then
+    # Read in full first, not piped into grep -q: grep stops at its first match,
+    # ldconfig is still writing a list thousands of lines long, dies of SIGPIPE,
+    # and under pipefail the whole test then reads as "not found".
     missing libusb "libusb-1.0: the Stream Deck library links against it. Install your distribution's libusb 1.0 package."
   fi
 

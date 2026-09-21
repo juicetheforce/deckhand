@@ -66,6 +66,7 @@ piped="cd '$REPO/scripts' && cat '$REPO/scripts/install.sh' | PATH='$S/bin' bash
 out="$(timeout 180 bash -c "$(declare -f on_a_terminal); on_a_terminal \"\$1\"" _ "$piped" 2>&1)"
 grep -q 'Run this now? \[y/N\]' <<<"$out" && ok "with a terminal: the offer appears under a pipe" || no "no offer: $(tail -5 <<<"$out")"
 grep -q 'no terminal here to ask' <<<"$out" && no "with a terminal: it claimed there was no terminal" || ok "with a terminal: it did not claim there was none"
+grep -qE 'unbound variable|bash: line [0-9]+:' <<<"$out" && no "a shell error under the pipe: $(grep -E 'unbound variable|bash: line [0-9]+:' <<<"$out" | head -2)" || ok "no shell errors under the pipe"
 # After the question, not merely somewhere: "nothing was changed" is printed
 # whether or not there was an offer, so only its place proves the answer was
 # read and the script went on from there.

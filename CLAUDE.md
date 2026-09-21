@@ -92,6 +92,10 @@ runs it, with a terminal and without one.
 and unpack against a fake package, every way it can be wrong.
 `bash scripts/test/release-glibc.test.sh` the release build's glibc check,
 which refuses a package with any binary newer than the floor.
+`bash scripts/test/release-ships.sh <version>` tests a built release before it
+is published — loads it in containers of the target distributions, pipes its
+installer, **installs it on this machine**, and runs the suites against that
+install.
 `scripts/install.sh check` runs the preflight for real and changes nothing.
 
 For looking rather than checking: `node editor/scripts/screenshot.mjs --out
