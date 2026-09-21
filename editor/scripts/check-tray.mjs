@@ -1,4 +1,4 @@
-// Ship piece 2: the editor as a launcher, end to end in real Electron.
+// The editor as a launcher, end to end in real Electron.
 //
 // Runs itself under dbus-run-session on a private bus with no service
 // directories, so the tray icon registers there and never in the maintainer's panel —
@@ -177,7 +177,7 @@ results.closeQuitsExitCode = noTray.exited?.code ?? null;
 
 for (const e of [editor, second, noTray]) if (e.exited === null) e.child.kill();
 
-// --- An install while the editor is running (M5, 2026-09-19) ----------------
+// --- An install while the editor is running ---------------------------------
 //
 // scripts/install.sh update replaces the editor on disk; an editor in the tray
 // would then open the new page against its old main process. The check stands

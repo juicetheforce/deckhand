@@ -1,4 +1,4 @@
-// Ship piece 4: the editor's and the settings window's own title bars, end to
+// The editor's and the settings window's own title bars, end to
 // end in real Electron.
 //
 // Driven like check-settings.mjs (scripts/lib/drive-editor.mjs), on a private

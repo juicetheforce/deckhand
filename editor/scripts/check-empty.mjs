@@ -1,4 +1,4 @@
-// The editor's empty state (docs/scope.md §7, Portability), in real Electron.
+// The editor's empty state, in real Electron.
 //
 // the maintainer found this by opening the editor on a machine with an empty
 // configuration and no hardware: three different situations — the daemon not
@@ -104,7 +104,7 @@ check('the pill says so too, instead of vanishing', () => {
   assert.equal(down.pillLabel, 'Daemon not running');
 });
 check('it offers no layout to add, having no deck to add one for', () => assert.equal(down.addButton, null));
-check('and says it exactly once — the banner stands down (scope §7)', () => assert.equal(down.daemonNotices, 0));
+check('and says it exactly once — the banner stands down', () => assert.equal(down.daemonNotices, 0));
 check('there is no grid', () => assert.equal(down.grid, false));
 
 // -------------------------------------------------- 2. nothing ever configured
@@ -149,10 +149,9 @@ check('it offers no layout: both decks already have one', () => assert.equal(unp
 // ------------------------------------------ 4. a connected deck with no layout
 
 console.log('\n4. a fresh install with a deck plugged into it');
-// The state every new install sits in once hardware arrives, and the one the maintainer
-// opened the editor on: the empty configuration, one deck connected, no
-// profile with a layout for it. The daemon reports it connected: true,
-// configured: false, from `unattached`.
+// The state every new install sits in once hardware arrives: the empty
+// configuration, one deck connected, no profile with a layout for it. The
+// daemon reports it connected: true, configured: false, from `unattached`.
 const fresh2 = await situation({
   config: EMPTY_CONFIG,
   setUp: async (daemon, harness) => {
@@ -240,8 +239,8 @@ check('the daemon is fine, so nothing says otherwise', () => assert.equal(gone.d
 
 // ------------------------- 6. every list drops the marker, not just the one
 
-// What this can and cannot catch, measured by breaking it both ways
-// (2026-09-20): putting the "— not connected" marker back in the JSX fails
+// What this can and cannot catch, measured by breaking it both ways:
+// putting the "— not connected" marker back in the JSX fails
 // *nothing* here, and cannot, because with only connected decks listed the
 // marker's condition is never true — it is dead code, not a visible mistake.
 // The invariant that actually matters is the one underneath: deckChoices()

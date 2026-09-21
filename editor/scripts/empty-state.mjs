@@ -1,6 +1,5 @@
-// Open a real editor window in one of the empty states, to look at
-// (docs/scope.md §7, Portability). Not a check — check-empty.mjs is the
-// check; this is for eyes.
+// Open a real editor window in one of the empty states, to look at. Not a
+// check — check-empty.mjs is the check; this is for eyes.
 //
 // The point of it: the states this piece exists for cannot be seen on the
 // working machine without unplugging both decks, and the maintainer would rather not.
@@ -25,7 +24,7 @@
 //   normal            a configured deck, connected — the control case
 //
 // Press Ctrl-C in this terminal to finish. Closing the window is not enough:
-// the editor closes to the tray like the installed one does (Ship piece 2),
+// the editor closes to the tray like the installed one does,
 // so it is still running, with its own tray icon beside the real one.
 //
 // The scratch directory is one fixed path, wiped at the start of every run
@@ -79,7 +78,7 @@ const WHAT_TO_LOOK_FOR = {
   'never-configured': 'Pill: "No decks connected". The dropdown says "No decks" and is greyed. Nothing offers to add a layout.',
   'all-unplugged': 'Pill: "No decks connected" — not "Not connected", although a configured deck is selected. The text names both decks.',
   'no-layout': 'The one state that offers a button, and it names the deck: "Add a layout for Original V2".',
-  'deck-unplugged': 'The Original V2 is configured and not plugged in, so it is NOT in the Device list at all — only the XL is. Its absence is the indicator (the maintainer, 2026-09-20).',
+  'deck-unplugged': 'The Original V2 is configured and not plugged in, so it is NOT in the Device list at all — only the XL is. Its absence is the indicator.',
   normal: 'The control case: a grid, and a green "Connected" pill.',
 };
 
@@ -126,7 +125,7 @@ const env = {
   DECKHAND_BUILTIN_ICONS: path.join(repoRoot, 'assets', 'icons'),
 };
 // VS Code sets this for processes started from its extension host, and it
-// turns the Electron binary into plain Node with no BrowserWindow (CLAUDE.md).
+// turns the Electron binary into plain Node with no BrowserWindow.
 // Every way of launching Electron has to clear it. Deleted rather than set to
 // undefined, which some Node versions pass through as the string "undefined".
 delete env.ELECTRON_RUN_AS_NODE;

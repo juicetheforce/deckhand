@@ -1,4 +1,4 @@
-// M4 phase B, B1: profiles and pages, end to end in real Electron against two
+// Profiles and pages, end to end in real Electron against two
 // fake decks. The four things the maintainer checks on the real decks are checked here
 // first: opening switches nothing, a profile moves both decks, a page change
 // from elsewhere moves the breadcrumb, and closing changes nothing.
@@ -38,7 +38,7 @@ function check(name, fn) {
 const A = 'STRUCT-XL';
 const B = 'STRUCT-V2';
 // A deck in config that no profile but "Doomed" covers, so deleting that
-// profile has to give it a layout rather than leave it dark (M5).
+// profile has to give it a layout rather than leave it dark.
 const C = 'STRUCT-SPARE';
 // "Second" holds a key that navigates to Main, so deleting it has something to clear.
 const CONFIG = {
@@ -53,9 +53,9 @@ const CONFIG = {
           pages: {
             main: { name: 'Main', buttons: { 0: { label: 'To second', action: { type: 'page', to: 'second' } } } },
             second: { name: 'Second', buttons: { 1: { label: 'Home', action: { type: 'page', to: 'Main' } } } },
-            // Hand-written links by name, for the renames (M5): they must follow.
+            // Hand-written links by name, for the renames: they must follow.
             third: { name: 'Third', buttons: { 2: { label: 'Back to main', action: { type: 'page', to: 'Main' } } } },
-            // A key that switches to the profile deleted below, by name (M5).
+            // A key that switches to the profile deleted below, by name.
             fourth: { name: 'Fourth', buttons: { 3: { label: 'To Doomed', action: { type: 'profile', to: 'Doomed' } }, 4: { action: { type: 'page', to: 'main' } } } },
           },
         },
@@ -69,7 +69,7 @@ const CONFIG = {
           startPage: 'hotbar',
           pages: {
             hotbar: { name: 'Hotbar', buttons: { 3: { label: 'Default', action: { type: 'profile', to: 'Default' } } } },
-            // Its only way off is a switch to the profile deleted below (M5).
+            // Its only way off is a switch to the profile deleted below.
             raid: { name: 'Raid', buttons: { 5: { action: { type: 'profile', to: 'doomed' } } } },
           },
         },

@@ -1,4 +1,4 @@
-// M4 phase A: live switching (docs/scope.md §10), end to end in real Electron.
+// Live switching, end to end in real Electron.
 //
 // The harness daemon (real DeckSessions on a fake deck, real ControlServer)
 // is wired to reload the scratch config.json the way src/index.ts reload()

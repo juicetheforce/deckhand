@@ -1,13 +1,12 @@
-// M5 pieces 1 and 2: export and import from the settings window, end to end
-// in real Electron.
+// Export and import from the settings window, end to end in real Electron.
 //
 // Driven like check-settings.mjs (scripts/lib/drive-editor.mjs), on a private
-// bus, against the M3 harness. HOME is a scratch directory — for this process
-// and the editor — so `~/` icon paths and the manifest's `home` are scratch
-// paths, never the maintainer's. The system save dialog cannot be driven in a hidden
-// window, so the editor is started with DECKHAND_CHECK_EXPORT_PATH and
-// DECKHAND_CHECK_IMPORT_PATH, which only a check mode honours; everything else
-// is the button a person clicks.
+// bus, against the control-socket test harness. HOME is a scratch directory —
+// for this process and the editor — so `~/` icon paths and the manifest's
+// `home` are scratch paths, never the maintainer's. The system save dialog cannot be
+// driven in a hidden window, so the editor is started with
+// DECKHAND_CHECK_EXPORT_PATH and DECKHAND_CHECK_IMPORT_PATH, which only a check
+// mode honours; everything else is the button a person clicks.
 //
 // Usage: npm run check:backup   (builds first)
 
@@ -184,7 +183,7 @@ r.failedStatus = await exportNow(editor);
 await fs.chmod(outDir, 0o755);
 r.afterFailure = await fs.readdir(outDir);
 
-// --- Import (M5 piece 2) ---
+// --- Import ---
 const exists = (p) => fs.access(p).then(() => true, () => false);
 const reviewText = "document.querySelector('.import-review')?.innerText ?? null";
 const importStatus = "document.querySelector('[data-status=import]')?.textContent ?? null";
@@ -284,7 +283,7 @@ r.cancelled = {
   r.bareOnDisk = (await fs.readFile(configFile, 'utf8')).includes('BARE-JSON');
 }
 
-// The kept configurations (M5 piece 2d): the list, Restore and Delete.
+// The kept configurations: the list, Restore and Delete.
 const keptRows = `[...document.querySelectorAll('.kept-list li[data-kept]')].map((li) => ({ file: li.dataset.kept, title: li.querySelector('.kept-title').textContent, sub: li.querySelector('.kept-sub').textContent }))`;
 const keptButton = (file, label) =>
   `[...document.querySelector('.kept-list li[data-kept="${file}"]').querySelectorAll('button')].find((b) => b.textContent.trim() === '${label}').click(), true`;

@@ -1,4 +1,4 @@
-// M4 phase A, step 5: the icon picker end to end in real Electron.
+// The icon picker end to end in real Electron.
 //
 // The renderer drives the picker through the UI (src/renderer/checks.ts,
 // "icons"). HOME is a scratch directory holding an icon tree, for this script
@@ -117,7 +117,7 @@ session.setPreview = (index, button) => {
 // Every preview cleared while the deck's layout did not yet hold what the
 // preview showed. The editor clears a preview once the daemon announces the
 // save; a clear that arrives before the deck has the saved layout redraws the
-// key from the old one, and it flashes its old icon (Ship, 2026-09-18).
+// key from the old one, and it flashes its old icon.
 const clearedEarly = [];
 let clearsSeen = 0;
 const clearPreview = session.clearPreview.bind(session);
@@ -208,7 +208,7 @@ if (r && !r.error) {
   check('arrow keys move the selection, and choose', () => assert.deepEqual([r.arrowLeft, r.arrowRight], [true, true]));
   check('choices faster than saves: the last wins, even going back to the icon the key already had', () => assert.equal(r.lastChoiceWins, true));
   check('the bookmarks row shows the stored bookmarks, oldest first, each chip named for its folder alone', () => {
-    // The folder's own name, nothing else (the maintainer): the full path is the tooltip.
+    // The folder's own name, nothing else: the full path is the tooltip.
     assert.deepEqual(r.bookmarksSeeded, ['Built-in', '★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
   });
   check('"+ Bookmark this folder" keeps the open folder, and turns into a way to remove it', () => {

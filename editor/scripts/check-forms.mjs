@@ -1,4 +1,4 @@
-// M4 phase C2: the action forms, end to end in real Electron — each form's
+// The action forms, end to end in real Electron — each form's
 // controls write exactly the settings they name, and nothing else.
 //
 // The renderer drives the forms through the UI (src/renderer/checks.ts,

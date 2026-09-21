@@ -30,7 +30,7 @@ await build({
   format: 'cjs',
 });
 
-// The tray icon (Ship piece 2): PNGs rendered from the logo and committed
+// The tray icon: PNGs rendered from the logo and committed
 // (scripts/render-logo-png.mjs at the repository root), copied beside the
 // bundle so an installed editor carries its own and needs no sharp.
 const logoPng = path.join(root, '..', 'assets', 'logo', 'png');

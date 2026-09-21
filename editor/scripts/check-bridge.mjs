@@ -1,8 +1,8 @@
-// M4 phase A, step 2: the preload bridge end to end, in real Electron.
+// The preload bridge end to end, in real Electron.
 //
-// Starts the M3 test harness (real DeckSessions on fake decks behind a real
-// ControlServer on a scratch socket), writes a matching config.json to a
-// scratch directory, and runs the built editor with
+// Starts the control-socket test harness (real DeckSessions on fake decks
+// behind a real ControlServer on a scratch socket), writes a matching
+// config.json to a scratch directory, and runs the built editor with
 // DECKHAND_EDITOR_CHECK=bridge. The renderer drives every bridge call
 // (src/renderer/checks.ts); this script then checks the result on the other
 // side: the file on disk, the fake deck, and the daemon's previews.

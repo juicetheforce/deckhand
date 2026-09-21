@@ -1,4 +1,4 @@
-// M4 phase A, proof 0a (docs/scope.md §7): the daemon's validateConfig,
+// The daemon's validateConfig,
 // keymap.ts and types import into the editor — main process and renderer —
 // without being copied, and without pulling the daemon's native or D-Bus
 // dependencies into the editor.

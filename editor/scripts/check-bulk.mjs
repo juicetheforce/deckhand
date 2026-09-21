@@ -1,4 +1,4 @@
-// M4 phase B3: bulk operations — multi-select, duplicate, copy, paste, clear and
+// Bulk operations — multi-select, duplicate, copy, paste, clear and
 // their shortcuts — end to end in real Electron against two fake decks shaped
 // like the real ones (XL 8×4, Original V2 5×3).
 //

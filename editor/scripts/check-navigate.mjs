@@ -1,4 +1,4 @@
-// M4 phase B, B2: the page and profile inspectors, end to end in real Electron.
+// The page and profile inspectors, end to end in real Electron.
 //
 // What this is for: a key bound in the editor has to actually move the deck
 // when it is pressed. Everything up to now proved the inspector writes

@@ -1,4 +1,4 @@
-// Ship piece 3: the settings window, end to end in real Electron.
+// The settings window, end to end in real Electron.
 //
 // Driven like check-tray.mjs (scripts/lib/drive-editor.mjs), on a private bus.
 // The settings window is opened by clicking the editor's gear, and every
@@ -7,8 +7,8 @@
 // the editor's root element, how many windows exist, and whether closing the
 // editor quits.
 //
-// The config lists the V2 before the XL, as the maintainer's does, so Automatic opens
-// on the V2 — the reason the Default deck setting exists.
+// The config lists the V2 before the XL, so Automatic opens on the V2 — the
+// reason the Default deck setting exists.
 //
 // Usage: npm run check:settings   (builds first)
 

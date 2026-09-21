@@ -1,6 +1,6 @@
-// Render the editor against the M3 test harness and save a PNG of the window,
-// so the layout can be looked at without the real decks or the installed
-// daemon (M4 phase A, step 3). Never touches the real config: it is copied.
+// Render the editor against the control-socket test harness and save a PNG of
+// the window, so the layout can be looked at without the real decks or the
+// installed daemon. Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
 //   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused]
@@ -31,7 +31,7 @@ import { runElectronCheck } from './lib/run-electron-check.mjs';
 // The private bus has no service directories: Electron asks the bus for the
 // desktop portal and accessibility at startup, and a normal session config
 // starts xdg-desktop-portal-kde and ksecretd on it, which then outlive the run
-// (seen 2026-09-15). With nothing to activate, those requests just fail.
+// With nothing to activate, those requests just fail.
 if (!process.env.DECKHAND_SCREENSHOT_PRIVATE_BUS) {
   const busConfig = path.join(os.tmpdir(), `deckhand-screenshot-bus-${process.pid}.conf`);
   await fs.writeFile(
@@ -82,13 +82,13 @@ const { values } = parseArgs({
     collapse: { type: 'boolean' },
     bookmark: { type: 'string', multiple: true },
     'fake-audio': { type: 'boolean' },
-    // The settings window's page instead of the editor's (Ship piece 3).
+    // The settings window's page instead of the editor's.
     settings: { type: 'boolean' },
     // An accent colour from src/shared/settings.ts ACCENTS, stored as a setting first.
     accent: { type: 'string' },
-    // Draw the title bar as it looks behind another window (Ship piece 4).
+    // Draw the title bar as it looks behind another window.
     unfocused: { type: 'boolean' },
-    // Seed this many kept configurations (M5 piece 2d), for --settings.
+    // Seed this many kept configurations, for --settings.
     kept: { type: 'string' },
   },
 });
@@ -155,7 +155,7 @@ if (values.bookmark?.length) {
   await fs.writeFile(prefsFile, JSON.stringify({ ...prefs, bookmarks: values.bookmark.map((f) => path.resolve(f)) }, null, 2) + '\n');
 }
 if (values.kept) {
-  // Kept configurations (M5 piece 2d): the names and contents main reads.
+  // Kept configurations: the names and contents main reads.
   const backups = path.join(scratch, 'state', 'backups');
   await fs.mkdir(backups, { recursive: true });
   for (let i = 0; i < Number(values.kept); i++) {

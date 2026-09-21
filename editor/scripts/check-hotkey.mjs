@@ -1,4 +1,4 @@
-// M4 phase A, step 4: the hotkey inspector end to end in real Electron.
+// The hotkey inspector end to end in real Electron.
 //
 // The renderer drives the inspector through the UI (src/renderer/checks.ts,
 // "hotkey"). A fake busctl on PATH answers KDE's shortcut lookup: ctrl+f1 is a

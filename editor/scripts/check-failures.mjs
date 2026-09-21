@@ -1,12 +1,13 @@
-// Ship piece 6: a key whose press failed on the deck is badged in the editor's
-// grid too, end to end in real Electron.
+// A key whose press failed on the deck is badged in the editor's grid too, end
+// to end in real Electron.
 //
 // Driven like check-settings.mjs (scripts/lib/drive-editor.mjs), on a private
-// bus, against the M3 harness with a fake deck. Keys are pressed on the fake
-// deck; the daemon marks the key and sends a state event; what is checked is
-// the grid in the editor's page. The failing action is a real one — go to a
-// page that does not exist — because the editor validates the config with its
-// own copy of the daemon's code and would refuse a test-only action type.
+// bus, against the control-socket test harness with a fake deck. Keys are
+// pressed on the fake deck; the daemon marks the key and sends a state event;
+// what is checked is the grid in the editor's page. The failing action is a
+// real one — go to a page that does not exist — because the editor validates
+// the config with its own copy of the daemon's code and would refuse a
+// test-only action type.
 //
 // Usage: npm run check:failures   (builds first)
 

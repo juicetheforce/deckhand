@@ -1,7 +1,7 @@
-// M4 phase A refinements: the resizable panes in real Electron (scope §10).
+// The resizable panes in real Electron.
 //
 // Drags each divider through the UI and checks the limits. Widths are
-// deliberately **not** persisted (the maintainer, 2026-09-15), so this also checks the
+// deliberately **not** persisted, so this also checks the
 // editor opens at its defaults and writes no widths anywhere.
 //
 // Usage: npm run check:panes   (builds first)
