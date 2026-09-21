@@ -25,8 +25,12 @@ Why it is built the way it is: [ARCHITECTURE.md](ARCHITECTURE.md).
 One command, from a terminal, as your normal user:
 
 ```bash
-git clone --depth 1 --branch v0.1.0 https://github.com/juicetheforce/deckhand ~/.local/src/deckhand && ~/.local/src/deckhand/scripts/install.sh install
+git -c advice.detachedHead=false clone --depth 1 --branch v0.1.0 https://github.com/juicetheforce/deckhand ~/.local/src/deckhand && ~/.local/src/deckhand/scripts/install.sh install
 ```
+
+Git may print `warning: refs/tags/v0.1.0 … is not a commit!` while cloning.
+It is harmless: a release is a tag rather than a branch, and the clone is
+complete.
 
 That clones the release into `~/.local/src/deckhand` and runs its install
 script. Keep the clone: updating and uninstalling run from it.
