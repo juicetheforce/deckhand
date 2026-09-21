@@ -30,8 +30,10 @@
 #                                             app, not with your config)
 #
 # Run it from a git checkout of Deckhand, as your normal user (not root).
-# It checks for prerequisites but does not install them: anything missing is
-# named, all at once, before anything is changed ("check" shows the same list).
+# It checks for prerequisites before anything is changed, and names everything
+# missing at once rather than stopping at the first. For the ones a package can
+# supply it then offers one command, shown in full, and runs it only if you say
+# yes; "check" prints the same list and the same command and runs nothing.
 
 set -euo pipefail
 
@@ -124,9 +126,14 @@ LOGIND_SEATS_DIR=/run/systemd/seats
 SYSCTL_DIR=/proc/sys
 OS_RELEASE=/etc/os-release
 
+# Every unmet requirement is recorded twice: the sentence a person reads, and
+# a short key naming the requirement, so the offer below can look up a package
+# for it. "-" is the key for anything no package can fix (running as root, a
+# desktop that never reaches graphical-session.target, /dev/uinput missing).
 PREFLIGHT_MISSING=()
+PREFLIGHT_MISSING_KEYS=()
 PREFLIGHT_WARNINGS=()
-missing() { PREFLIGHT_MISSING+=("$1"); }
+missing() { PREFLIGHT_MISSING_KEYS+=("$1"); PREFLIGHT_MISSING+=("$2"); }
 caution() { PREFLIGHT_WARNINGS+=("$1"); }
 
 has_command() { command -v "$1" >/dev/null 2>&1; }
@@ -171,23 +178,24 @@ apparmor_needed() {
 
 preflight_checks() {
   PREFLIGHT_MISSING=()
+  PREFLIGHT_MISSING_KEYS=()
   PREFLIGHT_WARNINGS=()
 
   [ "$(id -u)" -ne 0 ] \
-    || missing "Running as root. Run this as your normal user; it asks for sudo only for the udev rule."
+    || missing - "Running as root. Run this as your normal user; it asks for sudo only for the udev rule."
   [ -f "$REPO_DIR/package.json" ] && [ -f "$UDEV_RULE_SRC" ] \
-    || missing "Not a Deckhand checkout: run this script from inside one."
+    || missing - "Not a Deckhand checkout: run this script from inside one."
 
   # systemd user session: the daemon is a systemd --user service, started with
   # the graphical session (systemd/deckhand.service is WantedBy
   # graphical-session.target — a desktop that never reaches that target would
   # install fine and then never start the daemon at login).
   if ! has_command systemctl; then
-    missing "systemctl: Deckhand runs as a systemd user service, and this machine has no systemd."
+    missing - "systemctl: Deckhand runs as a systemd user service, and this machine has no systemd."
   elif ! systemctl --user show-environment >/dev/null 2>&1; then
-    missing "The systemd user manager (systemctl --user) cannot be reached. Run this from a terminal in your desktop session."
+    missing - "The systemd user manager (systemctl --user) cannot be reached. Run this from a terminal in your desktop session."
   elif [ "$(systemctl --user is-active graphical-session.target 2>/dev/null)" != active ]; then
-    missing "graphical-session.target is not active in your systemd user session. The service starts with it, so it would never start at login. Run this from your desktop session; if you are, your desktop does not start that target."
+    missing - "graphical-session.target is not active in your systemd user session. The service starts with it, so it would never start at login. Run this from your desktop session; if you are, your desktop does not start that target."
   fi
 
   # The D-Bus session bus: media keys (MPRIS), and the tray and shortcut
@@ -195,10 +203,10 @@ preflight_checks() {
   local bus=yes
   if ! has_command busctl; then
     bus=no
-    missing "busctl (part of systemd): needed to reach the D-Bus session bus."
+    missing - "busctl (part of systemd): needed to reach the D-Bus session bus."
   elif ! busctl --user status >/dev/null 2>&1; then
     bus=no
-    missing "No D-Bus session bus (busctl --user status failed). Run this from your desktop session."
+    missing - "No D-Bus session bus (busctl --user status failed). Run this from your desktop session."
   fi
 
   # logind, for uaccess: the udev rule tags the decks and /dev/uinput
@@ -206,11 +214,11 @@ preflight_checks() {
   # With no logind, or no session on a seat, the rule installs and grants nothing.
   local display_session=""
   if ! has_command loginctl || [ ! -d "$LOGIND_SEATS_DIR" ]; then
-    missing "systemd-logind is not running (no loginctl or no $LOGIND_SEATS_DIR). Device access is granted through it (udev's uaccess)."
+    missing - "systemd-logind is not running (no loginctl or no $LOGIND_SEATS_DIR). Device access is granted through it (udev's uaccess)."
   else
     display_session="$(loginctl show-user "$(id -un)" -p Display --value 2>/dev/null || true)"
     if [ -z "$display_session" ] || [ -z "$(loginctl show-session "$display_session" -p Seat --value 2>/dev/null || true)" ]; then
-      missing "You have no graphical login session on a seat (loginctl). Device access (udev's uaccess) goes to the user at the seat. Log in at the machine and run this from that session."
+      missing - "You have no graphical login session on a seat (loginctl). Device access (udev's uaccess) goes to the user at the seat. Log in at the machine and run this from that session."
     fi
   fi
 
@@ -218,10 +226,18 @@ preflight_checks() {
   # node on PATH, so they must be the same one. 22.12, not the daemon's own
   # 20: building the editor needs it (Electron's package and the editor's
   # build tools declare >= 22.12).
+  #
+  # Only the "no node at all" case carries a package key. A node that is
+  # present but too old, or present at the wrong path, is advice and nothing
+  # more: on Fedora the versioned packages each own /usr/bin/node, so offering
+  # nodejs24-bin to a machine running nodejs20-bin asks dnf to resolve a file
+  # conflict nobody asked it to, and installing a package was never going to
+  # fix a node that is simply somewhere else. Upgrading or rearranging an
+  # existing Node is the owner's business.
   if ! has_command node; then
-    missing "node: install Node.js 22.12 or newer from your distribution's packages (the service runs $SERVICE_NODE)."
+    missing node "node: install Node.js 22.12 or newer from your distribution's packages (the service runs $SERVICE_NODE)."
   elif [ "$(command -v node)" != "$SERVICE_NODE" ]; then
-    missing "node on your PATH is $(command -v node), but the service runs $SERVICE_NODE. Native modules built with one would not load in the other. Install Node.js 22.12 or newer from your distribution's packages, and make it the node on PATH."
+    missing - "node on your PATH is $(command -v node), but the service runs $SERVICE_NODE. Native modules built with one would not load in the other. Install Node.js 22.12 or newer from your distribution's packages, and make it the node on PATH."
   else
     local version major minor
     version="$("$SERVICE_NODE" -v 2>/dev/null || true)"
@@ -229,39 +245,39 @@ preflight_checks() {
     major="${version%%.*}"
     minor="${version#*.}"; minor="${minor%%.*}"
     if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]]; then
-      missing "Cannot tell which Node.js $SERVICE_NODE is ('$version'). Deckhand needs 22.12 or newer."
+      missing - "Cannot tell which Node.js $SERVICE_NODE is ('$version'). Deckhand needs 22.12 or newer."
     elif [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 12 ]; }; then
-      missing "Node.js $version is too old; Deckhand needs 22.12 or newer."
+      missing - "Node.js $version is too old; Deckhand needs 22.12 or newer."
     fi
   fi
-  has_command npm  || missing "npm: install it (some distributions package it apart from Node.js)."
-  has_command make || missing "make: needed to build the key-injection helper."
-  has_command cc   || missing "A C compiler (cc): install gcc, to build the key-injection helper."
+  has_command npm  || missing npm "npm: install it (some distributions package it apart from Node.js)."
+  has_command make || missing make "make: needed to build the key-injection helper."
+  has_command cc   || missing cc "A C compiler (cc): install gcc, to build the key-injection helper."
   [ -f "$UINPUT_HEADER" ] \
-    || missing "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
+    || missing uinput-header "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
 
   # The virtual keyboard. Whether it is writable is the udev rule's business,
   # reported after it is installed; here it only has to exist.
   [ -c "$UINPUT_NODE" ] \
-    || missing "$UINPUT_NODE does not exist, so keystrokes cannot be injected. Load the module (sudo modprobe uinput) and make it load at boot."
+    || missing - "$UINPUT_NODE does not exist, so keystrokes cannot be injected. Load the module (sudo modprobe uinput) and make it load at boot."
 
   # Audio keys drive PulseAudio or PipeWire through pactl.
   if ! has_command pactl; then
-    missing "pactl: install the package that provides this command-line tool — pulseaudio-utils on Debian and Ubuntu, pipewire-pulseaudio on Fedora. A machine can have PipeWire running and still not have it."
+    missing pactl "pactl: install the package that provides this command-line tool — pulseaudio-utils on Debian, Ubuntu and Fedora alike (on Fedora it is not pipewire-pulseaudio, which ships only the server). A machine can have PipeWire running and still not have it."
   elif ! pactl info >/dev/null 2>&1; then
-    missing "pactl cannot reach a sound server (pactl info failed). Deckhand's audio keys need PipeWire's PulseAudio server or PulseAudio running."
+    missing - "pactl cannot reach a sound server (pactl info failed). Deckhand's audio keys need PipeWire's PulseAudio server or PulseAudio running."
   fi
 
   # Root is needed only when the udev rule is new or changed.
   if ! cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
-    has_command sudo    || missing "sudo: needed once, to install the udev rule at $UDEV_RULE_DST."
-    has_command udevadm || missing "udevadm: needed to load the udev rule."
+    has_command sudo    || missing - "sudo: needed once, to install the udev rule at $UDEV_RULE_DST."
+    has_command udevadm || missing - "udevadm: needed to load the udev rule."
   fi
 
   # Same, for the AppArmor profile the editor needs on this kind of machine.
   if apparmor_needed; then
-    has_command sudo           || missing "sudo: needed once, to install the AppArmor profile at $APPARMOR_PROFILE_DST that lets the editor start."
-    has_command apparmor_parser || missing "apparmor_parser: needed to load the AppArmor profile that lets the editor start. Install your distribution's apparmor package."
+    has_command sudo           || missing - "sudo: needed once, to install the AppArmor profile at $APPARMOR_PROFILE_DST that lets the editor start."
+    has_command apparmor_parser || missing apparmor-parser "apparmor_parser: needed to load the AppArmor profile that lets the editor start. Install your distribution's apparmor package."
   fi
 
   # --- Warnings: the install goes ahead ---
@@ -303,6 +319,269 @@ preflight_checks() {
   fi
 }
 
+# --- Offering to install what is missing --------------------------------------
+#
+# The preflight used to stop at a list of things to go and install by hand.
+# This turns that diagnosis into help: one command, named in full, run only on
+# a keypress. `scripts/install.sh check` prints the same command and never
+# offers to run it.
+#
+# Two rules hold this together.
+#
+# 1. **The command printed is the command run**, character for character. It is
+#    built once, shown, and then handed to bash. Nothing is appended after the
+#    person has read it, because reading it is what makes typing "y" safe.
+#
+# 2. **A package name is never printed without asking this machine whether it
+#    exists.** That guard is not caution, it is the defect this code exists
+#    because of. The remedy string for pactl has been written twice and been
+#    wrong twice: it named pipewire-pulseaudio for Fedora, where pactl has
+#    always come from pulseaudio-utils (`rpm -qf $(command -v pactl)`), and on
+#    2026-09-20 it was corrected *for Ubuntu* on this very Fedora machine
+#    without anyone noticing the Fedora half was wrong — pactl has never been
+#    missing here, so the string has never been read by anyone who needed it.
+#    A third would have followed: Fedora 44 has no package called `nodejs` or
+#    `npm` at all (`dnf list nodejs npm` matches nothing; /usr/bin/node comes
+#    from nodejs24-bin), so README's long-standing `dnf install nodejs npm`
+#    fails outright. Two chances, two wrong cells, and a third waiting. A name
+#    this machine does not know is therefore never shown: the requirement is
+#    reported without a command instead, which is honest rather than wrong.
+#
+#    **What the guard does not do**, stated plainly so nobody trusts it
+#    further than it goes. It catches a name that does not exist. It does not
+#    catch a name that exists and is the wrong package — and that is exactly
+#    what the Fedora pactl cell was: `pipewire-pulseaudio` is a real Fedora
+#    package, it simply does not contain pactl. So of the three wrong cells
+#    above the guard catches one (`nodejs`), and the other two were only ever
+#    going to be caught by checking a cell against a real machine, which is
+#    what the per-cell tags below record. The second line of defence for a
+#    wrong-but-real name is the re-check: install it, find the command still
+#    missing, and refuse by name. That costs one wasted install and tells the
+#    truth, which is the same bargain as the Debian Node case.
+#
+#    Rejected, for the record: asking the manager which package provides the
+#    missing *command* (`dnf provides /usr/bin/pactl`), which would catch both
+#    kinds. It works on dnf out of the box and on neither of the others —
+#    apt needs apt-file and pacman needs pkgfile, neither installed by
+#    default — so it would be a per-manager capability, not a rule.
+
+# The table. Candidates are tried in order and the first one this machine knows
+# about is the one offered, so a versioned name can be listed ahead of a plain
+# one and the cell ages gracefully as distributions renumber.
+#
+# Verification, recorded per cell rather than per table, because only some of
+# it has been checked against a real machine:
+#   dnf    [confirmed] 2026-09-20 on Fedora 44, `dnf list` / `dnf provides`.
+#   apt    [confirmed] 2026-09-20 on Ubuntu 26.04 for pulseaudio-utils, nodejs
+#          and npm (docs/scope.md §7, Portability); the rest [inference].
+#   pacman [inference] throughout — no Arch machine has ever run this. The
+#          guard is what makes that honest: an unverified cell that turns out
+#          wrong prints nothing rather than a lie.
+pkg_candidates() {   # pkg_candidates <manager> <key> -> candidate names, best first
+  case "$1:$2" in
+    apt:pactl)             echo "pulseaudio-utils" ;;          # [confirmed] Ubuntu 26.04
+    dnf:pactl)             echo "pulseaudio-utils" ;;          # [confirmed] Fedora 44
+    pacman:pactl)          echo "libpulse" ;;                  # [inference]
+
+    apt:cc)                echo "gcc" ;;                       # [inference]
+    dnf:cc)                echo "gcc" ;;                       # [confirmed] Fedora 44
+    pacman:cc)             echo "gcc" ;;                       # [inference]
+
+    apt:make)              echo "make" ;;                      # [inference]
+    dnf:make)              echo "make" ;;                      # [confirmed] Fedora 44
+    pacman:make)           echo "make" ;;                      # [inference]
+
+    apt:uinput-header)     echo "linux-libc-dev" ;;            # [inference]
+    dnf:uinput-header)     echo "kernel-headers" ;;            # [confirmed] Fedora 44
+    pacman:uinput-header)  echo "linux-api-headers" ;;         # [inference]
+
+    # Fedora has no unversioned nodejs package; /usr/bin/node comes from
+    # nodejsNN-bin. Newest first, so the floor of 22.12 is cleared by whichever
+    # of these the release still carries.
+    apt:node)              echo "nodejs" ;;                    # [confirmed] Ubuntu 26.04: 22.22.1
+    dnf:node)              echo "nodejs24-bin nodejs22-bin nodejs" ;;   # [confirmed] Fedora 44
+    pacman:node)           echo "nodejs" ;;                    # [inference]
+
+    apt:npm)               echo "npm" ;;                       # [confirmed] Ubuntu 26.04: 9.2.0
+    dnf:npm)               echo "nodejs24-npm-bin nodejs22-npm-bin npm" ;;  # [confirmed] Fedora 44
+    pacman:npm)            echo "npm" ;;                       # [inference]
+
+    # Only ever asked for where AppArmor restricts user namespaces, which is
+    # the apt family; Fedora never reaches this check.
+    apt:apparmor-parser)   echo "apparmor" ;;                  # [inference]
+    pacman:apparmor-parser) echo "apparmor" ;;                 # [inference]
+  esac
+}
+
+# By command presence, not /etc/os-release: Nobara reports ID=nobara and Mint
+# reports ID=linuxmint, and asking which tool is installed gets every
+# derivative right without an ID_LIKE chain to maintain. Prints nothing on a
+# machine with none of them, and the caller then behaves as this script always
+# did — name what is missing, offer nothing.
+detect_package_manager() {
+  if has_command apt-get; then echo apt
+  elif has_command dnf; then echo dnf
+  elif has_command pacman; then echo pacman
+  fi
+}
+
+# Does this machine's package manager know that name? Read-only, and with
+# stdin closed: a third-party repository that wants to ask about a signing key
+# must fail rather than hang the preflight waiting for an answer.
+package_known() {   # package_known <manager> <package>
+  case "$1" in
+    apt)    [ -n "$(apt-cache policy "$2" </dev/null 2>/dev/null)" ] ;;
+    dnf)    dnf -q list "$2" </dev/null >/dev/null 2>&1 ;;
+    pacman) pacman -Si "$2" </dev/null >/dev/null 2>&1 ;;
+    *)      return 1 ;;
+  esac
+}
+
+install_command() {   # install_command <manager> <package>...
+  local manager="$1"; shift
+  case "$manager" in
+    # apt-get rather than apt: apt says its CLI "does not have a stable
+    # interface" when it is not talking to a terminal. The update is part of
+    # the command because a machine whose lists are months old answers
+    # "Unable to locate package" without it — and it is in the string shown,
+    # not added afterwards.
+    apt)    printf 'sudo apt-get update && sudo apt-get install -y %s' "$*" ;;
+    dnf)    printf 'sudo dnf install -y %s' "$*" ;;
+    # -S --needed, never -Sy and never -Syu. Refreshing the database for one
+    # package without upgrading the rest is Arch's partial-upgrade footgun,
+    # and a full system upgrade is not a thing a script may decide to run on
+    # someone's machine. The cost is that a stale database answers with a 404,
+    # which offer_to_install explains rather than working around.
+    pacman) printf 'sudo pacman -S --needed %s' "$*" ;;
+  esac
+}
+
+# Every requirement key the table has cells for, in the order the preflight
+# checks them. The header walks all of them; the offer only the missing ones.
+PACKAGE_KEYS="node npm make cc uinput-header pactl apparmor-parser"
+
+# The package this machine would install for one requirement: the first of
+# its candidates the manager knows. Prints nothing if there is no cell for it
+# here, or none of the candidates is known.
+resolve_key() {   # resolve_key <manager> <key>
+  local pkg
+  for pkg in $(pkg_candidates "$1" "$2"); do
+    if package_known "$1" "$pkg"; then echo "$pkg"; return 0; fi
+  done
+}
+
+# For the header: the manager this script detected and what every cell in the
+# table resolves to on this machine — **whether or not anything is missing**.
+# Without it, `check` on a machine that already has everything says nothing
+# about the table at all, and the Nobara rehearsal (docs/scope.md §7,
+# Portability, "Tested once, at the end") would show nothing to read. "?" is a
+# requirement with a cell but no candidate this machine knows — the guard's
+# answer, shown rather than hidden. A requirement with no cell for this manager
+# (apparmor-parser on dnf) is left out.
+package_summary() {
+  local manager key found line=""
+  manager="$(detect_package_manager)"
+  if [ -z "$manager" ]; then
+    echo "none this script knows (it knows apt, dnf and pacman)"
+    return 0
+  fi
+  for key in $PACKAGE_KEYS; do
+    if [ -z "$(pkg_candidates "$manager" "$key")" ]; then continue; fi
+    found="$(resolve_key "$manager" "$key")"
+    line="$line $key=${found:-?}"
+  done
+  echo "$manager:$line"
+}
+
+# Fills PREFLIGHT_PACKAGES with the package names to offer: one per unmet
+# requirement that has a cell in the table *and* is known to this machine.
+# PREFLIGHT_UNCOVERED counts the ones left over, which is what decides whether
+# the offer admits to covering only part of the list. It is counted rather
+# than inferred from the two array lengths, because two requirements are
+# allowed to resolve to the same package — nothing in the table does today,
+# and a comparison of lengths would quietly start lying on the day one does.
+PREFLIGHT_PACKAGES=()
+PREFLIGHT_UNCOVERED=0
+resolve_packages() {   # resolve_packages <manager>
+  local manager="$1" key pkg found listed
+  PREFLIGHT_PACKAGES=()
+  PREFLIGHT_UNCOVERED=0
+  [ "${#PREFLIGHT_MISSING_KEYS[@]}" -gt 0 ] || return 0
+  for key in "${PREFLIGHT_MISSING_KEYS[@]}"; do
+    if [ "$key" = "-" ]; then PREFLIGHT_UNCOVERED=$((PREFLIGHT_UNCOVERED + 1)); continue; fi
+    found="$(resolve_key "$manager" "$key")"
+    if [ -z "$found" ]; then PREFLIGHT_UNCOVERED=$((PREFLIGHT_UNCOVERED + 1)); continue; fi
+    listed=no
+    for pkg in ${PREFLIGHT_PACKAGES[@]+"${PREFLIGHT_PACKAGES[@]}"}; do
+      if [ "$pkg" = "$found" ]; then listed=yes; fi
+    done
+    if [ "$listed" = no ]; then PREFLIGHT_PACKAGES+=("$found"); fi
+  done
+}
+
+# Sets PREFLIGHT_INSTALL_COMMAND, or returns 1 when there is no command to
+# build: no package manager this script knows, no cell in the table, or a cell
+# this machine does not recognise.
+#
+# It sets a variable rather than printing one, because a caller reading it
+# through $(...) would run resolve_packages in a subshell and get back a
+# command with no PREFLIGHT_PACKAGES to go with it — which is how the "does
+# this cover everything" line below came to fire when it covered everything.
+PREFLIGHT_INSTALL_COMMAND=""
+build_install_command() {
+  local manager
+  PREFLIGHT_INSTALL_COMMAND=""
+  manager="$(detect_package_manager)"
+  [ -n "$manager" ] || return 1
+  resolve_packages "$manager"
+  [ "${#PREFLIGHT_PACKAGES[@]}" -gt 0 ] || return 1
+  PREFLIGHT_INSTALL_COMMAND="$(install_command "$manager" "${PREFLIGHT_PACKAGES[@]}")"
+  [ -n "$PREFLIGHT_INSTALL_COMMAND" ]
+}
+
+# Does the command cover everything that is missing, or only part of it?
+install_command_is_partial() {
+  [ "$PREFLIGHT_UNCOVERED" -gt 0 ]
+}
+
+# The offer itself. Returns 0 if a command was actually run — the caller then
+# re-checks the machine, which is the only thing that decides whether the
+# install goes ahead. Returns 1 if there was nothing to offer, no terminal to
+# ask at, or the answer was no.
+offer_to_install() {
+  local command reply
+  build_install_command || return 1
+  command="$PREFLIGHT_INSTALL_COMMAND"
+  printf '\n'
+  say "Some of that can come from this machine's own packages:"
+  printf '  %s\n' "$command"
+  if install_command_is_partial; then
+    printf '  That does not cover the whole list above; the rest is not something this script can install.\n'
+  fi
+  # No terminal, no prompt: a run from a pipe, a cron job or a desktop
+  # launcher must neither hang waiting for an answer nor take silence for one.
+  if [ ! -t 0 ]; then
+    printf '  Nothing was run: there is no terminal here to ask at. Run that command yourself, or run this script from a terminal.\n'
+    return 1
+  fi
+  printf 'Run this now? [y/N] '
+  read -r reply || return 1
+  case "$reply" in
+    y|Y|yes|Yes|YES) ;;
+    *) return 1 ;;
+  esac
+  say "Running: $command"
+  # The string that was printed, run as it was printed. $BASH rather than a
+  # bare "bash" so this does not depend on finding one on PATH.
+  if ! "$BASH" -c "$command"; then
+    warn "that command did not finish cleanly. The re-check below says what is still missing."
+    if [ "$(detect_package_manager)" = pacman ]; then
+      warn "if pacman could not find the package files, its database is out of date. A full system upgrade would fix that, and this script will not run one for you."
+    fi
+  fi
+  return 0
+}
+
 # One line per thing that describes this machine, for a bug report.
 preflight_header() {
   local distro="unknown" desktop session commit
@@ -318,7 +597,8 @@ preflight_header() {
     "kernel"   "$(uname -r) $(uname -m)" \
     "desktop"  "${desktop:-${XDG_CURRENT_DESKTOP:-unknown}} (${session:-${XDG_SESSION_TYPE:-unknown}})" \
     "node"     "$( (node -v) 2>/dev/null || echo none) at $(command -v node || echo -)" \
-    "npm"      "$( (npm -v) 2>/dev/null || echo none)"
+    "npm"      "$( (npm -v) 2>/dev/null || echo none)" \
+    "packages" "$(package_summary)"
 }
 
 preflight_report() {
@@ -336,11 +616,20 @@ preflight_report() {
   fi
 }
 
-# Before an install: the report, and stop if anything is missing.
+# Before an install: the report, an offer to install what a package can supply,
+# and stop if anything is still missing.
 preflight() {
   say "Checking this machine"
   preflight_checks
   preflight_report
+  # One offer and one re-check, never a loop. Whatever the packages did or did
+  # not fix, the second pass is what decides; someone who answered no, or a
+  # package that did not help, is not asked a second time.
+  if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ] && offer_to_install; then
+    say "Checking this machine again"
+    preflight_checks
+    preflight_report
+  fi
   if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ]; then
     preflight_header >&2
     die "nothing was changed. Fix what is listed above and run this again; 'scripts/install.sh check' re-checks without installing."
@@ -350,11 +639,25 @@ preflight() {
 # `scripts/install.sh check`: the report and nothing else. Exit status 1 if
 # anything is missing.
 cmd_check() {
+  local command
   [ $# -eq 0 ] || usage
   say "Deckhand preflight — this checks the machine and changes nothing"
   preflight_header
   preflight_checks
   preflight_report
+  # "check" is documented as changing nothing, so it names the command and
+  # stops there. Offering to run it belongs to install.
+  if [ "${#PREFLIGHT_MISSING[@]}" -gt 0 ]; then
+    if build_install_command; then
+      command="$PREFLIGHT_INSTALL_COMMAND"
+      printf 'Some of that can come from this machine'"'"'s own packages:\n'
+      printf '  %s\n' "$command"
+      if install_command_is_partial; then
+        printf '  That does not cover the whole list above.\n'
+      fi
+      printf '  "scripts/install.sh install" offers to run it for you.\n'
+    fi
+  fi
   [ "${#PREFLIGHT_MISSING[@]}" -eq 0 ]
 }
 

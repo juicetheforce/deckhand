@@ -29,7 +29,7 @@ cc -shared -fPIC -o "$S/lib/libdeckhandprobe.so" "$S/lib/probe.c" \
 # --- Basic tools, and stubs ---------------------------------------------------
 mkdir -p "$S/base" "$S/stubs.orig"
 # cat … ldd are what install.sh's checks use; rm is for the setups below.
-for tool in cat cmp sed tr git uname awk sort ldd rm cp; do
+for tool in cat cmp sed tr git uname awk sort ldd rm cp chmod; do
   ln -s "$(command -v "$tool")" "$S/base/$tool"
 done
 stub() { printf '#!/bin/bash\n%s\n' "$2" > "$S/stubs.orig/$1"; chmod 755 "$S/stubs.orig/$1"; }
@@ -53,7 +53,10 @@ esac'
 stub pactl 'exit "${STUB_PACTL_RC:-0}"'
 stub node 'echo "v${STUB_NODE_VERSION:-22.12.0}"'
 stub npm 'echo 11.0.0'
-for tool in make cc sudo udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
+for tool in make cc udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
+# sudo runs what it is handed: the offer below builds a "sudo <manager> ..."
+# command, and the test has to see the manager receive it.
+stub sudo 'exec "$@"'
 
 # --- One run -------------------------------------------------------------------
 # run '<setup>' — a fresh copy of the stubs and scratch paths, the setup
@@ -82,6 +85,10 @@ run() {
     preflight_checks
     for m in "${PREFLIGHT_MISSING[@]}"; do echo "M: $m"; done
     for w in "${PREFLIGHT_WARNINGS[@]}"; do echo "W: $w"; done
+    # "C: ..." is the one command the offer would show. There is none on a
+    # machine with no package manager this script knows, which is every run
+    # that does not call pm_stub, so the lines above are unaffected.
+    if build_install_command; then echo "C: $PREFLIGHT_INSTALL_COMMAND"; fi
     echo END
   )
 }
@@ -216,5 +223,273 @@ grep -q 'rc=0$' <<<"$out" && ok "electron libraries: all found, passes" || no "l
 out="$( (source "$S/fns.sh"; export PATH="$S/base"; check_electron_libraries "$S/lib/links-gone") 2>&1; echo "rc=$?")"
 grep -q 'rc=1$' <<<"$out" && grep -q 'libdeckhandprobe.so' <<<"$out" \
   && ok "electron libraries: a missing one stops the install, named" || no "missing library — got: $out"
+
+
+# --- The offer to install what is missing (Portability) -----------------------
+#
+# pm_stub <manager> <name>... — puts a fake package manager on PATH that knows
+# exactly those package names, logs any install it is asked to run to $S/pm.log,
+# and, for the two names the round-trip test uses, puts the command that package
+# provides into the stub directory so a re-check can see it appear.
+# Called from a setup string, so it writes into the fresh $S/stubs of that run.
+# It lives in a file of its own because the terminal tests below run the
+# preflight in a separate shell, which needs the same helper.
+cat > "$S/pm-stub.sh" <<'PMEOF'
+pm_stub() {
+  local manager="$1"; shift
+  export PM_KNOWN=" $* " PM_LOG="$S/pm.log" PM_STUBS="$S/stubs"
+  case "$manager" in
+    dnf)
+      cat > "$S/stubs/dnf" <<'EOS'
+#!/bin/bash
+[ "$1 $2" = "-q list" ] && { case "$PM_KNOWN" in *" $3 "*) exit 0 ;; *) exit 1 ;; esac; }
+echo "dnf $*" >> "$PM_LOG"
+for a in "$@"; do
+  case "$a" in
+    pulseaudio-utils) printf '#!/bin/bash\nexit 0\n' > "$PM_STUBS/pactl"; chmod 755 "$PM_STUBS/pactl" ;;
+    make) printf '#!/bin/bash\nexit 0\n' > "$PM_STUBS/make"; chmod 755 "$PM_STUBS/make" ;;
+  esac
+done
+EOS
+      chmod 755 "$S/stubs/dnf" ;;
+    apt)
+      # apt-cache policy prints nothing and still exits 0 for a name it does
+      # not know, which is why the check reads its output rather than its status.
+      cat > "$S/stubs/apt-cache" <<'EOS'
+#!/bin/bash
+[ "$1" = policy ] || exit 0
+case "$PM_KNOWN" in *" $2 "*) echo "$2:"; echo "  Candidate: 1.0" ;; esac
+EOS
+      cat > "$S/stubs/apt-get" <<'EOS'
+#!/bin/bash
+echo "apt-get $*" >> "$PM_LOG"
+EOS
+      chmod 755 "$S/stubs/apt-cache" "$S/stubs/apt-get" ;;
+    pacman)
+      cat > "$S/stubs/pacman" <<'EOS'
+#!/bin/bash
+[ "$1" = -Si ] && { case "$PM_KNOWN" in *" $2 "*) exit 0 ;; *) exit 1 ;; esac; }
+echo "pacman $*" >> "$PM_LOG"
+EOS
+      chmod 755 "$S/stubs/pacman" ;;
+  esac
+}
+PMEOF
+# shellcheck source=/dev/null
+source "$S/pm-stub.sh"
+
+# expect_command '<label>' '<setup>' '<the exact command, or "" for none>'
+expect_command() {
+  local out got
+  out="$(run "$2")"
+  got="$(grep '^C: ' <<<"$out" | sed 's/^C: //')"
+  if completed "$out" && [ "$got" = "$3" ]; then ok "$1"; else no "$1 — wanted '${3:-no command}', got '${got:-none}' in: $out"; fi
+}
+
+# The three managers, each building its own command from the same two gaps.
+expect_command "dnf: one command for both gaps" \
+  'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub dnf pulseaudio-utils make' \
+  'sudo dnf install -y make pulseaudio-utils'
+expect_command "apt: updates first, in the command shown" \
+  'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub apt pulseaudio-utils make' \
+  'sudo apt-get update && sudo apt-get install -y make pulseaudio-utils'
+expect_command "pacman: -S --needed" \
+  'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub pacman libpulse make' \
+  'sudo pacman -S --needed make libpulse'
+# Never a database refresh and never a system upgrade: both are the user's call.
+out="$(run 'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub pacman libpulse make')"
+if completed "$out" && ! grep -qE '^C: .*-Sy' <<<"$out"; then ok "pacman: no -Sy and no -Syu"; else no "pacman refreshed the database — got: $out"; fi
+
+# The guard. A name this machine does not know is never printed.
+expect_command "guard: a manager that knows nothing offers nothing" \
+  'rm "$S/stubs/pactl"; pm_stub dnf' \
+  ''
+expect_command "guard: only the names it does know" \
+  'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub dnf make' \
+  'sudo dnf install -y make'
+# The Fedora cell that would have been wrong: nodejs does not exist there, and
+# the candidate list falls through to the versioned package that does.
+expect_command "candidates: falls past a name this release dropped" \
+  'rm "$S/stubs/node"; pm_stub dnf nodejs22-bin' \
+  'sudo dnf install -y nodejs22-bin'
+expect_command "candidates: prefers the newest it finds" \
+  'rm "$S/stubs/node"; pm_stub dnf nodejs24-bin nodejs22-bin' \
+  'sudo dnf install -y nodejs24-bin'
+
+# What is deliberately not offered.
+expect_command "no package manager this script knows: no command" \
+  'rm "$S/stubs/pactl" "$S/stubs/make"' \
+  ''
+expect_command "a node that is present but too old is advice, not a package" \
+  'export STUB_NODE_VERSION=20.19.0; pm_stub dnf nodejs24-bin nodejs22-bin npm' \
+  ''
+expect_command "a node at the wrong path is advice, not a package" \
+  'SERVICE_NODE=/usr/bin/node-elsewhere; pm_stub dnf nodejs24-bin' \
+  ''
+expect_command "/dev/uinput missing: nothing a package fixes" \
+  'UINPUT_NODE="$S/no-such-node"; pm_stub dnf pulseaudio-utils make' \
+  ''
+expect_command "a node that is absent is offered" \
+  'rm "$S/stubs/node" "$S/stubs/npm"; pm_stub apt nodejs npm' \
+  'sudo apt-get update && sudo apt-get install -y nodejs npm'
+
+# --- What actually runs, and when ---------------------------------------------
+
+# No terminal to ask at: the command is shown, and nothing is run.
+out="$(entry 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' preflight)"
+if grep -q 'rc=1$' <<<"$out" && grep -q 'no terminal here to ask at' <<<"$out" \
+   && grep -q 'sudo dnf install -y pulseaudio-utils' <<<"$out" && [ ! -s "$S/pm.log" ]; then
+  ok "no tty: the command is named, nothing is run, the install still refuses"
+else
+  no "no tty — got: $out; log: $(cat "$S/pm.log" 2>/dev/null)"
+fi
+
+# check names the command and never runs it.
+out="$(entry 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' cmd_check)"
+if grep -q 'rc=1$' <<<"$out" && grep -q 'sudo dnf install -y pulseaudio-utils' <<<"$out" \
+   && grep -q 'offers to run it for you' <<<"$out" && [ ! -s "$S/pm.log" ]; then
+  ok "check: names the command, runs nothing, exit 1"
+else
+  no "check with an installable gap — got: $out; log: $(cat "$S/pm.log" 2>/dev/null)"
+fi
+
+# Whether the command covers the whole list is said only when it does not.
+# This line once fired every time: the caller read the command through $(...),
+# so the package list it compared against had been built in a subshell and was
+# empty by the time it looked.
+out="$(entry 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' preflight)"
+if ! grep -q 'does not cover the whole list' <<<"$out"; then
+  ok "the command covers everything: no caveat"
+else
+  no "claimed to be partial while covering everything — got: $out"
+fi
+out="$(entry 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; UINPUT_NODE="$S/no-such-node"; pm_stub dnf pulseaudio-utils' preflight)"
+if grep -q 'does not cover the whole list' <<<"$out"; then
+  ok "the command covers part of it: says so"
+else
+  no "partial coverage went unsaid — got: $out"
+fi
+
+# check's header names the manager and what every cell resolves to here —
+# with nothing missing. That is the case it exists for: without it, the Nobara
+# rehearsal on a machine that already has everything would show no names at all.
+out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers nodejs22-bin nodejs24-npm-bin' cmd_check)"
+if grep -q 'rc=0$' <<<"$out" \
+   && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers pactl=pulseaudio-utils' <<<"$out"; then
+  ok "check header: every name, though nothing is missing"
+else
+  no "check header with nothing missing — got: $out"
+fi
+out="$(entry 'pm_stub dnf gcc make kernel-headers nodejs24-bin nodejs24-npm-bin' cmd_check)"
+grep -q '  packages  dnf: .* pactl=?$' <<<"$out" \
+  && ok "check header: a name this machine does not know shows as ?" || no "unknown name in header — got: $out"
+out="$(entry 'pm_stub apt nodejs npm make gcc linux-libc-dev pulseaudio-utils apparmor' cmd_check)"
+grep -q '  packages  apt: .* apparmor-parser=apparmor$' <<<"$out" \
+  && ok "check header: apt lists its apparmor cell" || no "apt header — got: $out"
+out="$(entry '' cmd_check)"
+grep -q '  packages  none this script knows' <<<"$out" \
+  && ok "check header: no known manager, said so" || no "no-manager header — got: $out"
+
+# --- The prompt, over a real terminal -----------------------------------------
+#
+# The claim being tested is the one that makes answering "yes" safe: the command
+# printed is the command run. That needs a tty, because the offer deliberately
+# does not appear without one, so these drive the script through a pty.
+cat > "$S/pty-driver.py" <<'EOS'
+import os, pty, select, sys
+answer, cmd = sys.argv[1], sys.argv[2:]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(cmd[0], cmd)
+os.write(fd, (answer + "\n").encode())
+chunks = []
+while True:
+    r, _, _ = select.select([fd], [], [], 30)
+    if not r:
+        break
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    chunks.append(data)
+_, status = os.waitpid(pid, 0)
+sys.stdout.write(b"".join(chunks).decode(errors="replace").replace("\r", ""))
+sys.stdout.write("\nrc=%d\n" % os.waitstatus_to_exitcode(status))
+EOS
+
+pty_run() {   # pty_run '<setup>' '<answer>' '<function>' — over a real pty
+  rm -rf "$S/stubs" "$S/sys"; cp -a "$S/stubs.orig" "$S/stubs"
+  mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"; touch "$S/uinput.h"
+  cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
+  rm -f "$S/pm.log"
+  cat > "$S/pty-run.sh" <<EOS
+S="$S"
+source "$S/pm-stub.sh"
+source "$S/fns.sh"
+export PATH="$S/stubs:$S/base" HOME="$S/home"
+REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"
+SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"
+LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"
+APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"; APPARMOR_PROFILE_DST="$S/installed.apparmor"
+$1
+$3
+EOS
+  python3 "$S/pty-driver.py" "$2" bash "$S/pty-run.sh" 2>&1
+}
+
+if ! has_python3=$(command -v python3); then
+  echo "SKIP  the prompt over a terminal — no python3 to open a pty"
+else
+  out="$(pty_run 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' y preflight)"
+  shown="$(grep -o 'sudo dnf install -y.*' <<<"$out" | head -1)"
+  ran="$(sed -n 's/^dnf /sudo dnf /p' "$S/pm.log" 2>/dev/null | head -1)"
+  if [ -n "$shown" ] && [ "$shown" = "$ran" ]; then
+    ok "yes: the command that was shown is the command that ran"
+  else
+    no "shown vs ran — shown '$shown', ran '$ran', out: $out"
+  fi
+  if grep -q 'rc=0$' <<<"$out" && grep -q 'Checking this machine again' <<<"$out" \
+     && grep -q 'Every requirement is met' <<<"$out"; then
+    ok "yes: the re-check finds the gap closed and the install goes ahead"
+  else
+    no "round trip — got: $out"
+  fi
+
+  out="$(pty_run 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' n preflight)"
+  if grep -q 'rc=1$' <<<"$out" && grep -q 'nothing was changed' <<<"$out" && [ ! -s "$S/pm.log" ]; then
+    ok "no: nothing is run and the install refuses"
+  else
+    no "answering no — got: $out; log: $(cat "$S/pm.log" 2>/dev/null)"
+  fi
+
+  # Enter alone is no: the prompt is [y/N] and it has to mean it.
+  out="$(pty_run 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' '' preflight)"
+  if grep -q 'rc=1$' <<<"$out" && [ ! -s "$S/pm.log" ]; then
+    ok "just Enter: nothing is run"
+  else
+    no "answering with Enter — got: $out; log: $(cat "$S/pm.log" 2>/dev/null)"
+  fi
+
+  # check changes nothing, and the only way to prove it is over a terminal:
+  # without one the offer declines to ask, so a "check" that had started
+  # offering would look identical to one that had not. Answer y and require
+  # that nothing was asked and nothing was run.
+  out="$(pty_run 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf pulseaudio-utils' y cmd_check)"
+  if ! grep -q 'Run this now' <<<"$out" && [ ! -s "$S/pm.log" ] && grep -q 'sudo dnf install -y pulseaudio-utils' <<<"$out"; then
+    ok "check at a terminal: names the command, never asks, never runs"
+  else
+    no "check offered to install — got: $out; log: $(cat "$S/pm.log" 2>/dev/null)"
+  fi
+
+  # One offer only: a package that did not close the gap is not asked about again.
+  out="$(pty_run 'rm -f "$S/pm.log"; rm "$S/stubs/pactl"; pm_stub dnf make' y preflight)"
+  if grep -q 'rc=1$' <<<"$out" && [ "$(grep -c 'Run this now' <<<"$out")" -le 1 ]; then
+    ok "one offer and one re-check, never a loop"
+  else
+    no "offered more than once — got: $out"
+  fi
+fi
 
 exit $fail

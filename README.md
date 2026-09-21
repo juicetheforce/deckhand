@@ -26,15 +26,48 @@ ever receives numeric keycodes — every human-readable key name lives in
 
 ## Requirements
 
-- Node.js 20 or newer, installed from your distribution's packages at
+- Node.js 22.12 or newer, installed from your distribution's packages at
   `/usr/bin/node` (the service runs that path), plus `npm`
-- `gcc` and `make` (`sudo dnf install nodejs npm gcc make`)
-- `pactl` (comes with pipewire-pulseaudio)
+- `gcc` and `make`, to build the key-injection helper
+- Your distribution's kernel headers for userspace, for
+  `/usr/include/linux/uinput.h`
+- `pactl`, for the audio keys. This is **pulseaudio-utils** on Fedora, Debian
+  and Ubuntu alike — not pipewire-pulseaudio, which ships only the server. A
+  machine can be running PipeWire and still not have the command.
 - A desktop session with a systemd user manager and a session D-Bus
 - Network access during install, for `npm ci`
 
-The install script checks for all of these and stops with a message if one is
-missing. It does not install them for you.
+Don't work the package names out yourself. The install script checks every one
+of these before it changes anything, names all of them at once rather than
+stopping at the first, and then offers **one command** for whatever your
+distribution calls them:
+
+```
+Some of that can come from this machine's own packages:
+  sudo dnf install -y make gcc pulseaudio-utils
+Run this now? [y/N]
+```
+
+Nothing runs until you answer, the command you see is exactly the command that
+runs, and `scripts/install.sh check` prints the same thing without offering to
+run anything. Its header also lists the package every requirement maps to on
+your machine, even when nothing is missing, so you can read the names before
+the first install. It knows apt, dnf and pacman; on anything else it names what is
+missing and leaves the installing to you.
+
+Two things it will not install for you, on purpose:
+
+- **A Node that is present but too old**, or one that is not at `/usr/bin/node`.
+  Rearranging an existing Node install is your business, not a script's. If
+  your distribution's own Node is older than 22.12 — Debian stable ships 20 —
+  you need nvm or a third-party repository, and this script will not add one.
+- **Anything no package fixes**: `/dev/uinput` missing (`sudo modprobe uinput`),
+  a desktop that never reaches `graphical-session.target`, a session with no
+  seat.
+
+On Fedora 44 the whole set is `sudo dnf install nodejs24-bin nodejs24-npm-bin
+gcc make kernel-headers pulseaudio-utils` — note that Fedora has no
+unversioned `nodejs` package; `/usr/bin/node` comes from `nodejsNN-bin`.
 
 ## Install
 
