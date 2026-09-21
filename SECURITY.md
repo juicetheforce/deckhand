@@ -10,9 +10,8 @@ Use GitHub's private vulnerability reporting: the repository's **Security**
 tab, then **Report a vulnerability**. Please don't open a public issue for a
 security problem.
 
-Deckhand is maintained by one person. Reports are read and answered on a
-best-effort basis; there is no promised response time. Only the latest
-release is supported.
+This is a one-person project. I'll acknowledge a report as soon as I can,
+usually within a few days. Only the latest release is supported.
 
 ## What is in scope
 
