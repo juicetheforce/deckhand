@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { KEYS } from '../../../src/keymap.js';
 import type { SystemShortcut } from '../shared/bridge.js';
 
 /**
@@ -137,5 +136,3 @@ export async function findSystemShortcut(combo: string, run: BusctlRunner = runB
   return null;
 }
 
-/** For tests: every daemon key name the table covers. */
-export const QT_TABLE_NAMES = (): string[] => Object.keys(QT_KEYS).filter((name) => KEYS[name] !== undefined);

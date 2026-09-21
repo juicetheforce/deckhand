@@ -184,8 +184,6 @@ export interface DeckhandBridge {
   stopIconWatch(): Promise<void>;
   /** Images below a folder whose name contains the query. A newer call supersedes an unfinished one. */
   searchIcons(folder: string, query: string): Promise<IconSearchResult>;
-  /** The system folder dialog; null if cancelled. */
-  chooseIconFolder(current: string | null): Promise<string | null>;
   /**
    * Set a key's icon to one of its three states (scope §10) — or, with `slot`,
    * one icon of its action's state pair (C2) — save, and once the daemon has

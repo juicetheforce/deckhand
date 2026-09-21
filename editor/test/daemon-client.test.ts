@@ -41,7 +41,7 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 /** Resolve once the client's view satisfies a condition, or fail after a while. */
-function until(views: DaemonView[], client: DaemonClient, condition: (v: DaemonView) => boolean, ms = 3000): Promise<DaemonView> {
+function until(client: DaemonClient, condition: (v: DaemonView) => boolean, ms = 3000): Promise<DaemonView> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const poll = () => {
@@ -71,7 +71,7 @@ const { client, views } = newClient(daemon.socket);
 client.start();
 
 await check('connects, subscribes, and reads status and geometry', async () => {
-  const v = await until(views, client, (x) => x.connected);
+  const v = await until(client, (x) => x.connected);
   assert.equal(v.problem, null);
   assert.equal(v.status?.activeProfile?.id, 'default');
   assert.equal(v.status?.protocol, 1);
@@ -86,7 +86,7 @@ await check('connects, subscribes, and reads status and geometry', async () => {
 
 await check('a deck attaching is picked up from the state event, with its geometry', async () => {
   await daemon.attach(V2, new FakeDeck({ columns: 5, rows: 3, pixels: 72, model: 'original-v2', productName: 'Fake V2' }));
-  const v = await until(views, client, (x) => (x.decks ?? []).some((d) => d.serial === V2));
+  const v = await until(client, (x) => (x.decks ?? []).some((d) => d.serial === V2));
   const v2 = v.decks!.find((d) => d.serial === V2)!;
   assert.equal(v2.keyCount, 15);
   assert.equal(v2.iconSize, 72);
@@ -95,7 +95,7 @@ await check('a deck attaching is picked up from the state event, with its geomet
 await check('a config event updates lastReload', async () => {
   daemon.state.lastReload = { ok: false, at: 'later', error: 'refused for the test' };
   daemon.events.config();
-  const v = await until(views, client, (x) => x.status?.config.lastReload.at === 'later');
+  const v = await until(client, (x) => x.status?.config.lastReload.at === 'later');
   assert.equal(v.status?.config.lastReload.error, 'refused for the test');
 });
 
@@ -106,9 +106,9 @@ await check('previewSet renders on the fake deck and shows in state; previewClea
   const savedImage = xl.images.get(3);
   await client.previewSet(XL, 3, { label: 'previewed', background: '#ff0000' });
   assert.ok((xl.writes.get(3) ?? 0) > before, 'nothing written to key 3');
-  await until(views, client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
+  await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
   await client.previewClear(XL, 3);
-  await until(views, client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
+  await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
   assert.ok(xl.images.get(3)?.equals(savedImage), 'key 3 not restored to its saved image');
 });
 
@@ -134,18 +134,18 @@ console.log('the daemon going away and coming back');
 await check('a daemon stopping is reported, pending requests reject, and the client reconnects when it returns', async () => {
   const pending = client.previewSet(XL, 6, { label: 'in flight' }).catch((err) => err);
   await daemon.stop();
-  const down = await until(views, client, (x) => !x.connected);
+  const down = await until(client, (x) => !x.connected);
   assert.ok(down.problem, 'no problem reported');
   assert.equal(down.status, null);
   // A request left unsettled would hang this test instead of failing it.
   const result = await Promise.race([pending, sleep(2000).then(() => 'still pending after 2 s')]);
   // Rejected at once by the close — not left to the 10 s reply timeout — unless the reply beat the stop.
   assert.ok(result === undefined || (result instanceof DaemonError && result.code === 'closed'), `pending request: ${String(result)}`);
-  await until(views, client, (x) => /not running/.test(x.problem ?? ''), 2000);
+  await until(client, (x) => /not running/.test(x.problem ?? ''), 2000);
 
   daemon = await startDaemon(dir, CONFIG);
   await daemon.attach(XL, new FakeDeck());
-  const up = await until(views, client, (x) => x.connected && (x.decks ?? []).some((d) => d.serial === XL), 3000);
+  const up = await until(client, (x) => x.connected && (x.decks ?? []).some((d) => d.serial === XL), 3000);
   assert.equal(up.problem, null);
   assert.equal(up.status?.activeProfile?.id, 'default');
 });
@@ -171,9 +171,9 @@ await check('no daemon at start: reports "not running", then connects when it ap
   const lateDir: string = await scratchDir();
   const late = newClient(path.join(lateDir, 'c.sock'));
   late.client.start();
-  await until(late.views, late.client, (x) => /not running/.test(x.problem ?? ''));
+  await until(late.client, (x) => /not running/.test(x.problem ?? ''));
   const lateDaemon = await startDaemon(lateDir, CONFIG);
-  await until(late.views, late.client, (x) => x.connected, 3000);
+  await until(late.client, (x) => x.connected, 3000);
   late.client.stop();
   await lateDaemon.stop();
   await fs.rm(lateDir, { recursive: true, force: true });
@@ -199,7 +199,7 @@ await check('a socket that accepts but never answers: the handshake times out an
   await new Promise<void>((resolve) => silent.listen(silentPath, resolve));
   const c = newClient(silentPath, { replyTimeoutMs: 150 });
   c.client.start();
-  await until(c.views, c.client, (x) => /did not answer/.test(x.problem ?? ''));
+  await until(c.client, (x) => /did not answer/.test(x.problem ?? ''));
   const started = Date.now();
   while (connections < 2 && Date.now() - started < 2000) await sleep(20);
   assert.ok(connections >= 2, `connections: ${connections}`);
@@ -216,7 +216,7 @@ await check('audio device lists: null until the daemon has read them, then kept 
   const withAudio = await startDaemon(audioDir, CONFIG, { audioState: () => state });
   const first = newClient(withAudio.socket);
   first.client.start();
-  let v = await until(first.views, first.client, (x) => x.connected);
+  let v = await until(first.client, (x) => x.connected);
   assert.equal(v.audio, null, 'the daemon answers "internal" before it has read audio state');
   state = {
     sinks: [],
@@ -229,7 +229,7 @@ await check('audio device lists: null until the daemon has read them, then kept 
     defaultSource: 'in.a',
   };
   withAudio.events.audio();
-  v = await until(first.views, first.client, (x) => (x.audio?.sinks.devices.length ?? 0) > 0);
+  v = await until(first.client, (x) => (x.audio?.sinks.devices.length ?? 0) > 0);
   assert.deepEqual(v.audio, {
     sinks: { default: 'out.a', devices: [{ node: 'out.a', label: 'Speakers', available: 'yes' }] },
     sources: { default: 'in.a', devices: [{ node: 'in.a', label: 'Desk mic', available: 'yes' }] },
@@ -237,7 +237,7 @@ await check('audio device lists: null until the daemon has read them, then kept 
   first.client.stop();
   const second = newClient(withAudio.socket);
   second.client.start();
-  v = await until(second.views, second.client, (x) => x.connected);
+  v = await until(second.client, (x) => x.connected);
   assert.equal(v.audio?.sinks.devices[0]?.node, 'out.a', 'read at connect');
   second.client.stop();
   await withAudio.stop();

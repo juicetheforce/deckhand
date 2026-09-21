@@ -417,9 +417,6 @@ async function main(): Promise<void> {
 
   const stopWatching = watchConfig(() => void reload());
 
-  const invalidateAll = () => {
-    for (const session of sessions.values()) session.invalidate();
-  };
   const stopAudio = audioService.subscribe(() => {
     sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.source', 'audio.micMute', 'audio.volume', 'audio.mute']));
     events?.audio();
@@ -479,9 +476,6 @@ async function main(): Promise<void> {
   process.on('unhandledRejection', (reason) => {
     console.error(`[main] unhandled rejection: ${String(reason)}`);
   });
-
-  // Referenced so a future editor connection can force a full repaint.
-  void invalidateAll;
 }
 
 void main();

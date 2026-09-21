@@ -304,11 +304,6 @@ export async function toggleMicMute(): Promise<void> {
   await refreshCache();
 }
 
-export async function setMicMute(muted: boolean): Promise<void> {
-  await pactl(['set-source-mute', '@DEFAULT_SOURCE@', muted ? '1' : '0']);
-  await refreshCache();
-}
-
 export async function adjustVolume(deltaPercent: number): Promise<void> {
   const arg = deltaPercent >= 0 ? `+${deltaPercent}%` : `${deltaPercent}%`;
   await pactl(['set-sink-volume', '@DEFAULT_SINK@', arg]);

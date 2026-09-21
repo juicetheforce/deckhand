@@ -54,19 +54,6 @@ function rejectDuplicateNames(
   }
 }
 
-/**
- * The v0.1 format kept pages directly under each deck. It is refused rather
- * than read, so there is only ever one format; scripts/migrate-config.mjs
- * converts it.
- */
-function isV01(c: Record<string, unknown>): boolean {
-  return (
-    c.profiles === undefined &&
-    isObject(c.decks) &&
-    Object.values(c.decks).some((deck) => isObject(deck) && 'pages' in deck)
-  );
-}
-
 function validateLayout(layout: unknown, where: string): void {
   if (!isObject(layout)) throw new Error(`${where} must be an object`);
   if (!isObject(layout.pages)) throw new Error(`${where} is missing a "pages" object`);
@@ -91,16 +78,8 @@ function validateLayout(layout: unknown, where: string): void {
   }
 }
 
-/** Exported for scripts/migrate-config.mjs and the smoke test. */
 export function validateConfig(config: unknown): Config {
   if (!isObject(config)) throw new Error('config must be a JSON object');
-
-  if (isV01(config)) {
-    throw new Error(
-      'config.json is in the old v0.1 format (pages directly under "decks"). ' +
-        'Convert it by running scripts/migrate-config.mjs from the Deckhand checkout.',
-    );
-  }
 
   if (config.decks !== undefined) {
     if (!isObject(config.decks)) throw new Error('"decks" must be an object');

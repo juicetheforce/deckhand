@@ -11,7 +11,7 @@ import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
 import { BUILTIN_ICONS } from '../../src/default-icons.js';
-import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue } from '../src/renderer/catalogue.js';
+import { CATALOGUE, libraryIcon, searchCatalogue } from '../src/renderer/catalogue.js';
 import { STEP_TYPES, multiTotal, stepEditable, stepSummary } from '../src/renderer/steps.js';
 import {
   canSwitchDeck,
@@ -103,19 +103,13 @@ await check("every action in the daemon's registry is in the catalogue (scope §
   assert.deepEqual(Object.keys(registry).filter((type) => !listed.has(type)), []);
 });
 
-await check('the library enables exactly the actions with a form, and greys the rest', () => {
-  const entries = CATALOGUE.flatMap((g) => g.entries);
-  for (const e of entries) assert.equal(e.editable, hasForm(e.type), e.type);
-  const editable = entries.filter((e) => e.editable).map((e) => e.type);
-  // C2 piece 4 adds the forms that need no device, text or list; piece 5 the device pickers.
-  // Piece 6: text, command, Press/Release.
-  // Piece 7: Multi action — every action in the catalogue now has a form.
-  // 2026-09-17: audio.cycleSource (Cycle inputs), the mirror of audio.cycle (scope §6).
-  // 2026-09-20: toggle, M7's latching toggle.
-  assert.deepEqual(editable.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
-  assert.equal(entries.filter((e) => !e.editable).length, 0, 'C2 exit: every §6 action can be configured'); 
-  // Every editable entry must have an inspector that will accept a bare key.
-  for (const type of editable) assert.equal(actionEditable(undefined, type), true, type);
+await check('every library entry has a form, and its form accepts a bare key', () => {
+  const types = CATALOGUE.flatMap((g) => g.entries).map((e) => e.type);
+  for (const type of types) {
+    assert.equal(hasForm(type), true, `${type} is in the library with no form`);
+    assert.equal(actionEditable(undefined, type), true, type);
+  }
+  assert.deepEqual(types.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
 });
 
 console.log('the navigation guard (M4 phase B, B2)');
@@ -208,23 +202,6 @@ await check('aliases add only what the name and description do not already say',
       }
     }
   }
-});
-
-await check('every greyed library entry says why, and daemon-blocked ones say so differently', () => {
-  // Greyed entries shrink to none as C2 adds forms, so the reasons are also
-  // checked on made-up entries rather than on whichever are still greyed.
-  const later = CATALOGUE.flatMap((g) => g.entries.filter((e) => !e.editable));
-  for (const entry of later) {
-    assert.ok(entry.pending, `${entry.type} is greyed with no reason`);
-    assert.match(pendingReason(entry), /\S/);
-  }
-  // Nothing is blocked on daemon work any more: audio.sink and audio.cycle
-  // left with C1 piece 1 (node + label), audio.mute with piece 3 (its face).
-  // The daemon reason stays for whatever needs daemon work next.
-  assert.deepEqual(later.filter((e) => e.pending === 'daemon').map((e) => e.type), []);
-  const entry = { type: 'x', name: 'X', description: 'x', editable: false } as const;
-  assert.match(pendingReason({ ...entry, pending: 'daemon' }), /daemon work/);
-  assert.match(pendingReason({ ...entry, pending: 'inspector' }), /by hand/);
 });
 
 await check('an action is editable only when the inspector knows every field on it', () => {

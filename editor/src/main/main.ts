@@ -231,7 +231,7 @@ async function testRun(serial: string, action: ActionDef): Promise<DaemonResult>
 // The editor's own preferences (scope §10), in Electron's userData — never
 // beside config.json, which belongs to the daemon.
 const preferences = new Preferences(path.join(app.getPath('userData'), 'preferences.json'));
-const bookmarks = new Bookmarks(preferences, path.join(app.getPath('userData'), 'icon-picker.json'));
+const bookmarks = new Bookmarks(preferences);
 const folderWatcher = new FolderWatcher((folder) => window?.webContents.send('iconFolderChanged', folder));
 const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps', stamps));
 /** Bumped by every search; a walk still running for an older number stops. */
@@ -762,15 +762,6 @@ function registerIpc(): void {
       ? searchIcons(folder, query)
       : { ok: false, error: 'not allowed' },
   );
-  ipcMain.handle('chooseIconFolder', async (event, current: unknown) => {
-    if (!fromOurWindow(event) || !window) return null;
-    const picked = await dialog.showOpenDialog(window, {
-      title: 'Choose an icon folder',
-      properties: ['openDirectory'],
-      defaultPath: typeof current === 'string' ? current : undefined,
-    });
-    return picked.canceled ? null : (picked.filePaths[0] ?? null);
-  });
   ipcMain.handle('collapsedLibrary', async (event) => {
     if (!fromOurWindow(event)) return [];
     const saved = (await preferences.read()).collapsedLibrary;

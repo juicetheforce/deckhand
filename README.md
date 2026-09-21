@@ -127,26 +127,6 @@ node ~/.local/share/deckhand/dist/index.js --list
 names are `REPLACE-WITH-…` placeholders, not values that will work on your
 machine.
 
-### Converting a config from before profiles
-
-Configs written before profiles existed (v0.1) kept pages directly under each
-deck. The daemon refuses that format and logs a message saying so. Convert it
-once, from the checkout, with the service stopped:
-
-```bash
-systemctl --user stop deckhand
-npm run build:ts
-node scripts/migrate-config.mjs --dry-run   # optional: print the result, write nothing
-node scripts/migrate-config.mjs
-scripts/install.sh update                   # installs and starts the daemon that reads it
-```
-
-Every deck becomes a layout in one profile, `default`. Buttons are copied
-unchanged, page names become page IDs (so existing `page` links still work),
-and the original is kept as `~/.config/deckhand/config.v0.1.json`. If you ever
-need to go back to a daemon from before profiles, copy that file back over
-`config.json`.
-
 ## Update, uninstall, and the service
 
 ```bash

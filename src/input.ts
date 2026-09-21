@@ -182,11 +182,6 @@ class InputBridge {
     return () => this.keyboardLostListeners.delete(listener);
   }
 
-  /** Keycodes `source` currently holds. For the control socket's tests and logs. */
-  heldBy(source: InputSource): number[] {
-    return [...this.held[source]];
-  }
-
   /** Press and hold a combo for `ms`, then release. */
   async hold(combo: string, ms: number): Promise<void> {
     const codes = parseCombo(combo).join(' ');

@@ -8,8 +8,8 @@
 // show the folder is watched. Afterwards it checks the saved config.json, the
 // editor's preferences file and the deck.
 //
-// The old recent-folders file is seeded, so the bookmarks row proves it is
-// carried over rather than opening empty (scope §10).
+// Two bookmarks are seeded in the editor's preferences file, so the bookmarks
+// row and the opening folder have something to show.
 //
 // Usage: npm run check:icons   (builds first)
 
@@ -86,10 +86,10 @@ const CONFIG = {
 };
 await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
 
-// An old recents file: the bookmarks row is seeded from it on first read.
-const SEEDED_RECENTS = [path.join(icons, 'FFXIV/WOLF'), path.join(icons, 'FFXIV')];
+// Bookmarks as the editor stores them: oldest first.
+const SEEDED_BOOKMARKS = [path.join(icons, 'FFXIV'), path.join(icons, 'FFXIV/WOLF')];
 await fs.mkdir(path.join(stateDir, 'editor'), { recursive: true });
-await fs.writeFile(path.join(stateDir, 'editor', 'icon-picker.json'), JSON.stringify({ recentFolders: SEEDED_RECENTS }, null, 2) + '\n');
+await fs.writeFile(path.join(stateDir, 'editor', 'preferences.json'), JSON.stringify({ bookmarks: SEEDED_BOOKMARKS }, null, 2) + '\n');
 
 const daemon = await startDaemon(scratch, CONFIG);
 const deck = new FakeDeck();
@@ -181,7 +181,7 @@ check('electron ran the check', () => {
 });
 if (r && !r.error) {
   check('with no icon set, the picker opens at the newest bookmark', () =>
-    assert.equal(r.startWithNothing, SEEDED_RECENTS[0], 'the newest of the seeded bookmarks'));
+    assert.equal(r.startWithNothing, SEEDED_BOOKMARKS.at(-1), 'the newest of the seeded bookmarks'));
   check('the grid draws a broken icon path with the built-in missing icon (loaded under the CSP); a good icon is not', () => {
     assert.deepEqual([r.missingInGrid, r.goodIconNotMissing], [true, true]);
   });
@@ -207,7 +207,7 @@ if (r && !r.error) {
   });
   check('arrow keys move the selection, and choose', () => assert.deepEqual([r.arrowLeft, r.arrowRight], [true, true]));
   check('choices faster than saves: the last wins, even going back to the icon the key already had', () => assert.equal(r.lastChoiceWins, true));
-  check('the bookmarks row is seeded from the old recents file, oldest first, each chip named for its folder alone', () => {
+  check('the bookmarks row shows the stored bookmarks, oldest first, each chip named for its folder alone', () => {
     // The folder's own name, nothing else (the maintainer): the full path is the tooltip.
     assert.deepEqual(r.bookmarksSeeded, ['Built-in', '★ FFXIV', '★ WOLF', '+ Bookmark this folder']);
   });

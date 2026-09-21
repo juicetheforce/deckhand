@@ -13,8 +13,7 @@
  */
 
 /**
- * The pencil, from `edit.svg` in the mockups (`~/linux-stream-deck-interface/
- * project/Deck Mockups.dc.html`, added 2026-09-16).
+ * The pencil, from `edit.svg` in the design mockups.
  *
  * Drawn as in the mockup, with one deliberate change: the source hard-codes the
  * periwinkle `#8f9cf0`, and this takes `currentColor` instead. A fixed colour

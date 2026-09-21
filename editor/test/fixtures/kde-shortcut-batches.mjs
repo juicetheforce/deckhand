@@ -1,7 +1,8 @@
-// The combos proof 0b injects (docs/scope.md §7, M4 phase A), in batches
-// the maintainer watches. Never add: alt+f4 or meta+ctrl+esc (close or kill the probe),
-// ctrl+alt+del (log out), meta+l (lock), meta+b (power profile), any
-// ctrl+alt+F-key (switches virtual terminal), any sysrq combo.
+// Combos measured once against KDE Plasma's global shortcuts, by injecting
+// each and watching whether a focused window received it; each batch's title
+// says what it holds. Data for the real-KDE part of
+// test/system-shortcuts.test.ts (DECKHAND_TEST_REAL_KGLOBALACCEL=1), which
+// records which of them KDE grabbed.
 
 const DIGITS_ETC = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 const F1_12 = Array.from({ length: 12 }, (_, i) => `f${i + 1}`);

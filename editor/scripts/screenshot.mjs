@@ -3,7 +3,7 @@
 // daemon (M4 phase A, step 3). Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--recent <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused]
 //
 // --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
 // audio device forms; without it the daemon has no audio state to list.
@@ -80,7 +80,7 @@ const { values } = parseArgs({
     search: { type: 'string' },
     // Start with every library section collapsed, to show search reaching into them.
     collapse: { type: 'boolean' },
-    recent: { type: 'string', multiple: true },
+    bookmark: { type: 'string', multiple: true },
     'fake-audio': { type: 'boolean' },
     // The settings window's page instead of the editor's (Ship piece 3).
     settings: { type: 'boolean' },
@@ -141,11 +141,18 @@ if (values.collapse) {
   const groups = ['Keyboard', 'Navigation', 'Media', 'Audio', 'System'];
   await fs.writeFile(path.join(editorState, 'preferences.json'), JSON.stringify({ collapsedLibrary: groups }, null, 2) + '\n');
 }
-// Seed the picker's recent folders, so a screenshot can show the chips.
-if (values.recent?.length) {
+// Seed the picker's bookmarks, so a screenshot can show the chips.
+if (values.bookmark?.length) {
   const editorState = path.join(scratch, 'state', 'editor');
   await fs.mkdir(editorState, { recursive: true });
-  await fs.writeFile(path.join(editorState, 'icon-picker.json'), JSON.stringify({ recentFolders: values.recent.map((f) => path.resolve(f)) }, null, 2) + '\n');
+  const prefsFile = path.join(editorState, 'preferences.json');
+  let prefs = {};
+  try {
+    prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8'));
+  } catch {
+    // None seeded yet.
+  }
+  await fs.writeFile(prefsFile, JSON.stringify({ ...prefs, bookmarks: values.bookmark.map((f) => path.resolve(f)) }, null, 2) + '\n');
 }
 if (values.kept) {
   // Kept configurations (M5 piece 2d): the names and contents main reads.

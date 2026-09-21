@@ -1,6 +1,6 @@
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { builtinRef, iconUrl } from '../shared/icons.js';
-import { CATALOGUE, libraryIcon, pendingReason, searchCatalogue, type CatalogueEntry } from './catalogue.js';
+import { CATALOGUE, libraryIcon, searchCatalogue, type CatalogueEntry } from './catalogue.js';
 
 /**
  * The action library: the whole §6 catalogue, grouped (scope §10), each row
@@ -135,15 +135,10 @@ function Entry({
   const icon = libraryIcon(entry.type);
   return (
     <button
-      className={`library-entry${entry.editable ? '' : ' library-entry-later'}`}
-      title={
-        entry.editable
-          ? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`
-          : `${entry.description}\n\n${pendingReason(entry)}`
-      }
-      disabled={!entry.editable}
+      className="library-entry"
+      title={`${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
       data-action-type={entry.type}
-      onPointerDown={(e) => entry.editable && onDragStart?.(entry.type, e)}
+      onPointerDown={(e) => onDragStart?.(entry.type, e)}
       onClick={() => onPick(entry.type)}
     >
       {/* The same built-in the deck draws for a key with no icon of its own (scope §10). */}

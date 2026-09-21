@@ -4,9 +4,8 @@
  * Every type here is checked against the daemon's registry by
  * test/renderer-model.test.ts.
  *
- * `editable` is what the inspector can configure so far: every type with a
- * form (model.ts `hasForm`, which a test holds this to). Phase A: hotkey;
- * phase B: page and profile; phase C2 the rest, piece by piece (§7).
+ * Every entry has an inspector form (model.ts `hasForm`, which a test holds
+ * this to).
  */
 
 import { defaultIconFor, type BuiltinIcon } from '../../../src/default-icons.js';
@@ -15,18 +14,6 @@ export interface CatalogueEntry {
   type: string;
   name: string;
   description: string;
-  editable: boolean;
-  /**
-   * Why there is no inspector yet, for the tooltip on a greyed entry. Shown
-   * rather than hidden (the maintainer, 2026-09-16): an action you know exists but
-   * cannot see reads as broken, whereas greyed and explained reads as pending
-   * — the same reasoning as showing unrenderable files in the icon picker.
-   *
-   * - 'daemon': blocked on phase C1 daemon work, not just an inspector.
-   * - 'inspector': the action works today if written into config.json by
-   *   hand; only the editor's form is missing (phase C2).
-   */
-  pending?: 'daemon' | 'inspector';
   /**
    * Extra words the search box matches, beyond the name and description
    * (the maintainer, 2026-09-16). §2's discoverability point applied to search: someone
@@ -43,14 +30,6 @@ export interface CatalogueEntry {
   aliases?: readonly string[];
 }
 
-/** The tooltip for an entry with no inspector. */
-export function pendingReason(entry: CatalogueEntry): string {
-  if (entry.pending === 'daemon') {
-    return 'Needs daemon work before it can be configured here (phase C1). It is not usable by hand yet either.';
-  }
-  return 'Works today if you write it into config.json by hand — only the editor form is missing (phase C).';
-}
-
 export interface CatalogueGroup {
   name: string;
   entries: CatalogueEntry[];
@@ -60,47 +39,47 @@ export const CATALOGUE: CatalogueGroup[] = [
   {
     name: 'Keyboard',
     entries: [
-      { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', editable: true, aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
-      { type: 'text', name: 'Type text', description: 'Type a string, US layout', editable: true, aliases: ['phrase', 'paste', 'autotype', 'macro'] },
-      { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', editable: true, aliases: ['momentary', 'ptt', 'push to talk'] },
+      { type: 'hotkey', name: 'Hotkey', description: 'Send a key combo to the focused window', aliases: ['keys', 'shortcut', 'keybind', 'bind', 'keypress'] },
+      { type: 'text', name: 'Type text', description: 'Type a string, US layout', aliases: ['phrase', 'paste', 'autotype', 'macro'] },
+      { type: 'keyHold', name: 'Press / Release', description: 'Hold a key while the deck key is held', aliases: ['momentary', 'ptt', 'push to talk'] },
       // M7's latching toggle (scope §6).
-      { type: 'toggle', name: 'Toggle', description: 'Press to hold a key down, press again to release', editable: true, aliases: ['latch', 'latching', 'sticky', 'sprint'] },
-      { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', editable: true, aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
+      { type: 'toggle', name: 'Toggle', description: 'Press to hold a key down, press again to release', aliases: ['latch', 'latching', 'sticky', 'sprint'] },
+      { type: 'multi', name: 'Multi action', description: 'Several actions in order, with delays', aliases: ['sequence', 'steps', 'chain', 'macro', 'series'] },
     ],
   },
   {
     name: 'Navigation',
     entries: [
-      { type: 'page', name: 'Go to page', description: 'Show another page on this deck, or go back', editable: true, aliases: ['navigate', 'navigation', 'folder', 'menu', 'forward'] },
-      { type: 'profile', name: 'Switch profile', description: 'Change what every deck shows at once', editable: true, aliases: ['layout', 'mode', 'game', 'set'] },
+      { type: 'page', name: 'Go to page', description: 'Show another page on this deck, or go back', aliases: ['navigate', 'navigation', 'folder', 'menu', 'forward'] },
+      { type: 'profile', name: 'Switch profile', description: 'Change what every deck shows at once', aliases: ['layout', 'mode', 'game', 'set'] },
     ],
   },
   {
     name: 'Media',
     entries: [
-      { type: 'media.control', name: 'Media control', description: 'Play/pause, next, previous', editable: true, aliases: ['skip', 'track', 'transport', 'music'] },
-      { type: 'media.info', name: 'Now playing', description: 'Track and album art on the key', editable: true, aliases: ['song', 'artist', 'music'] },
+      { type: 'media.control', name: 'Media control', description: 'Play/pause, next, previous', aliases: ['skip', 'track', 'transport', 'music'] },
+      { type: 'media.info', name: 'Now playing', description: 'Track and album art on the key', aliases: ['song', 'artist', 'music'] },
     ],
   },
   {
     name: 'Audio',
     entries: [
-      { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', editable: true, aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
-      { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', editable: true, aliases: ['swap', 'headphones', 'speakers', 'next output'] },
-      { type: 'audio.source', name: 'Input device', description: 'Switch the default input', editable: true, aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
-      { type: 'audio.cycleSource', name: 'Cycle inputs', description: 'Step through a list of inputs', editable: true, aliases: ['swap', 'microphone', 'mic', 'next input', 'source'] },
-      { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', editable: true, aliases: ['microphone', 'unmute', 'talk'] },
-      { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', editable: true, aliases: ['louder', 'quieter', 'gain'] },
-      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', editable: true, aliases: ['silence', 'speakers'] },
+      { type: 'audio.sink', name: 'Output device', description: 'Switch the default output', aliases: ['speakers', 'headphones', 'headset', 'sound', 'sink', 'playback'] },
+      { type: 'audio.cycle', name: 'Cycle outputs', description: 'Step through a list of outputs', aliases: ['swap', 'headphones', 'speakers', 'next output'] },
+      { type: 'audio.source', name: 'Input device', description: 'Switch the default input', aliases: ['microphone', 'mic', 'headset', 'recording', 'source', 'capture'] },
+      { type: 'audio.cycleSource', name: 'Cycle inputs', description: 'Step through a list of inputs', aliases: ['swap', 'microphone', 'mic', 'next input', 'source'] },
+      { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', aliases: ['microphone', 'unmute', 'talk'] },
+      { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', aliases: ['louder', 'quieter', 'gain'] },
+      { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', aliases: ['silence', 'speakers'] },
     ],
   },
   {
     name: 'System',
     entries: [
-      { type: 'command', name: 'Run command', description: 'Start a program or shell command', editable: true, aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
-      { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", editable: true, aliases: ['dim', 'backlight', 'screen'] },
-      { type: 'clock', name: 'Clock', description: 'The time on the key', editable: true, aliases: ['watch', 'hour', 'date'] },
-      { type: 'noop', name: 'Nothing', description: 'A key that does nothing', editable: true, aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
+      { type: 'command', name: 'Run command', description: 'Start a program or shell command', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
+      { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", aliases: ['dim', 'backlight', 'screen'] },
+      { type: 'clock', name: 'Clock', description: 'The time on the key', aliases: ['watch', 'hour', 'date'] },
+      { type: 'noop', name: 'Nothing', description: 'A key that does nothing', aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
     ],
   },
 ];

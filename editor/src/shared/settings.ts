@@ -32,9 +32,6 @@ export type AccentName = (typeof ACCENTS)[number]['name'];
 
 export const DEFAULT_SETTINGS: AppSettings = { defaultDeck: null, closeToTray: true, accent: 'blue' };
 
-/** The keys of AppSettings, as they are named in preferences.json. */
-export const SETTINGS_KEYS: readonly (keyof AppSettings)[] = ['defaultDeck', 'closeToTray', 'accent'];
-
 function isAccent(value: unknown): value is AccentName {
   return ACCENTS.some((a) => a.name === value);
 }

@@ -487,10 +487,6 @@ export class DeckSession implements DeckHandle {
     }
   }
 
-  invalidate(): void {
-    void this.repaint();
-  }
-
   // -------------------------------------------------------------------------
   // Previews: an unsaved button shown on a key (docs/scope.md §7, preview.set)
   // -------------------------------------------------------------------------

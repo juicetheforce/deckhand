@@ -1317,9 +1317,9 @@ await check('a file in another format is not saved until the reformat is acknowl
   store.close();
 });
 
-await check('a v0.1 or otherwise invalid config is refused at open', async () => {
-  const v01 = await configFile(JSON.stringify({ decks: { X: { pages: { main: { buttons: {} } } } } }));
-  await assert.rejects(openStore(v01), /v0\.1/);
+await check('an invalid config is refused at open — one with no profiles, not JSON, or absent', async () => {
+  const noProfiles = await configFile(JSON.stringify({ decks: { X: { pages: { main: { buttons: {} } } } } }));
+  await assert.rejects(openStore(noProfiles), /missing a "profiles" object/);
   await assert.rejects(openStore(await configFile('{')), /not valid JSON/);
   await assert.rejects(openStore(path.join(TMP, 'absent', 'config.json')), /ENOENT/);
 });

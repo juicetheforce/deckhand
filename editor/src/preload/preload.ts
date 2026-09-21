@@ -35,7 +35,6 @@ const bridge: DeckhandBridge = {
   listIconFolder: (folder) => ipcRenderer.invoke('listIconFolder', folder),
   stopIconWatch: () => ipcRenderer.invoke('stopIconWatch'),
   searchIcons: (folder, query) => ipcRenderer.invoke('searchIcons', folder, query),
-  chooseIconFolder: (current) => ipcRenderer.invoke('chooseIconFolder', current),
   commitIcon: (at, icon, preview, slot) => ipcRenderer.invoke('commitIcon', at, icon, preview, slot),
   onIconFolderChanged: (callback) => subscribe<string>('iconFolderChanged', callback),
   appSettings: () => ipcRenderer.invoke('appSettings'),

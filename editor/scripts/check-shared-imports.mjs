@@ -84,7 +84,7 @@ check(`nothing new in ${userConfigHome}`, () => {
 
 const configDirEntries = await fs.readdir(configDir);
 check('nothing but config.json in the config directory', () => {
-  assert.deepEqual(configDirEntries.filter((name) => name !== 'config.json' && !name.startsWith('config.v0.1')), []);
+  assert.deepEqual(configDirEntries.filter((name) => name !== 'config.json'), []);
 });
 
 // The daemon's dependencies that must never reach the editor's bundles.

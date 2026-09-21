@@ -250,12 +250,6 @@ check(
   rejection({ profiles: { p: { layouts: { S: onePage } } } }) === null,
 );
 check(
-  'v0.1 config refused, naming the migration script',
-  rejection({ decks: { S: { startPage: 'main', pages: { main: { buttons: {} } } } } })?.includes(
-    'migrate-config.mjs',
-  ),
-);
-check(
   'two pages with the same name refused',
   rejection({
     profiles: { p: { layouts: { S: { pages: { a: { name: 'X', buttons: {} }, b: { name: 'X', buttons: {} } } } } } },

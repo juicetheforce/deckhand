@@ -37,7 +37,7 @@ import {
 import { BulkStatus, KeyMenu } from './KeyMenu.js';
 import { Notices } from './Notices.js';
 import { PaneDivider } from './PaneDivider.js';
-import { DEFAULT_PANE_WIDTHS, paneColumns, widthWhileDragging, type PaneName, type PaneWidths } from './panes.js';
+import { DEFAULT_PANE_WIDTHS, paneColumns, type PaneName, type PaneWidths } from './panes.js';
 import { Toolbar, type AddPageResult, type AddProfileResult } from './Toolbar.js';
 import { keyCapture } from './key-capture.js';
 import { useBulk } from './useBulk.js';

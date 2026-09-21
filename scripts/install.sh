@@ -45,11 +45,6 @@ UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
 APPARMOR_PROFILE_SRC="$REPO_DIR/apparmor/deckhand-editor"
 APPARMOR_PROFILE_DST="/etc/apparmor.d/deckhand-editor"
 
-# The unit file used to be copied into ~/.config/systemd/user/ and pointed at a
-# checkout in ~/src/deckhand. A unit there overrides the installed one, so an
-# old copy has to go. This line identifies that old copy.
-LEGACY_EXEC_LINE='ExecStart=/usr/bin/node %h/src/deckhand/dist/index.js'
-
 # How long the service must stay up, without restarting, to count as started.
 START_SETTLE_SECONDS=8
 
@@ -100,8 +95,6 @@ resolve_locations() {
   PREVIOUS_DIR="$DATA_HOME/deckhand.old"
   UNIT_DIR="$DATA_HOME/systemd/user"
   UNIT_FILE="$UNIT_DIR/deckhand.service"
-  LEGACY_UNIT="$CONFIG_HOME/systemd/user/deckhand.service"
-  LEGACY_BACKUP="$DATA_HOME/deckhand.legacy-unit.bak"
   CONFIG_DIR="$CONFIG_HOME/deckhand"
   STATE_DIR="$STATE_HOME/deckhand"
   APPLICATIONS_DIR="$DATA_HOME/applications"
@@ -677,17 +670,6 @@ check_clean_checkout() {
   fi
 }
 
-# Returns 0 if the unit in ~/.config/systemd/user is the old checkout-pointing
-# copy this script is allowed to remove, 1 if there is none, and stops the
-# script if there is one it did not write.
-legacy_unit_present() {
-  [ -e "$LEGACY_UNIT" ] || return 1
-  if grep -qxF "$LEGACY_EXEC_LINE" "$LEGACY_UNIT"; then
-    return 0
-  fi
-  die "$LEGACY_UNIT exists and was not written by an earlier Deckhand setup. It would override the installed unit. Move it aside and run this again."
-}
-
 # --- install / update --------------------------------------------------------
 
 build_and_stage() {
@@ -889,15 +871,12 @@ rollback() {
   if [ -d "$PREVIOUS_DIR" ]; then
     mv "$PREVIOUS_DIR" "$APP_DIR"
   else
-    # First install: there was no previous app, only the old unit.
+    # First install: there is no previous version to go back to.
     rm -f "$UNIT_FILE"
-  fi
-  if [ -f "$LEGACY_BACKUP" ]; then
-    mv "$LEGACY_BACKUP" "$LEGACY_UNIT"
   fi
 
   systemctl --user daemon-reload
-  if [ -d "$APP_DIR" ] || [ -f "$LEGACY_UNIT" ]; then
+  if [ -d "$APP_DIR" ]; then
     systemctl --user enable --now deckhand >/dev/null 2>&1 \
       && say "previous version restored and started" \
       || warn "could not restart the previous version — check: systemctl --user status deckhand"
@@ -917,9 +896,6 @@ cmd_install() {
   preflight
   resolve_locations
   check_clean_checkout "$allow_dirty"
-  local migrating_legacy=no
-  if legacy_unit_present; then migrating_legacy=yes; fi
-
   # Nothing below touches the running daemon until the swap, so a failed build
   # or npm ci leaves everything as it was.
   build_and_stage
@@ -928,12 +904,6 @@ cmd_install() {
 
   say "Stopping the running service"
   systemctl --user stop deckhand 2>/dev/null || true
-
-  if [ "$migrating_legacy" = yes ]; then
-    say "Removing the old unit at $LEGACY_UNIT (kept as a backup until the new one starts)"
-    systemctl --user disable deckhand >/dev/null 2>&1 || true
-    mv "$LEGACY_UNIT" "$LEGACY_BACKUP"
-  fi
 
   rm -rf "$PREVIOUS_DIR"
   if [ -d "$APP_DIR" ]; then mv "$APP_DIR" "$PREVIOUS_DIR"; fi
@@ -954,7 +924,7 @@ cmd_install() {
   sleep "$START_SETTLE_SECONDS"
   service_is_up "$main_pid" || rollback "$started_at"
 
-  rm -rf "$PREVIOUS_DIR" "$LEGACY_BACKUP"
+  rm -rf "$PREVIOUS_DIR"
   say "Installed. Service is running from $APP_DIR"
   # Only after a successful start: a rollback restores an older app that may
   # have no CLI, and the wrapper must not point at one that is not there.
@@ -1196,9 +1166,6 @@ cmd_uninstall() {
   systemctl --user disable --now deckhand >/dev/null 2>&1 || true
 
   rm -f "$UNIT_FILE"
-  if [ -e "$LEGACY_UNIT" ] && grep -qxF "$LEGACY_EXEC_LINE" "$LEGACY_UNIT"; then
-    rm -f "$LEGACY_UNIT"
-  fi
   systemctl --user daemon-reload
 
   # Before the app directory goes: the ID is read from it.
@@ -1207,7 +1174,7 @@ cmd_uninstall() {
   remove_editor_launcher
 
   say "Removing $APP_DIR"
-  rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR" "$LEGACY_BACKUP"
+  rm -rf "$APP_DIR" "$STAGE_DIR" "$PREVIOUS_DIR"
   rm -rf "${TMPDIR:-/tmp}/deckhand-art"
 
   # App state, not the user's config: removed with the app, never asked about

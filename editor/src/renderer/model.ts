@@ -573,11 +573,6 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
   }
 }
 
-/** Kept for phase A's call sites and tests: hotkey is just one editable type. */
-export function hotkeyEditable(button: ButtonDef | undefined): boolean {
-  return actionEditable(button, 'hotkey');
-}
-
 /**
  * The decks a profile covers, by their display names — §2's discoverability
  * point, which asks that a profile say plainly that it changes both decks.

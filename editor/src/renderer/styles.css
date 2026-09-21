@@ -440,14 +440,6 @@ button:disabled {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.library-entry:disabled {
-  cursor: default;
-}
-
-.library-entry-later {
-  opacity: 0.45;
-}
-
 .library-icon {
   flex: none;
   width: 24px;

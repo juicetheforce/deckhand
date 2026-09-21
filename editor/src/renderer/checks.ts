@@ -814,7 +814,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
  * it too. scripts/check-panes.mjs seeds the state file and reads it back
  * afterwards.
  */
-async function panes(api: DeckhandBridge): Promise<Record<string, unknown>> {
+async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const until = async (condition: () => boolean, ms = 5000) => {

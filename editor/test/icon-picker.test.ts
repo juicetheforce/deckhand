@@ -179,20 +179,21 @@ await check('start folder: the icon\'s folder, else a recent one that exists, el
   assert.equal(await startFolder(null, [], ['/nope']), '/nope', 'the last fallback, even if missing, rather than nothing');
 });
 
-await check('bookmarks: kept in order, capped, seeded from the old recents file, and stored outside the config', async () => {
+await check('bookmarks: kept in order, capped, and stored outside the config', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-prefs-'));
   const prefsFile = path.join(dir, 'preferences.json');
-  const recentsFile = path.join(dir, 'icon-picker.json');
 
-  // First run with an old recents file: the row is seeded from it, oldest last in recents becoming first here.
-  await fs.writeFile(recentsFile, JSON.stringify({ recentFolders: ['/newest', '/middle', '/oldest'] }));
-  const seeded = new Bookmarks(new Preferences(prefsFile, 10), recentsFile);
-  assert.deepEqual(await seeded.list(), ['/oldest', '/middle', '/newest'], 'seeded oldest-first, so the newest sits at the end of the row');
+  // A first run: an empty row, and nothing written until a folder is added.
+  const prefs = new Preferences(prefsFile, 10);
+  const marks = new Bookmarks(prefs);
+  assert.deepEqual(await marks.list(), []);
+  await sleep(100);
+  assert.equal(await fs.access(prefsFile).then(() => true, () => false), false, 'listing an empty row writes nothing');
+
+  // Adding, in order, de-duplicating, removing.
+  for (const folder of ['/oldest', '/middle', '/newest']) await marks.add(folder);
   await sleep(100);
   assert.deepEqual(JSON.parse(await fs.readFile(prefsFile, 'utf8')).bookmarks, ['/oldest', '/middle', '/newest']);
-
-  // Adding, de-duplicating, removing.
-  const marks = new Bookmarks(new Preferences(prefsFile, 10), recentsFile);
   assert.deepEqual(await marks.add('/extra'), ['/oldest', '/middle', '/newest', '/extra']);
   assert.deepEqual(await marks.add('/extra'), ['/oldest', '/middle', '/newest', '/extra'], 'already there');
   assert.deepEqual(await marks.remove('/middle'), ['/oldest', '/newest', '/extra']);
@@ -209,18 +210,12 @@ await check('bookmarks: kept in order, capped, seeded from the old recents file,
   const storedAfterMany = JSON.parse(await fs.readFile(prefsFile, 'utf8')).bookmarks;
   assert.equal(storedAfterMany.length, MAX_BOOKMARKS, 'the file itself must not grow past the cap');
 
-  // No recents file: an empty row, not a crash.
-  const freshPrefs = new Preferences(path.join(dir, 'other.json'), 10);
-  const fresh = new Bookmarks(freshPrefs, path.join(dir, 'no-such.json'));
-  assert.deepEqual(await fresh.list(), []);
-
-  // Rubbish in either file is an empty list.
+  // Rubbish in the file is an empty list.
   await fs.writeFile(prefsFile, 'not json');
   const rubbishPrefs = new Preferences(prefsFile, 10);
-  assert.deepEqual(await new Bookmarks(rubbishPrefs, path.join(dir, 'no-such.json')).list(), []);
-  // Seeding schedules a write 10 ms on; removing the directory under it failed
-  // now and then with ENOTEMPTY (seen in Ship, 2026-09-18). Write first.
-  await Promise.all([freshPrefs.flush(), rubbishPrefs.flush()]);
+  assert.deepEqual(await new Bookmarks(rubbishPrefs).list(), []);
+  // A pending debounced write into the directory makes removing it fail with ENOTEMPTY. Write first.
+  await Promise.all([prefs.flush(), rubbishPrefs.flush()]);
   await fs.rm(dir, { recursive: true, force: true });
 });
 

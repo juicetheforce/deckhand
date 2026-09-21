@@ -116,7 +116,7 @@ await check('no KDE, no busctl, a timeout or garbage: no warning, no throw', asy
 
 if (process.env.DECKHAND_TEST_REAL_KGLOBALACCEL === '1') {
   console.log('against the real KDE shortcut service (proof 0b combos)');
-  const { BATCHES } = (await import(pathToFileURL(path.join(REPO, 'editor/scripts/key-probe/batches.mjs')).href)) as {
+  const { BATCHES } = (await import(pathToFileURL(path.join(REPO, 'editor/test/fixtures/kde-shortcut-batches.mjs')).href)) as {
     BATCHES: Record<string, { combos: string[] }>;
   };
   const { canonicalCombo } = await import('../src/shared/keys.js');

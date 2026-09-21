@@ -71,26 +71,15 @@ export class Preferences {
 
 /**
  * Bookmarked icon folders: the picker's one row of saved places, in the order
- * they were added. Replaces the recent folders it used to show, which drifted
- * (the maintainer, 2026-09-15).
- *
- * The first read **seeds them from the old recent-folders file** if there is
- * one, so the row is not empty on the first open and nothing has to be found
- * again.
+ * they were added. Chosen over a list of recent folders, which drifted.
  */
 export class Bookmarks {
-  constructor(
-    private readonly preferences: Preferences,
-    /** The old icon-picker.json, read once to seed the list. */
-    private readonly legacyRecentsFile: string,
-  ) {}
+  constructor(private readonly preferences: Preferences) {}
 
   async list(): Promise<string[]> {
     const stored = (await this.preferences.read()).bookmarks;
-    if (Array.isArray(stored)) return stored.filter((f): f is string => typeof f === 'string' && path.isAbsolute(f)).slice(0, MAX_BOOKMARKS);
-    const seeded = await this.seedFromRecents();
-    await this.preferences.set({ bookmarks: seeded });
-    return seeded;
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((f): f is string => typeof f === 'string' && path.isAbsolute(f)).slice(0, MAX_BOOKMARKS);
   }
 
   /** Add a folder, keeping the oldest if the list is full. Returns the list as it now stands. */
@@ -107,17 +96,5 @@ export class Bookmarks {
     const next = (await this.list()).filter((f) => f !== folder);
     await this.preferences.set({ bookmarks: next });
     return next;
-  }
-
-  private async seedFromRecents(): Promise<string[]> {
-    try {
-      const parsed: unknown = JSON.parse(await fs.readFile(this.legacyRecentsFile, 'utf8'));
-      const recents = (parsed as { recentFolders?: unknown })?.recentFolders;
-      if (!Array.isArray(recents)) return [];
-      // Newest first in the recents file; bookmarks read oldest first, so reverse.
-      return recents.filter((f): f is string => typeof f === 'string' && path.isAbsolute(f)).slice(0, MAX_BOOKMARKS).reverse();
-    } catch {
-      return [];
-    }
   }
 }
