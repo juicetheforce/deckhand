@@ -1,4 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
@@ -32,6 +35,40 @@ function launch(argv: string[]): void {
   child.on('error', (err) => console.error(`[command] cannot start systemd-run: ${err.message}`));
   child.unref();
 }
+
+/**
+ * editor — open Deckhand's editor. The first-run key on every deck, and in the
+ * editor's library under System.
+ *
+ *   { "type": "editor" }
+ *
+ * It opens the editor installed beside this daemon: the app directory is two
+ * levels up from this file (dist/actions/), with the editor and its own
+ * Electron in editor/, as scripts/install.sh lays it out. No path goes in the
+ * config, so the key works after an export to another machine or an install
+ * somewhere else. Launched like a command (launch(), above), so the editor is
+ * not the daemon's child. If the editor is already open, even in the tray,
+ * the new instance hands over to it and quits, and it comes to the front.
+ *
+ * DECKHAND_APP_DIR overrides where the app is looked for, for tests.
+ */
+function editorPaths(): { electron: string; app: string } {
+  const appDir = process.env.DECKHAND_APP_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  return { electron: path.join(appDir, 'editor', 'electron', 'electron'), app: path.join(appDir, 'editor') };
+}
+
+export const editor: ActionHandler = {
+  async execute() {
+    const { electron, app } = editorPaths();
+    // Checked here, so a daemon run from a checkout, with no installed editor
+    // beside it, fails the press (and badges the key) instead of launching
+    // something that is not there.
+    if (!existsSync(electron)) throw new Error(`no editor installed beside this daemon (${electron})`);
+    // env -u: a daemon started from a VS Code shell carries
+    // ELECTRON_RUN_AS_NODE, which turns Electron into plain Node.
+    launch(['env', '-u', 'ELECTRON_RUN_AS_NODE', electron, app]);
+  },
+};
 
 /**
  * command — run something.

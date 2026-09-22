@@ -40,6 +40,16 @@ export function NoopForm() {
   );
 }
 
+/** editor: opens this editor from the deck. Nothing to set. */
+export function EditorForm() {
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Open editor</h3>
+      <p className="muted small">Opens this editor. If it is already open, even in the tray, it comes to the front. Every deck starts with one of these on its first key.</p>
+    </section>
+  );
+}
+
 type BrightnessMode = 'up' | 'down' | 'set';
 
 /** brightness: nudge by a step, or set a level, on the deck the key is on. */

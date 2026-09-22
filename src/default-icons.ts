@@ -22,6 +22,7 @@ export const BUILTIN_ICONS = [
   'brightness-up',
   'clock',
   'command',
+  'deckhand',
   'forward',
   'headset',
   'headset-muted',
@@ -107,6 +108,8 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.latched ? 'toggle' : 'toggle-off';
     case 'command':
       return 'command';
+    case 'editor': // the logo: this key is Deckhand itself
+      return 'deckhand';
     case 'profile':
       return 'profile';
     case 'page':

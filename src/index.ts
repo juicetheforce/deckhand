@@ -75,11 +75,13 @@ async function printDecks(): Promise<void> {
 }
 
 /**
- * The starter button's combo. Shift+D is chosen because it is harmless and
- * visible: in a text editor it types "D". A lowercase "d" means the key landed
- * but the modifier did not, which is a useful distinction on first bring-up.
+ * The starter button: the Deckhand logo (the editor action's built-in
+ * default), and pressing it opens the editor. A deck with nothing on it looks
+ * dead and the install looks failed; this key shows it is alive and leads to
+ * setting it up. It sends no keystrokes: the first starter, M1's Shift+D test
+ * key, typed a capital D into whatever had focus, mid-game or in chat.
  */
-const STARTER_KEYS = 'shift+d';
+const STARTER_BUTTON = { action: { type: 'editor' } };
 
 /**
  * The configuration written when there is no deck to key one by: valid, and
@@ -99,7 +101,7 @@ function emptyConfig(): Config {
 
 /**
  * First run: no config.json exists. Write one keyed by the decks connected
- * right now — one profile, with one hotkey button on key 0 of each deck — so
+ * right now — one profile, with the starter button on key 0 of each deck — so
  * the daemon starts lit rather than exiting. Returns false if there was
  * nothing to write.
  *
@@ -143,12 +145,7 @@ async function bootstrapConfig(): Promise<boolean> {
         startPage: 'main',
         pages: {
           main: {
-            buttons: {
-              '0': {
-                label: STARTER_KEYS,
-                action: { type: 'hotkey', keys: STARTER_KEYS },
-              },
-            },
+            buttons: { '0': structuredClone(STARTER_BUTTON) },
           },
         },
       };

@@ -75,6 +75,7 @@ export const CATALOGUE: CatalogueGroup[] = [
     name: 'System',
     entries: [
       { type: 'command', name: 'Run command', description: 'Start a program or shell command', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
+      { type: 'editor', name: 'Open editor', description: 'Open this editor from the deck', aliases: ['deckhand', 'settings', 'configure', 'setup'] },
       { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", aliases: ['dim', 'backlight', 'screen'] },
       { type: 'clock', name: 'Clock', description: 'The time on the key', aliases: ['watch', 'hour', 'date'] },
       { type: 'noop', name: 'Nothing', description: 'A key that does nothing', aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },

@@ -450,6 +450,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // keep a hand-edited key read-only.
   clock: ['format'],
   noop: [],
+  editor: [],
   brightness: ['delta', 'value', 'showLevel'],
   'audio.volume': ['delta', 'showLevel'],
   'audio.micMute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],

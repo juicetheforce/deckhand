@@ -166,6 +166,7 @@ resolve_locations() {
 # can point them at scratch files.
 SERVICE_NODE=/usr/bin/node            # what systemd/deckhand.service runs
 UINPUT_NODE=/dev/uinput
+UINPUT_SYSFS=/sys/class/misc/uinput     # present only once the uinput module is loaded
 UINPUT_HEADER=/usr/include/linux/uinput.h
 LOGIND_SEATS_DIR=/run/systemd/seats
 SYSCTL_DIR=/proc/sys
@@ -994,8 +995,21 @@ retrigger_udev() {
   # Re-apply rules to devices that are already present, so a rule change takes
   # effect now rather than at the next replug or reboot. Reports failure
   # instead of hiding it.
-  local targets=(/sys/class/misc/uinput) node output
+  #
+  # uinput is only there to re-apply to once its module is loaded. Where it is
+  # a module rather than built in (Fedora and Nobara, where modules.devname
+  # lists it), /dev/uinput exists from boot as a static node and the module
+  # loads the first time something opens it — until then there is no
+  # /sys/class/misc/uinput, which is normal, not a failure. Its rule applies
+  # when it loads (and the rule's static_node option covers the node itself).
+  local targets=() node output
+  if [ -e "$UINPUT_SYSFS" ]; then
+    targets+=("$UINPUT_SYSFS")
+  else
+    say "uinput is a module that is not loaded yet; it loads when Deckhand first opens it, and the rule applies then"
+  fi
   for node in $(elgato_hidraw_nodes); do targets+=("/sys/class/hidraw/${node#/dev/}"); done
+  [ "${#targets[@]}" -gt 0 ] || return 0
   if output="$(sudo udevadm trigger --action=change --settle "${targets[@]}" 2>&1)"; then
     say "udev re-applied to: ${targets[*]}"
   else

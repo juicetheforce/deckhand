@@ -17,6 +17,7 @@ export const registry: Record<string, ActionHandler> = {
   keyHold: keyboard.keyHold,
 
   command: system.command,
+  editor: system.editor,
   page: system.page,
   profile: system.profile,
   brightness: system.brightness,

@@ -9,7 +9,7 @@ import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
 import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
-import { BrightnessForm, ClockForm, NoopForm } from './SystemForms.js';
+import { BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
 
 /** What every form may need; each takes the parts it uses. */
@@ -58,6 +58,8 @@ export function ActionForm(p: ActionFormProps) {
       return <ClockForm {...common} />;
     case 'noop':
       return <NoopForm />;
+    case 'editor':
+      return <EditorForm />;
     case 'brightness':
       return <BrightnessForm {...common} />;
     case 'media.control':
