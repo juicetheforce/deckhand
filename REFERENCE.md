@@ -168,7 +168,8 @@ journalctl --user -u deckhand -f      # follow the log
 ## Using it
 
 The first time the daemon starts, it writes a starter configuration for the
-decks that are plugged in: one profile, with one working key on each deck.
+decks that are plugged in: one profile, with the Deckhand logo on each deck's
+first key. Pressing it opens the editor.
 
 Open the editor from your desktop's application menu (**Deckhand**) or with
 `deckhand-editor`. Selecting a profile or page in the editor switches the
@@ -294,6 +295,7 @@ can't be drawn shows a dashed "missing" icon.
 | `keyHold` | `keys`, `state: "down"` / `"up"` — pair with `onRelease` for push-to-talk |
 | `text` | Types a literal string (US layout) |
 | `command` | `command: "sh string"` or `exec: ["bin", "arg"]`. Started in its own systemd scope, so it outlives the daemon; with `wait: true` it runs as the daemon's child for up to 15 s, and a failure marks the key |
+| `editor` | Opens Deckhand's editor, or brings it to the front if it is already open. Its default icon is the Deckhand logo; every deck starts with one on its first key |
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
@@ -427,7 +429,8 @@ can plug and unplug while the daemon runs.
 
 The checks:
 
-- Root: `npm run smoke`.
+- Root: `npm run smoke`, which includes `smoke-first-run.mjs`: the daemon
+  started with no config and two decks, and the starter key it writes.
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
@@ -440,8 +443,9 @@ The checks:
   (against a local origin), `uninstaller.test.sh`, `pipe.test.sh` (the script
   piped into bash, as `curl … | bash` runs it, at a terminal and without one),
   `release-install.test.sh` (a release's download, checksum and unpack, every
-  way it can be wrong) and `release-glibc.test.sh` (the release build's glibc
-  check). `scripts/install.sh check` runs the preflight for real and changes
+  way it can be wrong), `release-glibc.test.sh` (the release build's glibc
+  check) and `udev-trigger.test.sh` (re-applying the rule, with uinput loaded
+  and not). `scripts/install.sh check` runs the preflight for real and changes
   nothing.
 - A built release: `scripts/test/release-ships.sh <version>` loads it in
   containers of the target distributions, pipes its installer, **installs it
