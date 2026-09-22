@@ -114,10 +114,18 @@ while it is visible. Identical images are never rewritten to USB. "No timers
 at rest" is a structural rule, not "no measurable cost", which would weaken as
 hardware gets faster. Two recurring timers are accepted exceptions:
 
-- a 60-second device scan, as insurance against a missed udev event;
-- a 500 ms render tick per deck, which has no measurable cost.
+- a 60-second device scan (`SAFETY_SCAN_INTERVAL_MS`, `src/index.ts`), as
+  insurance against a missed udev event;
+- a 500 ms render tick per deck (`TICK_MS`, `src/deck.ts`), which has no
+  measurable cost.
 
-Everything else is started by an event.
+Everything else is started by an event. Those two are the only `setInterval`
+calls in `src/`; check with grep before adding one, and a new recurring timer
+needs a reason good enough to join this list. Media players are discovered
+from D-Bus's `NameOwnerChanged`, not by rescanning. One `setTimeout` a grep
+will find is not a recurring timer: after the session bus is lost,
+`src/services/mpris.ts` retries once, 2 s later, and further retries ride the
+60-second scan.
 
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
@@ -134,6 +142,40 @@ draws its built-in default. That default is never written to the config.
 Deckhand applies no logic to the list.** It does not categorise, rank or guess.
 Network sinks are the one category left out, identified by the flag `pactl`
 reports rather than by name.
+
+**Nothing launched from a deck is the daemon's child.** The service runs
+under systemd's default `KillMode=control-group`, which kills everything left
+in the service's cgroup when it stops — every update, a crash restart,
+logging out. A program started as the daemon's child, even detached, stays in
+that cgroup, so an update would close every app launched from a deck. Programs
+are started through `launch()` (`src/actions/system.ts`), which runs them with
+`systemd-run --user --scope`, each in a scope of its own. `KillMode=process`
+on the unit would also fix it, and would leave the input helper,
+`pactl subscribe` and `udevadm monitor` running after every stop.
+
+## Invariants — before changing the code
+
+Each of these looks arbitrary and is not. Most are held by a test; the reason
+is here so the test is not "fixed" instead.
+
+| Before touching | The invariant |
+| --- | --- |
+| `helper/deckhand-input.c` | combo timing (`TAP_DELAY_US`, `COMBO_GAP_US`, …) is a tested floor, not a tuning knob |
+| `src/control/` | nothing may block or await a client; socket actions are serialised daemon-wide |
+| `src/services/audio.ts`, any audio `describe()` | key faces read a cache; spawning `pactl` from a render feeds itself |
+| `src/render.ts`, `src/builtin-icons.ts` | built-ins are resolved by name; a default is never written to `config.json`, and a chosen built-in is written as `builtin:<name>`, never as a path into the app directory |
+| `src/default-icons.ts` | pure so the editor can import it; an icon not drawn yet maps to no default, never to `missing`. `BUILTIN_ICONS` = `assets/icons/`, held by `scripts/smoke-defaults.mjs` |
+| `src/deck.ts`'s `heldRelease` / `latched`, or anything that changes the page, profile, layout or connection | **nothing may leave a key held at the evdev layer** — every path off a page fires pending releases and releases latches |
+| `src/key-failures.ts`, `DeckSession.dispatch()` | a failed key clears only on a successful press or an edit — never a timer or a page switch; marks cost nothing at rest and notify only on change |
+| `src/failed-badge.ts` | the one drawing of the failed-key badge, shared by the deck and the editor's grid; import-free so the editor can import it |
+| `src/services/mpris.ts`, any media `describe()` / `iconState()` | key faces read the player state cache; no D-Bus call in a render |
+| `src/index.ts`'s `scan()` / `unattached` / `reevaluateUnattached` | a deck with no layout is left alone until a **reload** re-evaluates it; skipping `unattached` unconditionally strands a deck that has just been given one, until it is replugged |
+| `editor/src/renderer/model.ts`'s `emptyState()` / `connectionPill()` | the **order** is the content: "nothing is connected at all" is tested before anything per-deck, and before the layout, or one deck gets named while every deck is missing; both use the same order so the card and the pill cannot disagree |
+| `followDeck()` | it must **reconcile first, then follow the deck it settled on** — following the previous serial misses the deck's real page whenever the selection named no deck, which is every time the window opens before the daemon has reported |
+| `deckChoices()` / `knownDecks()` / `deckOptions()` | **a deck that is not plugged in is not listed, anywhere.** The editor's device lists derive from the first two, and Settings' Default deck list (`deckOptions()`, `editor/src/shared/settings.ts`) follows the same rule separately. The *stored* default may still name an absent deck. Accepted cost: unplugging the deck being edited moves the editor off it |
+| the config watcher, or anything written near `config.json` | it is safe only because it is non-recursive and filters on the file name |
+| a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
+| `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 
 ## The control socket
 

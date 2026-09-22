@@ -9,3 +9,5 @@ helper/deckhand-input
 # nested here. CLAUDE.local.md imports from it.
 docs/
 CLAUDE.local.md
+# Kept in the private docs repository, not here.
+/CLAUDE.md

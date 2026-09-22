@@ -14,7 +14,9 @@ on the code. Why things are the way they are is in
 - [Actions](#actions)
 - [The control socket](#the-control-socket)
 - [Troubleshooting](#troubleshooting)
-- [Developing](#developing)
+- [Developing](#developing): [running it](#running-it-while-developing),
+  [testing](#testing), [traps in the checks](#traps-in-the-checks),
+  [environment traps](#environment-traps)
 
 ## Installing
 
@@ -388,9 +390,16 @@ installer adds; run the install line again with `bash -s -- install
 
 ## Developing
 
-The daemon runs from the installed copy, not the checkout. To run it in the
-foreground from a checkout, stop the service first — two daemons would fight
-over the decks:
+Read [ARCHITECTURE.md](ARCHITECTURE.md) first, including its invariants: several
+decisions look wrong until you know what they were measured against.
+
+### Running it while developing
+
+The daemon runs from the installed copy in `~/.local/share/deckhand`, not from
+the checkout; code changes reach it through `scripts/install.sh update`,
+which refuses a dirty checkout and rolls back if the new copy does not stay
+up. To run it in the foreground from a checkout, stop the service first —
+two daemons would fight over the decks:
 
 ```bash
 systemctl --user stop deckhand
@@ -399,12 +408,129 @@ npm start                             # builds, then runs; Ctrl+C to stop
 systemctl --user start deckhand       # back to the installed copy
 ```
 
-The editor develops from `editor/` with `npm start`; quit the installed editor
-from its tray menu first. The checks run offline, against fake decks, a fake
-input helper and a fake `pactl`: `npm run smoke` at the root, and `npm test`
-and the `check:*` scripts in `editor/`. `node editor/scripts/demo.mjs` opens
-the real editor on an invented setup, which is where the README's screenshots
-come from.
+The editor is its own package in `editor/` and develops from there with
+`npm start`. Quit the installed editor from its tray menu first: both use the
+same state directory, and so the same single-instance lock.
+
+### Testing
+
+Everything runs offline, and should be preferred over guessing. `npm run
+smoke` at the root drives fake decks; `scripts/smoke-socket.mjs` (part of it)
+drives the control socket over a real socket, with
+`scripts/test/fake-input-helper.mjs` (the helper's protocol and timing, no
+uinput) and `scripts/test/fake-pactl.mjs` on `PATH` (with `FAKE_PACTL_STATE` it
+remembers presses, mutes and absent devices). `scripts/test/fake-mpris-player.mjs`
+puts a fake player on a private bus (`scripts/smoke-mpris.mjs` re-runs itself
+under `dbus-run-session`). `scripts/test/no-decks.mjs` and
+`scripts/test/fake-decks.mjs` give a child process no decks, or decks a test
+can plug and unplug while the daemon runs.
+
+The checks:
+
+- Root: `npm run smoke`.
+- `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
+  `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
+  `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
+  `check:tray`, `check:settings`, `check:titlebar`, `check:failures`,
+  `check:backup`, `check:empty` — real Electron against a test harness for the
+  control socket.
+- The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
+  desktop entry and icon, against a scratch HOME), `preflight.test.sh`
+  (against stub commands), `apparmor-profile.test.sh`, `upgrade.test.sh`
+  (against a local origin), `uninstaller.test.sh`, `pipe.test.sh` (the script
+  piped into bash, as `curl … | bash` runs it, at a terminal and without one),
+  `release-install.test.sh` (a release's download, checksum and unpack, every
+  way it can be wrong) and `release-glibc.test.sh` (the release build's glibc
+  check). `scripts/install.sh check` runs the preflight for real and changes
+  nothing.
+- A built release: `scripts/test/release-ships.sh <version>` loads it in
+  containers of the target distributions, pipes its installer, **installs it
+  on this machine**, and runs the suites against that install.
+
+**When a test passes first time, break the code on purpose and check it
+fails.** That has caught weak checks many times. **Before a break runner's
+failures mean anything, run it on unbroken source and see it pass.** A runner
+that cannot resolve the test's imports, or builds the wrong file, prints
+nothing and exits non-zero, and "no failures" then reads exactly like a
+passing break. A break runner is untested code too.
+
+For looking rather than checking: `node editor/scripts/screenshot.mjs --out
+x.png` renders the editor to a PNG; `node editor/scripts/empty-state.mjs
+--state <name>` opens a real editor window in any of the states of "nothing to
+show" (`daemon-down`, `never-configured`, `all-unplugged`, `no-layout`,
+`deck-unplugged`, and `normal` as the control), against a scratch config,
+state directory and socket; `node editor/scripts/demo.mjs` opens it on an
+invented setup under its own `HOME` and a private session bus — the README's
+screenshots come from it. Ctrl-C to finish either window.
+
+### Traps in the checks
+
+Each has been hit more than once.
+
+- **Judge a run by its exit code, never by the tail of its output.** Editor
+  `npm test` runs several files; the last one printing "all checks passed" can
+  hide failures in an earlier one. And **run `tsc` first**: it emits output
+  despite type errors, so a green smoke run after a failed `tsc` proves
+  nothing.
+- **After a deliberate break, rebuild before the next clean run.** A break
+  runner that restores the source leaves `dist/` built from the break. A break
+  that fails to build is not a pass either.
+- **An `async` function passed to a synchronous `check()` can never fail the
+  run.** The helper gets a Promise back and prints PASS; the assertions run
+  later, detached. Make the helper `async` and `await` the function, or keep
+  the check body synchronous.
+- **A hidden check window has no focus, and React listens for `focusout`.**
+  `focus()` and `blur()` dispatch nothing there, so a check driving a field's
+  "saves when you leave it" path with them tests nothing. Dispatch `focusin`
+  and `focusout` instead.
+- **Hidden windows deliver no `ResizeObserver` callbacks, never finish lazy
+  `<img>` loads, and cache icon URLs.** A check that depends on any of them
+  passes or fails for the wrong reason.
+- **Editor checks must never touch an installed daemon or the real session
+  bus.** They point `DECKHAND_SOCKET`, `DECKHAND_CONFIG_DIR` and
+  `DECKHAND_STATE_DIR` at scratch paths. Electron's startup asks the session
+  bus for the desktop portal, starting services that outlive the run — why
+  `screenshot.mjs` uses a bus config with no service directories.
+- **Electron's helpers write to its user-data directory for a moment after it
+  exits**, so removing a check's scratch directory can meet `ENOTEMPTY`; the
+  checks retry the removal.
+
+### Environment traps
+
+- **A shell inside VS Code has `ELECTRON_RUN_AS_NODE=1`**, which makes the
+  Electron binary plain Node with no `BrowserWindow`. `npm start` and
+  `editor/scripts/lib/run-electron-check.mjs` clear it; any new way of
+  launching Electron must too.
+- **On a machine that restricts user namespaces, a green editor check says
+  nothing about whether the editor starts there.** Ubuntu 24.04 and later set
+  `kernel.apparmor_restrict_unprivileged_userns = 1`, and Electron aborts
+  without a namespace (`FATAL:setuid_sandbox_host.cc:166`). **But a shell
+  inside VS Code carries VS Code's AppArmor profile, which grants one** — so
+  `npm start` and every `check:*` pass there while the same command from a
+  plain terminal, or from the user manager, fails. Check
+  `/proc/<pid>/attr/current` before believing any Electron launch on such a
+  machine, or run it through `systemd-run --user --wait --collect --pipe` for
+  an unconfined one. The installed editor is covered by
+  `apparmor/deckhand-editor`; the checkout's `editor/node_modules/electron`
+  deliberately is not, so development on such a machine does not work and is
+  not meant to.
+- **Never pipe the daemon's output into `head`** (or anything that exits
+  early). When the reader goes away, the next `console.log` throws `EPIPE`,
+  the `uncaughtException` handler in `src/index.ts` logs it to the same broken
+  pipe, and it recurses: 100% of a core, and `SIGTERM` will not stop it
+  because `shutdown()` starts with a `console.log`. It looks exactly like a
+  spin bug in the daemon and is not one. Redirect to a file and read that.
+  Under systemd stdout is the journal, so the installed service cannot hit it.
+- **`grep -q` at the end of a pipe under `pipefail` can read as "not found".**
+  `grep` exits at its first match, the writer dies of SIGPIPE, and the
+  pipeline fails. Capture the output first, then search it (the install
+  script's libusb check was bitten by exactly this).
+
+### Style
+
+Boring and legible beats clever: one person maintains this, long after the
+change that wrote it. Prefer explicit over concise. Keep human-readable key
+names in `src/keymap.ts`, so the C helper never has to change.
 
 **Adding an action type:** write an object with `execute` and/or `describe`,
 add it to the registry in `src/actions/index.ts`, and give it a form in the
