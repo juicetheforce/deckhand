@@ -877,6 +877,15 @@ async function panes(_api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.finalWidths = widths();
   // The grid between them keeps a width of its own.
   out.gridColumnPositive = columns()[2] > 100;
+
+  // Key 0's label, each line cut on its own, as the deck cuts it (src/label-fit.ts).
+  const lines = [...document.querySelectorAll<HTMLElement>('.key')[0].querySelectorAll<HTMLElement>('.key-label-line')];
+  out.labelLines = lines.map((line) => ({
+    text: line.textContent,
+    overflows: line.scrollWidth > line.clientWidth,
+    ellipsis: getComputedStyle(line).textOverflow === 'ellipsis',
+  }));
+
   await sleep(600); // time for any stray write to land, so "no widths written" means something
   return out;
 }

@@ -1,7 +1,9 @@
 import * as mpris from '../services/mpris.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
-function truncate(value: string, max: number): string {
+/** Cut to `max` characters, only when a key sets maxChars. Without it the renderer fits each line to the key's width (label-fit.ts). */
+function truncate(value: string, max: number | undefined): string {
+  if (max === undefined) return value;
   return value.length <= max ? value : `${value.slice(0, Math.max(1, max - 1))}…`;
 }
 
@@ -69,7 +71,8 @@ function isIdle(track: mpris.TrackInfo | null): boolean {
  * showArt uses the album art from MPRIS metadata as the button image,
  * downloading remote art to a temp cache once per URL. Idle, the key draws the
  * `now-playing` icon and no label; `idleLabel` puts a label
- * back.
+ * back. A title or artist too wide for the key ends in an ellipsis, each line
+ * on its own; `maxChars` cuts at a character count instead.
  */
 export const info: ActionHandler = {
   // Cached: no D-Bus call on a render.
@@ -92,7 +95,7 @@ export const info: ActionHandler = {
     }
 
     const mode = String(params.show ?? 'title+artist');
-    const max = typeof params.maxChars === 'number' ? params.maxChars : 12;
+    const max = typeof params.maxChars === 'number' ? params.maxChars : undefined;
 
     const lines: string[] = [];
     if (mode !== 'artist' && track.title) lines.push(truncate(track.title, max));

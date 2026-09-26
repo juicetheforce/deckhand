@@ -40,8 +40,15 @@ const LIBRARY = { min: limit('library', 'min'), max: limit('library', 'max'), de
 const INSPECTOR = { min: limit('inspector', 'min'), max: limit('inspector', 'max'), default: limit('inspector', 'default') };
 
 const SERIAL = 'PANES-XL';
+// A key's label in the grid: a line far too wide for a key over one that fits.
+const LONG_LABEL = 'A title far too long to fit on any key\nQueen';
 const CONFIG = {
-  profiles: { default: { name: 'Default', layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: {} } } } } } },
+  profiles: {
+    default: {
+      name: 'Default',
+      layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: { 0: { label: LONG_LABEL } } } } } },
+    },
+  },
 };
 await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(CONFIG, null, 2) + '\n');
 
@@ -75,6 +82,12 @@ if (r && !r.error) {
   check('double-click restores that pane to its default; arrow keys move a divider', () => {
     assert.equal(r.afterDoubleClick, LIBRARY.default);
     assert.equal(r.arrowMoved, true);
+  });
+  check("a label's lines are cut on their own: the long one ends in an ellipsis, the short one is whole", () => {
+    assert.deepEqual(r.labelLines, [
+      { text: 'A title far too long to fit on any key', overflows: true, ellipsis: true },
+      { text: 'Queen', overflows: false, ellipsis: true },
+    ]);
   });
 }
 

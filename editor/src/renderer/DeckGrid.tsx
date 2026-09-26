@@ -240,7 +240,12 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
           // The deck's label size relative to its key pixels, applied to this key's width (container units).
           style={{ color: face.labelColor, fontSize: `calc(${face.labelScale} * 100cqw)` }}
         >
-          {face.label}
+          {/* One block per line, each cut on its own, as the deck does (src/label-fit.ts). */}
+          {face.label.split('\n').filter((line) => line.length > 0).map((line, i) => (
+            <span key={i} className="key-label-line">
+              {line}
+            </span>
+          ))}
         </span>
       )}
       {!face.icon && !face.label && button?.action && (

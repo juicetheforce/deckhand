@@ -96,6 +96,11 @@ const a = await startFakePlayer('fakeA', { status: 'Paused', track: { title: 'Fi
   a.set({ track: { title: 'Second', artist: 'Band' } });
   check('a track change from the signal reaches the face', await until(async () => (await describe(info))?.label === 'Second\nBand', 500));
 
+  // Width fitting is the renderer's (smoke-labels.mjs); a character cut happens only when maxChars is set.
+  a.set({ track: { title: 'A Title Much Longer Than Twelve', artist: 'Band' } });
+  check('a long title reaches the face whole', await until(async () => (await describe(info))?.label === 'A Title Much Longer Than Twelve\nBand', 500));
+  check('...and maxChars still cuts it when set', (await describe({ ...info, maxChars: 12 }))?.label === 'A Title Muc…\nBand');
+
   const calls = a.calls.length;
   const started = process.hrtime.bigint();
   for (let i = 0; i < 100; i++) {

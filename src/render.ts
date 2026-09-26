@@ -4,6 +4,7 @@ import type { OverlayOptions } from 'sharp';
 import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
 import { failedBadgePlacement, failedBadgeSvg } from './failed-badge.js';
+import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
 import type { Display } from './types.js';
 
 /**
@@ -17,20 +18,13 @@ const cache = new Map<string, Buffer>();
 const MAX_CACHE = 512;
 const warnedMissing = new Set<string>();
 
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function labelSvg(display: Display, size: number): Buffer {
-  const lines = (display.label ?? '').split('\n').filter((l) => l.length > 0);
-  if (lines.length === 0) return Buffer.alloc(0);
-
+/** The label, each line fitted to the key on its own (label-fit.ts), so a short line keeps its full text beside a long one. */
+async function labelSvg(display: Display, size: number): Promise<Buffer> {
   const fontSize = display.labelSize;
+  const given = (display.label ?? '').split('\n').filter((l) => l.length > 0);
+  if (given.length === 0) return Buffer.alloc(0);
+  const lines = await Promise.all(given.map((line) => fitLine(line, fontSize, size)));
+
   const lineHeight = Math.round(fontSize * 1.15);
   const block = lineHeight * lines.length;
 
@@ -50,20 +44,9 @@ function labelSvg(display: Display, size: number): Buffer {
     })
     .join('');
 
-  // paint-order:stroke draws a dark outline behind the glyphs so light text
-  // stays readable over a bright icon.
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
   <style>
-    .lbl {
-      font-family: sans-serif;
-      font-size: ${fontSize}px;
-      font-weight: 600;
-      fill: ${display.labelColor};
-      stroke: rgba(0,0,0,0.75);
-      stroke-width: ${Math.max(2, Math.round(fontSize / 6))}px;
-      paint-order: stroke;
-      stroke-linejoin: round;
-    }
+    ${labelStyle(fontSize, display.labelColor)}
   </style>
   ${tspans}
 </svg>`;
@@ -166,7 +149,7 @@ export async function renderButton(display: Display, size: number, strictIcon = 
     }
   }
 
-  const svg = labelSvg(display, size);
+  const svg = await labelSvg(display, size);
   if (svg.length > 0) layers.push({ input: svg, top: 0, left: 0 });
 
   // Last, so it is over the label as well as the icon. `failed` is part of the
@@ -191,4 +174,5 @@ export function clearRenderCache(): void {
   warnedMissing.clear();
   builtinLayers.clear();
   warnedBuiltin.clear();
+  clearLabelWidths();
 }
