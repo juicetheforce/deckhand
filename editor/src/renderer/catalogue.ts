@@ -108,7 +108,8 @@ export function searchCatalogue(query: string): Array<{ group: CatalogueGroup; e
 /**
  * The icon a library row shows: the deck's own default, for a representative
  * setting where the default depends on one — Go to page shows `forward`,
- * Brightness `brightness-up`. Clock and Now playing show `clock` and
+ * Brightness `brightness-up`, Open app `app-launch` (not the dimmed
+ * no-app-yet face). Clock and Now playing show `clock` and
  * `now-playing`, though on the deck their face is the time or the track.
  * Nothing has none: it is a spacer.
  */
@@ -116,6 +117,7 @@ export function libraryIcon(type: string): BuiltinIcon | null {
   if (type === 'clock') return 'clock';
   if (type === 'media.info') return 'now-playing';
   if (type === 'brightness') return defaultIconFor({ type, delta: 10 });
+  if (type === 'app') return defaultIconFor({ type, app: 'example.desktop' });
   return defaultIconFor({ type });
 }
 

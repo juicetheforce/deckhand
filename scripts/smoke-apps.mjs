@@ -226,11 +226,13 @@ const deckConfig = {
                 2: button({ type: 'app', app: 'noicon.desktop' }),
                 3: button({ type: 'app', app: 'unfound.desktop' }),
                 4: button({ type: 'app', app: 'no-such-app.desktop' }),
-                5: button(hotkey, { icon: 'builtin:command' }),
+                5: button(hotkey, { icon: 'builtin:app-launch' }),
                 6: button({ type: 'app', app: 'gimp.desktop' }, { icon: at(TMP, 'abs.png') }),
                 7: button(hotkey, { icon: at(TMP, 'abs.png') }),
                 8: button({ type: 'app', app: 'gimp.desktop' }, { icon: null }),
                 9: button(hotkey, { icon: null }),
+                10: button({ type: 'app' }),
+                11: button(hotkey, { icon: 'builtin:app-launch-unset' }),
               },
             },
           },
@@ -244,11 +246,13 @@ const deck = new FakeDeck();
 await daemon.attach(SERIAL, deck);
 const same = (a, b) => deck.images.get(a)?.equals(deck.images.get(b)) === true;
 check("an app key with no icon draws the app's icon", same(0, 1));
-check('an app with no Icon= draws the built-in default', defaultIconFor({ type: 'app' }) === 'command' && same(2, 5));
+check('an app with no Icon= draws app-launch: it works, it has no artwork', defaultIconFor({ type: 'app', app: 'noicon.desktop' }) === 'app-launch' && same(2, 5));
 check('...as does one whose icon is found nowhere', same(3, 5));
 check('...and one not installed', same(4, 5));
 check("the key's own icon wins over the app's", same(6, 7) && !same(6, 0));
 check('icon: null stays blank', same(8, 9) && !same(8, 0));
+check('no app chosen draws app-launch-unset, dimmed: unfinished', defaultIconFor({ type: 'app' }) === 'app-launch-unset' && same(10, 11));
+check('...which is not the chosen-but-no-artwork face', !same(10, 5));
 check('the comparison can fail', !same(0, 5));
 check('the resolved icon is not written to the config', !('icon' in daemon.state.config.profiles.default.layouts[SERIAL].pages.main.buttons['0']));
 

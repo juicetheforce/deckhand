@@ -858,9 +858,10 @@ await check("an app key's face: the app's icon from the daemon's list, never ove
   assert.equal(faceIcon({ action: gimp }, false, apps), '/usr/share/icons/hicolor/256x256/apps/org.gimp.GIMP.png');
   assert.equal(faceIcon({ icon: '~/mine.png', action: gimp }, false, apps), '~/mine.png', 'its own icon wins');
   assert.equal(faceIcon({ icon: null, action: gimp }, false, apps), null, 'deliberately none stays none');
-  assert.equal(faceIcon({ action: { type: 'app', app: 'noicon.desktop' } }, false, apps), 'builtin:command', 'an app with no icon: the built-in');
-  assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, false, apps), 'builtin:command', 'an app not listed: the built-in');
-  assert.equal(faceIcon({ action: gimp }), 'builtin:command', 'no list yet: the built-in');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'noicon.desktop' } }, false, apps), 'builtin:app-launch', 'an app with no icon: the built-in');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, false, apps), 'builtin:app-launch', 'an app not listed: the built-in');
+  assert.equal(faceIcon({ action: gimp }), 'builtin:app-launch', 'no list yet: the built-in');
+  assert.equal(faceIcon({ action: { type: 'app' } }, false, apps), 'builtin:app-launch-unset', 'no app chosen: the dimmed face');
 });
 
 await check('failed keys: only those on the page being edited, from the deck being edited, with their errors', () => {

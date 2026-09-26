@@ -16,6 +16,9 @@ import type { ActionDef } from './types.js';
  * so a newly drawn icon has to be added here to be used as a default.
  */
 export const BUILTIN_ICONS = [
+  // Open app: the key with an app but no artwork found, and the dimmed key with no app yet.
+  'app-launch',
+  'app-launch-unset',
   'back',
   'brightness-down',
   'brightness-set',
@@ -108,8 +111,12 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.latched ? 'toggle' : 'toggle-off';
     case 'command':
       return 'command';
-    case 'app': // drawn only when the app's own icon cannot be found (src/actions/system.ts)
-      return 'command';
+    // The app's own icon comes first (src/actions/system.ts, defaultIcon); this
+    // is what shows without one. An app chosen whose icon the theme does not
+    // have: the key works, it just has no artwork. No app chosen yet (a
+    // library drop, a hand edit): unfinished, drawn dimmed.
+    case 'app':
+      return typeof action.app === 'string' && action.app !== '' ? 'app-launch' : 'app-launch-unset';
     case 'editor': // the logo: this key is Deckhand itself
       return 'deckhand';
     case 'profile':

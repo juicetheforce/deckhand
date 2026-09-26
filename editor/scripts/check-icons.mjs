@@ -189,6 +189,7 @@ if (r && !r.error) {
     assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
     assert.equal(r.libraryIcons.length, 21, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
     assert.ok(r.libraryIcons.includes('toggle-off'), 'Toggle should draw the up half of its pair');
+    assert.ok(r.libraryIcons.includes('app-launch') && !r.libraryIcons.includes('app-launch-unset'), 'Open app shows its full icon in the library');
     assert.ok(r.libraryIcons.includes('press-release') && r.libraryIcons.includes('now-playing'), JSON.stringify(r.libraryIcons));
     // The select/cycle set, so a row drawing the wrong one of the pair is caught here.
     assert.deepEqual(r.libraryIcons.filter((n) => /-(select|cycle)$/.test(n)), ['output-select', 'output-cycle', 'input-select', 'input-cycle'], JSON.stringify(r.libraryIcons));
