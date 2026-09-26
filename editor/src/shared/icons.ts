@@ -101,3 +101,26 @@ export function iconExtension(fileName: string): string {
 export function isShownIcon(fileName: string): boolean {
   return Object.prototype.hasOwnProperty.call(ICON_CONTENT_TYPES, iconExtension(fileName));
 }
+
+/**
+ * The content type of an icon file without one of the shown extensions, from
+ * its first bytes: one of ICON_CONTENT_TYPES' formats, or null. For app icons
+ * in practice — a desktop entry's `Icon=` can be any path, and Gear Lever, for
+ * one, keeps AppImage icons as `~/AppImages/.icons/<name>` with no extension.
+ * The deck draws those anyway (sharp reads the content); this lets the editor
+ * show them too. A file with a shown extension is judged by it alone, and
+ * the icon picker still lists only those.
+ */
+export function sniffIconType(head: Uint8Array): string | null {
+  const starts = (...bytes: number[]) => bytes.every((b, i) => head[i] === b);
+  const ascii = (from: number, text: string) => [...text].every((c, i) => head[from + i] === c.charCodeAt(0));
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+  if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (ascii(0, 'GIF87a') || ascii(0, 'GIF89a')) return 'image/gif';
+  if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return 'image/webp';
+  // SVG is text: an <svg element near the start, after any XML declaration,
+  // comments or doctype. Read as Latin-1, which is enough to find it.
+  const text = String.fromCharCode(...head.subarray(0, 1024));
+  if (/^(\uFEFF|\xEF\xBB\xBF)?\s*</.test(text) && /<svg[\s>]/.test(text)) return 'image/svg+xml';
+  return null;
+}

@@ -19,7 +19,7 @@ import { BUILTIN_ICONS } from '../../src/default-icons.js';
 import { builtinIconDir, CHECKOUT_BUILTIN_ICON_DIR, iconFilePath } from '../src/main/builtin-icons.js';
 import { IconFiles, stamp } from '../src/main/icon-files.js';
 import { MAX_BOOKMARKS } from '../src/shared/bridge.js';
-import { BUILTIN_FOLDER, BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon } from '../src/shared/icons.js';
+import { BUILTIN_FOLDER, BUILTIN_PREFIX, ICON_CONTENT_TYPES, builtinRef, iconUrl, isShownIcon, sniffIconType } from '../src/shared/icons.js';
 import { folderCrumbs, moveCursor, parentFolder } from '../src/renderer/picker-model.js';
 
 let failures = 0;
@@ -95,6 +95,23 @@ await check('shown formats are exactly the ones Chromium and the daemon both dra
   assert.equal(isShownIcon('png'), false);
   assert.equal(isShownIcon('.png'), false, 'a dot-file named ".png" has no extension');
   assert.equal(isShownIcon('__proto__'), false);
+});
+
+await check('an icon with no extension is known by its first bytes: only the shown formats', () => {
+  const bytes = (...b: number[]) => new Uint8Array(b);
+  const text = (s: string) => new TextEncoder().encode(s);
+  assert.equal(sniffIconType(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0)), 'image/png');
+  assert.equal(sniffIconType(bytes(0xff, 0xd8, 0xff, 0xe0)), 'image/jpeg');
+  assert.equal(sniffIconType(text('GIF89a....')), 'image/gif');
+  assert.equal(sniffIconType(text('RIFF\x00\x00\x00\x00WEBPVP8 ')), 'image/webp');
+  assert.equal(sniffIconType(text('<svg xmlns="http://www.w3.org/2000/svg"/>')), 'image/svg+xml');
+  assert.equal(sniffIconType(text('<?xml version="1.0"?>\n<!-- made by hand -->\n<svg width="48">')), 'image/svg+xml');
+  assert.equal(sniffIconType(text('\uFEFF<svg>')), 'image/svg+xml', 'after a UTF-8 byte-order mark');
+  assert.equal(sniffIconType(text('<html><body>not an icon</body></html>')), null);
+  assert.equal(sniffIconType(text('#!/bin/sh\necho <svg>')), null, 'text that merely mentions <svg');
+  assert.equal(sniffIconType(bytes(0x00, 0x00, 0x01, 0x00)), null, 'ICO: the daemon cannot draw it either');
+  assert.equal(sniffIconType(bytes(0x49, 0x49, 0x2a, 0x00)), null, 'TIFF: Chromium cannot show it');
+  assert.equal(sniffIconType(new Uint8Array(0)), null);
 });
 
 await check('listing: folders then images, sorted as a person expects; hidden, non-image, unshowable and broken entries left out', async () => {

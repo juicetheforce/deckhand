@@ -2039,11 +2039,19 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const appListed = appIds();
   const listIcon = decodeURIComponent(appTarget('org.example.Painter.desktop')?.querySelector('img')?.src ?? '');
   const writerHasIcon = appTarget('org.example.Writer.desktop')?.querySelector('img') != null;
+  // Whether each listed icon actually drew: an icon the protocol refuses is a broken image.
+  const drew = (id: string) => {
+    const img = appTarget(id)?.querySelector('img');
+    return img != null && img.complete && img.naturalWidth > 0;
+  };
+  const withIcons = ['org.example.Dotted.desktop', 'gearapp.desktop', 'org.example.Painter.desktop'];
+  await until(() => withIcons.every(drew), 5000);
+  const loaded = Object.fromEntries(withIcons.map((id) => [id, drew(id)]));
   typeInto(input('Search applications'), 'WRIT');
   await until(() => appIds().length === 1);
   const appFiltered = appIds();
   typeInto(input('Search applications'), '');
-  await until(() => appIds().length === 2);
+  await until(() => appIds().length === 4);
   appTarget('org.example.Painter.desktop')!.click();
   const appPicked = await savedAs(21, { action: { type: 'app', app: 'org.example.Painter.desktop' } });
   const appKeyImage = () => decodeURIComponent(document.querySelectorAll<HTMLButtonElement>('.key')[21].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '');
@@ -2053,6 +2061,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
     listed: appListed,
     listIcon,
     writerHasIcon,
+    loaded,
     filtered: appFiltered,
     picked: appPicked,
     face: appKeyImage(),

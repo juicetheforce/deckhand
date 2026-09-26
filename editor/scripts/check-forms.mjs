@@ -42,6 +42,16 @@ await fs.writeFile(path.join(DATA, 'applications', 'org.example.Writer.desktop')
 await fs.mkdir(path.dirname(PAINTER_ICON), { recursive: true });
 await fs.writeFile(path.join(DATA, 'icons', 'hicolor', 'index.theme'), '[Icon Theme]\nName=Hicolor\nDirectories=256x256/apps\n\n[256x256/apps]\nSize=256\nType=Fixed\n');
 await fs.copyFile(path.join(repoRoot, 'assets', 'logo', 'png', 'apps', '256.png'), PAINTER_ICON);
+// Icons with no image extension, at absolute paths: as Gear Lever installs
+// AppImages (~/AppImages/.icons/<name>, PNG bytes), and a name that only
+// looks like it has one (SVG bytes). The deck draws both; so must the editor.
+const GEAR_ICON = path.join(home, 'AppImages', '.icons', 'gearapp');
+const DOTTED_ICON = path.join(home, 'AppImages', '.icons', 'org.example.Dotted');
+await fs.mkdir(path.dirname(GEAR_ICON), { recursive: true });
+await fs.copyFile(path.join(repoRoot, 'assets', 'logo', 'png', 'apps', '256.png'), GEAR_ICON);
+await fs.copyFile(path.join(repoRoot, 'assets', 'icons', 'app-launch.svg'), DOTTED_ICON);
+await fs.writeFile(path.join(DATA, 'applications', 'gearapp.desktop'), `[Desktop Entry]\nType=Application\nName=Gear app\nExec=true\nIcon=${GEAR_ICON}\n`);
+await fs.writeFile(path.join(DATA, 'applications', 'org.example.Dotted.desktop'), `[Desktop Entry]\nType=Application\nName=Dotted app\nExec=true\nIcon=${DOTTED_ICON}\n`);
 Object.assign(process.env, { XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_DATA_DIRS: DATA, XDG_CONFIG_HOME: path.join(home, '.config'), XDG_CURRENT_DESKTOP: 'KDE' });
 const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
 await audio.refreshCache();
@@ -128,7 +138,8 @@ check('electron ran the check', () => {
 if (r && !r.error) {
   check("Open app: picked from the daemon's list, by name, with each app's icon; the key stores the ID alone and the grid draws the app's icon", () => {
     assert.equal(r.app.before, null, 'nothing is written until an app is chosen');
-    assert.deepEqual(r.app.listed, ['org.example.Painter.desktop', 'org.example.Writer.desktop']);
+    assert.deepEqual(r.app.listed, ['org.example.Dotted.desktop', 'gearapp.desktop', 'org.example.Painter.desktop', 'org.example.Writer.desktop']);
+    assert.deepEqual(r.app.loaded, { 'org.example.Dotted.desktop': true, 'gearapp.desktop': true, 'org.example.Painter.desktop': true }, 'every icon in the list draws, extension or not');
     assert.ok(r.app.listIcon.includes(`path=${PAINTER_ICON}`), r.app.listIcon);
     assert.equal(r.app.writerHasIcon, false, 'an app with no icon shows none in the list');
     assert.deepEqual(r.app.filtered, ['org.example.Writer.desktop']);
