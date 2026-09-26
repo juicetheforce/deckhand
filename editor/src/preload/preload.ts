@@ -24,6 +24,7 @@ const bridge: DeckhandBridge = {
   previewSet: (serial, key, button) => ipcRenderer.invoke('previewSet', serial, key, button),
   previewClear: (serial, key) => ipcRenderer.invoke('previewClear', serial, key),
   testRun: (serial, action) => ipcRenderer.invoke('testRun', serial, action),
+  refreshApps: () => ipcRenderer.invoke('refreshApps'),
   collapsedLibrary: () => ipcRenderer.invoke('collapsedLibrary'),
   setCollapsedLibrary: (groups) => ipcRenderer.invoke('setCollapsedLibrary', groups),
   bookmarks: () => ipcRenderer.invoke('bookmarks'),

@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AudioList, DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 
@@ -91,7 +91,7 @@ export class DaemonClient {
     const socket = this.socket;
     this.socket = null; // before destroy(), so its 'close' is ignored as a stale socket's
     socket?.destroy();
-    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null });
+    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null });
   }
 
   view(): DaemonView {
@@ -170,7 +170,7 @@ export class DaemonClient {
   private connect(): void {
     if (this.stopped) return;
     if (this.socketPath === null) {
-      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null });
+      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null });
       return; // nothing to retry: the path will not appear
     }
     const socket = net.connect(this.socketPath);
@@ -201,6 +201,10 @@ export class DaemonClient {
       if (socket !== this.socket) return;
       this.retryMs = this.retryInitialMs;
       this.update({ connected: true, problem: null, status, decks, audio });
+      // After, not during: listing the apps reads every desktop entry and
+      // icon theme (about half a second on the Fedora laptop), and nothing
+      // else waits for it.
+      void this.refreshApps();
     } catch (err) {
       if (socket !== this.socket) return;
       this.update({ connected: false, problem: `the daemon did not answer: ${(err as Error).message}` });
@@ -222,6 +226,7 @@ export class DaemonClient {
       status: null,
       decks: null,
       audio: null,
+      apps: null,
     });
     this.lastError = null;
     if (this.stopped) return;
@@ -310,6 +315,16 @@ export class DaemonClient {
     } catch (err) {
       if (err instanceof DaemonError && err.code === 'internal') return null;
       throw err;
+    }
+  }
+
+  /** The daemon's app list, read afresh (it forgets its caches first). Left as it was if the request fails. */
+  async refreshApps(): Promise<void> {
+    try {
+      const apps = (await this.request('apps')) as AppListing[];
+      if (this.current.connected) this.update({ apps });
+    } catch {
+      // Not connected, or a daemon from before app keys: the App form says there is no list.
     }
   }
 

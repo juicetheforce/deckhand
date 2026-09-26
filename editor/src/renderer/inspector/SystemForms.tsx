@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import type { AppListing } from '../../../../src/control/protocol.js';
+import { iconUrl } from '../../shared/icons.js';
 import { Checkbox, NumberSetting, Row, Segmented, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
@@ -90,6 +93,58 @@ export function BrightnessForm({ at, button, disabled, run }: FormProps) {
       {mode !== null && (
         <Checkbox label="Show the level on the key" checked={action?.showLevel === true} disabled={disabled} onChange={(on) => write({ showLevel: on ? true : undefined })} />
       )}
+    </section>
+  );
+}
+
+/**
+ * app: open an installed application, picked from the daemon's list (its
+ * `apps`: the desktop's own entries, each with the icon its theme gives it).
+ * The key stores the desktop file ID and nothing else; with no icon of its
+ * own it draws the app's, on the deck and here.
+ *
+ * Opening the form asks the daemon for the list again, so an app installed
+ * since the editor started is there to pick.
+ */
+export function AppForm({ at, button, disabled, run, apps }: FormProps & { apps: AppListing[] | null | undefined }) {
+  const action = actionOf('app', button);
+  const stored = typeof action?.app === 'string' && action.app !== '' ? action.app : null;
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    void window.deckhand.refreshApps();
+  }, []);
+
+  const needle = query.trim().toLowerCase();
+  const shown = (apps ?? []).filter((a) => needle === '' || a.name.toLowerCase().includes(needle) || a.id.toLowerCase().includes(needle));
+  const storedMissing = stored !== null && apps != null && !apps.some((a) => a.id === stored);
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Open app</h3>
+      <p className="muted small">Opens the app. The key shows the app’s own icon unless you give it another.</p>
+      {apps == null ? (
+        <p className="warning-text">The daemon has not listed the installed applications yet, so there is nothing to pick from. Is it running?</p>
+      ) : (
+        <>
+          <input className="app-search" type="search" aria-label="Search applications" placeholder="Search applications…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <ul className="target-list app-list">
+            {shown.map((a) => (
+              <li key={a.id}>
+                <button className={stored === a.id ? 'target app-target target-selected' : 'target app-target'} disabled={disabled} data-app={a.id} onClick={() => void run({ kind: 'setAction', at, action: nextAction('app', button, { app: a.id }) })}>
+                  {a.icon ? <img className="app-icon" src={iconUrl(a.icon)} alt="" draggable={false} /> : <span className="app-icon" />}
+                  <span className="app-text">
+                    <span className="target-name">{a.name}</span>
+                    <span className="target-note">{a.id}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {shown.length === 0 && <li className="muted small">No application matches “{query}”.</li>}
+          </ul>
+        </>
+      )}
+      {storedMissing && <p className="warning-text">“{stored}” is not installed now. The key fails when pressed until it is, or pick another.</p>}
+      {stored === null && apps != null && <p className="muted small">Pick the application this key opens.</p>}
+      <p className="muted small">To go to a page or profile once the app is open, put both in a Multi action, with a pause after the app long enough for its window to appear.</p>
     </section>
   );
 }

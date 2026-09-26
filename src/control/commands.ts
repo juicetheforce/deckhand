@@ -2,9 +2,11 @@ import { isKnownAction } from '../actions/index.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
+import { forgetApps, listApps } from '../services/apps.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
+import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
-import type { AudioList, BackupStatus, DeckStatus, ReloadResult, StateSnapshot } from './protocol.js';
+import type { AppListing, AudioList, BackupStatus, DeckStatus, ReloadResult, StateSnapshot } from './protocol.js';
 import {
   ControlError,
   EVENT_NAMES,
@@ -234,6 +236,17 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
 
     // Both read the audio cache, which pactl subscribe keeps current: a request
     // never spawns pactl, so a burst of them cannot become a burst of processes.
+    // The installed applications an app key can open, each with its icon
+    // resolved. Read afresh: what was cached is forgotten first, so opening
+    // the editor's app list picks up a new app or a changed icon theme — for
+    // the deck's keys too, the next time they are drawn. The one thing that
+    // re-reads them; nothing watches.
+    async apps(): Promise<AppListing[]> {
+      forgetApps();
+      const apps = await listApps();
+      return Promise.all(apps.map(async (a) => ({ id: a.id, name: a.name, icon: a.icon ? await resolveIcon(a.icon, 96) : null })));
+    },
+
     async 'audio.sinks'() {
       const lists = audioLists(deps.audioState());
       if (!lists) throw new ControlError('internal', 'audio state has not been read yet');

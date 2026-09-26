@@ -2027,6 +2027,38 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const afterDelay = await actionAs(19, { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] });
   out.multiReadOnly = { json, afterDelay };
 
+  // Open app, on an empty key: the daemon's list, a search, a pick.
+  await selectKey(21);
+  libraryClick('app');
+  await until(() => headings().includes('Open app'));
+  const appTarget = (id: string) => document.querySelector<HTMLButtonElement>(`.inspector .app-target[data-app="${id}"]`);
+  const appIds = () => [...document.querySelectorAll<HTMLButtonElement>('.inspector .app-target')].map((b) => b.dataset.app);
+  await until(() => appTarget('org.example.Painter.desktop') !== null);
+  await sleep(500);
+  const appBefore = (await buttons())?.['21'] ?? null;
+  const appListed = appIds();
+  const listIcon = decodeURIComponent(appTarget('org.example.Painter.desktop')?.querySelector('img')?.src ?? '');
+  const writerHasIcon = appTarget('org.example.Writer.desktop')?.querySelector('img') != null;
+  typeInto(input('Search applications'), 'WRIT');
+  await until(() => appIds().length === 1);
+  const appFiltered = appIds();
+  typeInto(input('Search applications'), '');
+  await until(() => appIds().length === 2);
+  appTarget('org.example.Painter.desktop')!.click();
+  const appPicked = await savedAs(21, { action: { type: 'app', app: 'org.example.Painter.desktop' } });
+  const appKeyImage = () => decodeURIComponent(document.querySelectorAll<HTMLButtonElement>('.key')[21].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '');
+  await until(() => appKeyImage().includes('painter.png'));
+  out.app = {
+    before: appBefore,
+    listed: appListed,
+    listIcon,
+    writerHasIcon,
+    filtered: appFiltered,
+    picked: appPicked,
+    face: appKeyImage(),
+    selected: appTarget('org.example.Painter.desktop')?.classList.contains('target-selected') ?? false,
+  };
+
   // A mute key with its own icon.
   await selectKey(8);
   await until(() => pairValue('iconMuted') !== null);

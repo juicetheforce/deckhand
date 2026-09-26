@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { appIconFile, findApp } from '../services/apps.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 const run = promisify(execFile);
@@ -68,6 +69,61 @@ export const editor: ActionHandler = {
     // ELECTRON_RUN_AS_NODE, which turns Electron into plain Node.
     launch(['env', '-u', 'ELECTRON_RUN_AS_NODE', electron, app]);
   },
+};
+
+/**
+ * Whether this machine's gio has `gio launch`, which came in GLib 2.72
+ * (AlmaLinux 8's 2.56 and Debian 11's 2.66 do not). Asked on the first press
+ * of an app key and kept once it says yes; a no is asked again next press, in
+ * case GLib has been updated since.
+ */
+let gioLaunches = false;
+async function requireGioLaunch(): Promise<void> {
+  if (gioLaunches) return;
+  let help = '';
+  try {
+    const { stdout, stderr } = await run('gio', ['help', 'launch'], { timeout: 5000 });
+    help = stdout + stderr;
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+    if (e.code === 'ENOENT') throw new Error('gio is not installed: app keys launch through it (GLib\'s gio command)');
+    help = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+  }
+  if (!help.includes('gio launch')) throw new Error('this gio has no "gio launch": app keys need GLib 2.72 or newer');
+  gioLaunches = true;
+}
+
+/**
+ * app — open an installed application.
+ *
+ *   { "type": "app", "app": "org.gimp.GIMP.desktop" }
+ *
+ * `app` is the desktop file ID (src/services/apps.ts): the config never holds
+ * a path, so the key survives the app moving between a system package and a
+ * Flatpak as long as its ID stays. It is launched by `gio launch` on its
+ * desktop entry — field codes, Terminal=, D-Bus activation and Flatpak's
+ * wrapper are all the entry's business — and gio goes through launch(), so
+ * the app lands in its own scope and outlives the daemon.
+ *
+ * A key with no icon draws the app's own, resolved from the icon theme when
+ * drawn and never written to the config; with none to be found, the built-in
+ * default.
+ *
+ * The press fails, and the key is badged, when the app is not installed or gio
+ * cannot launch. Whether the app then starts is not known here: gio runs after
+ * the press returns, as with a command.
+ */
+export const app: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const id = params.app;
+    if (typeof id !== 'string' || id === '') throw new Error('app action needs "app": a desktop file ID');
+    const entry = await findApp(id);
+    if (!entry) throw new Error(`no installed application "${id}"`);
+    await requireGioLaunch();
+    launch(['gio', 'launch', entry.file]);
+  },
+
+  defaultIcon: (params, size) => (typeof params.app === 'string' && params.app !== '' ? appIconFile(params.app, size) : Promise.resolve(null)),
 };
 
 /**

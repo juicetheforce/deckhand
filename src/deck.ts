@@ -1,5 +1,5 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { describeAction, iconStateOf, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
+import { defaultIconFileOf, describeAction, iconStateOf, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
@@ -424,10 +424,13 @@ export class DeckSession implements DeckHandle {
     // The action's built-in default, in this order: an icon
     // the action chose (iconMuted, album art) wins, then the key's own icon;
     // `icon: null` means deliberately none, so only an *absent* icon gets a
-    // default; and a key with no action gets none — it stays blank.
+    // default; and a key with no action gets none — it stays blank. An
+    // action's own file (an app's icon) comes before its built-in.
     if (button?.action && button.icon === undefined && display.icon === undefined) {
-      const name = defaultIconFor(button.action, iconStateOf(button.action, this.context(index)));
-      if (name) display.icon = builtinIconRef(name);
+      const file = await defaultIconFileOf(button.action, this.iconSize);
+      const name = file ? null : defaultIconFor(button.action, iconStateOf(button.action, this.context(index)));
+      if (file) display.icon = file;
+      else if (name) display.icon = builtinIconRef(name);
     }
 
     const buffer = await renderButton(display, this.iconSize, strictIcon);

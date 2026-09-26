@@ -1,3 +1,4 @@
+import type { AppListing } from '../../../../src/control/protocol.js';
 import type { ButtonDef } from '../../../../src/types.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import type { PairIconField } from '../../shared/icons.js';
@@ -9,7 +10,7 @@ import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
 import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
-import { BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
+import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
 
 /** What every form may need; each takes the parts it uses. */
@@ -24,6 +25,8 @@ export interface ActionFormProps {
   profiles: Choice[];
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   audio: AudioLists;
+  /** The daemon's installed applications, for the App form. */
+  apps: AppListing[] | null | undefined;
   /** Start listening (Hotkey, Press/Release): a library pick; handed back once taken. */
   listenRequest: boolean;
   onListening: () => void;
@@ -48,6 +51,8 @@ export function ActionForm(p: ActionFormProps) {
       return <TextForm {...common} />;
     case 'command':
       return <CommandForm {...common} />;
+    case 'app':
+      return <AppForm {...common} apps={p.apps} />;
     case 'multi':
       return <MultiForm {...p} />;
     case 'page':

@@ -32,6 +32,7 @@ import {
   profileCoverage,
   reconcileSelection,
   faceIcon,
+  appIconsOf,
   type Selection,
 } from './model.js';
 import { BulkStatus, KeyMenu } from './KeyMenu.js';
@@ -189,6 +190,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   const [paneWidths, setPaneWidths] = useState<PaneWidths>(DEFAULT_PANE_WIDTHS);
   const resizePane = (pane: PaneName, width: number) => setPaneWidths((current) => ({ ...current, [pane]: width }));
 
+  const appIcons = appIconsOf(daemon.apps);
+
   // Icon files on this page are watched while it is shown, so a file renamed
   // away or put back reaches the grid. The stamp goes in
   // the icon URL; without it Chromium keeps the image it loaded first. Default
@@ -198,7 +201,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // the icon it flips to is stamped too rather than fetched unstamped.
   // Not `.map(faceIcon)`: that passes the array index as the second argument.
   const pageIcons = page
-    ? [...new Set(Object.values(page.buttons).flatMap((b) => [faceIcon(b), faceIcon(b, true)]).filter((i): i is string => i !== null))]
+    ? [...new Set(Object.values(page.buttons).flatMap((b) => [faceIcon(b, false, appIcons), faceIcon(b, true, appIcons)]).filter((i): i is string => i !== null))]
     : [];
   const iconsKey = pageIcons.join('\u0000');
   useEffect(() => {
@@ -363,6 +366,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
                 geometry={geometry}
                 page={page}
                 iconStamps={iconStamps}
+                appIcons={appIcons}
                 failedKeys={failedKeysOn(daemon, selection)}
                 latchedKeys={latchedKeysOn(daemon, selection)}
                 selectedKeys={selection.keys}
@@ -430,6 +434,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
           labelDefaults={labelDefaults(config)}
           canPreview={canSwitchDeck(daemon, selection.serial)}
           audio={daemon.audio}
+          apps={daemon.apps}
           apply={async (edit) => {
             const result = await window.deckhand.apply(edit);
             return result.ok ? null : result.error;

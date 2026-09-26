@@ -17,6 +17,7 @@ export const STEP_TYPES: readonly string[] = [
   'hotkey',
   'text',
   'command',
+  'app',
   'page',
   'profile',
   'brightness',
@@ -53,6 +54,9 @@ export function stepSummary(step: ActionDef, pages: Choice[], profiles: Choice[]
     }
     case 'command':
       return String(step.command ?? (Array.isArray(step.exec) ? step.exec.join(' ') : ''));
+    case 'app':
+      // The ID, not the app's name: the step list has no app list to look it up in.
+      return String(step.app).replace(/\.desktop$/, '');
     case 'page':
       return step.back === true ? 'back' : `to ${name(pages, step.to)}`;
     case 'profile':

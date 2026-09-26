@@ -7,6 +7,7 @@ import { IconState } from './inspector/IconState.js';
 import { LabelField, LabelStyle } from './inspector/LabelFields.js';
 import { pairIconFields, type PairIconField } from '../shared/icons.js';
 import { ActionForm } from './inspector/ActionForm.js';
+import type { AppListing } from '../../../src/control/protocol.js';
 import type { AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
 import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, type Choice } from './model.js';
@@ -33,6 +34,8 @@ interface Props {
   canPreview: boolean;
   /** The daemon's live audio device lists, for the device forms. */
   audio: AudioLists;
+  /** The daemon's installed applications, for the App form. */
+  apps: AppListing[] | null | undefined;
   apply: (edit: Edit) => Promise<string | null>;
 }
 
@@ -54,7 +57,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -90,6 +93,7 @@ export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pic
       labelDefaults={labelDefaults}
       canPreview={canPreview}
       audio={audio}
+      apps={apps}
       apply={apply}
       tab={tab}
       onTab={setTab}
@@ -146,7 +150,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -240,6 +244,7 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
           profiles={profiles}
           coverage={coverage}
           audio={audio}
+          apps={apps}
           listenRequest={listenRequest}
           onListening={() => setListenRequest(false)}
           onChooseIcon={chooseIcon}

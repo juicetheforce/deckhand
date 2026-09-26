@@ -51,6 +51,9 @@ case "$1" in
   show-session) echo "${STUB_SEAT-seat0}" ;;
 esac'
 stub pactl 'exit "${STUB_PACTL_RC:-0}"'
+# gio answers `gio help launch` as GLib 2.72 and newer do, or with STUB_GIO_OLD
+# as older GLib does: its general usage and a failure.
+stub gio '[ "$1 $2" = "help launch" ] && [ -z "${STUB_GIO_OLD:-}" ] && { echo "  gio launch DESKTOP-FILE [FILE-ARG…]"; exit 0; }; echo "Usage: gio COMMAND [ARGS…]" >&2; exit 1'
 stub node 'echo "v${STUB_NODE_VERSION:-22.12.0}"'
 stub npm 'echo 11.0.0'
 for tool in make cc udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
@@ -155,6 +158,7 @@ expect_missing "no /dev/uinput"              'UINPUT_NODE="$S/no-such-node"'    
 expect_missing "/dev/uinput is a plain file" 'UINPUT_NODE="$S/uinput.h"'               'does not exist, so keystrokes'
 expect_missing "no pactl"                    'rm "$S/stubs/pactl"'                     'pactl: install'
 expect_missing "no sound server"             'export STUB_PACTL_RC=1'                  'cannot reach a sound server'
+expect_missing "no gio"                      'rm "$S/stubs/gio"'                       'gio: app keys'
 expect_missing "rule to install, no sudo"    'rm "$S/stubs/sudo" "$S/installed.rules"' 'sudo: needed once'
 expect_missing "rule to install, no udevadm" 'rm "$S/stubs/udevadm" "$S/installed.rules"' 'udevadm: needed'
 expect_clean   "rule current: no sudo needed" 'rm "$S/stubs/sudo" "$S/stubs/udevadm"'
@@ -171,6 +175,7 @@ fi
 # Warnings: named, and the install is not refused for them.
 expect_warning "no tray"                      'export STUB_BUS_ABSENT=org.kde.StatusNotifierWatcher' 'No system tray'
 expect_warning "no KDE shortcut service"      'export STUB_BUS_ABSENT=org.kde.kglobalaccel'          'No KDE shortcut service'
+expect_warning "gio without gio launch"       'export STUB_GIO_OLD=1'                                'no "gio launch"'
 expect_warning "AppArmor userns restriction"  'echo 1 > "$S/sys/kernel/apparmor_restrict_unprivileged_userns"' 'The editor needs an AppArmor profile here'
 # The profile this install would add is the answer to that one, so once it is
 # in place there is nothing to warn about.
@@ -305,6 +310,10 @@ expect_command "apt: updates first, in the command shown" \
 expect_command "pacman: -S --needed" \
   'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub pacman libpulse make' \
   'sudo pacman -S --needed make libpulse'
+# gio's package differs by family: libglib2.0-bin on apt, glib2 on dnf and pacman.
+expect_command "gio: dnf offers glib2" 'rm "$S/stubs/gio"; pm_stub dnf glib2' 'sudo dnf install -y glib2'
+expect_command "gio: apt offers libglib2.0-bin" 'rm "$S/stubs/gio"; pm_stub apt libglib2.0-bin' 'sudo apt-get update && sudo apt-get install -y libglib2.0-bin'
+expect_command "gio: pacman offers glib2" 'rm "$S/stubs/gio"; pm_stub pacman glib2' 'sudo pacman -S --needed glib2'
 # Never a database refresh and never a system upgrade: both are the user's call.
 out="$(run 'rm "$S/stubs/pactl" "$S/stubs/make"; pm_stub pacman libpulse make')"
 if completed "$out" && ! grep -qE '^C: .*-Sy' <<<"$out"; then ok "pacman: no -Sy and no -Syu"; else no "pacman refreshed the database — got: $out"; fi
@@ -382,15 +391,15 @@ fi
 # check's header names the manager and what every cell resolves to here —
 # with nothing missing. That is the case it exists for: on a machine that
 # already has everything, the header is the only place the table's answers show.
-out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers nodejs22-bin nodejs24-npm-bin' cmd_check)"
+out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers nodejs22-bin nodejs24-npm-bin glib2' cmd_check)"
 if grep -q 'rc=0$' <<<"$out" \
-   && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers pactl=pulseaudio-utils' <<<"$out"; then
+   && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers pactl=pulseaudio-utils gio=glib2' <<<"$out"; then
   ok "check header: every name, though nothing is missing"
 else
   no "check header with nothing missing — got: $out"
 fi
-out="$(entry 'pm_stub dnf gcc make kernel-headers nodejs24-bin nodejs24-npm-bin' cmd_check)"
-grep -q '  packages  dnf: .* pactl=?$' <<<"$out" \
+out="$(entry 'pm_stub dnf gcc make kernel-headers nodejs24-bin nodejs24-npm-bin glib2' cmd_check)"
+grep -q '  packages  dnf: .* pactl=? gio=glib2$' <<<"$out" \
   && ok "check header: a name this machine does not know shows as ?" || no "unknown name in header — got: $out"
 out="$(entry 'pm_stub apt nodejs npm make gcc linux-libc-dev pulseaudio-utils apparmor' cmd_check)"
 grep -q '  packages  apt: .* apparmor-parser=apparmor$' <<<"$out" \
@@ -517,9 +526,9 @@ expect_missing "release: no curl"             "$REL"'; rm "$S/stubs/curl"'      
 expect_missing "release: no xz"               "$REL"'; rm "$S/stubs/xz"'         'xz: needed to unpack'
 out="$(run "$REL"'; export STUB_NO_LIBUSB=1; pm_stub dnf libusb1')"
 grep -qx 'C: sudo dnf install -y libusb1' <<<"$out" && ok "release: the offer resolves libusb to libusb1 on dnf" || no "release libusb offer — got: $out"
-out="$(entry "$REL"'; pm_stub dnf libusb1 curl xz pulseaudio-utils' cmd_check)"
+out="$(entry "$REL"'; pm_stub dnf libusb1 curl xz pulseaudio-utils glib2' cmd_check)"
 grep -q 'rc=0$' <<<"$out" && grep -q 'deckhand  release v9.9.9' <<<"$out" && ! grep -q '^  node ' <<<"$out" \
-  && grep -qx '  packages  dnf: libusb=libusb1 curl=curl xz=xz pactl=pulseaudio-utils' <<<"$out" \
+  && grep -qx '  packages  dnf: libusb=libusb1 curl=curl xz=xz pactl=pulseaudio-utils gio=glib2' <<<"$out" \
   && ok "release: check's header names the release and only its own requirements" || no "release header — got: $out"
 
 exit $fail

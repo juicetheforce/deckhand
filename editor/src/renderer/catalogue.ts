@@ -74,6 +74,7 @@ export const CATALOGUE: CatalogueGroup[] = [
   {
     name: 'System',
     entries: [
+      { type: 'app', name: 'Open app', description: 'Start an installed application', aliases: ['launch', 'program', 'desktop', 'run'] },
       { type: 'command', name: 'Run command', description: 'Start a program or shell command', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
       { type: 'editor', name: 'Open editor', description: 'Open this editor from the deck', aliases: ['deckhand', 'settings', 'configure', 'setup'] },
       { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", aliases: ['dim', 'backlight', 'screen'] },

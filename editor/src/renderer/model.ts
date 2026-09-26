@@ -7,7 +7,7 @@
  */
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import { defaultIconFor } from '../../../src/default-icons.js';
-import type { DecksResult } from '../../../src/control/protocol.js';
+import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { builtinRef, pairIconFields } from '../shared/icons.js';
@@ -371,17 +371,29 @@ export interface KeyFace {
   labelScale: number;
 }
 
+/** Each listed app's resolved icon file, by desktop file ID. */
+export type AppIcons = Record<string, string>;
+
+export function appIconsOf(apps: AppListing[] | null | undefined): AppIcons {
+  const icons: AppIcons = {};
+  for (const app of apps ?? []) if (app.icon) icons[app.id] = app.icon;
+  return icons;
+}
+
 /**
  * The icon a key shows, as the config would write it: its own
  * icon — a path or `builtin:<name>` — when it has one; none when `icon` is
  * `null`; otherwise its action's built-in default, from the same
  * `defaultIconFor` the daemon draws with. A key with no action has no default.
  *
+ * An app key with no icon shows its app's icon from `appIcons` (the daemon's
+ * app list, appIconsOf()), as the deck does; it is never written either.
+ *
  * The editor has no mute or play state, so a state pair shows its resting
  * half (`mic`, `speaker`, `play`), and now playing shows its idle icon. The
  * deck is the truth.
  */
-export function faceIcon(button: ButtonDef | undefined, latched = false): string | null {
+export function faceIcon(button: ButtonDef | undefined, latched = false, appIcons: AppIcons = {}): string | null {
   if (!button) return null;
   const action = button.action;
   // A state pair's own icon comes first on the deck (src/deck.ts); the grid
@@ -392,6 +404,9 @@ export function faceIcon(button: ButtonDef | undefined, latched = false): string
   if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
+  // An app key draws its app's icon, as the daemon resolved it; the built-in only when it has none.
+  const appIcon = action?.type === 'app' && typeof action.app === 'string' ? appIcons[action.app] : undefined;
+  if (appIcon) return appIcon;
   const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : { latched });
   return name === null ? null : builtinRef(name);
 }
@@ -412,12 +427,12 @@ export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'pr
  * An approximation of the key face; the deck is the truth. Live faces — clock
  * time, track, active output — are not drawn; default icons are (faceIcon).
  */
-export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false): KeyFace {
+export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false, appIcons: AppIcons = {}): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
   const size = iconSize ?? 72;
   return {
     background: button?.background ?? d.background,
-    icon: faceIcon(button, latched),
+    icon: faceIcon(button, latched, appIcons),
     iconFit: button?.iconFit ?? d.iconFit,
     label: button?.label ?? null,
     labelColor: button?.labelColor ?? d.labelColor,
@@ -451,6 +466,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   clock: ['format'],
   noop: [],
   editor: [],
+  app: ['app'],
   brightness: ['delta', 'value', 'showLevel'],
   'audio.volume': ['delta', 'showLevel'],
   'audio.micMute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
@@ -539,6 +555,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return typeof action.text !== 'string';
     case 'command':
       return !nonEmpty(action.command) && !(Array.isArray(action.exec) && nonEmpty(action.exec[0]));
+    case 'app':
+      return !nonEmpty(action.app);
     case 'page':
       return action.back !== true && typeof action.to !== 'string';
     case 'profile':

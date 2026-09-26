@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AudioList, DecksResult, StatusResult, SwitchResult } from './control/protocol.js';
+import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult } from './control/protocol.js';
 import { socketPath } from './control/server.js';
 
 /**
@@ -22,6 +22,7 @@ const USAGE = `usage: deckhand <command> [--json]
                                         deckhand run '{"type":"hotkey","keys":"ctrl+1"}'
   sinks                               audio outputs you can pick
   sources                             audio inputs you can pick
+  apps                                installed applications an app key can open
   watch                               print state, config and audio events until Ctrl+C
   raw '<request>'                     send one request as JSON and print the reply
 
@@ -168,7 +169,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -263,6 +264,11 @@ async function main(argv: string[]): Promise<void> {
             .map((d) => `${d.node === r.default ? '*' : ' '} ${d.label}${d.available === 'no' ? '  (unavailable)' : ''}\n    ${d.node}`)
             .join('\n'),
         );
+        break;
+      }
+      case 'apps': {
+        const r = resultOf<AppListing[]>(await client.request('apps'));
+        print(json, r, () => r.map((a) => `${a.name}\n    ${a.id}${a.icon ? '' : '  (no icon found)'}`).join('\n'));
         break;
       }
       case 'raw': {

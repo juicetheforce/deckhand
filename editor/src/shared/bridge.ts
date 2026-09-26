@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -54,6 +54,13 @@ export interface DaemonView {
    * or null until the daemon has read its audio state.
    */
   audio?: { sinks: AudioList; sources: AudioList } | null;
+  /**
+   * The installed applications an app key can open (the daemon's `apps`),
+   * each with its icon resolved — what the App form picks from and what the
+   * grid draws on an app key with no icon. Read once per connection, and again
+   * whenever the App form opens (refreshApps). Absent or null until read.
+   */
+  apps?: AppListing[] | null;
 }
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
@@ -152,6 +159,8 @@ export interface DeckhandBridge {
    * never types into the editor itself.
    */
   testRun(serial: string, action: ActionDef): Promise<DaemonResult>;
+  /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
+  refreshApps(): Promise<void>;
 
   /**
    * Which action-library sections are collapsed, by group name. Sections

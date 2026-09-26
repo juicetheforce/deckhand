@@ -184,6 +184,14 @@ caution() { PREFLIGHT_WARNINGS+=("$1"); }
 
 has_command() { command -v "$1" >/dev/null 2>&1; }
 
+# Whether gio has `gio launch`, which came in GLib 2.72: an older gio prints
+# its general usage instead. Read into a variable, not piped into grep -q.
+gio_can_launch() {
+  local help
+  help="$(gio help launch 2>&1 || true)"
+  [[ $help == *"gio launch"* ]]
+}
+
 # Whether a name on the session bus has an owner. Fails (status 2) if the bus
 # cannot be asked at all, so a caller can tell "absent" from "no bus".
 bus_name_has_owner() {
@@ -320,6 +328,10 @@ preflight_checks() {
     missing - "pactl cannot reach a sound server (pactl info failed). Deckhand's audio keys need PipeWire's PulseAudio server or PulseAudio running."
   fi
 
+  # App keys open applications through GLib's gio (`gio launch`).
+  has_command gio \
+    || missing gio "gio: app keys open applications with it. Install the package that provides GLib's gio command — libglib2.0-bin on Debian and Ubuntu, glib2 on Fedora and Arch."
+
   # Root is needed only when the udev rule is new or changed.
   if ! cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
     has_command sudo    || missing - "sudo: needed once, to install the udev rule at $UDEV_RULE_DST."
@@ -333,6 +345,12 @@ preflight_checks() {
   fi
 
   # --- Warnings: the install goes ahead ---
+
+  # An older gio (GLib before 2.72: AlmaLinux 8, Debian 11) has no `gio
+  # launch`. Not a refusal: only app keys need it, and they say why when pressed.
+  if has_command gio && ! gio_can_launch; then
+    caution "This gio has no \"gio launch\", which came in GLib 2.72: keys that open an app will fail when pressed, and say why. Everything else works."
+  fi
 
   # Electron's sandbox needs unprivileged user namespaces. Ubuntu 24.04's
   # AppArmor restriction, and older Debian's switch, turn them off. Only a
@@ -449,14 +467,21 @@ release_checks() {
 # one and the cell ages gracefully as distributions renumber.
 #
 # Checked against a real machine, and marked "checked" per cell: every dnf
-# cell (Fedora 44, `dnf list` / `dnf provides`), and apt's pactl, node and npm
-# (Ubuntu 26.04). The rest, including every pacman cell, are unchecked; the
-# guard makes a wrong one print nothing rather than a wrong name.
+# cell (Fedora 44, `dnf list` / `dnf provides`), apt's pactl, node and npm
+# (Ubuntu 26.04), and every gio cell (containers, below). The rest, including
+# every other pacman cell, are unchecked; the guard makes a wrong one print
+# nothing rather than a wrong name.
 pkg_candidates() {   # pkg_candidates <manager> <key> -> candidate names, best first
   case "$1:$2" in
     apt:pactl)             echo "pulseaudio-utils" ;;          # checked: Ubuntu 26.04
     dnf:pactl)             echo "pulseaudio-utils" ;;          # checked: Fedora 44
     pacman:pactl)          echo "libpulse" ;;
+
+    # GLib's gio, for app keys. Each cell read from a real package database
+    # with a container, 2026-09-25: the package installed and gio owned by it.
+    apt:gio)               echo "libglib2.0-bin" ;;            # checked: Ubuntu 22.04, 26.04, Debian 12
+    dnf:gio)               echo "glib2" ;;                     # checked: Fedora 44
+    pacman:gio)            echo "glib2" ;;                     # checked: Arch
 
     apt:cc)                echo "gcc" ;;
     dnf:cc)                echo "gcc" ;;                       # checked: Fedora 44
@@ -549,8 +574,8 @@ install_command() {   # install_command <manager> <package>...
 # a build from a checkout none of the download tools. The header walks all of
 # them; the offer only the missing ones.
 package_keys() {
-  if is_release; then echo "libusb curl xz pactl apparmor-parser"
-  else echo "node npm make cc uinput-header pactl apparmor-parser"
+  if is_release; then echo "libusb curl xz pactl gio apparmor-parser"
+  else echo "node npm make cc uinput-header pactl gio apparmor-parser"
   fi
 }
 

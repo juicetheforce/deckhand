@@ -81,6 +81,15 @@ export type StatusResult = StateSnapshot & {
 };
 
 /** The "decks" result. */
+/** One installed application, as the `apps` command lists it. */
+export interface AppListing {
+  /** The desktop file ID: what an app key's `app` holds. */
+  id: string;
+  name: string;
+  /** Its icon, resolved to a file at 96 px, or null when none can be found. */
+  icon: string | null;
+}
+
 export type DecksResult = Array<{ serial: string } & DeckGeometry>;
 
 /** The "profile.switch" result. */

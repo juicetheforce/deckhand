@@ -707,6 +707,9 @@ function registerIpc(): void {
     }
     return testRun(serial, a as ActionDef);
   });
+  ipcMain.handle('refreshApps', async (event) => {
+    if (fromOurWindow(event)) await daemon.refreshApps();
+  });
   ipcMain.handle('findSystemShortcut', (event, combo: unknown) =>
     fromOurWindow(event) && typeof combo === 'string' && combo.length < 200 ? findSystemShortcut(combo) : null,
   );

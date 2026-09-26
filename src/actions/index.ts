@@ -17,6 +17,7 @@ export const registry: Record<string, ActionHandler> = {
   keyHold: keyboard.keyHold,
 
   command: system.command,
+  app: system.app,
   editor: system.editor,
   page: system.page,
   profile: system.profile,
@@ -128,6 +129,17 @@ export async function describeAction(
     return await handler.describe(ctx, action);
   } catch (err) {
     ctx.log(`describe for "${action.type}" failed: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+/** A file the action draws when its key has no icon (the app action's app icon), or null. */
+export async function defaultIconFileOf(action: ActionDef, size: number): Promise<string | null> {
+  const handler = registry[action.type];
+  if (!handler?.defaultIcon) return null;
+  try {
+    return await handler.defaultIcon(action, size);
+  } catch {
     return null;
   }
 }

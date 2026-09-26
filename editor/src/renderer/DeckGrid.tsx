@@ -4,7 +4,7 @@ import { failedBadgeSvg } from '../../../src/failed-badge.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
-import { actionIncomplete, describeAction, keyFace, keyKind, type DeckGeometryWithSerial } from './model.js';
+import { actionIncomplete, describeAction, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
 
 interface Props {
   config: Config;
@@ -12,6 +12,8 @@ interface Props {
   page: PageDef;
   /** Icon path → its file's stamp (src/main/icon-files.ts), so a changed file is fetched again. */
   iconStamps: Record<string, string>;
+  /** Each app's resolved icon, for app keys with no icon of their own (model.ts appIconsOf). */
+  appIcons: AppIcons;
   /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
   failedKeys: Record<number, string>;
   /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
@@ -119,7 +121,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
   const keyDrag = useKeyDrag(onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -141,6 +143,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, failedKeys, latch
           iconSize={geometry.iconSize}
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
+          appIcons={appIcons}
           failure={failedKeys[k.index]}
           latched={latchedKeys.includes(k.index)}
           selected={selectedKeys.includes(k.index)}
@@ -166,6 +169,7 @@ interface KeyProps {
   iconSize: number | null;
   button: ButtonDef | undefined;
   iconStamps: Record<string, string>;
+  appIcons: AppIcons;
   /** The error, if this key's last press on the deck failed. */
   failure: string | undefined;
   /** This key is latched down on the deck right now. */
@@ -180,10 +184,10 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
-  const face = keyFace(config, button, iconSize, latched);
+  const face = keyFace(config, button, iconSize, latched, appIcons);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
   // Which icon failed to load, by path and stamp, so a changed path — or the
   // same path whose file changed — is tried again.

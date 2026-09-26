@@ -32,6 +32,17 @@ await fs.symlink(path.join(repoRoot, 'scripts/test/fake-pactl.mjs'), path.join(s
 process.env.PATH = `${path.join(scratch, 'bin')}:${process.env.PATH}`;
 process.env.FAKE_PACTL_STATE = PACTL_STATE;
 await fs.writeFile(PACTL_STATE, '{}');
+// Installed applications, for the App form: two desktop entries and a hicolor
+// icon, under scratch XDG directories the daemon (in this process) reads.
+const DATA = path.join(scratch, 'share');
+const PAINTER_ICON = path.join(DATA, 'icons', 'hicolor', '256x256', 'apps', 'painter.png');
+await fs.mkdir(path.join(DATA, 'applications'), { recursive: true });
+await fs.writeFile(path.join(DATA, 'applications', 'org.example.Painter.desktop'), '[Desktop Entry]\nType=Application\nName=Painter\nExec=true\nIcon=painter\n');
+await fs.writeFile(path.join(DATA, 'applications', 'org.example.Writer.desktop'), '[Desktop Entry]\nType=Application\nName=Writer\nExec=true\n');
+await fs.mkdir(path.dirname(PAINTER_ICON), { recursive: true });
+await fs.writeFile(path.join(DATA, 'icons', 'hicolor', 'index.theme'), '[Icon Theme]\nName=Hicolor\nDirectories=256x256/apps\n\n[256x256/apps]\nSize=256\nType=Fixed\n');
+await fs.copyFile(path.join(repoRoot, 'assets', 'logo', 'png', 'apps', '256.png'), PAINTER_ICON);
+Object.assign(process.env, { XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_DATA_DIRS: DATA, XDG_CONFIG_HOME: path.join(home, '.config'), XDG_CURRENT_DESKTOP: 'KDE' });
 const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
 await audio.refreshCache();
 const { FakeDeck, startDaemon, reloadLikeTheDaemon } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
@@ -115,6 +126,16 @@ check('electron ran the check', () => {
 });
 
 if (r && !r.error) {
+  check("Open app: picked from the daemon's list, by name, with each app's icon; the key stores the ID alone and the grid draws the app's icon", () => {
+    assert.equal(r.app.before, null, 'nothing is written until an app is chosen');
+    assert.deepEqual(r.app.listed, ['org.example.Painter.desktop', 'org.example.Writer.desktop']);
+    assert.ok(r.app.listIcon.includes(`path=${PAINTER_ICON}`), r.app.listIcon);
+    assert.equal(r.app.writerHasIcon, false, 'an app with no icon shows none in the list');
+    assert.deepEqual(r.app.filtered, ['org.example.Writer.desktop']);
+    assert.deepEqual(r.app.picked, { action: { type: 'app', app: 'org.example.Painter.desktop' } });
+    assert.ok(r.app.face.includes(`path=${PAINTER_ICON}`), `the grid shows ${r.app.face}`);
+    assert.equal(r.app.selected, true);
+  });
   check('Clock: a library click on an empty key writes it at once; the format writes format, and the default removes it', () => {
     assert.deepEqual(r.clock, [{ type: 'clock' }, { type: 'clock', format: 'HH:mm:ss' }, { type: 'clock' }]);
   });
@@ -312,6 +333,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     10: { action: { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic', moveStreams: false } },
     11: r?.cycle?.final ? { action: r.cycle.final } : '(cycle not reached)',
     20: r?.cycleInputs?.final ? { action: r.cycleInputs.final } : '(cycle inputs not reached)',
+    21: { action: { type: 'app', app: 'org.example.Painter.desktop' } },
     12: BUTTONS[12],
     13: { action: { type: 'text', text: 'Hi!\nok' } },
     14: BUTTONS[14],

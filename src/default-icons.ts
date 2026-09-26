@@ -108,6 +108,8 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.latched ? 'toggle' : 'toggle-off';
     case 'command':
       return 'command';
+    case 'app': // drawn only when the app's own icon cannot be found (src/actions/system.ts)
+      return 'command';
     case 'editor': // the logo: this key is Deckhand itself
       return 'deckhand';
     case 'profile':

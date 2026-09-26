@@ -37,6 +37,7 @@ import {
   failedKeysOn,
   latchedKeysOn,
   faceIcon,
+  appIconsOf,
   type Selection,
 } from '../src/renderer/model.js';
 
@@ -109,7 +110,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'page', 'profile', 'text', 'toggle']);
 });
 
 console.log('the navigation guard');
@@ -252,6 +253,8 @@ await check('"not set up": an action missing the setting it cannot run without â
     { type: 'command' },
     { type: 'command', command: '  ' },
     { type: 'command', exec: [] },
+    { type: 'app' },
+    { type: 'app', app: '' },
     { type: 'page' },
     { type: 'profile' },
     { type: 'multi' },
@@ -274,6 +277,7 @@ await check('"not set up": an action missing the setting it cannot run without â
     { type: 'text', text: '' },
     { type: 'command', command: 'kate' },
     { type: 'command', exec: ['kate'] },
+    { type: 'app', app: 'org.gimp.GIMP.desktop' },
     { type: 'page', to: 'main' },
     { type: 'page', back: true },
     { type: 'profile', to: 'p' },
@@ -309,6 +313,7 @@ await check('Multi action steps: which can be edited, what each row says, and th
   assert.equal(stepSummary({ type: 'page', to: 'pg_1' }, pages, []), 'to Jobs');
   assert.equal(stepSummary({ type: 'text', text: 'gg wp' }, pages, []), 'â€œgg wpâ€');
   assert.equal(stepSummary({ type: 'audio.sink' }, pages, []), 'not set up');
+  assert.equal(stepSummary({ type: 'app', app: 'org.gimp.GIMP.desktop' }, pages, []), 'org.gimp.GIMP');
   // Ctrl+1 is 141.5 ms, "gg" 45 ms, and 200 ms of delay: 386.5 ms, shown to 5 ms.
   assert.equal(multiTotal([{ type: 'hotkey', keys: 'ctrl+1', delayMs: 200 }, { type: 'text', text: 'gg' }]), 'delays 200 ms Â· about 385 ms total');
   assert.equal(multiTotal([{ type: 'hotkey', keys: 'f24' }]), 'about 15 ms total');
@@ -842,6 +847,20 @@ await check("a toggle's face follows the latch: its own icons, or the built-in p
   assert.equal(faceIcon(own, true), '~/on.png');
   // A key with its own icon keeps it in both states, as everywhere else.
   assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, true), '~/mine.png');
+});
+
+await check("an app key's face: the app's icon from the daemon's list, never over the key's own", () => {
+  const apps = appIconsOf([
+    { id: 'org.gimp.GIMP.desktop', name: 'GIMP', icon: '/usr/share/icons/hicolor/256x256/apps/org.gimp.GIMP.png' },
+    { id: 'noicon.desktop', name: 'No icon', icon: null },
+  ]);
+  const gimp = { type: 'app', app: 'org.gimp.GIMP.desktop' };
+  assert.equal(faceIcon({ action: gimp }, false, apps), '/usr/share/icons/hicolor/256x256/apps/org.gimp.GIMP.png');
+  assert.equal(faceIcon({ icon: '~/mine.png', action: gimp }, false, apps), '~/mine.png', 'its own icon wins');
+  assert.equal(faceIcon({ icon: null, action: gimp }, false, apps), null, 'deliberately none stays none');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'noicon.desktop' } }, false, apps), 'builtin:command', 'an app with no icon: the built-in');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, false, apps), 'builtin:command', 'an app not listed: the built-in');
+  assert.equal(faceIcon({ action: gimp }), 'builtin:command', 'no list yet: the built-in');
 });
 
 await check('failed keys: only those on the page being edited, from the deck being edited, with their errors', () => {

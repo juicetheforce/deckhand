@@ -137,6 +137,9 @@ already is, and nothing is ever copied or imported. Built-in icons are
 referred to by name (`builtin:<name>`), never by a path into the install
 directory, which is replaced on every update. An action with no icon set
 draws its built-in default. That default is never written to the config.
+An app key with no icon draws its app's own icon, found through the
+desktop's icon theme when the key is drawn — the daemon does that lookup
+itself, having neither GTK nor Qt — and never written to the config either.
 
 **Audio follows one rule: you pick from the devices the system reports, and
 Deckhand applies no logic to the list.** It does not categorise, rank or guess.
@@ -149,7 +152,8 @@ in the service's cgroup when it stops — every update, a crash restart,
 logging out. A program started as the daemon's child, even detached, stays in
 that cgroup, so an update would close every app launched from a deck. Programs
 are started through `launch()` (`src/actions/system.ts`), which runs them with
-`systemd-run --user --scope`, each in a scope of its own. `KillMode=process`
+`systemd-run --user --scope`, each in a scope of its own; an app key hands
+its desktop entry to `gio launch` the same way. `KillMode=process`
 on the unit would also fix it, and would leave the input helper,
 `pactl subscribe` and `udevadm monitor` running after every stop.
 
@@ -173,6 +177,7 @@ is here so the test is not "fixed" instead.
 | `editor/src/renderer/model.ts`'s `emptyState()` / `connectionPill()` | the **order** is the content: "nothing is connected at all" is tested before anything per-deck, and before the layout, or one deck gets named while every deck is missing; both use the same order so the card and the pill cannot disagree |
 | `followDeck()` | it must **reconcile first, then follow the deck it settled on** — following the previous serial misses the deck's real page whenever the selection named no deck, which is every time the window opens before the daemon has reported |
 | `deckChoices()` / `knownDecks()` / `deckOptions()` | **a deck that is not plugged in is not listed, anywhere.** The editor's device lists derive from the first two, and Settings' Default deck list (`deckOptions()`, `editor/src/shared/settings.ts`) follows the same rule separately. The *stored* default may still name an absent deck. Accepted cost: unplugging the deck being edited moves the editor off it |
+| `src/services/apps.ts`, `src/services/icon-theme.ts`, an action's `defaultIcon()` | an app's icon is resolved when drawn and **never written to `config.json`**; every answer is cached, and nothing watches the disk — the socket's `apps` command, which the editor's app list asks, is the one thing that forgets and re-reads |
 | the config watcher, or anything written near `config.json` | it is safe only because it is non-recursive and filters on the file name |
 | a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |

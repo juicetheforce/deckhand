@@ -156,4 +156,11 @@ export interface ActionHandler {
    * read cached state only — it runs on every render of the key.
    */
   iconState?(params: ActionDef, ctx?: ActionContext): IconState;
+  /**
+   * Optional. A file to draw when the key has no icon of its own, found at
+   * draw time and never written to the config: the app action's app icon.
+   * Null falls through to the built-in default (src/default-icons.ts). Must
+   * answer from a cache after its first call — it runs on every render.
+   */
+  defaultIcon?(params: ActionDef, size: number): Promise<string | null>;
 }
