@@ -1,8 +1,8 @@
 # Deckhand
 
 Stream Deck software for Linux. A small background service drives the decks,
-and an editor lets you set them up: hotkeys, audio device switching, media
-controls, pages and profiles.
+and an editor lets you set them up: hotkeys, opening apps, audio device
+switching, media controls, pages and profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -64,8 +64,9 @@ curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/in
 It downloads a prebuilt release (about 130 MB) and installs it for your user
 only. Nothing is compiled on your machine, and it brings its own Node.js. You
 need an x86_64 machine with glibc 2.28 or newer, a desktop session with
-systemd, and `pactl` for the audio keys. The installer checks first, names
-anything missing, and offers the command to install it.
+systemd, `pactl` for the audio keys, and GLib's `gio` for keys that open an
+app. The installer checks first, names anything missing, and offers the
+command to install it.
 
 The download is checked against the release's `SHA256SUMS`. That catches a
 corrupted or cut-short download, and that is all it does: the checksums come
@@ -112,8 +113,6 @@ I build what I use, so this list changes, and nothing on it is a promise. If
 you use Deckhand and something here matters to you, say so in an issue.
 That's what shapes it.
 
-- An app launcher that picks from your installed applications and uses each
-  app's own icon.
 - Timer keys.
 - Volume for individual devices, not just the default one.
 - Window actions on KDE Plasma.

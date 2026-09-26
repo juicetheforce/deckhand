@@ -217,6 +217,7 @@ deckhand repaint                    # repaint all decks (or: deckhand repaint <s
 deckhand run --deck <serial> '{"type":"hotkey","keys":"ctrl+1"}'   # run an action without saving it
 deckhand sinks                      # audio outputs you can pick (* = current default)
 deckhand sources                    # audio inputs you can pick
+deckhand apps                       # installed applications an app key can open, with their IDs
 deckhand watch                      # print changes as they happen, until Ctrl+C
 deckhand raw '<request>'            # send one request as JSON and print the reply
 ```
@@ -277,7 +278,9 @@ its layout's start page.
 **Buttons** are keyed by index as a string: 0 is top-left, counting across
 rows. A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
 `labelColor`, `labelSize`, `labelPosition`, `background`, `action`,
-`onRelease` and `refreshMs`. `\n` in a label gives a second line. A button
+`onRelease` and `refreshMs`. `\n` in a label gives a second line. A line
+too wide for the key is cut and ends in `…`, each line on its own, so a
+short second line stays whole under a long first one. A button
 index past the deck's last key is accepted and never shown; the editor never
 writes one.
 
@@ -295,6 +298,7 @@ can't be drawn shows a dashed "missing" icon.
 | `keyHold` | `keys`, `state: "down"` / `"up"` — pair with `onRelease` for push-to-talk |
 | `text` | Types a literal string (US layout) |
 | `command` | `command: "sh string"` or `exec: ["bin", "arg"]`. Started in its own systemd scope, so it outlives the daemon; with `wait: true` it runs as the daemon's child for up to 15 s, and a failure marks the key |
+| `app` | `app: "<desktop file ID>"` (from `deckhand apps`, e.g. `org.gimp.GIMP.desktop`) — opens an installed application through its desktop entry, with `gio launch`, in its own systemd scope. With no icon of its own, the key shows the app's icon from your icon theme; a dimmed grid means no app is chosen yet |
 | `editor` | Opens Deckhand's editor, or brings it to the front if it is already open. Its default icon is the Deckhand logo; every deck starts with one on its first key |
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
@@ -310,7 +314,7 @@ can't be drawn shows a dashed "missing" icon.
 | `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level |
 | `audio.mute` | Toggles output mute; `iconMuted` / `iconUnmuted` |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconPlaying` / `iconPaused` |
-| `media.info` | Live now-playing key, with album art via `showArt` |
+| `media.info` | Live now-playing key, with album art via `showArt`. `maxChars` cuts the title and artist at a number of characters instead of at the key's width |
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -319,6 +323,22 @@ are not offered.
 
 Media actions control whichever player is playing, unless you pin one with
 `player: "<name>"`.
+
+**Open an app, then switch to its profile** is a `multi` key with a pause
+after the app step:
+
+```json
+{ "type": "multi", "steps": [
+  { "type": "app", "app": "org.gimp.GIMP.desktop", "delayMs": 4000 },
+  { "type": "profile", "to": "GIMP" }
+]}
+```
+
+The pause is a fixed guess at how long the app takes to appear; tune it by
+using it. Deckhand does not watch for the window, which would need
+something specific to each desktop. The profile switches even if the app
+failed to start, and nothing on the deck shows the wait: a second press
+during it opens a second copy. Other keys work during the pause.
 
 A key whose press fails wears a red badge, on the deck and in the editor,
 until a press of it succeeds or it is edited. A `command` key without `wait`
@@ -349,6 +369,7 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | `profile.switch` | `to` | switches every deck to a profile, by ID or name |
 | `action.run` | `serial`, `action`, optional `onRelease` and `holdMs` | runs an action as if pressed on that deck, without saving it |
 | `audio.sinks`, `audio.sources` | | the devices an audio key can name, and the current default |
+| `apps` | | the installed applications an app key can open: ID, name, and icon file (null when the theme has none). Reads the disk afresh |
 | `subscribe` | `events`: any of `state`, `config`, `audio` | replaces this connection's subscriptions |
 | `preview.set`, `preview.clear` | | the editor's unsaved previews on a deck; cleared when its connection closes |
 
@@ -423,7 +444,9 @@ drives the control socket over a real socket, with
 uinput) and `scripts/test/fake-pactl.mjs` on `PATH` (with `FAKE_PACTL_STATE` it
 remembers presses, mutes and absent devices). `scripts/test/fake-mpris-player.mjs`
 puts a fake player on a private bus (`scripts/smoke-mpris.mjs` re-runs itself
-under `dbus-run-session`). `scripts/test/no-decks.mjs` and
+under `dbus-run-session`). `scripts/test/fake-gio.mjs`,
+`fake-gsettings.mjs` and `fake-systemd-run.mjs` stand in for the programs an
+app key uses (`scripts/smoke-apps.mjs`). `scripts/test/no-decks.mjs` and
 `scripts/test/fake-decks.mjs` give a child process no decks, or decks a test
 can plug and unplug while the daemon runs.
 
