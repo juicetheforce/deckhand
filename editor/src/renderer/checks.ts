@@ -18,6 +18,55 @@ function sharedImports(): SharedImportReport {
   }
 }
 
+/**
+ * The deck being edited: the Device dropdown's value with one deck connected,
+ * the SHOW IN EDITOR button's `data-deck` with two or more.
+ */
+function editedDeck(): string | null {
+  const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
+  if (device instanceof HTMLSelectElement) return device.value;
+  return device?.dataset.deck ?? null;
+}
+
+/** The decks the Device control offers, by name: the dropdown's options, or SHOW IN EDITOR's rows (opened and closed to read them). */
+async function deviceList(): Promise<{ serial: string; label: string }[] | null> {
+  const device = document.querySelector('[data-crumb="device"]');
+  if (device === null) return null;
+  if (device instanceof HTMLSelectElement) return [...device.options].map((o) => ({ serial: o.value, label: o.textContent ?? '' }));
+  await openShowInEditor();
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-show-deck]')].map((r) => ({
+    serial: r.dataset.showDeck ?? '',
+    label: r.querySelector('.show-in-editor-name')?.textContent ?? '',
+  }));
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 80));
+  return rows;
+}
+
+/** Open SHOW IN EDITOR (two or more decks connected), if it is not open. */
+async function openShowInEditor(): Promise<void> {
+  if (document.querySelector('.show-in-editor')) return;
+  document.querySelector<HTMLButtonElement>('button[data-crumb="device"]')!.click();
+  await new Promise((r) => setTimeout(r, 80));
+}
+
+/**
+ * Edit one deck, the way a user does: with one deck connected, the Device
+ * dropdown; with two or more, its name in SHOW IN EDITOR, which shows that
+ * deck alone.
+ */
+async function chooseDeck(serial: string): Promise<void> {
+  const device = document.querySelector('[data-crumb="device"]');
+  if (device instanceof HTMLSelectElement) {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(device, serial);
+    device.dispatchEvent(new Event('change', { bubbles: true }));
+  } else {
+    await openShowInEditor();
+    document.querySelector<HTMLButtonElement>(`[data-show-deck="${serial}"] .show-in-editor-name`)!.click();
+  }
+  await new Promise((r) => setTimeout(r, 200));
+}
+
 /** Open the "+" menu and pick one of its two items (Toolbar's AddMenu). */
 async function openAddMenu(item: 'New page' | 'New profile'): Promise<void> {
   document.querySelector<HTMLButtonElement>('.tab-add')!.click();
@@ -143,11 +192,16 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   const started = Date.now();
   while (!document.querySelector('.grid') && Date.now() - started < 5000) await new Promise((r) => setTimeout(r, 50));
   const deck = new URLSearchParams(window.location.search).get('selectDeck');
-  if (deck !== null) {
-    // Choose the device the way a user does: change the Device dropdown.
-    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1];
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, deck);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+  if (deck !== null) await chooseDeck(deck);
+  const showDecks = new URLSearchParams(window.location.search).get('showDecks');
+  for (const serial of showDecks?.split(',') ?? []) {
+    await openShowInEditor();
+    const box = document.querySelector<HTMLInputElement>(`[data-show-deck="${serial}"] input`);
+    if (box && !box.checked) box.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  if (showDecks !== null) {
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 200));
   }
   const wantPage = new URLSearchParams(window.location.search).get('page');
@@ -182,6 +236,8 @@ async function screenshot(api: DeckhandBridge): Promise<Record<string, unknown>>
   const open = new URLSearchParams(window.location.search).get('open');
   if (open === 'newprofile') {
     await openAddMenu('New profile');
+  } else if (open === 'show') {
+    await openShowInEditor();
   } else if ((open === 'keymenu' || open === 'keymenu-device' || open === 'keymenu-page') && selectIndices.length > 0) {
     // The key's right-click menu, on the last selected key.
     const key = document.querySelectorAll<HTMLButtonElement>('.key')[selectIndices[selectIndices.length - 1]];
@@ -920,11 +976,9 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
   // a person reaches a connected deck the profile does not cover when another
   // one does — the breadcrumb opens on the deck with a layout.
   if (selectOther) {
-    const device = document.querySelector<HTMLSelectElement>('select[data-crumb="device"]');
-    const other = device === null ? undefined : [...device.options].find((o) => o.value !== device.value);
-    if (device && other) {
-      device.value = other.value;
-      device.dispatchEvent(new Event('change', { bubbles: true }));
+    const other = (await deviceList())?.find((d) => d.serial !== editedDeck());
+    if (other) {
+      await chooseDeck(other.serial);
       await sleep(800);
     }
   }
@@ -932,6 +986,7 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
   const card = document.querySelector('[data-empty-state]');
   const pill = document.querySelector('[data-connection]');
   const device = document.querySelector<HTMLSelectElement>('select[data-crumb="device"]');
+  const devices = await deviceList();
   const notices = [...document.querySelectorAll('.notice')].map((n) => n.textContent ?? '');
 
   return {
@@ -943,7 +998,7 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
     pill: pill?.getAttribute('data-connection') ?? null,
     pillLabel: pill?.textContent?.trim() ?? null,
     grid: document.querySelector('.grid') !== null,
-    deviceOptions: device === null ? null : [...device.options].map((o) => o.textContent),
+    deviceOptions: devices === null ? null : devices.map((d) => d.label),
     deviceDisabled: device?.disabled ?? null,
     // "Say it once": how many separate places mention the daemon being down.
     daemonNotices: notices.filter((t) => t.includes('Not connected to the daemon')).length,
@@ -1024,7 +1079,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   //    config has a page key to press.
   // The deck being edited, from the Device dropdown — not decks()[0], which is
   // whichever deck the daemon lists first.
-  const serial = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value;
+  const serial = editedDeck()!;
   tab('Second')!.click();
   out.onSecond = await until(async () => (await deckAt(serial))?.page === 'second');
   out.tabBeforePress = selectedTab();
@@ -1154,7 +1209,7 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
     return false;
   };
   const decks = async () => (await api.snapshot()).daemon.status?.decks ?? [];
-  const serial = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value;
+  const serial = () => editedDeck()!;
   const deck = async () => (await decks()).find((d) => d.serial === serial());
   const selectedTab = () => document.querySelector('.tab-selected')?.getAttribute('data-tab') ?? null;
   const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
@@ -1403,7 +1458,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
     items: deviceItems,
     v2Buttons: await v2Buttons(),
     message: document.querySelector('.bulk-message')?.textContent,
-    deckStayed: document.querySelectorAll<HTMLSelectElement>('.toolbar select')[1].value === 'BULK-XL' && document.querySelectorAll('.key').length === 32,
+    deckStayed: editedDeck() === 'BULK-XL' && document.querySelectorAll('.key').length === 32,
   };
 
   // 11. Key onto key. Pointer events go where a real pointer's would: the

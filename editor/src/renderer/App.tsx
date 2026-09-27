@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
 import type { Config } from '../../../src/types.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
+import { DeckPanel } from './DeckPanel.js';
 import { Inspector, type Pick } from './Inspector.js';
 import { Library } from './Library.js';
 import { actionName, libraryIcon } from './catalogue.js';
@@ -18,8 +19,13 @@ import {
   emptyState,
   failedKeysOn,
   latchedKeysOn,
+  focusDeck,
   followDeck,
   othersToStartPages,
+  pageOf,
+  setDeckPage,
+  setShown,
+  shownDecks,
   geometryFor,
   layoutFor,
   labelDefaults,
@@ -153,6 +159,12 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   const geometry = geometryFor(daemon, selection.serial);
   /** Why there is no grid, or null when there is one. */
   const nothing = emptyState(config, daemon, selection);
+  /** The decks drawn. One is today's editor exactly: no panels, no headers. */
+  const shown = shownDecks(config, daemon, selection);
+  const several = shown.length > 1;
+  /** A key on another shown deck: that deck takes the focus, with this key alone selected. */
+  const focusKey = (serial: string, index: number) =>
+    setSelection((s) => ({ ...focusDeck(s, serial), key: index, keys: [index] }));
 
   const selectKeys = (keys: number[]) =>
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
@@ -162,10 +174,13 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // An action dragged from the library onto a key: a new button there.
   // Written first, then the key is selected and its form shown — the
   // pick comes after the write so the inspector sees the new action.
+  // On another shown deck, the drop focuses it and the new button is made there.
   const actionDrag = useActionDrag((type, { serial, index }) => {
-    if (editingBlocked || !page || serial !== selection.serial) return;
-    const at = { profile: selection.profile, serial: selection.serial, page: selection.page, index };
-    selectKeys([index]);
+    const pageId = pageOf(selection, serial);
+    if (editingBlocked || pageId === null || !layoutFor(config, selection.profile, serial)?.pages[pageId]) return;
+    const at = { profile: selection.profile, serial, page: pageId, index };
+    if (serial === selection.serial) selectKeys([index]);
+    else focusKey(serial, index);
     void window.deckhand.apply({ kind: 'assignAction', at, action: { type } }).then((result) => {
       if (!result.ok) {
         setSwitchError(`Could not put ${actionName(type)} on key ${index + 1}: ${result.error}`);
@@ -201,9 +216,19 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // Both halves of a state pair the daemon reports per key (a toggle), so
   // the icon it flips to is stamped too rather than fetched unstamped.
   // Not `.map(faceIcon)`: that passes the array index as the second argument.
-  const pageIcons = page
-    ? [...new Set(Object.values(page.buttons).flatMap((b) => [faceIcon(b, false, appIcons), faceIcon(b, true, appIcons)]).filter((i): i is string => i !== null))]
-    : [];
+  // Every shown deck's page: with several shown, each grid draws its icons.
+  const shownPages = shown.flatMap((serial) => {
+    const shownPage = layoutFor(config, selection.profile, serial)?.pages[pageOf(selection, serial) ?? ''];
+    return shownPage ? [shownPage] : [];
+  });
+  const pageIcons = [
+    ...new Set(
+      shownPages
+        .flatMap((p) => Object.values(p.buttons))
+        .flatMap((b) => [faceIcon(b, false, appIcons), faceIcon(b, true, appIcons)])
+        .filter((i): i is string => i !== null),
+    ),
+  ];
   const iconsKey = pageIcons.join('\u0000');
   useEffect(() => {
     let alive = true;
@@ -248,11 +273,11 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   };
 
   const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
-  const addLayout = async () => {
+  const addLayout = async (serial = selection.serial) => {
     const result = await window.deckhand.apply({
       kind: 'addLayout',
       profile: selection.profile,
-      serial: selection.serial,
+      serial,
       pageName: 'Main',
     });
     setAddLayoutError(result.ok ? null : result.error);
@@ -298,6 +323,81 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
     else setProfileDeleteError(result.error);
   };
 
+  /** Another shown deck's Page ▾: that deck alone moves, on screen and on the deck, as a tab does for the focused one. */
+  const showDeckPage = (serial: string, pageId: string) => {
+    setSelection((s) => setDeckPage(s, serial, pageId));
+    if (canSwitchDeck(daemon, serial)) {
+      void sendSwitch(
+        () => window.deckhand.showPage(serial, pageId),
+        deckShows(serial, (d) => d.page === pageId),
+      );
+    }
+  };
+
+  /**
+   * One deck's grid, or null when it has none to draw (no layout, geometry or
+   * page). The focused deck's is the grid the editor has always drawn; a key
+   * on any other shown deck focuses that deck first, and a key drag there
+   * swaps on that deck.
+   */
+  const grid = (serial: string) => {
+    const focused = serial === selection.serial;
+    const pageId = pageOf(selection, serial) ?? '';
+    const gridPage = layoutFor(config, selection.profile, serial)?.pages[pageId];
+    const gridGeometry = geometryFor(daemon, serial);
+    if (!gridPage || !gridGeometry) return null;
+    const at = { profile: selection.profile, serial, page: pageId };
+    return (
+      <DeckGrid
+        config={config}
+        geometry={gridGeometry}
+        page={gridPage}
+        iconStamps={iconStamps}
+        appIcons={appIcons}
+        failedKeys={failedKeysOn(daemon, at)}
+        latchedKeys={latchedKeysOn(daemon, at)}
+        selectedKeys={focused ? selection.keys : []}
+        onClickKey={(index, modifiers) =>
+          focused ? setSelection((s) => ({ ...s, ...clickKeys(gridGeometry, s, index, modifiers) })) : focusKey(serial, index)
+        }
+        onMoveKey={
+          editingBlocked
+            ? null
+            : focused
+              ? (from, to) => void bulk.move(from, to)
+              : (from, to) => {
+                  focusKey(serial, to);
+                  void bulk.move(from, to, { serial, page: pageId, def: gridPage });
+                }
+        }
+        actionDropTarget={actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.index : null}
+        onKeyMenu={(index, x, y) => {
+          // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
+          if (!focused) focusKey(serial, index);
+          else if (!selection.keys.includes(index)) selectKeys([index]);
+          if (!editingBlocked) setKeyMenu({ x, y });
+        }}
+      />
+    );
+  };
+
+  /** Why a deck has no grid (model.ts emptyState), and the way to give it one where there is. */
+  const emptyCard = (why: ReturnType<typeof emptyState>, serial: string) => {
+    if (!why) return null;
+    return (
+      <div className="no-layout" data-empty-state={why.kind}>
+        <p className="empty-title">{why.title}</p>
+        <p className="muted">{why.detail}</p>
+        {why.canAddLayout && (
+          <button className="primary" disabled={editingBlocked} onClick={() => void addLayout(serial)}>
+            Add a layout for {deckLabel(config, daemon, serial)}
+          </button>
+        )}
+        {addLayoutError && <p className="field-error">{addLayoutError}</p>}
+      </div>
+    );
+  };
+
   return (
     <div className="app">
       <Toolbar
@@ -333,6 +433,9 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
           setPendingProfileDelete(profile);
         }}
         onDeletePage={setPendingDelete}
+        shown={shown}
+        onShowOnly={(serial) => select({ serial })}
+        onSetShown={(serial, visible) => setSelection((s) => setShown(config, s, serial, visible, shown))}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
         <Library
@@ -348,38 +451,36 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
               the daemon is not running, the banner would only repeat it. */}
           <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
           <div className="well">
-            {/* One place says why there is no grid (model.ts emptyState). */}
-            {nothing && (
-              <div className="no-layout" data-empty-state={nothing.kind}>
-                <p className="empty-title">{nothing.title}</p>
-                <p className="muted">{nothing.detail}</p>
-                {nothing.canAddLayout && (
-                  <button className="primary" disabled={editingBlocked} onClick={() => void addLayout()}>
-                    Add a layout for {deckLabel(config, daemon, selection.serial)}
-                  </button>
-                )}
-                {addLayoutError && <p className="field-error">{addLayoutError}</p>}
+            {several ? (
+              <div className="deck-stack" style={{ '--max-columns': Math.max(...shown.map((s) => geometryFor(daemon, s)?.columns ?? 1)) } as CSSProperties}>
+                {shown.map((serial) => {
+                  const geometryHere = geometryFor(daemon, serial);
+                  const layoutHere = layoutFor(config, selection.profile, serial);
+                  const name = deckLabel(config, daemon, serial);
+                  return (
+                    <DeckPanel
+                      key={serial}
+                      serial={serial}
+                      name={name}
+                      size={geometryHere}
+                      focused={serial === selection.serial}
+                      pages={layoutHere ? pageChoices(layoutHere) : []}
+                      page={pageOf(selection, serial) ?? ''}
+                      disabled={editingBlocked}
+                      onFocus={() => setSelection((s) => focusDeck(s, serial))}
+                      onPage={(pageId) => showDeckPage(serial, pageId)}
+                    >
+                      {grid(serial) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial)}
+                    </DeckPanel>
+                  );
+                })}
               </div>
-            )}
-            {layout && geometry && page && (
-              <DeckGrid
-                config={config}
-                geometry={geometry}
-                page={page}
-                iconStamps={iconStamps}
-                appIcons={appIcons}
-                failedKeys={failedKeysOn(daemon, selection)}
-                latchedKeys={latchedKeysOn(daemon, selection)}
-                selectedKeys={selection.keys}
-                onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
-                onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}
-                actionDropTarget={actionDrag.drag?.over?.serial === geometry.serial ? actionDrag.drag.over.index : null}
-                onKeyMenu={(index, x, y) => {
-                  // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
-                  if (!selection.keys.includes(index)) selectKeys([index]);
-                  if (!editingBlocked) setKeyMenu({ x, y });
-                }}
-              />
+            ) : (
+              <>
+                {/* One place says why there is no grid (model.ts emptyState). */}
+                {nothing && emptyCard(nothing, selection.serial)}
+                {grid(selection.serial)}
+              </>
             )}
             {keyMenu && (
               <KeyMenu

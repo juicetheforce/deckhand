@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent,
 import { SettingsGlyph } from './SettingsWindow.js';
 import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
-import { connectionPill, deckChoices, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
+import { connectionPill, deckChoices, geometryFor, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
 import { pagesWithNoWayOff } from '../shared/links.js';
 import { EditIcon } from './icons.js';
 
@@ -26,6 +26,12 @@ interface Props {
   onDeleteProfile: (profile: string) => void;
   /** Ask to delete a page; App shows the confirmation, since it names what would change. */
   onDeletePage: (page: string) => void;
+  /** The decks drawn, in order (model.ts shownDecks). */
+  shown: string[];
+  /** SHOW IN EDITOR: a deck's name clicked — show that deck alone. */
+  onShowOnly: (serial: string) => void;
+  /** SHOW IN EDITOR: a deck's box ticked or unticked. */
+  onSetShown: (serial: string, shown: boolean) => void;
 }
 
 export type AddPageResult = { ok: true; page: string } | { ok: false; error: string };
@@ -37,7 +43,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * elsewhere. The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage }: Props) {
+export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage, shown, onShowOnly, onSetShown }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const pill = connectionPill(config, daemon, selection);
@@ -69,24 +75,30 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         />
       )}
       <span className="crumb-sep">›</span>
-      <label className="crumb">
-        <span className="crumb-label">Device</span>
-        {/* data-crumb, like the tabs' data-tab: a stable hook for the checks,
-            so matching on rendered text does not break when the row grows. */}
-        <select data-crumb="device" value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })} disabled={decks.length === 0}>
-          {/* An empty dropdown reads as a working editor with nothing chosen
-              yet. Say there is nothing to choose from. */}
-          {decks.length === 0 && <option value="">No decks</option>}
-          {/* No connection marker, and no disconnected decks to mark: the
-              list is a list of devices to work on, and a deck's absence from
-              it is what says it is not there. */}
-          {decks.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {decks.length >= 2 ? (
+        // Two or more decks connected: SHOW IN EDITOR. With one, the plain
+        // dropdown below, exactly as it was — most people have one deck.
+        <ShowInEditor decks={decks} daemon={daemon} focused={selection.serial} shown={shown} onShowOnly={onShowOnly} onSetShown={onSetShown} />
+      ) : (
+        <label className="crumb">
+          <span className="crumb-label">Device</span>
+          {/* data-crumb, like the tabs' data-tab: a stable hook for the checks,
+              so matching on rendered text does not break when the row grows. */}
+          <select data-crumb="device" value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })} disabled={decks.length === 0}>
+            {/* An empty dropdown reads as a working editor with nothing chosen
+                yet. Say there is nothing to choose from. */}
+            {decks.length === 0 && <option value="">No decks</option>}
+            {/* No connection marker, and no disconnected decks to mark: the
+                list is a list of devices to work on, and a deck's absence from
+                it is what says it is not there. */}
+            {decks.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {selectedDeck && (
         <RenameControl
           key={`deck:${selectedDeck.id}`}
@@ -161,6 +173,77 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         {pill.label}
       </span>
     </header>
+  );
+}
+
+/**
+ * The Device crumb with two or more decks connected (scope §10, 8b): which
+ * decks the editor draws. **Clicking a name shows only that deck**, as the old
+ * dropdown did; **the box adds it alongside the others**. The last shown deck
+ * cannot be unticked. Only connected decks are listed (deckChoices), so there
+ * is never an "offline" row. Hidden decks keep working on the hardware.
+ */
+function ShowInEditor({ decks, daemon, focused, shown, onShowOnly, onSetShown }: {
+  decks: DeckChoice[];
+  daemon: DaemonView;
+  focused: string;
+  shown: string[];
+  onShowOnly: (serial: string) => void;
+  onSetShown: (serial: string, shown: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useCloseMenu(open, wrap, close);
+  const names = decks.filter((d) => shown.includes(d.id)).map((d) => d.label);
+
+  return (
+    <span className="crumb tab-wrap" ref={wrap} data-multideck="">
+      <span className="crumb-label">Device</span>
+      {/* data-deck: the deck being edited, as the dropdown's value was — a hook for the checks. */}
+      <button className="show-in-editor-trigger" data-crumb="device" data-deck={focused} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((o) => !o)}>
+        {names.join(' + ')}
+        <span className="muted" aria-hidden="true">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="tab-menu show-in-editor" role="group" aria-label="Show in editor">
+          <span className="show-in-editor-heading">Show in editor</span>
+          <ul>
+            {decks.map((d) => {
+              const isShown = shown.includes(d.id);
+              const geometry = geometryFor(daemon, d.id);
+              return (
+                <li key={d.id} className="show-in-editor-row" data-show-deck={d.id}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Show ${d.label}`}
+                    checked={isShown}
+                    disabled={isShown && shown.length === 1}
+                    onChange={(e) => onSetShown(d.id, e.target.checked)}
+                  />
+                  <button
+                    className="show-in-editor-name"
+                    title={`Show only ${d.label}`}
+                    onClick={() => {
+                      onShowOnly(d.id);
+                      setOpen(false);
+                    }}
+                  >
+                    {d.label}
+                  </button>
+                  {geometry && (
+                    <span className="muted small">
+                      {geometry.columns} × {geometry.rows}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <p className="show-in-editor-footer muted small">Hidden decks keep working. They just aren't shown in the editor.</p>
+        </div>
+      )}
+    </span>
   );
 }
 

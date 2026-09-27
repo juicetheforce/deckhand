@@ -75,11 +75,15 @@ const prefs = async () => {
     return {};
   }
 };
-/** The deck the editor has open: the toolbar's Device dropdown, once it is connected and has followed the deck. */
+/**
+ * The deck the editor has open, once it is connected and has followed the
+ * deck: the Device dropdown's value with one deck connected, the SHOW IN
+ * EDITOR button's data-deck with two or more.
+ */
 async function openDeck(editor) {
   await until(async () => (await inPage(editor, 'editor', "document.querySelector('.toolbar .pill-connected') !== null")) === true);
   await sleep(300);
-  return inPage(editor, 'editor', "document.querySelectorAll('.toolbar select')[1].value");
+  return inPage(editor, 'editor', "(() => { const d = document.querySelector('[data-crumb=\"device\"]'); return d instanceof HTMLSelectElement ? d.value : d.dataset.deck; })()");
 }
 const editorAccent = (editor) => inPage(editor, 'editor', "document.documentElement.dataset.accent ?? 'blue'");
 const clickGear = (editor) => inPage(editor, 'editor', "document.querySelector('.toolbar-settings').click(), true");

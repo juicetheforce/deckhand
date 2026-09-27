@@ -35,8 +35,12 @@ export interface Bulk {
   paste: () => Promise<void>;
   duplicate: () => Promise<void>;
   clear: () => Promise<void>;
-  /** Key onto key: move a button, swapping with whatever is at `to`; the moved button becomes the selection. */
-  move: (from: number, to: number) => Promise<void>;
+  /**
+   * Key onto key: move a button, swapping with whatever is at `to`; the moved
+   * button becomes the selection. On the page being edited, or on `on`: another
+   * shown deck's page, which the caller focuses.
+   */
+  move: (from: number, to: number, on?: { serial: string; page: string; def: PageDef }) => Promise<void>;
   /** Copy the selected keys to the same positions on another page, of this deck or another in this profile. */
   copyTo: (serial: string, page: string) => Promise<void>;
 }
@@ -139,9 +143,9 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       setMessage(placementMessage('Copied', placement, serial === selection.serial ? pageName : `${deckName} › ${pageName}`));
     },
 
-    move: async (from, to) => {
-      if (!ready || from === to) return;
-      const failure = await put(swapKeys(page, from, to));
+    move: async (from, to, on) => {
+      if (from === to || editingBlocked || (!on && !ready)) return;
+      const failure = await put(swapKeys(on?.def ?? page!, from, to), on?.serial, on?.page);
       if (failure !== null) {
         setMessage(`Could not move the key: ${failure}`);
         return;

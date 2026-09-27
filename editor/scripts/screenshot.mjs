@@ -3,7 +3,7 @@
 // installed daemon. Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused] [--kept <n>]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--show <serial>[,<serial>...]] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device|show] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused] [--kept <n>]
 //
 // --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
 // audio device forms; without it the daemon has no audio state to list.
@@ -67,6 +67,7 @@ const { values } = parseArgs({
     config: { type: 'string', default: path.join(repoRoot, 'config.example.json') },
     select: { type: 'string' },
     deck: { type: 'string' },
+    show: { type: 'string' },
     disconnected: { type: 'string' },
     tab: { type: 'string' },
     // 'newprofile' or 'delete': open the New profile or Delete page panel
@@ -129,6 +130,8 @@ for (const serial of serials) {
 
 if (values.select !== undefined) process.env.DECKHAND_EDITOR_SELECT_KEY = values.select;
 if (values.deck !== undefined) process.env.DECKHAND_EDITOR_SELECT_DECK = values.deck;
+// Ticked in SHOW IN EDITOR, beside the deck opened on (two or more decks connected).
+if (values.show !== undefined) process.env.DECKHAND_EDITOR_SHOW_DECKS = values.show;
 if (values.tab !== undefined) process.env.DECKHAND_EDITOR_SELECT_TAB = values.tab;
 if (values.open !== undefined) process.env.DECKHAND_EDITOR_OPEN = values.open;
 if (values.page !== undefined) process.env.DECKHAND_EDITOR_PAGE = values.page;

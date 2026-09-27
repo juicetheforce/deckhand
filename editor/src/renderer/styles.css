@@ -401,6 +401,166 @@ button:disabled {
   overflow: auto;
 }
 
+/* Several decks shown: one panel per deck, stacked in a fixed order (scope
+   §10, "Multi-deck editing"). With one deck shown none of this is drawn. */
+
+.deck-stack {
+  /* margin: auto rather than the well's centring: centred content taller than
+     the well would be cut off at the top instead of scrolling. */
+  margin: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.deck-panel {
+  /* Every deck at the same key size (scope §10, "real proportions means key
+     units"): a panel is its columns' share of the widest deck's width, and
+     keys stop at the grid's 104 px a column. 28px is the panel's padding. */
+  width: calc(var(--columns) / var(--max-columns) * (100% - 28px) + 28px);
+  max-width: calc(var(--columns) * 104px + 28px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.deck-panel-focused {
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+
+.deck-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.deck-panel-name {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.deck-panel-name:not(:disabled):hover {
+  text-decoration: underline;
+}
+
+.deck-panel-name:disabled {
+  /* The focused deck: not a dimmed control, the deck being edited. */
+  cursor: default;
+  opacity: 1;
+}
+
+.deck-panel-size {
+  font-size: 11.5px;
+}
+
+.deck-panel-editing {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-glyph);
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+}
+
+.deck-panel-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.deck-panel-page select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 3px 6px;
+}
+
+.deck-panel-page select option {
+  background: #16172a;
+}
+
+.deck-panel .no-layout {
+  align-self: center;
+  padding: 18px 0 6px;
+}
+
+/* SHOW IN EDITOR: the Device crumb with two or more decks connected (8b). */
+
+.show-in-editor-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 8px;
+}
+
+.show-in-editor {
+  min-width: 260px;
+}
+
+.show-in-editor ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.show-in-editor-heading {
+  display: block;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.show-in-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.show-in-editor-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.show-in-editor-row input {
+  accent-color: var(--accent);
+}
+
+.show-in-editor-name {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.show-in-editor-footer {
+  margin: 4px 0 0;
+  padding: 6px 8px 4px;
+  border-top: 1px solid var(--glass-border);
+}
+
 /* Library */
 
 .library-group + .library-group {

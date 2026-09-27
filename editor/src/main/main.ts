@@ -875,6 +875,7 @@ function createWindow(): void {
   if (CHECK && CHECK !== 'tray') query.check = CHECK;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_KEY) query.selectKey = process.env.DECKHAND_EDITOR_SELECT_KEY;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_DECK) query.selectDeck = process.env.DECKHAND_EDITOR_SELECT_DECK;
+  if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SHOW_DECKS) query.showDecks = process.env.DECKHAND_EDITOR_SHOW_DECKS;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_SELECT_TAB) query.selectTab = process.env.DECKHAND_EDITOR_SELECT_TAB;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_OPEN) query.open = process.env.DECKHAND_EDITOR_OPEN;
   if (CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_PAGE) query.page = process.env.DECKHAND_EDITOR_PAGE;
