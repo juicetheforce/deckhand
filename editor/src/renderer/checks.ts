@@ -2039,10 +2039,12 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   };
   const configBefore = await configNow();
   const header = panel(V2)!.querySelector<HTMLElement>('.deck-panel-header')!;
-  const grip = centre(header.querySelector('.deck-panel-grip')!);
+  // Read each time: the deck moves between drags, and where it is held matters (the overlap rule).
+  const gripAt = () => centre(header.querySelector('.deck-panel-grip')!);
   const send = (type: string, x: number, y: number) =>
     header.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 9, button: 0, isPrimary: true }));
   const dragDeck = async (dx: number, dy: number) => {
+    const grip = gripAt();
     send('pointerdown', grip.x, grip.y);
     send('pointermove', grip.x + dx / 2, grip.y + dy / 2);
     send('pointermove', grip.x + dx, grip.y + dy);
@@ -2062,6 +2064,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   // growth, and the deck fell behind the pointer — Ryan, 2026-09-27.)
   // Measured mid-drag, then cancelled: a cancel leaves the deck where it was.
   const tracks = async (dx: number, dy: number) => {
+    const grip = gripAt();
     const before = rectOf(panel(V2)!);
     send('pointerdown', grip.x, grip.y);
     send('pointermove', grip.x + dx / 2, grip.y + dy / 2);
@@ -2088,10 +2091,16 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     configUnchanged: (await configNow()) === configBefore,
   };
 
-  // Dropped onto the XL, coming from below: butted below it, a gutter apart, its column kept.
-  const onto = rectOf(panel(XL)!).top + 20 - rectOf(panel(V2)!).top;
-  const butted = await dragDeck(0, onto);
-  out.overlap = { ...butted, offset: offset(), gap: panelGap() };
+  // Dropped onto the XL: butted against the edge the pointer is nearest, a
+  // gutter apart, its column kept — not the side it came from (Ryan's
+  // revision: a deck held below until its whole height had cleared the top
+  // looked stuck). From below, the pointer carried to near the XL's top: above.
+  const toward = (y: number) => y - gripAt().y;
+  const wentAbove = await dragDeck(0, toward(rectOf(panel(XL)!).top + 20));
+  out.overlapAbove = { ...wentAbove, offset: offset(), gap: (rectOf(panel(XL)!).top - rectOf(panel(V2)!).bottom) / zoom() };
+  // Then back down across it, the pointer to near its bottom: below.
+  const wentBelow = await dragDeck(0, toward(rectOf(panel(XL)!).bottom - 20));
+  out.overlap = { ...wentBelow, offset: offset(), gap: panelGap() };
 
   // Hidden and shown again: back where it was.
   const beforeHide = offset();

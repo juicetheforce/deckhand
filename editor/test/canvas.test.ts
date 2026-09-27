@@ -134,34 +134,47 @@ await check('columns snap only where one of each deck’s columns lines up, not 
   assert.equal(snap({ x: -6.02, y: 7 }, V2, [xl], 1).at.x, -6.02, 'wholly to the left: no shared column');
 });
 
-await check('a drop overlapping a deck is butted against it on the side it came from', () => {
-  // Came from below, dropped into the XL's lower half: butted below, x kept.
-  const fromBelow = resolveOverlap({ x: 1.5, y: 3 }, V2, { x: 1.5, y: 8 }, [xl])!;
-  assert.equal(fromBelow.x, 1.5);
-  close(fromBelow.y, belowXL);
-  // The same drop, coming from the right: butted to the right, y kept.
-  const fromRight = resolveOverlap({ x: 6, y: 1 }, V2, { x: 12, y: 1 }, [xl])!;
-  close(panelRect(fromRight, V2).left, panelRect(xl.at, XL).right + u(GUTTER_PX));
-  assert.equal(fromRight.y, 1);
-  // Coming from the left, even where the right would be nearer.
-  const fromLeft = resolveOverlap({ x: 6, y: 1 }, V2, { x: -9, y: 1 }, [xl])!;
-  close(panelRect(fromLeft, V2).right + u(GUTTER_PX), panelRect(xl.at, XL).left);
+await check('a drop overlapping a deck is butted against it on the side of the edge the pointer is nearest', () => {
+  const xlRect = panelRect(xl.at, XL);
+  // Pointer just inside the XL's bottom edge: butted below, x kept.
+  const below = resolveOverlap({ x: 1.5, y: 3 }, V2, { x: 3, y: xlRect.bottom - 0.3 }, [xl])!;
+  assert.equal(below.x, 1.5);
+  close(below.y, belowXL);
+  // The same drop with the pointer past the XL's middle, near its top: butted above.
+  const above = resolveOverlap({ x: 1.5, y: 3 }, V2, { x: 3, y: xlRect.top + 0.3 }, [xl])!;
+  assert.equal(above.x, 1.5);
+  close(panelRect(above, V2).bottom + u(GUTTER_PX), xlRect.top, 'a gutter above');
+  // Near its right edge: beside it on the right, y kept.
+  const right = resolveOverlap({ x: 6, y: 1 }, V2, { x: xlRect.right - 0.2, y: 2 }, [xl])!;
+  close(panelRect(right, V2).left, xlRect.right + u(GUTTER_PX));
+  assert.equal(right.y, 1);
+  // Near its left edge: beside it on the left.
+  const left = resolveOverlap({ x: 6, y: 1 }, V2, { x: xlRect.left + 0.2, y: 2 }, [xl])!;
+  close(panelRect(left, V2).right + u(GUTTER_PX), xlRect.left);
 });
 
-await check('coming from a corner, the side needing the smaller move wins', () => {
-  // From below-right: just inside the XL's bottom edge, far inside its right edge.
-  const r = resolveOverlap({ x: 5, y: belowXL - 0.2 }, V2, { x: 12, y: 9 }, [xl])!;
-  assert.equal(r.x, 5);
-  close(r.y, belowXL);
+await check('where the deck came from does not matter, only the pointer: no sticking to the first side', () => {
+  // Dragged up from below until the pointer is near the XL's top: above, as soon as it is nearer the top.
+  const xlRect = panelRect(xl.at, XL);
+  // Mid-width, so the top is nearer than either side.
+  const nearTop = resolveOverlap({ x: 0, y: 0.5 }, V2, { x: 4, y: xlRect.top + (xlRect.bottom - xlRect.top) * 0.4 }, [xl])!;
+  assert.ok(panelRect(nearTop, V2).bottom <= xlRect.top, 'above the XL');
+});
+
+await check('a pointer outside the deck it overlaps picks that deck’s nearest edge', () => {
+  const xlRect = panelRect(xl.at, XL);
+  // Coming down from above: the deck's body overlaps the XL's top, the pointer (on its header) is still above.
+  const r = resolveOverlap({ x: 2, y: xlRect.top - 1 }, V2, { x: 3, y: xlRect.top - 0.2 }, [xl])!;
+  close(panelRect(r, V2).bottom + u(GUTTER_PX), xlRect.top);
 });
 
 await check('a drop that overlaps nothing is left alone', () => {
-  assert.deepEqual(resolveOverlap({ x: 0, y: 9 }, V2, { x: 0, y: 12 }, [xl]), { x: 0, y: 9 });
+  assert.deepEqual(resolveOverlap({ x: 0, y: 9 }, V2, { x: 1, y: 8.5 }, [xl]), { x: 0, y: 9 });
 });
 
 await check('when butting it still overlaps another deck, the drop is refused (null)', () => {
   const mini: Neighbour = { serial: 'MINI', name: 'Mini', at: { x: 0, y: belowXL }, size: { columns: 3, rows: 2 } };
-  assert.equal(resolveOverlap({ x: 0.5, y: 3 }, V2, { x: 0.5, y: 12 }, [xl, mini]), null);
+  assert.equal(resolveOverlap({ x: 0.5, y: 3 }, V2, { x: 2, y: panelRect(xl.at, XL).bottom - 0.2 }, [xl, mini]), null);
 });
 
 await check('Fit all shows everything, never above 100%, never below the smallest step', () => {

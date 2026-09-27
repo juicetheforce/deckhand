@@ -203,7 +203,12 @@ if (r && !r.error) {
     assert.equal(r.deckDrag.configUnchanged, true);
     assert.equal(r.deckDrag.focused, XL);
   });
-  check('a drop onto another deck, coming from below, is butted below it — a gutter apart, its column kept', () => {
+  check('a drop onto another deck is butted against the edge the pointer is nearest — from below, pointer near its top: above', () => {
+    near(r.overlapAbove.gap, 16, 0.6, 'gap above in px at 100%');
+    near(r.overlapAbove.offset.x, 2, 0.005, 'x kept');
+    assert.equal(r.overlapAbove.refused, false);
+  });
+  check('and back across it, the pointer near its bottom: below — a gutter apart, its column kept', () => {
     near(r.overlap.gap, 16, 0.6, 'gap in px at 100%');
     near(r.overlap.offset.x, 2, 0.005, 'x kept');
     assert.equal(r.overlap.refused, false);

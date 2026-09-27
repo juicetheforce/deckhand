@@ -56,6 +56,8 @@ interface Drag {
   pointer: number;
   from: { x: number; y: number };
   start: DeckPosition;
+  /** Where on the panel it was picked up, in key units from the panel's corner: the pointer rides there. */
+  hold: { x: number; y: number };
   at: DeckPosition;
   guides: Guide[];
   refused: boolean;
@@ -135,7 +137,9 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
       // A synthetic pointer (the checks) has nothing to capture; they send the drag to the header.
     }
     const start = placed[serial];
-    setDrag({ serial, pointer: e.pointerId, from: { x: e.clientX, y: e.clientY }, start, at: start, guides: [], refused: false, moved: false, frame: bounds });
+    const panelBox = (e.currentTarget.closest('.deck-panel') ?? e.currentTarget).getBoundingClientRect();
+    const hold = { x: (e.clientX - panelBox.left) / (PITCH_PX * zoom), y: (e.clientY - panelBox.top) / (PITCH_PX * zoom) };
+    setDrag({ serial, pointer: e.pointerId, from: { x: e.clientX, y: e.clientY }, start, hold, at: start, guides: [], refused: false, moved: false, frame: bounds });
   };
 
   const move = (e: ReactPointerEvent<HTMLElement>) => {
@@ -148,7 +152,10 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
     const others = neighbours(drag.serial);
     const raw = { x: drag.start.x + dx / (PITCH_PX * zoom), y: drag.start.y + dy / (PITCH_PX * zoom) };
     const snapped = snap(raw, size, others, zoom);
-    const settled = resolveOverlap(snapped.at, size, drag.start, others);
+    // The pointer, in key units: where the deck was picked up, carried with the unsnapped drag.
+    const held = panelRect(raw, size);
+    const pointerAt = { x: held.left + drag.hold.x, y: held.top + drag.hold.y };
+    const settled = resolveOverlap(snapped.at, size, pointerAt, others);
     // Shown where it would land: butted if it overlaps; where the pointer is, marked, if refused.
     setDrag({ ...drag, moved: true, at: settled ?? snapped.at, guides: settled && settled !== snapped.at ? [] : snapped.guides, refused: settled === null });
   };

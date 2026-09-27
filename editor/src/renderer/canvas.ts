@@ -222,39 +222,51 @@ type Side = 'left' | 'right' | 'above' | 'below';
 
 /**
  * Decks never overlap (Ryan, 2026-09-27). A drop that would overlap another
- * deck is butted against the one it hit, on the side the dragged deck came
- * from — where it was when the drag began — and keeps its other coordinate.
- * Coming from a corner, the side needing the smaller move wins. Returns null
- * when butting it there still overlaps a deck, which the butting rule cannot
- * settle: the caller puts the deck back where it started.
+ * deck is butted against it on the side **the pointer is nearest** — the
+ * edge of that deck closest to where the person is holding the dragged one —
+ * and keeps its other coordinate. So a deck dragged over another follows the
+ * pointer from edge to edge rather than sticking where it came from (Ryan's
+ * revision, the same day: the first rule, "the side it came from", held a
+ * deck below another until its whole height had cleared the top).
+ *
+ * The deck hit is the one under the pointer, or failing that the one
+ * overlapped most. Returns null when butting it there still overlaps a deck,
+ * which the rule cannot settle: the caller puts the deck back where it
+ * started.
  */
-export function resolveOverlap(at: DeckPosition, size: DeckSize, start: DeckPosition, others: Neighbour[]): DeckPosition | null {
+export function resolveOverlap(at: DeckPosition, size: DeckSize, pointer: DeckPosition, others: Neighbour[]): DeckPosition | null {
   const rect = panelRect(at, size);
+  const inside = (r: Rect) => pointer.x >= r.left && pointer.x <= r.right && pointer.y >= r.top && pointer.y <= r.bottom;
   const hit = others
     .map((o) => ({ o, r: panelRect(o.at, o.size) }))
     .filter(({ r }) => overlaps(rect, r))
-    .map(({ o, r }) => ({ o, r, area: (Math.min(rect.right, r.right) - Math.max(rect.left, r.left)) * (Math.min(rect.bottom, r.bottom) - Math.max(rect.top, r.top)) }))
-    .sort((a, b) => b.area - a.area)[0];
+    .map(({ o, r }) => ({
+      o,
+      r,
+      under: inside(r),
+      area: (Math.min(rect.right, r.right) - Math.max(rect.left, r.left)) * (Math.min(rect.bottom, r.bottom) - Math.max(rect.top, r.top)),
+    }))
+    .sort((a, b) => Number(b.under) - Number(a.under) || b.area - a.area)[0];
   if (!hit) return at;
-  const from = panelRect(start, size);
   const r = hit.r;
-  const came: Side[] = [];
-  if (from.right <= r.left + EPS) came.push('left');
-  if (from.left >= r.right - EPS) came.push('right');
-  if (from.bottom <= r.top + EPS) came.push('above');
-  if (from.top >= r.bottom - EPS) came.push('below');
-  const sides: Side[] = came.length > 0 ? came : ['left', 'right', 'above', 'below'];
+  const edges: [Side, number][] = [
+    ['left', Math.abs(pointer.x - r.left)],
+    ['right', Math.abs(pointer.x - r.right)],
+    ['above', Math.abs(pointer.y - r.top)],
+    ['below', Math.abs(pointer.y - r.bottom)],
+  ];
+  const side = edges.sort((a, b) => a[1] - b[1])[0][0];
+  const g = u(GUTTER_PX);
   const width = rect.right - rect.left;
   const height = rect.bottom - rect.top;
-  const moved = (side: Side): DeckPosition => {
-    const g = u(GUTTER_PX);
-    if (side === 'left') return { x: at.x + (r.left - g - width - rect.left), y: at.y };
-    if (side === 'right') return { x: at.x + (r.right + g - rect.left), y: at.y };
-    if (side === 'above') return { x: at.x, y: at.y + (r.top - g - height - rect.top) };
-    return { x: at.x, y: at.y + (r.bottom + g - rect.top) };
-  };
-  const distance = (p: DeckPosition) => Math.abs(p.x - at.x) + Math.abs(p.y - at.y);
-  const best = sides.map(moved).sort((a, b) => distance(a) - distance(b))[0];
+  const best =
+    side === 'left'
+      ? { x: at.x + (r.left - g - width - rect.left), y: at.y }
+      : side === 'right'
+        ? { x: at.x + (r.right + g - rect.left), y: at.y }
+        : side === 'above'
+          ? { x: at.x, y: at.y + (r.top - g - height - rect.top) }
+          : { x: at.x, y: at.y + (r.bottom + g - rect.top) };
   const settled = panelRect(best, size);
   return others.some((o) => overlaps(settled, panelRect(o.at, o.size))) ? null : best;
 }
