@@ -208,6 +208,16 @@ if (r && !r.error) {
     near(r.overlap.offset.x, 2, 0.005, 'x kept');
     assert.equal(r.overlap.refused, false);
   });
+  check('a deck locked in place does not move when its header is dragged; unlocked, it does', () => {
+    assert.deepEqual(r.lock.whileLocked, { pressed: 'true', grip: false, moved: 0 });
+    assert.equal(r.lock.unlocked.pressed, 'false');
+    assert.equal(r.lock.unlocked.grip, true);
+    assert.ok(r.lock.unlocked.moved > 25, `unlocked it moved ${r.lock.unlocked.moved} px`);
+  });
+  check('locking edits nothing and moves no focus', () => {
+    assert.equal(r.lock.configUnchanged, true);
+    assert.equal(r.lock.focused, XL);
+  });
   check('a deck hidden and shown again comes back where it was', () => {
     near(r.reshown.after.x, r.reshown.before.x, 0.005, 'x');
     near(r.reshown.after.y, r.reshown.before.y, 0.005, 'y');
@@ -225,11 +235,13 @@ check('positions are remembered in the editor preferences, by serial, in key uni
   assert.equal(prefs.deckPositions[V2].x, 2);
   assert.ok(prefs.deckPositions[V2].y > 4, 'below the XL');
 });
+check('the lock is remembered in the editor preferences, by serial', () => assert.deepEqual(prefs.lockedDecks, [V2]));
 const reopened = (await runElectronCheck('multi-deck-reopen', { configDir, stateDir, socket: daemon.socket }, 60_000)).report?.renderer;
 check('reopened, the editor shows the decks it was left showing', () =>
   assert.deepEqual({ panels: reopened?.panels, grids: reopened?.grids, edited: reopened?.edited }, { panels: [XL, V2], grids: 2, edited: XL }));
 check('reopened, the decks are where they were left, at Fit all', () => {
   assert.ok(reopened?.zoom > 0 && reopened?.zoom <= 1, `zoom ${reopened?.zoom}`);
+  assert.deepEqual(reopened?.locked, [V2], 'still locked');
   const want = { x: prefs.deckPositions[V2].x - prefs.deckPositions[XL].x, y: prefs.deckPositions[V2].y - prefs.deckPositions[XL].y };
   assert.ok(Math.abs(reopened.offset.x - want.x) < 0.01 && Math.abs(reopened.offset.y - want.y) < 0.01, `${JSON.stringify(reopened.offset)} ≠ ${JSON.stringify(want)}`);
 });
@@ -238,6 +250,7 @@ const saved = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 
 check('nothing about which decks are shown, or where, is written to config.json', () => {
   assert.equal(JSON.stringify(saved).includes('shown'), false);
   assert.equal(JSON.stringify(saved).includes('osition'), false);
+  assert.equal(JSON.stringify(saved).includes('ocked'), false);
 });
 check('the V2 layout was added to the profile being edited, and to nothing else', () => {
   assert.ok(saved.profiles.solo.layouts[V2], 'no V2 layout in Solo');

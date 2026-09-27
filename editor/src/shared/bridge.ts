@@ -191,6 +191,9 @@ export interface DeckhandBridge {
    */
   deckPositions(): Promise<DeckPositions>;
   setDeckPositions(positions: DeckPositions): Promise<void>;
+  /** The decks locked in place on the canvas, by serial: their headers start no drag. Global; never config.json. */
+  lockedDecks(): Promise<string[]>;
+  setLockedDecks(serials: string[]): Promise<void>;
 
   /** Bookmarked icon folders, in order; missing ones are kept and marked (src/main/preferences.ts). */
   bookmarks(): Promise<IconFolderEntry[]>;

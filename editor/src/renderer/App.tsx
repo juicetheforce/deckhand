@@ -63,12 +63,14 @@ export function App() {
   const [rememberedShown, setRememberedShown] = useState<string[] | undefined>(undefined);
   // And where each deck sits on the canvas.
   const [rememberedPositions, setRememberedPositions] = useState<DeckPositions | undefined>(undefined);
+  const [rememberedLocked, setRememberedLocked] = useState<string[] | undefined>(undefined);
   useEffect(() => {
     void window.deckhand.appSettings().then((s) => setDefaultDeck(s.defaultDeck));
     void window.deckhand.shownDecks().then(setRememberedShown);
     void window.deckhand.deckPositions().then(setRememberedPositions);
+    void window.deckhand.lockedDecks().then(setRememberedLocked);
   }, []);
-  if (!snapshot || defaultDeck === undefined || rememberedShown === undefined || rememberedPositions === undefined) return <div className="app-loading">Loading…</div>;
+  if (!snapshot || defaultDeck === undefined || rememberedShown === undefined || rememberedPositions === undefined || rememberedLocked === undefined) return <div className="app-loading">Loading…</div>;
   if (!snapshot.store.open) return <CannotOpen error={snapshot.store.error} />;
   return (
     <Editor
@@ -77,6 +79,7 @@ export function App() {
       defaultDeck={defaultDeck}
       rememberedShown={rememberedShown}
       rememberedPositions={rememberedPositions}
+      rememberedLocked={rememberedLocked}
     />
   );
 }
@@ -97,12 +100,14 @@ function Editor({
   defaultDeck,
   rememberedShown,
   rememberedPositions,
+  rememberedLocked,
 }: {
   store: StoreState;
   daemon: DaemonView;
   defaultDeck: string | null;
   rememberedShown: string[];
   rememberedPositions: DeckPositions;
+  rememberedLocked: string[];
 }) {
   const config = store.config;
   /**
@@ -115,6 +120,15 @@ function Editor({
     const rounded = Object.fromEntries(Object.entries(moved).map(([serial, at]) => [serial, roundPosition(at)]));
     setPositions((current) => Object.entries(rounded).reduce((all, [serial, at]) => withPosition(all, serial, at), current));
     void window.deckhand.setDeckPositions(rounded);
+  };
+  /** Decks locked in place on the canvas: global, like the positions. */
+  const [locked, setLocked] = useState(rememberedLocked);
+  const lockDeck = (serial: string, lock: boolean, drawn: DeckPositions) => {
+    // Locked where it is seen: the arrangement as drawn is saved with it.
+    moveDecks(drawn);
+    const next = lock ? [...locked.filter((s) => s !== serial), serial] : locked.filter((s) => s !== serial);
+    setLocked(next);
+    void window.deckhand.setLockedDecks(next);
   };
   // Only when the window opens: changing the setting later moves nothing until the next opening.
   const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null, defaultDeck)));
@@ -521,6 +535,8 @@ function Editor({
                 })}
                 positions={positions}
                 onMove={moveDecks}
+                locked={locked}
+                onLock={lockDeck}
                 panel={(serial, placement) => {
                   const layoutHere = layoutFor(config, selection.profile, serial);
                   return (

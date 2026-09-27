@@ -34,6 +34,9 @@ export interface Placement {
   dragging: boolean;
   /** Dropped here, it would go back where it started (canvas.ts resolveOverlap). */
   refused: boolean;
+  /** Locked in place: its header starts no drag. */
+  locked: boolean;
+  onLock: (locked: boolean) => void;
 }
 
 interface Props {
@@ -42,6 +45,9 @@ interface Props {
   positions: DeckPositions;
   /** A deck dropped: every shown deck's position as drawn, the dropped one's new. */
   onMove: (positions: DeckPositions) => void;
+  locked: string[];
+  /** A deck locked or unlocked, with every shown deck's position as drawn: it is locked where it is seen. */
+  onLock: (serial: string, locked: boolean, positions: DeckPositions) => void;
   panel: (serial: string, placement: Placement) => ReactNode;
 }
 
@@ -78,7 +84,7 @@ const DRAG_START_PX = 4;
  *
  * With one deck shown there is no canvas: App draws the grid alone.
  */
-export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
+export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   // The drag lives in a ref, read by the pointer handlers: a pointerup can
@@ -121,7 +127,7 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
     decks.filter((d) => d.serial !== serial && placed[d.serial]).map((d) => ({ serial: d.serial, name: d.name, at: placed[d.serial], size: d.size }));
 
   const grab = (serial: string) => (e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0 || (e.target as Element).closest('button, select, label, input')) return;
+    if (e.button !== 0 || locked.includes(serial) || (e.target as Element).closest('button, select, label, input')) return;
     e.preventDefault();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -180,7 +186,14 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
               };
               return (
                 <div key={d.serial} className="canvas-deck" onPointerMove={move} onPointerUp={drop} onPointerCancel={cancel}>
-                  {panel(d.serial, { style, onGrab: grab(d.serial), dragging, refused: dragging && (drag?.refused ?? false) })}
+                  {panel(d.serial, {
+                    style,
+                    onGrab: grab(d.serial),
+                    dragging,
+                    refused: dragging && (drag?.refused ?? false),
+                    locked: locked.includes(d.serial),
+                    onLock: (lock) => onLock(d.serial, lock, placed),
+                  })}
                 </div>
               );
             })}

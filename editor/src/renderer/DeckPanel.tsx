@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Placement } from './DeckCanvas.js';
+import { LockIcon } from './icons.js';
 import type { Choice } from './model.js';
 
 interface Props {
@@ -33,13 +34,15 @@ interface Props {
  * the canvas (DeckCanvas.tsx).
  */
 export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, children, placement }: Props) {
-  const classes = ['deck-panel', focused && 'deck-panel-focused', placement.dragging && 'deck-panel-dragging', placement.refused && 'deck-panel-refused'].filter(Boolean).join(' ');
+  const classes = ['deck-panel', focused && 'deck-panel-focused', placement.dragging && 'deck-panel-dragging', placement.refused && 'deck-panel-refused', placement.locked && 'deck-panel-locked'].filter(Boolean).join(' ');
   return (
     <section className={classes} data-multideck="" data-deck-panel={serial} style={placement.style}>
-      <header className="deck-panel-header" onPointerDown={placement.onGrab} title="Drag to move">
-        <span className="deck-panel-grip" aria-hidden="true">
-          ⠿
-        </span>
+      <header className="deck-panel-header" onPointerDown={placement.onGrab} title={placement.locked ? undefined : 'Drag to move'}>
+        {!placement.locked && (
+          <span className="deck-panel-grip" aria-hidden="true">
+            ⠿
+          </span>
+        )}
         <button className="deck-panel-name" onClick={onFocus} disabled={focused} title={focused ? undefined : `Edit ${name}`}>
           {name}
         </button>
@@ -62,6 +65,15 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
             </select>
           </label>
         )}
+        <button
+          className="deck-panel-lock"
+          aria-pressed={placement.locked}
+          aria-label={placement.locked ? `Unlock ${name}'s position` : `Lock ${name} in place`}
+          title={placement.locked ? 'Locked in place — click to let it be dragged' : 'Lock in place, so it cannot be dragged by accident'}
+          onClick={() => placement.onLock(!placement.locked)}
+        >
+          <LockIcon locked={placement.locked} size={16} />
+        </button>
       </header>
       {children}
     </section>

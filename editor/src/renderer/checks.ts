@@ -2102,6 +2102,34 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   await sleep(100);
   out.reshown = { before: beforeHide, after: offset(), zoom: zoom() };
 
+  // Locked in place: its header starts no drag; unlocked, it drags again.
+  // Left locked, for the reopen. (Fresh elements: re-showing remounted the panel.)
+  const lockButton = () => panel(V2)!.querySelector<HTMLButtonElement>('.deck-panel-lock')!;
+  const heldMoves = async (dx: number, dy: number) => {
+    const head = panel(V2)!.querySelector<HTMLElement>('.deck-panel-header')!;
+    const from = centre(head.querySelector('.deck-panel-size')!);
+    const at = (type: string, x: number, y: number) =>
+      head.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 11, button: 0, isPrimary: true }));
+    const before = rectOf(panel(V2)!);
+    at('pointerdown', from.x, from.y);
+    at('pointermove', from.x + dx, from.y + dy);
+    await sleep(80);
+    const during = rectOf(panel(V2)!);
+    at('pointercancel', from.x + dx, from.y + dy);
+    await sleep(100);
+    return Math.round(Math.hypot(during.left - before.left, during.top - before.top));
+  };
+  const lockConfig = await configNow();
+  lockButton().click();
+  await until(() => lockButton().getAttribute('aria-pressed') === 'true');
+  const whileLocked = { pressed: lockButton().getAttribute('aria-pressed'), grip: panel(V2)!.querySelector('.deck-panel-grip') !== null, moved: await heldMoves(0, 61) };
+  lockButton().click();
+  await until(() => lockButton().getAttribute('aria-pressed') === 'false');
+  const unlocked = { pressed: lockButton().getAttribute('aria-pressed'), grip: panel(V2)!.querySelector('.deck-panel-grip') !== null, moved: await heldMoves(0, 61) };
+  lockButton().click();
+  await until(() => lockButton().getAttribute('aria-pressed') === 'true');
+  out.lock = { whileLocked, unlocked, configUnchanged: (await configNow()) === lockConfig, focused: layout().focused };
+
   await sleep(700); // past the preferences' write
   return out;
 }
@@ -2122,6 +2150,7 @@ async function multiDeckReopen(): Promise<Record<string, unknown>> {
     grids: document.querySelectorAll('.grid').length,
     edited: editedDeck(),
     zoom,
+    locked: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-lock')?.getAttribute('aria-pressed') === 'true').map((p) => p.dataset.deckPanel),
     // The V2's grid from the XL's, in key units.
     offset: xl && v2 ? { x: (v2.left - xl.left) / (PITCH_PX * zoom), y: (v2.top - xl.top) / (PITCH_PX * zoom) } : null,
   };

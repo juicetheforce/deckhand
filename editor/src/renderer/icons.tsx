@@ -42,3 +42,28 @@ export function EditIcon({ size = 16 }: { size?: number }) {
     </svg>
   );
 }
+
+/**
+ * The padlock on a deck's header on the canvas: shut when the deck is
+ * locked in place, open when it can be dragged.
+ */
+export function LockIcon({ locked, size = 14 }: { locked: boolean; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" fillOpacity={locked ? 0.35 : 0.12} />
+      {/* The shackle: closed into the body, or swung open. */}
+      <path d={locked ? 'M8 11 V8 a4 4 0 0 1 8 0 V11' : 'M8 11 V8 a4 4 0 0 1 7.6 -1.8'} />
+    </svg>
+  );
+}

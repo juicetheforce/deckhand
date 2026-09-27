@@ -565,6 +565,33 @@ button:disabled {
   cursor: grabbing;
 }
 
+.deck-panel-locked .deck-panel-header {
+  cursor: default;
+}
+
+.deck-panel-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.deck-panel-lock:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.deck-panel-lock[aria-pressed='true'] {
+  color: var(--accent-glyph);
+}
+
 .deck-panel-name {
   background: transparent;
   border: 0;

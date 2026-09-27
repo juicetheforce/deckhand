@@ -780,6 +780,16 @@ function registerIpc(): void {
     for (const [serial, position] of entries as [string, DeckPosition][]) stored = withPosition(stored, serial, position);
     await preferences.set({ deckPositions: stored });
   });
+  // The decks locked in place on the canvas, by serial; global, like the positions.
+  ipcMain.handle('lockedDecks', async (event) => {
+    if (!fromOurWindow(event)) return [];
+    const saved = (await preferences.read()).lockedDecks;
+    return Array.isArray(saved) ? saved.filter(validSerial).slice(0, MAX_DECK_POSITIONS) : [];
+  });
+  ipcMain.handle('setLockedDecks', async (event, serials: unknown) => {
+    if (!fromOurWindow(event) || !Array.isArray(serials) || serials.length > MAX_DECK_POSITIONS || !serials.every(validSerial)) return;
+    await preferences.set({ lockedDecks: serials });
+  });
   ipcMain.handle('bookmarks', async (event) => (fromOurWindow(event) ? existingFolders(await bookmarks.list(), os.homedir(), true) : []));
   ipcMain.handle('addBookmark', async (event, folder: unknown) => {
     if (!fromOurWindow(event) || typeof folder !== 'string' || !path.isAbsolute(folder)) return [];
