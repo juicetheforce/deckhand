@@ -1733,6 +1733,201 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   return out;
 }
 
+/**
+ * Several decks shown at once (scripts/check-multi-deck.mjs): an XL and an
+ * Original V2, SHOW IN EDITOR, a panel per deck, focus by click, each deck's
+ * own page, and nothing done on one deck reaching the other.
+ */
+async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const XL = 'MULTI-XL';
+  const V2 = 'MULTI-V2';
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const panel = (serial: string) => document.querySelector<HTMLElement>(`[data-deck-panel="${serial}"]`);
+  const keyOn = (serial: string, index: number) => document.querySelector<HTMLButtonElement>(`.key[data-deck="${serial}"][data-key-index="${index}"]`)!;
+  const selectedOn = (serial: string) =>
+    [...document.querySelectorAll<HTMLElement>(`.key[data-deck="${serial}"]`)].flatMap((k) => (k.classList.contains('key-selected') ? [Number(k.dataset.keyIndex)] : []));
+  const click = (el: Element, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mods }));
+  const buttons = async (serial: string, page = 'main', profile = 'default') => {
+    const s = (await api.snapshot()).store;
+    return s.open ? (s.state.config.profiles[profile]?.layouts[serial]?.pages[page]?.buttons ?? null) : null;
+  };
+  const deckPage = async (serial: string) => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page ?? null;
+  const tabs = () => [...document.querySelectorAll('.tabs .tab:not(.tab-add)')].map((t) => t.textContent);
+  const selectedTab = () => document.querySelector('.tab-selected')?.textContent ?? null;
+  const row = (serial: string) => document.querySelector<HTMLElement>(`[data-show-deck="${serial}"]`);
+  const closeMenu = async () => {
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await sleep(80);
+  };
+  const tick = async (serial: string) => {
+    await openShowInEditor();
+    row(serial)!.querySelector<HTMLInputElement>('input')!.click();
+    await sleep(80);
+    await closeMenu();
+  };
+  const layout = () => ({
+    grids: document.querySelectorAll('.grid').length,
+    panels: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].map((p) => p.dataset.deckPanel),
+    focused: document.querySelector<HTMLElement>('.deck-panel-focused')?.dataset.deckPanel ?? null,
+    editing: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-editing')).map((p) => p.dataset.deckPanel),
+    pageMenus: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-page select')).map((p) => p.dataset.deckPanel),
+    trigger: document.querySelector('button[data-crumb="device"]')?.textContent?.replace(/[▾▴]/g, '').trim() ?? null,
+    edited: editedDeck(),
+  });
+  const centre = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+  const pointer = (type: string, x: number, y: number) =>
+    (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(
+      new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0, isPrimary: true }),
+    );
+  const drag = async (from: Element, to: Element) => {
+    const a = centre(from);
+    const b = centre(to);
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await sleep(50);
+    pointer('pointerup', b.x, b.y);
+  };
+
+  await until(() => document.querySelector('.toolbar .pill-connected') !== null && document.querySelector('.grid') !== null);
+  await sleep(300);
+
+  // 1. Opt-in: two decks connected, one shown — today's editor, with SHOW IN EDITOR for the Device crumb.
+  out.opens = { ...layout(), deviceIsSelect: document.querySelector('select[data-crumb="device"]') !== null };
+
+  // 2. SHOW IN EDITOR lists both, only the shown one ticked, and it cannot be unticked.
+  await openShowInEditor();
+  out.menu = {
+    rows: [...document.querySelectorAll<HTMLElement>('[data-show-deck]')].map((r) => ({
+      serial: r.dataset.showDeck,
+      name: r.querySelector('.show-in-editor-name')?.textContent,
+      size: r.querySelector('.muted')?.textContent,
+      checked: r.querySelector<HTMLInputElement>('input')!.checked,
+      disabled: r.querySelector<HTMLInputElement>('input')!.disabled,
+    })),
+    footer: document.querySelector('.show-in-editor-footer')?.textContent ?? null,
+  };
+  await closeMenu();
+
+  // 3. Ticking the V2 adds it below the XL; the XL keeps the focus.
+  await tick(V2);
+  await until(() => document.querySelectorAll('.grid').length === 2);
+  out.ticked = { ...layout(), tabs: tabs(), sizes: [...document.querySelectorAll('.deck-panel-size')].map((s) => s.textContent) };
+
+  // 4. The V2's Page ▾ moves only the V2, on screen and on the deck.
+  const v2Page = panel(V2)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(v2Page, 'extra');
+  v2Page.dispatchEvent(new Event('change', { bubbles: true }));
+  out.pageMenu = {
+    deck: await until(async () => (await deckPage(V2)) === 'extra'),
+    face: await until(() => keyOn(V2, 0).textContent?.includes('Extra key') ?? false),
+    xlStayed: (await deckPage(XL)) === 'main' && selectedTab() === 'Main',
+  };
+
+  // 5. A key on the XL, then a key on the V2: the V2 takes the focus, with only its key selected.
+  click(keyOn(XL, 0));
+  await until(() => selectedOn(XL).join() === '0');
+  click(keyOn(V2, 2));
+  await until(() => layout().focused === V2);
+  await until(() => selectedOn(V2).join() === '2');
+  out.clickFocus = {
+    ...layout(),
+    xlSelected: selectedOn(XL),
+    v2Selected: selectedOn(V2),
+    tabs: tabs(),
+    selectedTab: selectedTab(),
+    title: document.querySelector('.inspector-title')?.textContent ?? null,
+    xlPageMenu: panel(XL)?.querySelector<HTMLSelectElement>('.deck-panel-page select')?.value ?? null,
+  };
+
+  // 6. Ctrl+click on the other deck does not span decks: it focuses the XL with that key alone.
+  click(keyOn(XL, 1), { ctrlKey: true });
+  await until(() => layout().focused === XL);
+  await until(() => selectedOn(XL).join() === '1');
+  out.ctrlAcross = { focused: layout().focused, xlSelected: selectedOn(XL), v2Selected: selectedOn(V2) };
+
+  // 7. A key dragged on the V2 while the XL is focused swaps on the V2 and focuses it.
+  const xlBefore = JSON.stringify(await buttons(XL));
+  await drag(keyOn(V2, 0), keyOn(V2, 1));
+  await until(async () => (await buttons(V2, 'extra'))?.['1']?.label === 'Extra key');
+  await until(() => layout().focused === V2);
+  out.dragOther = {
+    v2: await buttons(V2, 'extra'),
+    xlUnchanged: JSON.stringify(await buttons(XL)) === xlBefore,
+    focused: layout().focused,
+    v2Selected: selectedOn(V2),
+  };
+
+  // 8. A key dragged from one deck onto the other does nothing (a copy between decks is session 3).
+  const bothBefore = JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]);
+  await drag(keyOn(XL, 0), keyOn(V2, 4));
+  await sleep(600);
+  out.dragAcross = { unchanged: JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]) === bothBefore };
+
+  // 9. A library drop on the unfocused deck's key: the new button is made there, and that deck takes the focus.
+  click(keyOn(XL, 5));
+  await until(() => layout().focused === XL);
+  const libraryRow = document.querySelector<HTMLButtonElement>('.library-entry[data-action-type="hotkey"]')!;
+  await drag(libraryRow, keyOn(V2, 3));
+  await until(async () => (await buttons(V2, 'extra'))?.['3'] !== undefined);
+  await until(() => layout().focused === V2);
+  out.libraryOther = {
+    v2Key3: (await buttons(V2, 'extra'))?.['3'] ?? null,
+    xlKey3: (await buttons(XL))?.['3'] ?? null,
+    focused: layout().focused,
+    v2Selected: selectedOn(V2),
+  };
+
+  // 10. Clicking the XL's name in SHOW IN EDITOR shows the XL alone.
+  await openShowInEditor();
+  row(XL)!.querySelector<HTMLButtonElement>('.show-in-editor-name')!.click();
+  await until(() => document.querySelectorAll('.grid').length === 1);
+  await sleep(100);
+  out.showOnly = layout();
+
+  // 11. Tick the V2 again, then untick the XL (focused): the V2 is focused, alone — no panels.
+  await tick(V2);
+  await until(() => document.querySelectorAll('.grid').length === 2);
+  await tick(XL);
+  await until(() => document.querySelectorAll('.grid').length === 1);
+  await sleep(100);
+  out.untickFocused = { ...layout(), tabs: tabs(), selectedTab: selectedTab() };
+
+  // 12. A profile with no V2 layout, both shown: the V2 keeps its panel, with the "Add a layout" card.
+  await tick(XL);
+  await until(() => document.querySelectorAll('.grid').length === 2);
+  click(keyOn(XL, 0));
+  await until(() => layout().focused === XL);
+  const profile = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(profile, 'solo');
+  profile.dispatchEvent(new Event('change', { bubbles: true }));
+  await until(() => panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined);
+  await sleep(200);
+  const card = panel(V2)?.querySelector('[data-empty-state]');
+  out.noLayout = {
+    ...layout(),
+    kind: card?.getAttribute('data-empty-state') ?? null,
+    button: card?.querySelector('button.primary')?.textContent ?? null,
+  };
+  card?.querySelector<HTMLButtonElement>('button.primary')?.click();
+  out.layoutAdded = await until(() => panel(V2)?.querySelector('.grid') !== null && panel(V2)?.querySelector('.grid') !== undefined);
+
+  await sleep(700); // past the autosave
+  return out;
+}
+
 /** Each action form writes exactly the settings it names (scripts/check-forms.mjs). */
 async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -2284,11 +2479,12 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'empty') api.reportCheck(name, await empty(api));
     else if (name === 'empty-select') api.reportCheck(name, await empty(api, true));
     else if (name === 'forms') api.reportCheck(name, await forms(api));
-    else if (name === 'bulk' || name === 'one-deck') {
+    else if (name === 'bulk' || name === 'one-deck' || name === 'multi-deck') {
       // Reports how far it got, so a failure part-way through can be diagnosed.
       const progress: Record<string, unknown> = {};
+      const run = name === 'bulk' ? bulk : name === 'one-deck' ? oneDeck : multiDeck;
       try {
-        api.reportCheck(name, await (name === 'bulk' ? bulk : oneDeck)(api, progress));
+        api.reportCheck(name, await run(api, progress));
       } catch (err) {
         api.reportCheck(name, { ...progress, error: (err as Error).stack ?? String(err) });
       }
