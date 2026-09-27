@@ -1,8 +1,8 @@
 // Several decks shown at once, end to end in real Electron against two fake
 // decks, an XL (8×4) and an Original V2 (5×3): SHOW IN EDITOR, a panel per
 // deck stacked in the Device list's order, click-to-focus, each deck's own
-// page, and nothing done on one deck reaching the other (scope §10,
-// "Multi-deck editing"); and the canvas — Fit all and zoom, work at 50%, a
+// page, nothing done on one deck reaching the other but a key dragged there,
+// which is copied (scope §10, "Multi-deck editing"); and the canvas — Fit all and zoom, work at 50%, a
 // deck dragged and snapped, an overlap butted, positions remembered across a
 // hide and a reopen. The one-deck case is check:one-deck's.
 //
@@ -126,8 +126,37 @@ if (r && !r.error) {
     assert.equal(r.dragOther.focused, V2);
     assert.deepEqual(r.dragOther.v2Selected, [1]);
   });
-  check('a key dragged from one deck onto the other changes nothing (not built until session 3)', () =>
-    assert.equal(r.dragAcross.unchanged, true));
+  check('a key dragged onto the other deck is copied there; the original stays; that deck takes the focus with the copy selected', () => {
+    assert.deepEqual(r.copyAcross.v2Key2, JUMP);
+    assert.equal(r.copyAcross.xlUnchanged, true, 'the original moved or changed');
+    assert.equal(r.copyAcross.focused, V2);
+    assert.deepEqual(r.copyAcross.v2Selected, [2]);
+    assert.deepEqual(r.copyAcross.xlSelected, []);
+    assert.equal(r.copyAcross.message, 'Copied 1 key to Little deck › “Extra”.');
+  });
+  check('mid-drag, the key on the other deck is drawn as the drop target, and nothing is after the drop', () => {
+    assert.deepEqual(r.copyAcross.midDrag, [`${V2}:2`]);
+    assert.deepEqual(r.copyAcross.after, []);
+  });
+  check('dropped on an occupied key on the other deck, the copy replaces it', () => {
+    assert.deepEqual(r.copyReplaces.v2Key1, SPRINT);
+    assert.deepEqual(r.copyReplaces.xlKey1, SPRINT, 'the original went');
+    assert.deepEqual(r.copyReplaces.v2Selected, [1]);
+  });
+  check('a page key whose page is not on the other deck keeps its label and loses the link, and the warning survives the focus moving', () => {
+    assert.deepEqual(r.copyLosesLink.xlKey7, { label: 'To extra' });
+    assert.deepEqual(r.copyLosesLink.v2Key4, TO_EXTRA, 'the original lost its link');
+    assert.equal(r.copyLosesLink.focused, XL);
+    assert.deepEqual(r.copyLosesLink.xlSelected, [7]);
+    assert.ok(r.copyLosesLink.message?.startsWith('Copied 1 key to Big deck › “Main”.'), `message: ${r.copyLosesLink.message}`);
+    assert.ok(r.copyLosesLink.message?.includes('lost its Go to page'), `the warning is gone: ${r.copyLosesLink.message}`);
+  });
+  check('a page key whose page is on the other deck keeps its link', () => {
+    assert.deepEqual(r.copyKeepsLink.xlKey6, TO_MAIN);
+    assert.equal(r.copyKeepsLink.message, 'Copied 1 key to Big deck › “Main”.');
+  });
+  check('Escape cancels a drag onto the other deck: nothing written, no drop target left', () =>
+    assert.deepEqual(r.copyEscape, { unchanged: true, targets: [] }));
   check('a library drop on the unfocused deck makes the button there and focuses that deck', () => {
     assert.equal(r.libraryOther.v2Key3?.action?.type, 'hotkey');
     assert.equal(r.libraryOther.xlKey3, null, 'not on the XL\'s key of the same number');
@@ -179,11 +208,12 @@ if (r && !r.error) {
     assert.equal(r.zoom.zoomedOut, 0.9);
     assert.equal(r.zoom.fitAgain, r.canvas.zoom);
   });
-  check('at 50%, a key drag and a library drop land on the key under the pointer, and move no deck', () => {
+  check('at 50%, a key drag, a copy onto the other deck and a library drop land on the key under the pointer, and move no deck', () => {
     assert.equal(r.zoomedWork.zoom, 0.5);
     assert.equal(r.zoomedWork.xl?.['9']?.label, 'Back', 'the XL key dragged to key 10');
     assert.equal(r.zoomedWork.xl?.['0'], undefined);
     assert.equal(r.zoomedWork.v2Key6, 'hotkey');
+    assert.equal(r.zoomedWork.v2Key7, 'Back', 'a key copied onto the other deck at 50%');
     assert.equal(r.zoomedWork.decksStayed, true);
   });
   check('a held deck moves exactly as far as the pointer, past the arrangement\'s edge too; a cancel puts it back', () => {
@@ -261,7 +291,12 @@ check('the V2 layout was added to the profile being edited, and to nothing else'
   assert.ok(saved.profiles.solo.layouts[V2], 'no V2 layout in Solo');
   assert.deepEqual(Object.keys(saved.profiles.solo.layouts).sort(), [XL, V2].sort());
 });
-check('the XL\'s keys were never touched by anything done on the V2', () => assert.deepEqual(saved.profiles.default.layouts[XL], CONFIG.profiles.default.layouts[XL]));
+check('the XL\'s keys were touched by nothing done on the V2 but the two keys copied onto it', () => {
+  const want = structuredClone(CONFIG.profiles.default.layouts[XL]);
+  want.pages.main.buttons[6] = TO_MAIN;
+  want.pages.main.buttons[7] = { label: 'To extra' };
+  assert.deepEqual(saved.profiles.default.layouts[XL], want);
+});
 
 stopWatching();
 await daemon.stop();

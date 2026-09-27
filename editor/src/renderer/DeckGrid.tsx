@@ -4,7 +4,7 @@ import { failedBadgeSvg } from '../../../src/failed-badge.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
-import { keyUnder } from './keyUnder.js';
+import { keyUnder, type KeyRef } from './keyUnder.js';
 import { actionIncomplete, describeAction, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
 
 interface Props {
@@ -24,38 +24,56 @@ interface Props {
   onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   /** A right-click, at window coordinates, for the bulk menu. */
   onKeyMenu: (index: number, x: number, y: number) => void;
-  /** A key dropped on another key: move it, swapping with whatever is there. Null when editing is blocked. */
+  /** A key dropped on another key of this deck: move it, swapping with whatever is there. Null when editing is blocked. */
   onMoveKey: ((from: number, to: number) => void) | null;
-  /** The key on this deck an action from the library is being dragged over (useActionDrag), drawn as the drop target. */
-  actionDropTarget: number | null;
+  /** A key dropped on another shown deck's key: copy it there. Null when editing is blocked or no other deck is shown. */
+  onCopyKey: ((from: number, to: KeyRef) => void) | null;
+  /** The key under the pointer while a key of this grid is dragged, on any deck (useKeyDrag). */
+  onKeyDragOver: (over: KeyRef | null) => void;
+  /** The key on this deck something is being dragged over — an action from the library, or a key from this deck or another — drawn as the drop target. */
+  dropTarget: number | null;
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
 const DRAG_THRESHOLD_PX = 6;
 
+/** Where a dragged key may land: on this deck, a move; on another shown deck, a copy. */
+interface KeyDrop {
+  onMoveKey: ((from: number, to: number) => void) | null;
+  onCopyKey: ((from: number, to: KeyRef) => void) | null;
+  /** The key under the pointer while a key is dragged, on any deck, or null: drawn by the grid it is on. */
+  onDragOver: (over: KeyRef | null) => void;
+}
+
 /**
- * Key onto key: drag a button and drop it on another key to move
- * it; an occupied key swaps. Only the key under the pointer moves, even with
- * several selected — a block of keys moves by Copy, Paste and Clear.
+ * Key onto key: drag a button and drop it on another key. On this deck it
+ * moves, and an occupied key swaps; on another shown deck it is copied there
+ * and the original stays (scope §10). Only the key under the pointer goes,
+ * even with several selected — a block of keys moves by Copy, Paste and
+ * Clear.
  *
  * Pointer events rather than HTML drag-and-drop, the same as the pane
  * dividers: the key is found under the pointer with elementFromPoint, so
  * nothing depends on the platform's drag-and-drop path. Escape cancels.
  *
- * Only keys of this grid's own deck are drop targets: over another deck's
- * grid the drag has no target, and dropping there does nothing.
+ * The key under the pointer is reported up (onDragOver), because the grid a
+ * key is dropped on is not always the grid it came from, and that grid draws
+ * the drop target.
  */
-function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => void) | null) {
+function useKeyDrag(serial: string, drop: KeyDrop) {
   const press = useRef<{ from: number; pointerId: number; x: number; y: number } | null>(null);
   // The drag as drawn, and a ref to the same, for the window listeners below.
-  const [drag, setDragState] = useState<{ from: number; over: number | null } | null>(null);
+  const [drag, setDragState] = useState<{ from: number; over: KeyRef | null } | null>(null);
   const dragRef = useRef(drag);
-  const setDrag = (next: { from: number; over: number | null } | null) => {
+  const dropRef = useRef(drop);
+  dropRef.current = drop;
+  const setDrag = (next: { from: number; over: KeyRef | null } | null) => {
+    const before = dragRef.current?.over ?? null;
     dragRef.current = next;
     setDragState(next);
+    const after = next?.over ?? null;
+    if (before?.serial !== after?.serial || before?.index !== after?.index) dropRef.current.onDragOver(after);
   };
-  const moveRef = useRef(onMoveKey);
-  moveRef.current = onMoveKey;
   const serialRef = useRef(serial);
   serialRef.current = serial;
   // A drag that ends back on its own key still produces a click there; it is not a selection click.
@@ -63,30 +81,37 @@ function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => vo
 
   // Added once for the grid's lifetime. Each returns at once unless a key was pressed.
   useEffect(() => {
-    const ownKeyUnder = (x: number, y: number): number | null => {
+    /** The key a drop would land on: any key of this deck but the one dragged, or a key on another deck when copying is allowed. */
+    const targetUnder = (x: number, y: number, from: number): KeyRef | null => {
       const key = keyUnder(x, y);
-      return key !== null && key.serial === serialRef.current ? key.index : null;
+      if (key === null) return null;
+      if (key.serial === serialRef.current) return key.index === from ? null : key;
+      return dropRef.current.onCopyKey ? key : null;
     };
     const move = (e: PointerEvent) => {
       const p = press.current;
       if (!p || e.pointerId !== p.pointerId) return;
       if (!dragRef.current && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD_PX) return;
-      const over = ownKeyUnder(e.clientX, e.clientY);
-      if (dragRef.current?.over !== over || dragRef.current?.from !== p.from) setDrag({ from: p.from, over });
+      const over = targetUnder(e.clientX, e.clientY, p.from);
+      const now = dragRef.current;
+      if (now === null || now.from !== p.from || now.over?.serial !== over?.serial || now.over?.index !== over?.index) setDrag({ from: p.from, over });
     };
     const up = (e: PointerEvent) => {
       const p = press.current;
       if (!p || e.pointerId !== p.pointerId) return;
       press.current = null;
       if (!dragRef.current) return; // never passed the threshold: an ordinary click
-      const over = ownKeyUnder(e.clientX, e.clientY);
+      const over = targetUnder(e.clientX, e.clientY, p.from);
       // The browser clicks the element where the press and the release share an
       // ancestor: the key itself only if the drag ended back on it. Released
       // anywhere else, no key is clicked, and a flag left set would swallow the
       // next real click.
-      suppressClick.current = over === p.from;
+      const back = keyUnder(e.clientX, e.clientY);
+      suppressClick.current = back !== null && back.serial === serialRef.current && back.index === p.from;
       setDrag(null);
-      if (over !== null && over !== p.from) moveRef.current?.(p.from, over);
+      if (over === null) return;
+      if (over.serial === serialRef.current) dropRef.current.onMoveKey?.(p.from, over.index);
+      else dropRef.current.onCopyKey?.(p.from, over);
     };
     const cancel = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !press.current) return;
@@ -107,6 +132,8 @@ function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => vo
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       window.removeEventListener('keydown', cancel, true);
+      // A grid gone mid-drag (its deck hidden or unplugged) must not leave its target drawn on another.
+      if (dragRef.current?.over) dropRef.current.onDragOver(null);
     };
   }, []);
 
@@ -114,7 +141,7 @@ function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => vo
     drag,
     /** Start watching a press on a key that holds a button. */
     onPointerDown: (index: number, occupied: boolean, e: ReactPointerEvent) => {
-      if (!onMoveKey || !occupied || e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
+      if (!drop.onMoveKey || !occupied || e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
       press.current = { from: index, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       suppressClick.current = false;
     },
@@ -127,8 +154,8 @@ function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => vo
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
-  const keyDrag = useKeyDrag(geometry.serial, onMoveKey);
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
+  const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -160,7 +187,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           onMenu={(x, y) => onKeyMenu(k.index, x, y)}
           onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.index, occupied, e)}
           dragging={keyDrag.drag?.from === k.index}
-          dropTarget={(keyDrag.drag !== null && keyDrag.drag.over === k.index && keyDrag.drag.from !== k.index) || actionDropTarget === k.index}
+          dropTarget={dropTarget === k.index}
         />
       ))}
     </div>

@@ -14,6 +14,7 @@ import { Library } from './Library.js';
 import { actionName, libraryIcon } from './catalogue.js';
 import { builtinRef, iconUrl } from '../shared/icons.js';
 import { useActionDrag, type ActionDrag } from './useActionDrag.js';
+import type { KeyRef } from './keyUnder.js';
 import {
   canSwitchDeck,
   clickKeys,
@@ -238,6 +239,8 @@ function Editor({
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
   const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
+  /** The key under the pointer while a key is dragged, on whichever deck: drawn by that deck's grid. */
+  const [keyDragOver, setKeyDragOver] = useState<KeyRef | null>(null);
 
   // An action dragged from the library onto a key: a new button there.
   // Written first, then the key is selected and its form shown — the
@@ -438,7 +441,21 @@ function Editor({
                   void bulk.move(from, to, { serial, page: pageId, def: gridPage });
                 }
         }
-        actionDropTarget={actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.index : null}
+        onCopyKey={
+          editingBlocked || !several
+            ? null
+            : (from, to) => {
+                const toPage = pageOf(selection, to.serial);
+                if (toPage === null) return;
+                // The copy is on screen, so its deck takes the focus with the copy selected, as a library drop does.
+                focusKey(to.serial, to.index);
+                void bulk.copyKey({ serial, page: pageId, def: gridPage, index: from }, { serial: to.serial, page: toPage, index: to.index });
+              }
+        }
+        onKeyDragOver={setKeyDragOver}
+        dropTarget={
+          actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.index : keyDragOver?.serial === serial ? keyDragOver.index : null
+        }
         onKeyMenu={(index, x, y) => {
           // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
           if (!focused) focusKey(serial, index);

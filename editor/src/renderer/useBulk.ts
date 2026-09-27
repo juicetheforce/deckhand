@@ -43,6 +43,13 @@ export interface Bulk {
   move: (from: number, to: number, on?: { serial: string; page: string; def: PageDef }) => Promise<void>;
   /** Copy the selected keys to the same positions on another page, of this deck or another in this profile. */
   copyTo: (serial: string, page: string) => Promise<void>;
+  /**
+   * Key onto another deck's key: copy it there, replacing whatever is there,
+   * and leave the original. `from` is any shown deck's page; `to` is where it
+   * lands, on the page that deck shows. The caller focuses `to`'s deck first,
+   * so the status line, set after the write, is about that deck's page.
+   */
+  copyKey: (from: { serial: string; page: string; def: PageDef; index: number }, to: { serial: string; page: string; index: number }) => Promise<void>;
 }
 
 /**
@@ -57,7 +64,11 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  // A result about one page means nothing once another is shown.
+  // A result about one page means nothing once another is shown. A key
+  // copied onto another deck focuses that deck at the drop, before the write:
+  // the drop is a discrete event, so React commits the focus and runs this
+  // before the write can return, and a lost link's warning, set after, stays.
+  // Focusing after the write would clear it (check:multi-deck, 8c).
   useEffect(() => setMessage(null), [selection.profile, selection.serial, selection.page]);
 
   const ready = !editingBlocked && layout !== null && page !== undefined && geometry !== null;
@@ -141,6 +152,27 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       const deckName = deckChoices(config, selection.profile, daemon).find((d) => d.id === serial)?.label ?? serial;
       // The selection, the clipboard and the decks stay as they were: nothing here is shown until you go and look.
       setMessage(placementMessage('Copied', placement, serial === selection.serial ? pageName : `${deckName} › ${pageName}`));
+    },
+
+    copyKey: async (from, to) => {
+      if (editingBlocked) return;
+      const fromGeometry = geometryFor(daemon, from.serial);
+      const toGeometry = geometryFor(daemon, to.serial);
+      const toLayout = layoutFor(config, selection.profile, to.serial);
+      const toPosition = toGeometry?.keys.find((k) => k.index === to.index);
+      if (!fromGeometry || !toPosition || !toLayout || !Object.prototype.hasOwnProperty.call(toLayout.pages, to.page)) return;
+      const clip = copyKeys(from.def, fromGeometry, [from.index]);
+      if (clip === null) return;
+      // Anchored on the key dropped on: one key always has a place there, so
+      // nothing is skipped; a page key whose target is not on that deck loses the link.
+      const placement = placeClipboard(clip, { row: toPosition.row, column: toPosition.column }, toGeometry!, toLayout);
+      const failure = await put(placement.writes, to.serial, to.page);
+      if (failure !== null) {
+        setMessage(`Could not copy the key: ${failure}`);
+        return;
+      }
+      const deckName = deckChoices(config, selection.profile, daemon).find((d) => d.id === to.serial)?.label ?? to.serial;
+      setMessage(placementMessage('Copied', placement, `${deckName} › “${pageLabel(toLayout, to.page)}”`));
     },
 
     move: async (from, to, on) => {

@@ -1902,11 +1902,97 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     v2Selected: selectedOn(V2),
   };
 
-  // 8. A key dragged from one deck onto the other does nothing (a copy between decks is session 3).
-  const bothBefore = JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]);
-  await drag(keyOn(XL, 0), keyOn(V2, 4));
-  await sleep(600);
-  out.dragAcross = { unchanged: JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]) === bothBefore };
+  // 8. A key dragged onto the other deck is copied there (scope §10): the
+  // original stays, an occupied key is replaced, that deck takes the focus
+  // with the copy selected, and the status line says what happened there.
+  const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.keyIndex}`);
+  const bulkMessage = () => document.querySelector('.bulk-message')?.firstChild?.textContent ?? null;
+  const setPageMenu = async (serial: string, pageId: string) => {
+    const select = panel(serial)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, pageId);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await until(async () => (await deckPage(serial)) === pageId);
+  };
+  // 8a. The XL's Jump onto the V2's empty key 2, with the XL focused. Mid-drag, the V2's key is the drop target, and only it.
+  click(keyOn(XL, 0));
+  await until(() => layout().focused === XL);
+  const xlBeforeCopy = JSON.stringify(await buttons(XL));
+  let midDrag: string[] = [];
+  {
+    const a = centre(keyOn(XL, 0));
+    const b = centre(keyOn(V2, 2));
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await until(() => dropTargets().length > 0);
+    midDrag = dropTargets();
+    pointer('pointerup', b.x, b.y);
+  }
+  await until(async () => (await buttons(V2, 'extra'))?.['2']?.label === 'Jump');
+  await until(() => layout().focused === V2 && selectedOn(V2).join() === '2');
+  await sleep(100);
+  out.copyAcross = {
+    midDrag,
+    after: dropTargets(),
+    v2Key2: (await buttons(V2, 'extra'))?.['2'] ?? null,
+    xlUnchanged: JSON.stringify(await buttons(XL)) === xlBeforeCopy,
+    focused: layout().focused,
+    v2Selected: selectedOn(V2),
+    xlSelected: selectedOn(XL),
+    title: document.querySelector('.inspector-title')?.textContent ?? null,
+    message: bulkMessage(),
+  };
+
+  // 8b. The XL's Sprint onto the V2's Extra key: an occupied key is replaced.
+  await drag(keyOn(XL, 1), keyOn(V2, 1));
+  await until(async () => (await buttons(V2, 'extra'))?.['1']?.label === 'Sprint');
+  await sleep(100);
+  out.copyReplaces = { v2Key1: (await buttons(V2, 'extra'))?.['1'] ?? null, xlKey1: (await buttons(XL))?.['1'] ?? null, v2Selected: selectedOn(V2) };
+
+  // 8c. A page key whose page is not on the XL: the V2's "To extra" (on its
+  // Main) onto the XL, with the V2 focused. It keeps its label and loses the
+  // link, and the warning survives the focus moving to the XL.
+  click(keyOn(XL, 0));
+  await until(() => layout().focused === XL);
+  await setPageMenu(V2, 'main');
+  await until(() => keyOn(V2, 4).textContent?.includes('To extra') ?? false);
+  click(keyOn(V2, 0));
+  await until(() => layout().focused === V2);
+  await drag(keyOn(V2, 4), keyOn(XL, 7));
+  await until(async () => (await buttons(XL))?.['7'] !== undefined);
+  await until(() => layout().focused === XL);
+  await sleep(300); // past the focus change's effects: a cleared warning would be gone by now
+  out.copyLosesLink = {
+    xlKey7: (await buttons(XL))?.['7'] ?? null,
+    v2Key4: (await buttons(V2, 'main'))?.['4'] ?? null,
+    focused: layout().focused,
+    xlSelected: selectedOn(XL),
+    message: bulkMessage(),
+  };
+
+  // 8d. A page key whose page is on the XL keeps its link: the V2's "To main" (on its Extra).
+  await setPageMenu(V2, 'extra');
+  await until(() => keyOn(V2, 4).textContent?.includes('To main') ?? false);
+  await drag(keyOn(V2, 4), keyOn(XL, 6));
+  await until(async () => (await buttons(XL))?.['6'] !== undefined);
+  await until(() => bulkMessage()?.includes('Big deck') ?? false);
+  out.copyKeepsLink = { xlKey6: (await buttons(XL))?.['6'] ?? null, message: bulkMessage() };
+
+  // 8e. Escape cancels a drag onto the other deck: nothing written, no target left drawn.
+  const beforeEscape = JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]);
+  {
+    const a = centre(keyOn(XL, 0));
+    const b = centre(keyOn(V2, 3));
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await until(() => dropTargets().length > 0);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await sleep(50);
+    pointer('pointerup', b.x, b.y);
+  }
+  await sleep(400);
+  out.copyEscape = { unchanged: JSON.stringify([await buttons(XL), await buttons(V2, 'extra')]) === beforeEscape, targets: dropTargets() };
 
   // 9. A library drop on the unfocused deck's key: the new button is made there, and that deck takes the focus.
   click(keyOn(XL, 5));
@@ -1971,7 +2057,14 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     return { x: (v2.left - xl.left) / unit, y: (v2.top - xl.top) / unit };
   };
   const panelGap = () => (rectOf(panel(V2)!).top - rectOf(panel(XL)!).bottom) / zoom();
-  const positionsOnScreen = () => [XL, V2].map((s) => rectOf(panel(s)!)).map((r) => `${r.left},${r.top}`).join(' ');
+  // Each deck's place against the drawing: the arrangement. Not against the
+  // window: a status line appearing below the canvas (a copy's) shortens it,
+  // and the drawing, centred while it fits, moves by half that, every deck
+  // together.
+  const positionsInDrawing = () => {
+    const drawing = rectOf(document.querySelector('.canvas-content')!);
+    return [XL, V2].map((s) => rectOf(panel(s)!)).map((r) => `${r.left - drawing.left},${r.top - drawing.top}`).join(' ');
+  };
   const soloButtons = async (serial: string) => {
     const s = (await api.snapshot()).store;
     if (!s.open) return null;
@@ -2013,17 +2106,20 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     await sleep(30);
   }
   await until(() => zoom() === 0.5);
-  const decksBefore = positionsOnScreen();
+  const arrangementBefore = positionsInDrawing();
   await drag(keyOn(XL, 0), keyOn(XL, 9));
   await until(async () => (await soloButtons(XL))?.['9']?.label === 'Back');
   await drag(document.querySelector<HTMLButtonElement>('.library-entry[data-action-type="hotkey"]')!, keyOn(V2, 6));
   await until(async () => (await soloButtons(V2))?.['6'] !== undefined);
+  await drag(keyOn(XL, 9), keyOn(V2, 7));
+  await until(async () => (await soloButtons(V2))?.['7'] !== undefined);
   await sleep(100);
   out.zoomedWork = {
     zoom: zoom(),
     xl: await soloButtons(XL),
     v2Key6: (await soloButtons(V2))?.['6']?.action?.type ?? null,
-    decksStayed: positionsOnScreen() === decksBefore,
+    v2Key7: (await soloButtons(V2))?.['7']?.label ?? null,
+    decksStayed: positionsInDrawing() === arrangementBefore,
   };
 
   // A deck dragged by its header, dropped 3 px from the XL's third key
