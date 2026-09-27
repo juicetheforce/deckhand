@@ -19,6 +19,7 @@ import {
   failedKeysOn,
   latchedKeysOn,
   followDeck,
+  othersToStartPages,
   geometryFor,
   layoutFor,
   labelDefaults,
@@ -118,7 +119,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
       const profile = change.profile;
       const serial = deckForProfile(config, daemon, profile, selection.serial);
       const layout = layoutFor(config, profile, serial);
-      setSelection(reconcileSelection(config, daemon, { profile, serial, page: layout ? startPageOf(layout) : '', key: null, keys: [] }));
+      setSelection(reconcileSelection(config, daemon, { profile, serial, page: layout ? startPageOf(layout) : '', key: null, keys: [], others: othersToStartPages(selection.others) }));
       if (daemon.connected) {
         void sendSwitch(
           () => window.deckhand.switchProfile(profile),
@@ -128,8 +129,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
       return;
     }
     if (change.serial !== undefined && change.serial !== selection.serial) {
-      // Choosing a device opens whatever that deck is showing; nothing is sent.
-      setSelection(followDeck(config, daemon, { ...selection, serial: change.serial, key: null, keys: [] }));
+      // Choosing a device opens whatever that deck is showing, alone; nothing is sent.
+      setSelection(followDeck(config, daemon, { ...selection, serial: change.serial, key: null, keys: [], others: {} }));
       return;
     }
     if (change.page !== undefined && change.page !== selection.page) {
@@ -237,7 +238,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
    * config has arrived and the follow effect reconciles it onto the right page.
    */
   const selectNewProfile = (profile: string) => {
-    setSelection((current) => ({ ...current, profile, page: '', key: null, keys: [] }));
+    setSelection((current) => ({ ...current, profile, page: '', key: null, keys: [], others: othersToStartPages(current.others) }));
     if (daemon.connected) {
       void sendSwitch(
         () => window.deckhand.switchProfile(profile),

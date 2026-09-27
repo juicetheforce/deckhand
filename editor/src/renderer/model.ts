@@ -44,6 +44,15 @@ export interface Selection {
    * exactly when `key` is null.
    */
   keys: number[];
+  /**
+   * The other decks shown in the editor, each with the page it shows; empty
+   * when one deck is shown, which is today's editor exactly. `serial` is the
+   * focused deck — the one the toolbar, inspector and key selection act on —
+   * and is never in here, so each deck's page is held in one place. Every
+   * deck in here is connected and in `profile`; a deck with no layout in it
+   * has page "".
+   */
+  others: Record<string, string>;
 }
 
 export interface Choice {
@@ -217,8 +226,89 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
     const keepPage = current && current.profile === profile && current.serial === serial && Object.prototype.hasOwnProperty.call(layout.pages, current.page);
     page = keepPage ? current!.page : startPageOf(layout);
   }
+  // The other shown decks: those still connected, never the focused one, each
+  // on its page if that page is still in this profile, else its start page.
+  const others: Record<string, string> = {};
+  for (const [other, otherPage] of Object.entries(current?.others ?? {})) {
+    if (other === serial || !decks.some((d) => d.id === other)) continue;
+    const otherLayout = layoutFor(config, profile, other);
+    const keep = current!.profile === profile && otherLayout !== null && Object.prototype.hasOwnProperty.call(otherLayout.pages, otherPage);
+    others[other] = otherLayout === null ? '' : keep ? otherPage : startPageOf(otherLayout);
+  }
+
   const samePage = current && current.profile === profile && current.serial === serial && current.page === page;
-  return samePage ? { profile, serial, page, key: current!.key, keys: current!.keys } : { profile, serial, page, key: null, keys: [] };
+  return samePage
+    ? { profile, serial, page, key: current!.key, keys: current!.keys, others }
+    : { profile, serial, page, key: null, keys: [], others };
+}
+
+/**
+ * The decks drawn, in the Device list's order (deckChoices): the focused deck
+ * and the others. The order is fixed by the config, not by which is focused,
+ * so focusing a deck does not move the grids.
+ */
+export function shownDecks(config: Config, daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'others'>): string[] {
+  return deckChoices(config, selection.profile, daemon)
+    .map((d) => d.id)
+    .filter((id) => id === selection.serial || Object.prototype.hasOwnProperty.call(selection.others, id));
+}
+
+/**
+ * The other shown decks, each marked to go back to its start page: for a
+ * profile change, since their pages belonged to the old profile.
+ * reconcileSelection turns the "" into each deck's start page in the new one.
+ */
+export function othersToStartPages(others: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.keys(others).map((serial) => [serial, '']));
+}
+
+/** The page a shown deck shows: the focused deck's `page`, another's entry in `others`. */
+export function pageOf(selection: Pick<Selection, 'serial' | 'page' | 'others'>, serial: string): string | null {
+  if (serial === selection.serial) return selection.page;
+  return Object.prototype.hasOwnProperty.call(selection.others, serial) ? selection.others[serial] : null;
+}
+
+/**
+ * Focus a shown deck: it takes over the toolbar, inspector and selection, and
+ * the deck that had them joins the others on the page it was on. Keys are
+ * never selected across decks, so the selection is cleared. Not shown: the
+ * selection is returned as it is.
+ */
+export function focusDeck(selection: Selection, serial: string): Selection {
+  if (serial === selection.serial || !Object.prototype.hasOwnProperty.call(selection.others, serial)) return selection;
+  const { [serial]: page, ...rest } = selection.others;
+  return { ...selection, serial, page, key: null, keys: [], others: { ...rest, [selection.serial]: selection.page } };
+}
+
+/**
+ * Show a deck alongside the others, or stop showing it. A deck added opens on
+ * its start page (`followDeck` then moves it to what the deck shows). The last
+ * shown deck cannot be hidden. Hiding the focused deck focuses the first other
+ * shown deck, in `order` (shownDecks).
+ */
+export function setShown(config: Config, selection: Selection, serial: string, shown: boolean, order: string[]): Selection {
+  const isShown = serial === selection.serial || Object.prototype.hasOwnProperty.call(selection.others, serial);
+  if (shown === isShown) return selection;
+  if (shown) {
+    const layout = layoutFor(config, selection.profile, serial);
+    return { ...selection, others: { ...selection.others, [serial]: layout === null ? '' : startPageOf(layout) } };
+  }
+  if (serial !== selection.serial) {
+    const { [serial]: _hidden, ...others } = selection.others;
+    return { ...selection, others };
+  }
+  const next = order.find((s) => s !== serial && Object.prototype.hasOwnProperty.call(selection.others, s)) ?? Object.keys(selection.others)[0];
+  if (next === undefined) return selection;
+  const focused = focusDeck(selection, next);
+  const { [serial]: _gone, ...others } = focused.others;
+  return { ...focused, others };
+}
+
+/** Change the page one shown deck shows, focused or not. The focused deck's key selection goes with its page. */
+export function setDeckPage(selection: Selection, serial: string, page: string): Selection {
+  if (serial === selection.serial) return page === selection.page ? selection : { ...selection, page, key: null, keys: [] };
+  if (!Object.prototype.hasOwnProperty.call(selection.others, serial)) return selection;
+  return { ...selection, others: { ...selection.others, [serial]: page } };
 }
 
 /**
@@ -227,6 +317,10 @@ export function reconcileSelection(config: Config, daemon: DaemonView, current: 
  * page, unconditionally. The selected key is kept only if the page did not
  * change. A deck with nothing to report (disconnected, no session, daemon
  * not connected) leaves the selection as it is.
+ *
+ * With several decks shown, each of the others follows its own page too,
+ * while it shows the selection's profile; only the focused deck moves the
+ * profile.
  */
 export function followDeck(config: Config, daemon: DaemonView, current: Selection): Selection {
   // Settle on a deck that exists *first*, then follow that one. Following
@@ -235,12 +329,28 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
   // the serial is "", the lookup below finds nothing, and the editor would
   // open on the layout's start page instead of the page the deck is showing.
   const settled = reconcileSelection(config, daemon, current);
-  const deck = daemon.connected ? daemon.status?.decks.find((d) => d.serial === settled.serial) : undefined;
+  const status = (serial: string) => (daemon.connected ? daemon.status?.decks.find((d) => d.serial === serial) : undefined);
+  const deck = status(settled.serial);
+  let focused = settled;
   if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
     const moved = deck.profile !== settled.profile || deck.page !== settled.page;
-    return reconcileSelection(config, daemon, { ...settled, profile: deck.profile, page: deck.page, ...(moved ? { key: null, keys: [] } : {}) });
+    // A profile change takes the other decks' pages with it: they were pages
+    // of the old profile, so each goes back to its start page before following.
+    const others = deck.profile === settled.profile ? settled.others : othersToStartPages(settled.others);
+    focused = reconcileSelection(config, daemon, { ...settled, profile: deck.profile, page: deck.page, others, ...(moved ? { key: null, keys: [] } : {}) });
   }
-  return settled;
+  // Then each other shown deck follows its own page — only while it shows
+  // this profile: a deck the profile does not cover keeps the previous one's
+  // page, which is not a page here.
+  let others = focused.others;
+  for (const [serial, page] of Object.entries(focused.others)) {
+    const other = status(serial);
+    const layout = layoutFor(config, focused.profile, serial);
+    if (other?.profile === focused.profile && other.page && other.page !== page && layout && Object.prototype.hasOwnProperty.call(layout.pages, other.page)) {
+      others = { ...others, [serial]: other.page };
+    }
+  }
+  return others === focused.others ? focused : { ...focused, others };
 }
 
 /**

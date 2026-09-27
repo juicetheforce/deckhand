@@ -34,6 +34,12 @@ import {
   clipboardSummary,
   placementMessage,
   deviceTargets,
+  focusDeck,
+  othersToStartPages,
+  pageOf,
+  setDeckPage,
+  setShown,
+  shownDecks,
   failedKeysOn,
   latchedKeysOn,
   faceIcon,
@@ -576,12 +582,12 @@ await check('the Default deck setting: opened on that deck when it is plugged in
   // A deck config does not know at all: the rule.
   assert.equal(reconcileSelection(EXAMPLE, daemonView([V2]), null, 'NOT-A-DECK').serial, V2);
   // Only an opening uses it: a selection that exists is kept.
-  const current = { profile: 'default', serial: V2, page: 'main', key: null, keys: [] };
+  const current = { profile: 'default', serial: V2, page: 'main', key: null, keys: [], others: {} };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current, XL), current);
 });
 
 await check('a selection that still exists is kept, key included, across config and daemon changes', () => {
-  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL, V2]), current), current);
   // **A deck unplugging moves the editor off it, and that is a real cost.**
   // Only connected decks are listed, so the deck being edited stops being
@@ -598,16 +604,16 @@ await check('a selection that still exists is kept, key included, across config 
 await check('a deleted page falls back to the start page and drops the key; an unknown profile falls back too', () => {
   const edited = structuredClone(EXAMPLE);
   delete edited.profiles.default.layouts[XL].pages.games;
-  const s = reconcileSelection(edited, daemonView([XL]), { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] });
+  const s = reconcileSelection(edited, daemonView([XL]), { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} });
   assert.deepEqual([s.page, s.key, s.keys], ['main', null, []]);
-  const p = reconcileSelection(EXAMPLE, daemonView([XL]), { profile: 'gone', serial: XL, page: 'main', key: 1, keys: [1] });
+  const p = reconcileSelection(EXAMPLE, daemonView([XL]), { profile: 'gone', serial: XL, page: 'main', key: 1, keys: [1], others: {} });
   assert.equal(p.profile, 'default');
 });
 
 await check('a new page added by the editor can be selected immediately', () => {
   const edited = structuredClone(EXAMPLE);
   edited.profiles.default.layouts[XL].pages.pg_beef = { name: 'Combat', buttons: {} };
-  const s = reconcileSelection(edited, daemonView([XL]), { profile: 'default', serial: XL, page: 'pg_beef', key: null, keys: [] });
+  const s = reconcileSelection(edited, daemonView([XL]), { profile: 'default', serial: XL, page: 'pg_beef', key: null, keys: [], others: {} });
   assert.equal(s.page, 'pg_beef');
 });
 
@@ -621,22 +627,22 @@ function showing(decks: Array<{ serial: string; profile: string; page: string }>
 }
 
 await check('the breadcrumb follows a page change on the deck, and drops the key it no longer points at', () => {
-  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), { profile: 'default', serial: XL, page: 'main', key: 5, keys: [5] });
-  assert.deepEqual(s, { profile: 'default', serial: XL, page: 'games', key: null, keys: [] });
+  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), { profile: 'default', serial: XL, page: 'main', key: 5, keys: [5], others: {} });
+  assert.deepEqual(s, { profile: 'default', serial: XL, page: 'games', key: null, keys: [], others: {} });
 });
 
 await check('the breadcrumb follows a profile change on the deck', () => {
-  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }]), { profile: 'default', serial: XL, page: 'main', key: null, keys: [] });
+  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }]), { profile: 'default', serial: XL, page: 'main', key: null, keys: [], others: {} });
   assert.deepEqual([s.profile, s.page], ['prof_game', 'pg_hotbar']);
 });
 
 await check('when the deck has not moved, the selected key stays (mid-edit)', () => {
-  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} };
   assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), current), current);
 });
 
 await check('nothing to follow — daemon not connected — leaves the selection alone', () => {
-  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} };
   // Another deck moving is not *followed*, but with the XL unplugged the
   // selection cannot stay on it either (see the note above): it lands on the
   // deck that is there, at that deck's own page.
@@ -656,19 +662,126 @@ await check('the first decks to arrive are followed, not just settled on', () =>
   // nothing, and leave the editor on the layout's start page instead of the
   // page the deck is really showing: reconcile first, then follow.
   // check:structure covers the same thing in Electron.
-  const nothingYet: Selection = { profile: 'default', serial: '', page: '', key: null, keys: [] };
+  const nothingYet: Selection = { profile: 'default', serial: '', page: '', key: null, keys: [], others: {} };
   const arrived = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), nothingYet);
   assert.deepEqual([arrived.serial, arrived.page], [XL, 'games'], 'it must follow the deck it just settled on');
   // And a stale serial, for the same reason: the deck it named is gone.
-  const stale: Selection = { profile: 'default', serial: 'SOLD-DECK', page: 'main', key: 2, keys: [2] };
+  const stale: Selection = { profile: 'default', serial: 'SOLD-DECK', page: 'main', key: 2, keys: [2], others: {} };
   const moved = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'games' }]), stale);
   assert.deepEqual([moved.serial, moved.page, moved.key], [XL, 'games', null]);
 });
 
 await check('a deck showing a profile the editor does not have (outside edit not reloaded yet) is not followed into nowhere', () => {
   // Not the start page, and a key selected: a follow that fell back would show as a change.
-  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3] };
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} };
   assert.deepEqual(followDeck(EXAMPLE, showing([{ serial: XL, profile: 'not-in-config', page: 'x' }]), current), current);
+});
+
+console.log('several decks shown');
+
+// The example with a second page on the V2, so each deck has a page to be on
+// other than its start page. prof_game has no V2 layout.
+const MULTI = structuredClone(EXAMPLE);
+MULTI.profiles.default.layouts[V2].pages.extra = { name: 'Extra', buttons: {} };
+const bothOn = (xl: string, v2: string, v2Profile = 'default') =>
+  showing([{ serial: XL, profile: 'default', page: xl }, { serial: V2, profile: v2Profile, page: v2 }]);
+const xlWithV2 = (v2Page: string, rest: Partial<Selection> = {}): Selection =>
+  ({ profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: { [V2]: v2Page }, ...rest });
+
+await check('one deck shown is today\'s selection: no others, and every existing function behaves as before', () => {
+  const s = reconcileSelection(MULTI, daemonView([XL, V2]), null);
+  assert.deepEqual(s.others, {});
+  assert.deepEqual(shownDecks(MULTI, daemonView([XL, V2]), s), [s.serial]);
+});
+
+await check('the shown decks are in the Device list\'s order, whichever is focused', () => {
+  const view = daemonView([XL, V2]);
+  assert.deepEqual(shownDecks(MULTI, view, xlWithV2('main')), [XL, V2]);
+  assert.deepEqual(shownDecks(MULTI, view, focusDeck(xlWithV2('main'), V2)), [XL, V2]);
+});
+
+await check('each shown deck keeps its own page, and the focused deck its key', () => {
+  const s = reconcileSelection(MULTI, daemonView([XL, V2]), xlWithV2('extra'));
+  assert.deepEqual(s, xlWithV2('extra'));
+  assert.equal(pageOf(s, XL), 'games');
+  assert.equal(pageOf(s, V2), 'extra');
+  assert.equal(pageOf(s, 'NOT-SHOWN'), null);
+});
+
+await check('another deck\'s page that is gone goes back to its start page; an unplugged deck stops being shown', () => {
+  assert.deepEqual(reconcileSelection(MULTI, daemonView([XL, V2]), xlWithV2('deleted-page')).others, { [V2]: 'main' });
+  assert.deepEqual(reconcileSelection(MULTI, daemonView([XL]), xlWithV2('extra')).others, {});
+});
+
+await check('unplugging the focused deck focuses the one left, shown alone', () => {
+  const s = reconcileSelection(MULTI, daemonView([V2]), xlWithV2('extra'));
+  assert.equal(s.serial, V2);
+  assert.deepEqual(s.others, {}, 'the focused deck is never also among the others');
+});
+
+await check('a shown deck with no layout in the profile stays shown, with no page', () => {
+  const s = reconcileSelection(MULTI, daemonView([XL, V2]), { profile: 'prof_game', serial: XL, page: 'pg_hotbar', key: null, keys: [], others: { [V2]: '' } });
+  assert.deepEqual(s.others, { [V2]: '' });
+});
+
+await check('focusing a deck swaps it with the focused one, each keeping its page; keys are not kept across decks', () => {
+  const s = focusDeck(xlWithV2('extra'), V2);
+  assert.deepEqual(s, { profile: 'default', serial: V2, page: 'extra', key: null, keys: [], others: { [XL]: 'games' } });
+  assert.deepEqual(focusDeck(s, XL), { ...xlWithV2('extra'), key: null, keys: [] }, 'and back');
+  const same = xlWithV2('extra');
+  assert.equal(focusDeck(same, XL), same, 'the focused deck: unchanged');
+  assert.equal(focusDeck(same, 'NOT-SHOWN'), same, 'a deck not shown: unchanged');
+});
+
+await check('ticking a deck shows it on its start page; unticking hides it; the last shown deck cannot be hidden', () => {
+  const order = [XL, V2];
+  const one: Selection = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [3], others: {} };
+  const two = setShown(MULTI, one, V2, true, order);
+  assert.deepEqual(two, { ...one, others: { [V2]: 'main' } }, 'the focus and its key stay where they were');
+  assert.deepEqual(setShown(MULTI, two, V2, false, order), one);
+  assert.equal(setShown(MULTI, one, XL, false, order), one, 'the last shown deck');
+  assert.equal(setShown(MULTI, two, V2, true, order), two, 'already shown');
+});
+
+await check('hiding the focused deck focuses the next shown one, on its own page', () => {
+  const s = setShown(MULTI, xlWithV2('extra'), XL, false, [XL, V2]);
+  assert.deepEqual(s, { profile: 'default', serial: V2, page: 'extra', key: null, keys: [], others: {} });
+});
+
+await check('a deck\'s page changes only that deck; the focused deck\'s change drops its key selection', () => {
+  assert.deepEqual(setDeckPage(xlWithV2('main'), V2, 'extra'), xlWithV2('extra'), 'another deck: the focused deck\'s key stays');
+  assert.deepEqual(setDeckPage(xlWithV2('main'), XL, 'main'), xlWithV2('main', { page: 'main', key: null, keys: [] }));
+  const s = xlWithV2('main');
+  assert.equal(setDeckPage(s, 'NOT-SHOWN', 'main'), s);
+});
+
+await check('every shown deck follows its own live page; reconcile first, as for one deck', () => {
+  const s = followDeck(MULTI, bothOn('games', 'extra'), xlWithV2('main'));
+  assert.deepEqual([s.serial, s.page, s.key, s.others], [XL, 'games', 3, { [V2]: 'extra' }]);
+  // Before the daemon has reported, the selection names no deck; the others
+  // still follow once they arrive.
+  const early = followDeck(MULTI, bothOn('games', 'extra'), { profile: 'default', serial: '', page: '', key: null, keys: [], others: { [V2]: '' } });
+  assert.deepEqual([early.serial, early.page, early.others], [XL, 'games', { [V2]: 'extra' }]);
+});
+
+await check('another deck showing a different profile is not followed into it, even to a page id both profiles have', () => {
+  const alsoExtra = structuredClone(MULTI);
+  alsoExtra.profiles.prof_game.layouts[V2] = { startPage: 'extra', pages: { extra: { name: 'Extra', buttons: {} } } };
+  const s = followDeck(alsoExtra, bothOn('games', 'extra', 'prof_game'), xlWithV2('main'));
+  assert.deepEqual(s.others, { [V2]: 'main' });
+});
+
+await check('when the focused deck moves to another profile, the other decks go to their start pages in it', () => {
+  // The V2 was on "extra", a page of the old profile. prof_game has no V2
+  // layout, so it stays shown with no page; with one, it would be its start page.
+  const view = showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }, { serial: V2, profile: 'default', page: 'extra' }]);
+  const s = followDeck(MULTI, view, xlWithV2('extra'));
+  assert.deepEqual([s.profile, s.page, s.others], ['prof_game', 'pg_hotbar', { [V2]: '' }]);
+  const covered = structuredClone(MULTI);
+  covered.profiles.prof_game.layouts[V2] = { startPage: 'v2home', pages: { v2home: { name: 'Home', buttons: {} }, extra: { name: 'Extra', buttons: {} } } };
+  const t = followDeck(covered, view, xlWithV2('extra'));
+  assert.deepEqual(t.others, { [V2]: 'v2home' }, 'a page named like the old one is not kept: it is another profile\'s page');
+  assert.deepEqual(othersToStartPages({ [V2]: 'extra', [XL]: 'main' }), { [V2]: '', [XL]: '' });
 });
 
 await check('choosing a profile keeps the deck if the profile covers it, otherwise moves to a connected deck it covers', () => {
@@ -772,7 +885,7 @@ await check('click selects one key; Ctrl+click adds and removes; Shift+click sel
 });
 
 await check('several selected keys survive a config change on the same page, and go with a page change', () => {
-  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [1, 2, 3] };
+  const current = { profile: 'default', serial: XL, page: 'games', key: 3, keys: [1, 2, 3], others: {} };
   assert.deepEqual(reconcileSelection(EXAMPLE, daemonView([XL]), current), current);
   const moved = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'main' }]), current);
   assert.deepEqual([moved.key, moved.keys], [null, []]);
@@ -807,7 +920,7 @@ await check('a paste message names what was skipped and what lost its navigation
 });
 
 await check('Copy to device offers the other connected decks this profile covers, with their pages', () => {
-  const selection = { profile: 'default', serial: XL, page: 'main', key: 0, keys: [0] };
+  const selection = { profile: 'default', serial: XL, page: 'main', key: 0, keys: [0], others: {} };
   // A disconnected deck is not listed: keys land by row and column, so a deck
   // that is not here was never a possible target, and its absence is the
   // reason.
