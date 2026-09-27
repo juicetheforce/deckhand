@@ -1373,7 +1373,11 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   await until(() => selected().join() === '3,4');
   out.duplicate = { keys: await savedKeys(), selected: selected(), copied: (await buttons())?.['3'] };
 
-  // 3. Shift+click a run, copy it, paste at key 16 (row 2, column 0).
+  // 3. Shift+click a run, copy it, paste at key 16 (row 2, column 0). The
+  // grid does not move as the clipboard line, then the message, appear.
+  const gridTop = () => document.querySelector('.grid')!.getBoundingClientRect().top;
+  const gridTops: Record<string, number> = { none: gridTop() };
+  out.statusBefore = status();
   click(0);
   await until(() => selected().join() === '0');
   click(2, { shiftKey: true });
@@ -1381,6 +1385,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   press('KeyC', { ctrlKey: true });
   await until(() => status().includes('Clipboard'));
   out.clipboardLine = status();
+  gridTops.clipboard = gridTop();
   click(16);
   // Wait for the selection to render: the shortcut reads the selection React last rendered.
   await until(() => selected().join() === '16');
@@ -1388,6 +1393,8 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   await until(async () => (await savedKeys()).includes(18));
   await until(() => selected().join() === '16,17,18');
   out.paste = { keys: await savedKeys(), selected: selected(), pastedNav: (await buttons())?.['18'], message: status() };
+  gridTops.both = gridTop();
+  out.gridTops = gridTops;
 
   // 4. Right-click inside the selection: the menu acts on all three. Clear them.
   await until(() => selected().join() === '16,17,18');
@@ -2057,14 +2064,9 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     return { x: (v2.left - xl.left) / unit, y: (v2.top - xl.top) / unit };
   };
   const panelGap = () => (rectOf(panel(V2)!).top - rectOf(panel(XL)!).bottom) / zoom();
-  // Each deck's place against the drawing: the arrangement. Not against the
-  // window: a status line appearing below the canvas (a copy's) shortens it,
-  // and the drawing, centred while it fits, moves by half that, every deck
-  // together.
-  const positionsInDrawing = () => {
-    const drawing = rectOf(document.querySelector('.canvas-content')!);
-    return [XL, V2].map((s) => rectOf(panel(s)!)).map((r) => `${r.left - drawing.left},${r.top - drawing.top}`).join(' ');
-  };
+  // On screen, as a person sees them: the room for the status lines is kept,
+  // so a copy's message appearing below the canvas moves no deck either.
+  const positionsOnScreen = () => [XL, V2].map((s) => rectOf(panel(s)!)).map((r) => `${r.left},${r.top}`).join(' ');
   const soloButtons = async (serial: string) => {
     const s = (await api.snapshot()).store;
     if (!s.open) return null;
@@ -2106,7 +2108,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     await sleep(30);
   }
   await until(() => zoom() === 0.5);
-  const arrangementBefore = positionsInDrawing();
+  const decksBefore = positionsOnScreen();
   await drag(keyOn(XL, 0), keyOn(XL, 9));
   await until(async () => (await soloButtons(XL))?.['9']?.label === 'Back');
   await drag(document.querySelector<HTMLButtonElement>('.library-entry[data-action-type="hotkey"]')!, keyOn(V2, 6));
@@ -2119,7 +2121,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     xl: await soloButtons(XL),
     v2Key6: (await soloButtons(V2))?.['6']?.action?.type ?? null,
     v2Key7: (await soloButtons(V2))?.['7']?.label ?? null,
-    decksStayed: positionsInDrawing() === arrangementBefore,
+    decksStayed: positionsOnScreen() === decksBefore,
   };
 
   // A deck dragged by its header, dropped 3 px from the XL's third key

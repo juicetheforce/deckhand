@@ -179,12 +179,12 @@ function MenuItem({
 }
 
 /**
- * The line under the grid: what the clipboard holds, and what the last bulk
- * operation did. Shown only while there is something to say — no permanent
- * status chrome.
+ * The lines under the grid: what the last bulk operation did, and what the
+ * clipboard holds. Each is drawn only while there is something to say — no
+ * permanent status chrome — but the room for both is always kept (styles.css,
+ * .bulk-status), so a line appearing never moves the grid or the canvas.
  */
 export function BulkStatus({ bulk }: { bulk: Bulk }) {
-  if (bulk.clipboard === null && bulk.message === null) return null;
   return (
     <div className="bulk-status" role="status">
       {bulk.message !== null && (

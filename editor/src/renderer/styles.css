@@ -2477,11 +2477,18 @@ button:disabled {
   background: transparent;
 }
 
+/* Room for both lines, a message and the clipboard, always kept: the well
+   centres the grid (and the canvas its drawing), so a status taking height
+   from it moved everything by half that. Only a message that wraps grows it. */
 .bulk-status {
+  --bulk-line: 18px;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 4px;
+  min-height: calc(2 * var(--bulk-line) + 4px);
   font-size: 12px;
+  line-height: var(--bulk-line);
 }
 
 .bulk-status p {
@@ -2489,6 +2496,11 @@ button:disabled {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-height: var(--bulk-line);
+}
+
+.bulk-status .link-button {
+  line-height: var(--bulk-line);
 }
 
 .bulk-message .link-button,

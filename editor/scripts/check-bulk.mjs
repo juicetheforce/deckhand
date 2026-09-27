@@ -95,6 +95,10 @@ if (r && !r.error) {
     assert.deepEqual(r.paste.pastedNav, TO_SECOND);
     assert.match(r.paste.message, /Pasted 3 keys to “Main”\./);
   });
+  check('the grid does not move as the status lines appear: nothing, the clipboard, then a message too', () => {
+    assert.equal(r.statusBefore, '', 'the status had something to say before the copy');
+    assert.deepEqual(r.gridTops, { none: r.gridTops.none, clipboard: r.gridTops.none, both: r.gridTops.none });
+  });
 
   check('the right-click menu names how many keys it acts on, and clears them', () => {
     assert.deepEqual(r.menuLabels, ['Duplicate 3 keys', 'Copy 3 keys', 'Paste', 'Copy to page', 'Copy to device', 'Clear 3 buttons']);
