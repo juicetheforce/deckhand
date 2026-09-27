@@ -186,6 +186,13 @@ if (r && !r.error) {
     assert.equal(r.zoomedWork.v2Key6, 'hotkey');
     assert.equal(r.zoomedWork.decksStayed, true);
   });
+  check('a held deck moves exactly as far as the pointer, past the arrangement\'s edge too; a cancel puts it back', () => {
+    for (const t of r.tracking) {
+      near(t.moved.x, t.pointer.x, 1, `x, pointer ${JSON.stringify(t.pointer)}`);
+      near(t.moved.y, t.pointer.y, 1, `y, pointer ${JSON.stringify(t.pointer)}`);
+      assert.equal(t.back, true, 'a cancelled drag left the deck moved');
+    }
+  });
   check('a deck dragged by its header snaps to the other deck\'s key column, and the guide says so while it moves', () => {
     assert.deepEqual(r.deckDrag.guides, [{ axis: 'x', label: 'snap · aligned to Big deck key column' }]);
     assert.equal(r.deckDrag.guidesAfter, 0, 'the guide goes with the drop');

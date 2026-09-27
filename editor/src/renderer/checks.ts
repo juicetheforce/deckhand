@@ -2031,7 +2031,13 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   // sent to the header, as pointer capture would send it.
   click(keyOn(XL, 1));
   await until(() => layout().focused === XL);
-  const configBefore = JSON.stringify((await api.snapshot()).store);
+  // The config, not the whole store: an autosave from the library drop
+  // above may still land meanwhile and clear `dirty`, which is no edit.
+  const configNow = async () => {
+    const s = (await api.snapshot()).store;
+    return s.open ? JSON.stringify(s.state.config) : null;
+  };
+  const configBefore = await configNow();
   const header = panel(V2)!.querySelector<HTMLElement>('.deck-panel-header')!;
   const grip = centre(header.querySelector('.deck-panel-grip')!);
   const send = (type: string, x: number, y: number) =>
@@ -2050,13 +2056,36 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     await sleep(120);
     return { guides, refused, guidesAfter: document.querySelectorAll('.canvas-guide').length };
   };
+  // The held deck moves exactly as far as the pointer, on screen, wherever
+  // it goes — including past the arrangement's edge, which grows the
+  // drawing. (It did not: the centred drawing shifted back by half of any
+  // growth, and the deck fell behind the pointer — Ryan, 2026-09-27.)
+  // Measured mid-drag, then cancelled: a cancel leaves the deck where it was.
+  const tracks = async (dx: number, dy: number) => {
+    const before = rectOf(panel(V2)!);
+    send('pointerdown', grip.x, grip.y);
+    send('pointermove', grip.x + dx / 2, grip.y + dy / 2);
+    send('pointermove', grip.x + dx, grip.y + dy);
+    await sleep(80);
+    const during = rectOf(panel(V2)!);
+    send('pointercancel', grip.x + dx, grip.y + dy);
+    await sleep(120);
+    const after = rectOf(panel(V2)!);
+    return { moved: { x: during.left - before.left, y: during.top - before.top }, back: after.left === before.left && after.top === before.top };
+  };
+  // Right and down, then left past the XL's edge: 37, 61 and −170 px at 50%
+  // are clear of every snap (canvas.test.ts has the arithmetic).
+  out.tracking = [
+    { pointer: { x: 37, y: 61 }, ...(await tracks(37, 61)) },
+    { pointer: { x: -170, y: 61 }, ...(await tracks(-170, 61)) },
+  ];
   const toColumn = rectOf(keyOn(XL, 2)).left - rectOf(keyOn(V2, 0)).left + 3;
   const snapped = await dragDeck(toColumn, 40);
   out.deckDrag = {
     ...snapped,
     offset: offset(),
     focused: layout().focused,
-    configUnchanged: JSON.stringify((await api.snapshot()).store) === configBefore,
+    configUnchanged: (await configNow()) === configBefore,
   };
 
   // Dropped onto the XL, coming from below: butted below it, a gutter apart, its column kept.

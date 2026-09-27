@@ -18,6 +18,7 @@ import {
   type DeckSize,
   type Guide,
   type Neighbour,
+  type Rect,
 } from './canvas.js';
 
 export interface CanvasDeck {
@@ -53,8 +54,14 @@ interface Drag {
   guides: Guide[];
   refused: boolean;
   moved: boolean;
-  /** The drawing's origin, held for the drag so the decks do not shift under the pointer. */
-  origin: { left: number; top: number };
+  /**
+   * The drawing's frame when the drag began, held until it ends. The drawing
+   * is centred in the window: let it grow as the deck passes its edge and it
+   * shifts back by half the growth, so the deck falls behind the pointer
+   * (Ryan, 2026-09-27; check:multi-deck, "moves exactly as far as the
+   * pointer"). While held, the deck may be drawn outside the frame.
+   */
+  frame: Rect;
 }
 
 /** A press that moves less than this is not a drag. */
@@ -106,13 +113,8 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
   useLayoutEffect(fit, [shownKey]);
 
   if (!bounds) return null;
-  const origin = drag?.origin ?? { left: bounds.left, top: bounds.top };
-  // During a drag the drawing can grow left or up of its origin; the sizer
-  // covers it so nothing is cut off.
-  const right = Math.max(bounds.right, origin.left) - origin.left;
-  const bottom = Math.max(bounds.bottom, origin.top) - origin.top;
-  const shiftX = Math.max(0, origin.left - bounds.left);
-  const shiftY = Math.max(0, origin.top - bounds.top);
+  const frame = drag?.frame ?? bounds;
+  const origin = { left: frame.left, top: frame.top };
   const px = (units: number) => units * PITCH_PX;
 
   const neighbours = (serial: string): Neighbour[] =>
@@ -127,7 +129,7 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
       // A synthetic pointer (the checks) has nothing to capture; they send the drag to the header.
     }
     const start = placed[serial];
-    setDrag({ serial, pointer: e.pointerId, from: { x: e.clientX, y: e.clientY }, start, at: start, guides: [], refused: false, moved: false, origin: { left: bounds.left, top: bounds.top } });
+    setDrag({ serial, pointer: e.pointerId, from: { x: e.clientX, y: e.clientY }, start, at: start, guides: [], refused: false, moved: false, frame: bounds });
   };
 
   const move = (e: ReactPointerEvent<HTMLElement>) => {
@@ -152,14 +154,19 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
     if (drag.moved && !drag.refused) onMove({ ...placed, [drag.serial]: drag.at });
   };
 
+  /** The system took the pointer away (a cancel is not a drop): the deck stays where it was. */
+  const cancel = (e: ReactPointerEvent<HTMLElement>) => {
+    if (dragRef.current?.pointer === e.pointerId) setDrag(null);
+  };
+
   return (
     <div className="canvas" data-multideck="" data-zoom={zoom}>
       <div className="canvas-viewport" ref={viewport}>
-        <div className="canvas-sizer" style={{ width: px(right + shiftX) * zoom + 2 * MARGIN_PX, height: px(bottom + shiftY) * zoom + 2 * MARGIN_PX }}>
-          <div
-            className="canvas-content"
-            style={{ transform: `translate(${MARGIN_PX + px(shiftX) * zoom}px, ${MARGIN_PX + px(shiftY) * zoom}px) scale(${zoom})` }}
-          >
+        <div
+          className="canvas-sizer"
+          style={{ width: px(frame.right - frame.left) * zoom + 2 * MARGIN_PX, height: px(frame.bottom - frame.top) * zoom + 2 * MARGIN_PX }}
+        >
+          <div className="canvas-content" style={{ transform: `translate(${MARGIN_PX}px, ${MARGIN_PX}px) scale(${zoom})` }}>
             {decks.map((d) => {
               const p = placed[d.serial];
               if (!p) return null;
@@ -172,7 +179,7 @@ export function DeckCanvas({ decks, positions, onMove, panel }: Props) {
                 height: d.size.rows * PITCH_PX - GAP_PX + HEAD_PX + FOOT_PX,
               };
               return (
-                <div key={d.serial} className="canvas-deck" onPointerMove={move} onPointerUp={drop} onPointerCancel={drop}>
+                <div key={d.serial} className="canvas-deck" onPointerMove={move} onPointerUp={drop} onPointerCancel={cancel}>
                   {panel(d.serial, { style, onGrab: grab(d.serial), dragging, refused: dragging && (drag?.refused ?? false) })}
                 </div>
               );
