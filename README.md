@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/png/apps/256.png" alt="Deckhand logo" width="128" height="128">
+</p>
+
 # Deckhand
 
 Stream Deck software for Linux. A small background service drives the decks,
@@ -35,6 +39,9 @@ It's one person's project, used every day.
 - **Any Stream Deck with screen keys should work.** The key count, layout and
   icon size come from the device, not from a list in Deckhand. I use an XL
   and an Original V2 side by side; other models haven't been tried.
+- **Several decks in one editor.** With more than one plugged in, show them
+  side by side and arrange them to match your desk. Drag a key onto another
+  deck to copy it there.
 - **Unplugging a deck loses nothing.** Its layouts stay in the config, and
   when you plug it back in it comes back on the active profile's start page.
   Any key it was holding down is released when it goes.

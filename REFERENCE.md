@@ -178,6 +178,23 @@ once. Closing the editor's window leaves it in the tray (a setting, on by
 default); quit it from the tray menu. Closing it changes nothing on the
 decks.
 
+**Several decks.** With two or more decks plugged in, the editor still opens
+showing one. The device menu becomes a list headed **Show in editor**: tick a
+deck to show it alongside the others, or click its name to show it alone.
+Hidden decks keep working; they just aren't drawn. Shown decks sit on a
+canvas: drag one by its top bar to match your desk. It snaps to the other
+decks' edges and key columns and rows, and a deck dropped onto another is
+placed against the edge nearest the pointer. The padlock in a deck's top bar
+fixes it in place. The zoom bar has Fit all, which the editor opens at, and
+Reset (100%). Which decks are shown, where they are and which are locked are
+remembered, by serial number, in
+`~/.local/state/deckhand/editor/preferences.json`, not in the config. Click a
+key on any deck to edit it; the page tabs are for that deck, and every other
+deck has its own Page menu. Drag a key onto another key of the same deck to
+move it (the two swap), or onto another deck to copy it there, replacing
+whatever that key held. A copied Go to page key whose page isn't on the other
+deck keeps its icon and label and loses the link, and the editor says so.
+
 **Profiles** switch every deck at once. A deck the active profile has no
 layout for keeps showing what it was showing, so a small deck can hold a
 permanent row of profile keys while a big one changes. Switch with a key on a
@@ -494,7 +511,9 @@ show" (`daemon-down`, `never-configured`, `all-unplugged`, `no-layout`,
 `deck-unplugged`, and `normal` as the control), against a scratch config,
 state directory and socket; `node editor/scripts/demo.mjs` opens it on an
 invented setup under its own `HOME` and a private session bus — the README's
-screenshots come from it. Ctrl-C to finish either window.
+screenshots come from it. Closing the demo's window reopens the editor on the
+same state, to see what it remembers across a restart. Ctrl-C to finish either
+window.
 
 ### Traps in the checks
 
