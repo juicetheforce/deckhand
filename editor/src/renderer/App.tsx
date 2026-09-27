@@ -162,8 +162,8 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
   // An action dragged from the library onto a key: a new button there.
   // Written first, then the key is selected and its form shown — the
   // pick comes after the write so the inspector sees the new action.
-  const actionDrag = useActionDrag((type, index) => {
-    if (editingBlocked || !page) return;
+  const actionDrag = useActionDrag((type, { serial, index }) => {
+    if (editingBlocked || !page || serial !== selection.serial) return;
     const at = { profile: selection.profile, serial: selection.serial, page: selection.page, index };
     selectKeys([index]);
     void window.deckhand.apply({ kind: 'assignAction', at, action: { type } }).then((result) => {
@@ -373,7 +373,7 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
                 selectedKeys={selection.keys}
                 onClickKey={(index, modifiers) => setSelection((s) => ({ ...s, ...clickKeys(geometry, s, index, modifiers) }))}
                 onMoveKey={editingBlocked ? null : (from, to) => void bulk.move(from, to)}
-                actionDropTarget={actionDrag.drag?.over ?? null}
+                actionDropTarget={actionDrag.drag?.over?.serial === geometry.serial ? actionDrag.drag.over.index : null}
                 onKeyMenu={(index, x, y) => {
                   // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
                   if (!selection.keys.includes(index)) selectKeys([index]);

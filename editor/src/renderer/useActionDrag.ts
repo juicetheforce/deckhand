@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { keyUnder, type KeyRef } from './keyUnder.js';
 
 /** How far the pointer must travel before a press on a library row becomes a drag, as for keys in the grid. */
 const DRAG_THRESHOLD_PX = 6;
@@ -8,8 +9,8 @@ export interface ActionDrag {
   /** Where the pointer is, for the floating label that follows it. */
   x: number;
   y: number;
-  /** The key under the pointer, or null. */
-  over: number | null;
+  /** The key under the pointer, on whichever deck, or null. */
+  over: KeyRef | null;
 }
 
 /**
@@ -20,7 +21,7 @@ export interface ActionDrag {
  * DeckGrid.tsx and the pane dividers: nothing depends on the platform's
  * drag-and-drop path. The two drags are kept apart on purpose: this one authors a button, that one moves one. Escape cancels.
  */
-export function useActionDrag(onDrop: (type: string, index: number) => void) {
+export function useActionDrag(onDrop: (type: string, key: KeyRef) => void) {
   const press = useRef<{ type: string; pointerId: number; x: number; y: number } | null>(null);
   const [drag, setDragState] = useState<ActionDrag | null>(null);
   const dragRef = useRef(drag);
@@ -34,10 +35,6 @@ export function useActionDrag(onDrop: (type: string, index: number) => void) {
   const suppressClick = useRef(false);
 
   useEffect(() => {
-    const keyUnder = (x: number, y: number): number | null => {
-      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key-index]');
-      return el ? Number(el.dataset.keyIndex) : null;
-    };
     const move = (e: PointerEvent) => {
       const p = press.current;
       if (!p || e.pointerId !== p.pointerId) return;

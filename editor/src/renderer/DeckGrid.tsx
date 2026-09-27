@@ -4,6 +4,7 @@ import { failedBadgeSvg } from '../../../src/failed-badge.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
+import { keyUnder } from './keyUnder.js';
 import { actionIncomplete, describeAction, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
 
 interface Props {
@@ -25,7 +26,7 @@ interface Props {
   onKeyMenu: (index: number, x: number, y: number) => void;
   /** A key dropped on another key: move it, swapping with whatever is there. Null when editing is blocked. */
   onMoveKey: ((from: number, to: number) => void) | null;
-  /** The key an action from the library is being dragged over (useActionDrag), drawn as the drop target. */
+  /** The key on this deck an action from the library is being dragged over (useActionDrag), drawn as the drop target. */
   actionDropTarget: number | null;
 }
 
@@ -40,8 +41,11 @@ const DRAG_THRESHOLD_PX = 6;
  * Pointer events rather than HTML drag-and-drop, the same as the pane
  * dividers: the key is found under the pointer with elementFromPoint, so
  * nothing depends on the platform's drag-and-drop path. Escape cancels.
+ *
+ * Only keys of this grid's own deck are drop targets: over another deck's
+ * grid the drag has no target, and dropping there does nothing.
  */
-function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
+function useKeyDrag(serial: string, onMoveKey: ((from: number, to: number) => void) | null) {
   const press = useRef<{ from: number; pointerId: number; x: number; y: number } | null>(null);
   // The drag as drawn, and a ref to the same, for the window listeners below.
   const [drag, setDragState] = useState<{ from: number; over: number | null } | null>(null);
@@ -52,20 +56,22 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
   };
   const moveRef = useRef(onMoveKey);
   moveRef.current = onMoveKey;
+  const serialRef = useRef(serial);
+  serialRef.current = serial;
   // A drag that ends back on its own key still produces a click there; it is not a selection click.
   const suppressClick = useRef(false);
 
   // Added once for the grid's lifetime. Each returns at once unless a key was pressed.
   useEffect(() => {
-    const keyUnder = (x: number, y: number): number | null => {
-      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key-index]');
-      return el ? Number(el.dataset.keyIndex) : null;
+    const ownKeyUnder = (x: number, y: number): number | null => {
+      const key = keyUnder(x, y);
+      return key !== null && key.serial === serialRef.current ? key.index : null;
     };
     const move = (e: PointerEvent) => {
       const p = press.current;
       if (!p || e.pointerId !== p.pointerId) return;
       if (!dragRef.current && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD_PX) return;
-      const over = keyUnder(e.clientX, e.clientY);
+      const over = ownKeyUnder(e.clientX, e.clientY);
       if (dragRef.current?.over !== over || dragRef.current?.from !== p.from) setDrag({ from: p.from, over });
     };
     const up = (e: PointerEvent) => {
@@ -73,7 +79,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
       if (!p || e.pointerId !== p.pointerId) return;
       press.current = null;
       if (!dragRef.current) return; // never passed the threshold: an ordinary click
-      const over = keyUnder(e.clientX, e.clientY);
+      const over = ownKeyUnder(e.clientX, e.clientY);
       // The browser clicks the element where the press and the release share an
       // ancestor: the key itself only if the drag ended back on it. Released
       // anywhere else, no key is clicked, and a flag left set would swallow the
@@ -122,7 +128,7 @@ function useKeyDrag(onMoveKey: ((from: number, to: number) => void) | null) {
 }
 
 export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, actionDropTarget }: Props) {
-  const keyDrag = useKeyDrag(onMoveKey);
+  const keyDrag = useKeyDrag(geometry.serial, onMoveKey);
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -131,10 +137,11 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
   };
 
   return (
-    <div className="grid" style={gridStyle}>
+    <div className="grid" style={gridStyle} data-deck={geometry.serial}>
       {geometry.keys.map((k) => (
         <Key
           key={k.index}
+          serial={geometry.serial}
           config={config}
           index={k.index}
           row={k.row}
@@ -161,6 +168,8 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
 }
 
 interface KeyProps {
+  /** The deck this key is on, for the drags (keyUnder.ts). */
+  serial: string;
   config: Config;
   index: number;
   row: number;
@@ -184,7 +193,7 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ serial, config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
   const face = keyFace(config, button, iconSize, latched, appIcons);
@@ -216,6 +225,7 @@ function Key({ config, index, row, column, hasScreen, iconSize, button, iconStam
       title={title}
       aria-label={title}
       aria-pressed={selected}
+      data-deck={serial}
       data-key-index={index}
       onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
       onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
