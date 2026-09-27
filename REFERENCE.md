@@ -458,8 +458,14 @@ The checks:
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
   `check:tray`, `check:settings`, `check:titlebar`, `check:failures`,
-  `check:backup`, `check:empty` — real Electron against a test harness for the
-  control socket.
+  `check:backup`, `check:empty`, `check:one-deck` — real Electron against a
+  test harness for the control socket.
+- **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
+  through `scripts/hooks/pre-commit`, once a clone has run `git config
+  core.hooksPath scripts/hooks`. With one deck connected the editor must be
+  exactly the one-deck editor — one grid, the plain Device dropdown, no
+  multi-deck element — and most people have one deck. It checks the working
+  tree, so stage everything a change needs.
 - The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
   desktop entry and icon, against a scratch HOME), `preflight.test.sh`
   (against stub commands), `apparmor-profile.test.sh`, `upgrade.test.sh`

@@ -1544,6 +1544,140 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   return out;
 }
 
+/**
+ * With one deck connected, the editor is a one-deck editor, exactly as before
+ * multi-deck editing (scripts/check-one-deck.mjs). Reports the handful of
+ * things that define one — not the whole DOM — and drives the everyday
+ * operations once each.
+ */
+async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const SERIAL = 'ONE-V2';
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const until = async (condition: () => boolean | Promise<boolean>, ms = 10_000) => {
+    const started = Date.now();
+    while (Date.now() - started < ms) {
+      if (await condition()) return true;
+      await sleep(25);
+    }
+    return false;
+  };
+  const key = (index: number) => document.querySelectorAll<HTMLButtonElement>('.key')[index];
+  const selected = () =>
+    [...document.querySelectorAll('.key')].flatMap((k, i) => (k.classList.contains('key-selected') ? [i] : []));
+  const title = () => document.querySelector('.inspector-title')?.textContent ?? null;
+  const click = (index: number, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
+    key(index).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mods }));
+  const press = (code: string, mods: { ctrlKey?: boolean } = {}) =>
+    (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { code, key: code, bubbles: true, cancelable: true, ...mods }));
+  const buttons = async (page = 'main') => {
+    const s = (await api.snapshot()).store;
+    return s.open ? (s.state.config.profiles.default.layouts[SERIAL].pages[page]?.buttons ?? null) : null;
+  };
+  const deckPage = async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === SERIAL)?.page ?? null;
+  const centre = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  };
+  const pointer = (type: string, x: number, y: number) =>
+    (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(
+      new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0, isPrimary: true }),
+    );
+  const drag = async (from: Element, to: Element) => {
+    const a = centre(from);
+    const b = centre(to);
+    pointer('pointerdown', a.x, a.y);
+    pointer('pointermove', a.x + 10, a.y + 10);
+    pointer('pointermove', b.x, b.y);
+    await sleep(50);
+    pointer('pointerup', b.x, b.y);
+  };
+
+  await until(() => document.querySelectorAll('.key').length > 0 && document.querySelector('.pill')?.textContent === 'Connected');
+
+  // 1. What makes it a one-deck editor.
+  const device = document.querySelector('[data-crumb="device"]');
+  const crumbs = [...document.querySelectorAll('.toolbar .crumb-label')].map((l) => l.textContent);
+  out.structure = {
+    grids: document.querySelectorAll('.grid').length,
+    keys: document.querySelectorAll('.grid .key').length,
+    multideck: document.querySelectorAll('[data-multideck]').length,
+    deviceTag: device?.tagName ?? null,
+    deviceOptions: device instanceof HTMLSelectElement ? [...device.options].map((o) => ({ value: o.value, label: o.textContent })) : null,
+    deviceValue: device instanceof HTMLSelectElement ? device.value : null,
+    crumbs,
+    profileSelect: document.querySelector('.toolbar .crumb select:not([data-crumb])') !== null,
+    deckRename: document.querySelector('.toolbar button[aria-label^="Rename \\"Little deck\\""]') !== null,
+    tabs: [...document.querySelectorAll('.tabs .tab:not(.tab-add)')].map((t) => t.textContent),
+    selectedTab: document.querySelector('.tab-selected')?.textContent ?? null,
+    addTab: document.querySelector('.tab-add') !== null,
+    settings: document.querySelector('.toolbar-settings') !== null,
+    pill: { state: document.querySelector('.pill')?.getAttribute('data-connection'), label: document.querySelector('.pill')?.textContent },
+  };
+
+  // 2. A page tab switches the grid and the deck.
+  document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
+  out.tabSwitch = {
+    tab: await until(() => document.querySelector('.tab-selected')?.textContent === 'Second'),
+    deck: await until(async () => (await deckPage()) === 'second'),
+    face: await until(() => key(0).textContent?.includes('Back') ?? false),
+  };
+  document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
+  await until(async () => (await deckPage()) === 'main' && document.querySelector('.tab-selected')?.textContent === 'Main');
+
+  // 3. Click, Ctrl+click, Shift+click.
+  click(0);
+  await until(() => title() === 'Key 1');
+  const plain = { selected: selected(), title: title() };
+  click(2, { ctrlKey: true });
+  await until(() => title() === '2 keys selected');
+  const ctrl = { selected: selected(), title: title() };
+  click(4, { shiftKey: true });
+  await until(() => selected().length === 3);
+  out.selection = { plain, ctrl, shift: { selected: selected(), title: title() } };
+
+  // 4. Key onto key swaps.
+  await drag(key(0), key(1));
+  await until(async () => (await buttons())?.['1']?.label === 'Jump');
+  out.swap = { key0: (await buttons())?.['0'] ?? null, key1: (await buttons())?.['1'] ?? null };
+
+  // 5. The library: a click retargets the selected key, a drag authors a new one.
+  const libraryRow = (type: string) => document.querySelector<HTMLButtonElement>(`.library-entry[data-action-type="${type}"]`)!;
+  click(1);
+  await until(() => selected().join() === '1');
+  libraryRow('profile').click();
+  await until(() => document.querySelector('.inspector .target') !== null);
+  [...document.querySelectorAll<HTMLButtonElement>('.inspector .target')].find((b) => b.textContent?.startsWith('Default'))!.click();
+  await until(async () => (await buttons())?.['1']?.action?.type === 'profile');
+  await drag(libraryRow('hotkey'), key(7));
+  await until(async () => (await buttons())?.['7'] !== undefined);
+  out.library = { clicked: (await buttons())?.['1'] ?? null, dropped: (await buttons())?.['7'] ?? null, selectedAfterDrop: selected() };
+
+  // 6. Delete clears the selected key.
+  press('Delete');
+  await until(async () => (await buttons())?.['7'] === undefined);
+  out.afterDelete = Object.keys((await buttons()) ?? {}).map(Number).sort((a, b) => a - b);
+
+  // 7. Ctrl+A selects this deck's keys; Escape selects none.
+  press('KeyA', { ctrlKey: true });
+  await until(() => selected().length === document.querySelectorAll('.key').length);
+  out.selectAll = selected().length;
+  press('Escape');
+  await until(() => selected().length === 0);
+
+  // 8. Copy to device has nowhere to go: the other deck in the config is not plugged in.
+  click(1);
+  await until(() => selected().join() === '1');
+  const rect = key(1).getBoundingClientRect();
+  key(1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.x + 5, clientY: rect.y + 5 }));
+  await until(() => document.querySelectorAll('.key-menu-item').length > 0);
+  const copyToDevice = [...document.querySelectorAll<HTMLButtonElement>('.key-menu-item')].find((b) => b.querySelector('span')?.textContent === 'Copy to device');
+  out.copyToDevice = { found: copyToDevice !== undefined, disabled: copyToDevice?.disabled ?? null };
+  press('Escape');
+
+  await sleep(700); // past the autosave
+  return out;
+}
+
 /** Each action form writes exactly the settings it names (scripts/check-forms.mjs). */
 async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -2095,11 +2229,11 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'empty') api.reportCheck(name, await empty(api));
     else if (name === 'empty-select') api.reportCheck(name, await empty(api, true));
     else if (name === 'forms') api.reportCheck(name, await forms(api));
-    else if (name === 'bulk') {
+    else if (name === 'bulk' || name === 'one-deck') {
       // Reports how far it got, so a failure part-way through can be diagnosed.
       const progress: Record<string, unknown> = {};
       try {
-        api.reportCheck(name, await bulk(api, progress));
+        api.reportCheck(name, await (name === 'bulk' ? bulk : oneDeck)(api, progress));
       } catch (err) {
         api.reportCheck(name, { ...progress, error: (err as Error).stack ?? String(err) });
       }

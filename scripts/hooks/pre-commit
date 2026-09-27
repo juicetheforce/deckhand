@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Runs the one-deck check (editor/scripts/check-one-deck.mjs) before any commit
+# that touches editor/ or src/: with one deck connected, the editor must stay
+# exactly the one-deck editor it was before multi-deck editing, and a change
+# that breaks that is caught at the commit that makes it.
+#
+# Enabled per clone, not by git itself:
+#   git config core.hooksPath scripts/hooks
+#
+# It checks the working tree, not only what is staged: a fix left unstaged
+# passes here and is missing from the commit. Stage everything a change needs.
+# About 7 s. `git commit --no-verify` skips it; don't, for a change to the editor.
+
+set -euo pipefail
+
+if ! git diff --cached --name-only | grep -qE '^(editor|src)/'; then
+  exit 0
+fi
+
+root=$(git rev-parse --show-toplevel)
+echo "pre-commit: editor/ or src/ staged — running the one-deck check" >&2
+if ! npm --prefix "$root/editor" run -s check:one-deck >"${TMPDIR:-/tmp}/deckhand-one-deck.log" 2>&1; then
+  grep -E '^(FAIL|      )' "${TMPDIR:-/tmp}/deckhand-one-deck.log" >&2 || cat "${TMPDIR:-/tmp}/deckhand-one-deck.log" >&2
+  echo "pre-commit: the one-deck check failed (full output: ${TMPDIR:-/tmp}/deckhand-one-deck.log)" >&2
+  exit 1
+fi
+echo "pre-commit: one-deck check passed" >&2
