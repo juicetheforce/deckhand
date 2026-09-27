@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import type { Placement } from './DeckCanvas.js';
 import type { Choice } from './model.js';
 
 interface Props {
@@ -16,27 +17,29 @@ interface Props {
   onPage: (page: string) => void;
   /** The grid, or the card saying why there is none. */
   children: ReactNode;
+  /** On the canvas: where it is drawn, and its header picks it up. */
+  placement: Placement;
 }
 
 /**
  * One deck among several shown (scope §10, "Multi-deck editing"): a header
  * with its name, columns × rows (8 × 4, as decks are named) and, on the focused deck, the "Editing"
- * marker; then its grid. With one deck shown there is no panel at all — the
- * grid sits in the well as it always has.
+ * marker; then its grid. With one deck shown there is no panel and no
+ * canvas — the grid sits in the well as it always has.
  *
  * Page tabs stay in the toolbar for the focused deck; every other deck
  * carries only this compact Page ▾, which shows the page on the deck as a tab
- * does. Clicking the header focuses the deck.
+ * does. Clicking its name focuses the deck; dragging its header moves it on
+ * the canvas (DeckCanvas.tsx).
  */
-export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, children }: Props) {
+export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, children, placement }: Props) {
+  const classes = ['deck-panel', focused && 'deck-panel-focused', placement.dragging && 'deck-panel-dragging', placement.refused && 'deck-panel-refused'].filter(Boolean).join(' ');
   return (
-    <section
-      className={focused ? 'deck-panel deck-panel-focused' : 'deck-panel'}
-      data-multideck=""
-      data-deck-panel={serial}
-      style={size ? ({ '--columns': size.columns } as CSSProperties) : undefined}
-    >
-      <header className="deck-panel-header">
+    <section className={classes} data-multideck="" data-deck-panel={serial} style={placement.style}>
+      <header className="deck-panel-header" onPointerDown={placement.onGrab} title="Drag to move">
+        <span className="deck-panel-grip" aria-hidden="true">
+          ⠿
+        </span>
         <button className="deck-panel-name" onClick={onFocus} disabled={focused} title={focused ? undefined : `Edit ${name}`}>
           {name}
         </button>

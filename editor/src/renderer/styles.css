@@ -401,33 +401,150 @@ button:disabled {
   overflow: auto;
 }
 
-/* Several decks shown: one panel per deck, stacked in a fixed order (scope
-   §10, "Multi-deck editing"). With one deck shown none of this is drawn. */
+/* Several decks shown: the canvas (scope §10, "Multi-deck editing";
+   DeckCanvas.tsx). Decks are placed in key units and drawn at 100% inside a
+   scaled layer; the sizes here must match canvas.ts (KEY_PX, GAP_PX,
+   PAD_X_PX, HEAD_PX, FOOT_PX). With one deck shown none of this is drawn. */
 
-.deck-stack {
-  /* margin: auto rather than the well's centring: centred content taller than
-     the well would be cut off at the top instead of scrolling. */
-  margin: auto;
-  width: 100%;
+.well-canvas {
+  /* The canvas fills the well and scrolls itself. */
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.canvas,
+.canvas-viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas-viewport {
+  overflow: auto;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
+}
+
+.canvas-sizer {
+  position: relative;
+  /* Centred while it fits; scrolls from its edge when it does not (auto
+     margins, unlike centring, never cut off the start). */
+  margin: auto;
+  flex-shrink: 0;
+}
+
+.canvas-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
 }
 
 .deck-panel {
-  /* Every deck at the same key size (scope §10, "real proportions means key
-     units"): a panel is its columns' share of the widest deck's width, and
-     keys stop at the grid's 104 px a column. 28px is the panel's padding. */
-  width: calc(var(--columns) / var(--max-columns) * (100% - 28px) + 28px);
-  max-width: calc(var(--columns) * 104px + 28px);
+  position: absolute;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 14px 14px;
+  /* With the 1px border: 10 / 14 / 14 px of frame, canvas.ts HEAD_PX, PAD_X_PX, FOOT_PX. */
+  padding: 9px 13px 13px;
   border-radius: 14px;
   border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(20, 20, 30, 0.72);
+  overflow: hidden;
+}
+
+.deck-panel-dragging {
+  z-index: 2;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.deck-panel-refused {
+  /* Dropped here it would go back: it would overlap a deck the butting rule cannot clear. */
+  border-color: rgba(240, 110, 120, 0.8);
+  opacity: 0.75;
+}
+
+.deck-panel-grip {
+  color: var(--text-muted, rgba(255, 255, 255, 0.4));
+  font-size: 13px;
+  line-height: 1;
+}
+
+.canvas-guide {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.canvas-guide-x {
+  width: 0;
+  border-left: 1.5px dashed rgba(var(--accent-rgb), 0.9);
+}
+
+.canvas-guide-y {
+  height: 0;
+  border-top: 1.5px dashed rgba(var(--accent-rgb), 0.9);
+}
+
+.canvas-guide-label {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  transform-origin: 0 0;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(var(--accent-rgb), 0.25);
+  color: #ccd2f8;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.canvas-zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+}
+
+.canvas-zoom button {
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+}
+
+.canvas-zoom button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-zoom-step {
+  width: 28px;
+  font-size: 14px;
+}
+
+.canvas-zoom-text {
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.canvas-zoom-reset {
+  opacity: 0.7;
+}
+
+.canvas-zoom-level {
+  min-width: 44px;
+  text-align: center;
+  font-size: 11.5px;
+  font-family: ui-monospace, Menlo, monospace;
 }
 
 .deck-panel-focused {
@@ -438,7 +555,14 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 26px;
+  /* canvas.ts HEAD_PX. The panel's fixed width leaves each key canvas.ts KEY_PX wide. */
+  height: 28px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.deck-panel-dragging .deck-panel-header {
+  cursor: grabbing;
 }
 
 .deck-panel-name {

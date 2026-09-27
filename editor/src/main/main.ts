@@ -13,6 +13,7 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
+import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
@@ -765,6 +766,19 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || !Array.isArray(serials) || serials.length > MAX_SHOWN_DECKS) return;
     if (serials.some((s) => typeof s !== 'string' || s.length === 0 || s.length > 200)) return;
     await preferences.set({ shownDecks: serials });
+  });
+  // Where each deck sits on the canvas, by serial, in key units
+  // (shared/deck-positions). Written when a drag ends: every shown deck, as
+  // drawn, merged over the rest — a hidden deck's is kept, so showing it
+  // again puts it back.
+  ipcMain.handle('deckPositions', async (event) => (fromOurWindow(event) ? readPositions((await preferences.read()).deckPositions) : {}));
+  ipcMain.handle('setDeckPositions', async (event, positions: unknown) => {
+    if (!fromOurWindow(event) || positions === null || typeof positions !== 'object' || Array.isArray(positions)) return;
+    const entries = Object.entries(positions as Record<string, unknown>);
+    if (entries.length === 0 || entries.length > MAX_DECK_POSITIONS || entries.some(([s, p]) => !validSerial(s) || !validPosition(p))) return;
+    let stored = readPositions((await preferences.read()).deckPositions);
+    for (const [serial, position] of entries as [string, DeckPosition][]) stored = withPosition(stored, serial, position);
+    await preferences.set({ deckPositions: stored });
   });
   ipcMain.handle('bookmarks', async (event) => (fromOurWindow(event) ? existingFolders(await bookmarks.list(), os.homedir(), true) : []));
   ipcMain.handle('addBookmark', async (event, folder: unknown) => {

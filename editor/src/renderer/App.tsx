@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
 import type { Config } from '../../../src/types.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
+import { DeckCanvas, type CanvasDeck } from './DeckCanvas.js';
 import { DeckPanel } from './DeckPanel.js';
+import { roundPosition } from './canvas.js';
+import { withPosition, type DeckPositions } from '../shared/deck-positions.js';
 import { Inspector, type Pick } from './Inspector.js';
 import { Library } from './Library.js';
 import { actionName, libraryIcon } from './catalogue.js';
@@ -58,13 +61,24 @@ export function App() {
   const [defaultDeck, setDefaultDeck] = useState<string | null | undefined>(undefined);
   // And the decks last shown beside it (SHOW IN EDITOR), restored once the daemon reports them.
   const [rememberedShown, setRememberedShown] = useState<string[] | undefined>(undefined);
+  // And where each deck sits on the canvas.
+  const [rememberedPositions, setRememberedPositions] = useState<DeckPositions | undefined>(undefined);
   useEffect(() => {
     void window.deckhand.appSettings().then((s) => setDefaultDeck(s.defaultDeck));
     void window.deckhand.shownDecks().then(setRememberedShown);
+    void window.deckhand.deckPositions().then(setRememberedPositions);
   }, []);
-  if (!snapshot || defaultDeck === undefined || rememberedShown === undefined) return <div className="app-loading">Loading…</div>;
+  if (!snapshot || defaultDeck === undefined || rememberedShown === undefined || rememberedPositions === undefined) return <div className="app-loading">Loading…</div>;
   if (!snapshot.store.open) return <CannotOpen error={snapshot.store.error} />;
-  return <Editor store={snapshot.store.state} daemon={snapshot.daemon} defaultDeck={defaultDeck} rememberedShown={rememberedShown} />;
+  return (
+    <Editor
+      store={snapshot.store.state}
+      daemon={snapshot.daemon}
+      defaultDeck={defaultDeck}
+      rememberedShown={rememberedShown}
+      rememberedPositions={rememberedPositions}
+    />
+  );
 }
 
 function CannotOpen({ error }: { error: string }) {
@@ -77,8 +91,31 @@ function CannotOpen({ error }: { error: string }) {
   );
 }
 
-function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreState; daemon: DaemonView; defaultDeck: string | null; rememberedShown: string[] }) {
+function Editor({
+  store,
+  daemon,
+  defaultDeck,
+  rememberedShown,
+  rememberedPositions,
+}: {
+  store: StoreState;
+  daemon: DaemonView;
+  defaultDeck: string | null;
+  rememberedShown: string[];
+  rememberedPositions: DeckPositions;
+}) {
   const config = store.config;
+  /**
+   * Where each deck sits on the canvas. Written when a drag ends — every
+   * shown deck as drawn, so one never dragged stays where it was seen rather
+   * than being placed again below the lowest on the next opening.
+   */
+  const [positions, setPositions] = useState(rememberedPositions);
+  const moveDecks = (moved: DeckPositions) => {
+    const rounded = Object.fromEntries(Object.entries(moved).map(([serial, at]) => [serial, roundPosition(at)]));
+    setPositions((current) => Object.entries(rounded).reduce((all, [serial, at]) => withPosition(all, serial, at), current));
+    void window.deckhand.setDeckPositions(rounded);
+  };
   // Only when the window opens: changing the setting later moves nothing until the next opening.
   const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null, defaultDeck)));
   // Switches sent to the daemon and not yet answered. While one is in flight
@@ -474,31 +511,37 @@ function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreS
           {/* Say it once: when the empty state below already explains that
               the daemon is not running, the banner would only repeat it. */}
           <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
-          <div className="well">
+          <div className={several ? 'well well-canvas' : 'well'}>
             {several ? (
-              <div className="deck-stack" style={{ '--max-columns': Math.max(...shown.map((s) => geometryFor(daemon, s)?.columns ?? 1)) } as CSSProperties}>
-                {shown.map((serial) => {
-                  const geometryHere = geometryFor(daemon, serial);
+              <DeckCanvas
+                decks={shown.flatMap((serial): CanvasDeck[] => {
+                  // A deck the daemon has not described yet is not drawn for that moment: its size is unknown.
+                  const g = geometryFor(daemon, serial);
+                  return g ? [{ serial, name: deckLabel(config, daemon, serial), size: { columns: g.columns, rows: g.rows } }] : [];
+                })}
+                positions={positions}
+                onMove={moveDecks}
+                panel={(serial, placement) => {
                   const layoutHere = layoutFor(config, selection.profile, serial);
-                  const name = deckLabel(config, daemon, serial);
                   return (
                     <DeckPanel
                       key={serial}
                       serial={serial}
-                      name={name}
-                      size={geometryHere}
+                      name={deckLabel(config, daemon, serial)}
+                      size={geometryFor(daemon, serial)}
                       focused={serial === selection.serial}
                       pages={layoutHere ? pageChoices(layoutHere) : []}
                       page={pageOf(selection, serial) ?? ''}
                       disabled={editingBlocked}
                       onFocus={() => setSelection((s) => focusDeck(s, serial))}
                       onPage={(pageId) => showDeckPage(serial, pageId)}
+                      placement={placement}
                     >
                       {grid(serial) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial)}
                     </DeckPanel>
                   );
-                })}
-              </div>
+                }}
+              />
             ) : (
               <>
                 {/* One place says why there is no grid (model.ts emptyState). */}

@@ -6,6 +6,7 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { StateSnapshot } from '../../../src/control/protocol.js';
 import type { DaemonView, DeckhandBridge, SharedImportReport, StoreView } from '../shared/bridge.js';
 import { iconUrl, PAIR_ICON_FIELDS, type PairIconField } from '../shared/icons.js';
+import { PITCH_PX, ZOOM_STEPS } from './canvas.js';
 
 /** The daemon's keymap runs in the renderer, and a protocol type compiles here. */
 function sharedImports(): SharedImportReport {
@@ -1954,8 +1955,125 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   };
   card?.querySelector<HTMLButtonElement>('button.primary')?.click();
   out.layoutAdded = await until(() => panel(V2)?.querySelector('.grid') !== null && panel(V2)?.querySelector('.grid') !== undefined);
-
   await sleep(700); // past the autosave
+
+  // The canvas (session 2). Both decks shown, never dragged: stacked, fitted.
+  const zoom = () => Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
+  const zoomLabel = () => document.querySelector('.canvas-zoom-level')?.textContent ?? null;
+  const zoomButton = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('.canvas-zoom button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent) === label)!;
+  const rectOf = (el: Element) => el.getBoundingClientRect();
+  /** The V2's grid offset from the XL's, in key units: independent of zoom and of where the canvas is scrolled. */
+  const offset = () => {
+    const unit = PITCH_PX * zoom();
+    const xl = rectOf(keyOn(XL, 0));
+    const v2 = rectOf(keyOn(V2, 0));
+    return { x: (v2.left - xl.left) / unit, y: (v2.top - xl.top) / unit };
+  };
+  const panelGap = () => (rectOf(panel(V2)!).top - rectOf(panel(XL)!).bottom) / zoom();
+  const positionsOnScreen = () => [XL, V2].map((s) => rectOf(panel(s)!)).map((r) => `${r.left},${r.top}`).join(' ');
+  const soloButtons = async (serial: string) => {
+    const s = (await api.snapshot()).store;
+    if (!s.open) return null;
+    const layoutHere = s.state.config.profiles.solo?.layouts[serial];
+    return layoutHere ? (layoutHere.pages[layoutHere.startPage ?? Object.keys(layoutHere.pages)[0]]?.buttons ?? null) : null;
+  };
+  await until(() => document.querySelector('.canvas') !== null);
+  const fitted = zoom();
+  out.canvas = {
+    exists: document.querySelector('.canvas') !== null,
+    zoom: fitted,
+    label: zoomLabel(),
+    keyWidths: [rectOf(keyOn(XL, 0)).width, rectOf(keyOn(V2, 0)).width].map((w) => Math.round((w / fitted) * 10) / 10),
+    offset: offset(),
+    gap: panelGap(),
+  };
+
+  // Zoom: Reset is 100%, − and + step, Fit all returns to the fitted zoom.
+  zoomButton('Reset').click();
+  await until(() => zoom() === 1);
+  const atReset = { zoom: zoom(), label: zoomLabel(), keyWidth: rectOf(keyOn(XL, 0)).width };
+  zoomButton('Zoom in').click();
+  await until(() => zoom() !== 1);
+  const zoomedIn = zoom();
+  zoomButton('Zoom out').click();
+  await until(() => zoom() === 1);
+  zoomButton('Zoom out').click();
+  await until(() => zoom() !== 1);
+  const zoomedOut = zoom();
+  zoomButton('Fit all').click();
+  await until(() => zoom() === fitted);
+  out.zoom = { atReset, zoomedIn, zoomedOut, fitAgain: zoom() };
+
+  // At 50%: a key drag and a library drop still land on the key under the
+  // pointer (keyUnder() reads the screen), and neither moves a deck.
+  // Bounded: a zoom that will not stay put must fail the check, not hang it.
+  for (let i = 0; i < ZOOM_STEPS.length && zoom() > 0.5; i++) {
+    zoomButton('Zoom out').click();
+    await sleep(30);
+  }
+  await until(() => zoom() === 0.5);
+  const decksBefore = positionsOnScreen();
+  await drag(keyOn(XL, 0), keyOn(XL, 9));
+  await until(async () => (await soloButtons(XL))?.['9']?.label === 'Back');
+  await drag(document.querySelector<HTMLButtonElement>('.library-entry[data-action-type="hotkey"]')!, keyOn(V2, 6));
+  await until(async () => (await soloButtons(V2))?.['6'] !== undefined);
+  await sleep(100);
+  out.zoomedWork = {
+    zoom: zoom(),
+    xl: await soloButtons(XL),
+    v2Key6: (await soloButtons(V2))?.['6']?.action?.type ?? null,
+    decksStayed: positionsOnScreen() === decksBefore,
+  };
+
+  // A deck dragged by its header, dropped 3 px from the XL's third key
+  // column: it snaps there, and the guide says so while it moves. The drag is
+  // sent to the header, as pointer capture would send it.
+  click(keyOn(XL, 1));
+  await until(() => layout().focused === XL);
+  const configBefore = JSON.stringify((await api.snapshot()).store);
+  const header = panel(V2)!.querySelector<HTMLElement>('.deck-panel-header')!;
+  const grip = centre(header.querySelector('.deck-panel-grip')!);
+  const send = (type: string, x: number, y: number) =>
+    header.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 9, button: 0, isPrimary: true }));
+  const dragDeck = async (dx: number, dy: number) => {
+    send('pointerdown', grip.x, grip.y);
+    send('pointermove', grip.x + dx / 2, grip.y + dy / 2);
+    send('pointermove', grip.x + dx, grip.y + dy);
+    await sleep(80);
+    const guides = [...document.querySelectorAll<HTMLElement>('.canvas-guide')].map((g) => ({
+      axis: g.classList.contains('canvas-guide-x') ? 'x' : 'y',
+      label: g.textContent,
+    }));
+    const refused = panel(V2)!.classList.contains('deck-panel-refused');
+    send('pointerup', grip.x + dx, grip.y + dy);
+    await sleep(120);
+    return { guides, refused, guidesAfter: document.querySelectorAll('.canvas-guide').length };
+  };
+  const toColumn = rectOf(keyOn(XL, 2)).left - rectOf(keyOn(V2, 0)).left + 3;
+  const snapped = await dragDeck(toColumn, 40);
+  out.deckDrag = {
+    ...snapped,
+    offset: offset(),
+    focused: layout().focused,
+    configUnchanged: JSON.stringify((await api.snapshot()).store) === configBefore,
+  };
+
+  // Dropped onto the XL, coming from below: butted below it, a gutter apart, its column kept.
+  const onto = rectOf(panel(XL)!).top + 20 - rectOf(panel(V2)!).top;
+  const butted = await dragDeck(0, onto);
+  out.overlap = { ...butted, offset: offset(), gap: panelGap() };
+
+  // Hidden and shown again: back where it was.
+  const beforeHide = offset();
+  await tick(V2);
+  await until(() => document.querySelectorAll('.grid').length === 1);
+  await tick(V2);
+  await until(() => document.querySelectorAll('.grid').length === 2 && document.querySelector('.canvas') !== null);
+  await sleep(100);
+  out.reshown = { before: beforeHide, after: offset(), zoom: zoom() };
+
+  await sleep(700); // past the preferences' write
   return out;
 }
 
@@ -1966,10 +2084,17 @@ async function multiDeckReopen(): Promise<Record<string, unknown>> {
     await new Promise((r) => setTimeout(r, 25));
   }
   await new Promise((r) => setTimeout(r, 500));
+  const zoom = Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
+  const key0 = (serial: string) => document.querySelector(`.key[data-deck="${serial}"][data-key-index="0"]`)?.getBoundingClientRect();
+  const xl = key0('MULTI-XL');
+  const v2 = key0('MULTI-V2');
   return {
     panels: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].map((p) => p.dataset.deckPanel),
     grids: document.querySelectorAll('.grid').length,
     edited: editedDeck(),
+    zoom,
+    // The V2's grid from the XL's, in key units.
+    offset: xl && v2 ? { x: (v2.left - xl.left) / (PITCH_PX * zoom), y: (v2.top - xl.top) / (PITCH_PX * zoom) } : null,
   };
 }
 

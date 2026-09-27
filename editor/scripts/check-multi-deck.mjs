@@ -2,7 +2,9 @@
 // decks, an XL (8×4) and an Original V2 (5×3): SHOW IN EDITOR, a panel per
 // deck stacked in the Device list's order, click-to-focus, each deck's own
 // page, and nothing done on one deck reaching the other (scope §10,
-// "Multi-deck editing"). The one-deck case is check:one-deck's.
+// "Multi-deck editing"); and the canvas — Fit all and zoom, work at 50%, a
+// deck dragged and snapped, an overlap butted, positions remembered across a
+// hide and a reopen. The one-deck case is check:one-deck's.
 //
 // Usage: npm run check:multi-deck   (builds first)
 
@@ -152,6 +154,57 @@ if (r && !r.error) {
     assert.equal(r.noLayout.button, 'Add a layout for Little deck');
   });
   check('its "Add a layout" button gives that deck a layout, drawn in its panel', () => assert.equal(r.layoutAdded, true));
+
+  // The canvas (session 2). canvas.ts: a key is 88 px and a pitch 98 px at
+  // 100%; a butted deck is a 16 px gutter away.
+  const near = (actual, expected, tolerance, what) =>
+    assert.ok(Math.abs(actual - expected) <= tolerance, `${what}: ${actual}, expected ${expected} ± ${tolerance}`);
+  check('two decks shown are drawn on a canvas, at Fit all, never above 100%', () => {
+    assert.equal(r.canvas.exists, true);
+    assert.ok(r.canvas.zoom > 0 && r.canvas.zoom <= 1, `zoom ${r.canvas.zoom}`);
+    assert.equal(r.canvas.label, `${Math.round(r.canvas.zoom * 100)}%`);
+  });
+  check('every deck\'s keys are the same size — real proportions in key units', () => {
+    near(r.canvas.keyWidths[0], 88, 0.6, 'XL key at 100%');
+    near(r.canvas.keyWidths[1], 88, 0.6, 'V2 key at 100%');
+  });
+  check('never arranged, the second deck is stacked below the first, left edges aligned, a gutter apart', () => {
+    near(r.canvas.offset.x, 0, 0.01, 'x offset');
+    near(r.canvas.gap, 16, 0.6, 'gap in px at 100%');
+  });
+  check('zoom: Reset is 100%, + and − step, Fit all returns to the fitted zoom', () => {
+    assert.deepEqual({ zoom: r.zoom.atReset.zoom, label: r.zoom.atReset.label }, { zoom: 1, label: '100%' });
+    near(r.zoom.atReset.keyWidth, 88, 0.6, 'a key at 100%');
+    assert.equal(r.zoom.zoomedIn, 1.25);
+    assert.equal(r.zoom.zoomedOut, 0.9);
+    assert.equal(r.zoom.fitAgain, r.canvas.zoom);
+  });
+  check('at 50%, a key drag and a library drop land on the key under the pointer, and move no deck', () => {
+    assert.equal(r.zoomedWork.zoom, 0.5);
+    assert.equal(r.zoomedWork.xl?.['9']?.label, 'Back', 'the XL key dragged to key 10');
+    assert.equal(r.zoomedWork.xl?.['0'], undefined);
+    assert.equal(r.zoomedWork.v2Key6, 'hotkey');
+    assert.equal(r.zoomedWork.decksStayed, true);
+  });
+  check('a deck dragged by its header snaps to the other deck\'s key column, and the guide says so while it moves', () => {
+    assert.deepEqual(r.deckDrag.guides, [{ axis: 'x', label: 'snap · aligned to Big deck key column' }]);
+    assert.equal(r.deckDrag.guidesAfter, 0, 'the guide goes with the drop');
+    assert.equal(r.deckDrag.refused, false);
+    near(r.deckDrag.offset.x, 2, 0.005, 'the V2\'s grid at the XL\'s third column');
+  });
+  check('moving a deck edits nothing and moves no focus', () => {
+    assert.equal(r.deckDrag.configUnchanged, true);
+    assert.equal(r.deckDrag.focused, XL);
+  });
+  check('a drop onto another deck, coming from below, is butted below it — a gutter apart, its column kept', () => {
+    near(r.overlap.gap, 16, 0.6, 'gap in px at 100%');
+    near(r.overlap.offset.x, 2, 0.005, 'x kept');
+    assert.equal(r.overlap.refused, false);
+  });
+  check('a deck hidden and shown again comes back where it was', () => {
+    near(r.reshown.after.x, r.reshown.before.x, 0.005, 'x');
+    near(r.reshown.after.y, r.reshown.before.y, 0.005, 'y');
+  });
 }
 
 // The run ended with both decks shown. The shown decks are remembered in the
@@ -159,11 +212,26 @@ if (r && !r.error) {
 const prefsFile = path.join(stateDir, 'editor', 'preferences.json');
 const prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8').catch(() => '{}'));
 check('the shown decks are remembered in the editor preferences, by serial', () => assert.deepEqual(prefs.shownDecks, [XL, V2]));
+check('positions are remembered in the editor preferences, by serial, in key units — every shown deck, the one never dragged too', () => {
+  assert.deepEqual(Object.keys(prefs.deckPositions ?? {}).sort(), [XL, V2].sort());
+  assert.deepEqual(prefs.deckPositions[XL], { x: 0, y: 0 });
+  assert.equal(prefs.deckPositions[V2].x, 2);
+  assert.ok(prefs.deckPositions[V2].y > 4, 'below the XL');
+});
 const reopened = (await runElectronCheck('multi-deck-reopen', { configDir, stateDir, socket: daemon.socket }, 60_000)).report?.renderer;
-check('reopened, the editor shows the decks it was left showing', () => assert.deepEqual(reopened, { panels: [XL, V2], grids: 2, edited: XL }));
+check('reopened, the editor shows the decks it was left showing', () =>
+  assert.deepEqual({ panels: reopened?.panels, grids: reopened?.grids, edited: reopened?.edited }, { panels: [XL, V2], grids: 2, edited: XL }));
+check('reopened, the decks are where they were left, at Fit all', () => {
+  assert.ok(reopened?.zoom > 0 && reopened?.zoom <= 1, `zoom ${reopened?.zoom}`);
+  const want = { x: prefs.deckPositions[V2].x - prefs.deckPositions[XL].x, y: prefs.deckPositions[V2].y - prefs.deckPositions[XL].y };
+  assert.ok(Math.abs(reopened.offset.x - want.x) < 0.01 && Math.abs(reopened.offset.y - want.y) < 0.01, `${JSON.stringify(reopened.offset)} ≠ ${JSON.stringify(want)}`);
+});
 
 const saved = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
-check('nothing about which decks are shown is written to config.json', () => assert.equal(JSON.stringify(saved).includes('shown'), false));
+check('nothing about which decks are shown, or where, is written to config.json', () => {
+  assert.equal(JSON.stringify(saved).includes('shown'), false);
+  assert.equal(JSON.stringify(saved).includes('osition'), false);
+});
 check('the V2 layout was added to the profile being edited, and to nothing else', () => {
   assert.ok(saved.profiles.solo.layouts[V2], 'no V2 layout in Solo');
   assert.deepEqual(Object.keys(saved.profiles.solo.layouts).sort(), [XL, V2].sort());

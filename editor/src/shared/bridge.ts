@@ -11,6 +11,7 @@ import type { AppListing, AudioList, DecksResult, StatusResult } from '../../../
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
+import type { DeckPositions } from './deck-positions.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 export interface Conflict {
@@ -180,6 +181,16 @@ export interface DeckhandBridge {
    */
   shownDecks(): Promise<string[]>;
   setShownDecks(serials: string[]): Promise<void>;
+
+  /**
+   * Where each deck sits on the canvas, by serial, in key units
+   * (shared/deck-positions). Global, not per profile; editor preferences,
+   * never config.json. Set when a drag ends: every shown deck as drawn,
+   * merged over the stored ones, so a deck never dragged stays where it was
+   * seen.
+   */
+  deckPositions(): Promise<DeckPositions>;
+  setDeckPositions(positions: DeckPositions): Promise<void>;
 
   /** Bookmarked icon folders, in order; missing ones are kept and marked (src/main/preferences.ts). */
   bookmarks(): Promise<IconFolderEntry[]>;
