@@ -94,9 +94,25 @@ if (r && !r.error) {
     assert.equal(r.opensOn.deck.page, 'main');
   });
   check('clicking a page tab shows that page on the deck', () => assert.equal(r.tabShowsPage, true));
+  // Once the breadcrumb showed the choice, it never left it. Anything
+  // recorded before the choice is not a jump back: the observer records the
+  // tab on any DOM change, and one landing before the click's render records
+  // the tab the click is leaving. (It used to assert the history was exactly
+  // the choice, and failed on that with a message about jumping back.)
+  const leftChoice = (history, choice) => {
+    const from = history.indexOf(choice);
+    assert.ok(from >= 0, `never showed ${choice}: ${JSON.stringify(history)}`);
+    const after = history.slice(from);
+    assert.deepEqual(after, [choice], `went back after showing ${choice}: ${JSON.stringify(history)}`);
+  };
   check('the breadcrumb did not jump back while a page or profile switch was in flight', () => {
-    assert.deepEqual(r.tabHistoryDuringSwitch, ['Second'], 'page switch');
-    assert.deepEqual(r.tabHistoryDuringProfileSwitch, ['Hotbar'], 'profile switch');
+    leftChoice(r.tabHistoryDuringSwitch, 'Second');
+    leftChoice(r.tabHistoryDuringProfileSwitch, 'Hotbar');
+  });
+  check("a click's own render shows the choice, not the deck's page", () => {
+    assert.equal(r.tabAfterClick, 'Second', 'page tab');
+    assert.equal(r.tabAfterProfileChoice, 'Hotbar', 'profile');
+    assert.equal(r.clickAfterDaemonRender, 'Main', 'a click landing just after a daemon render, before its effects ran');
   });
   check('choosing a profile switches the deck to its start page, and the breadcrumb lands there', () => {
     assert.equal(r.profileSwitches, true);

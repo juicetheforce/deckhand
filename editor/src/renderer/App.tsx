@@ -85,6 +85,12 @@ function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreS
   // the breadcrumb shows what was chosen; state events from before the switch
   // would otherwise pull it back for a moment.
   const [inFlight, setInFlight] = useState(0);
+  // The same count, read inside the follow effect's update: that effect can
+  // be left pending by a daemon render and run just after a click, from a
+  // render that saw nothing in flight. Reading the state it closed over, it
+  // would put the breadcrumb back on the deck's page until the deck reported
+  // the switch — a click ignored for a round trip (check:live, 1b).
+  const inFlightNow = useRef(0);
   const [switchError, setSwitchError] = useState<string | null>(null);
   /** The action last picked from the library, for the inspector to configure. */
   const [pick, setPick] = useState<Pick | null>(null);
@@ -98,7 +104,7 @@ function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreS
     if (inFlight > 0) return;
     const restore = !restored.current && daemon.connected && daemon.decks !== null;
     if (restore) restored.current = true;
-    setSelection((current) => followDeck(config, daemon, restore ? restoreShown(config, daemon, current, rememberedShown) : current));
+    setSelection((current) => (inFlightNow.current > 0 ? current : followDeck(config, daemon, restore ? restoreShown(config, daemon, current, rememberedShown) : current)));
   }, [config, daemon, inFlight]);
 
   // The latest daemon view, for code waiting inside a switch.
@@ -112,6 +118,7 @@ function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreS
    * for a moment. At most a second, then follow whatever the deck reports.
    */
   const sendSwitch = async (call: () => Promise<DaemonResult>, shows: (view: DaemonView) => boolean) => {
+    inFlightNow.current++;
     setInFlight((n) => n + 1);
     try {
       const result = await call();
@@ -122,6 +129,7 @@ function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreS
       }
     } finally {
       // Back to following: if the switch failed, the breadcrumb returns to what the deck really shows.
+      inFlightNow.current--;
       setInFlight((n) => n - 1);
     }
   };

@@ -341,13 +341,44 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // 1. A page tab shows that page on the deck.
   tabHistory.length = 0;
   tab('Second')!.click();
+  // React renders a click's update in the microtask after it.
+  await Promise.resolve();
+  out.tabAfterClick = selectedTab();
   out.tabShowsPage = await until(async () => (await deck())?.page === 'second');
   await sleep(300);
   out.tabHistoryDuringSwitch = [...tabHistory];
 
+  // 1b. A click landing just after the daemon re-rendered the editor, before
+  //     that render's effects have run, renders at once. The follow effect
+  //     left pending by the daemon's render used to run after the click and
+  //     put the breadcrumb back on the deck's page until the deck reported:
+  //     a click ignored for a round trip, one run in four here. Made certain:
+  //     a daemon event arrives, its render commits (the MutationObserver fires
+  //     in the microtask after the commit), and the click lands there.
+  const serialForRace = (await deck())!.serial;
+  out.clickAfterDaemonRender = await new Promise<string | null>((resolve) => {
+    const stop = api.onDaemon(() => {
+      stop();
+      const committed = new MutationObserver(() => {
+        committed.disconnect();
+        tab('Main')!.click();
+        void Promise.resolve().then(() => resolve(selectedTab()));
+      });
+      committed.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
+    });
+    void api.previewSet(serialForRace, 1, { label: 'race' });
+  });
+  await api.previewClear(serialForRace, 1);
+  await until(async () => (await deck())?.page === 'main');
+  tab('Second')!.click();
+  await until(async () => (await deck())?.page === 'second' && selectedTab() === 'Second');
+  await sleep(300);
+
   // 2. The profile dropdown switches the decks; the breadcrumb lands on the new start page.
   tabHistory.length = 0;
   chooseProfile('other');
+  await Promise.resolve();
+  out.tabAfterProfileChoice = selectedTab();
   out.profileSwitches = await until(async () => {
     const d = await deck();
     return d?.profile === 'other' && d.page === 'hotbar' && selectedTab() === 'Hotbar';
