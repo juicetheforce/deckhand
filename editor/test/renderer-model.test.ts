@@ -37,6 +37,7 @@ import {
   focusDeck,
   othersToStartPages,
   pageOf,
+  restoreShown,
   setDeckPage,
   setShown,
   shownDecks,
@@ -782,6 +783,14 @@ await check('when the focused deck moves to another profile, the other decks go 
   const t = followDeck(covered, view, xlWithV2('extra'));
   assert.deepEqual(t.others, { [V2]: 'v2home' }, 'a page named like the old one is not kept: it is another profile\'s page');
   assert.deepEqual(othersToStartPages({ [V2]: 'extra', [XL]: 'main' }), { [V2]: '', [XL]: '' });
+});
+
+await check('remembered shown decks join the focused one, on their start pages; an unplugged or unknown one is skipped', () => {
+  const opened: Selection = { profile: 'default', serial: XL, page: 'games', key: null, keys: [], others: {} };
+  assert.deepEqual(restoreShown(MULTI, daemonView([XL, V2]), opened, [XL, V2]).others, { [V2]: 'main' }, 'the focused deck is not added twice');
+  assert.deepEqual(restoreShown(MULTI, daemonView([XL]), opened, [V2]), opened, 'the V2 is not plugged in');
+  assert.deepEqual(restoreShown(MULTI, daemonView([XL, V2]), opened, ['SOLD-DECK']), opened);
+  assert.deepEqual(restoreShown(MULTI, daemonView([XL, V2]), opened, []), opened, 'nothing remembered: one deck, as before (opt-in)');
 });
 
 await check('choosing a profile keeps the deck if the profile covers it, otherwise moves to a connected deck it covers', () => {

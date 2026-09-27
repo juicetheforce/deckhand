@@ -1928,6 +1928,20 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   return out;
 }
 
+/** The multi-deck check's second opening, on the same preferences: which decks are shown once the daemon has reported. */
+async function multiDeckReopen(): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  while (!(document.querySelector('.toolbar .pill-connected') && document.querySelector('.grid')) && Date.now() - started < 10_000) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await new Promise((r) => setTimeout(r, 500));
+  return {
+    panels: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].map((p) => p.dataset.deckPanel),
+    grids: document.querySelectorAll('.grid').length,
+    edited: editedDeck(),
+  };
+}
+
 /** Each action form writes exactly the settings it names (scripts/check-forms.mjs). */
 async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
@@ -2479,6 +2493,7 @@ export async function runCheck(name: string, api: DeckhandBridge): Promise<void>
     else if (name === 'empty') api.reportCheck(name, await empty(api));
     else if (name === 'empty-select') api.reportCheck(name, await empty(api, true));
     else if (name === 'forms') api.reportCheck(name, await forms(api));
+    else if (name === 'multi-deck-reopen') api.reportCheck(name, await multiDeckReopen());
     else if (name === 'bulk' || name === 'one-deck' || name === 'multi-deck') {
       // Reports how far it got, so a failure part-way through can be diagnosed.
       const progress: Record<string, unknown> = {};

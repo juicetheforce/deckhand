@@ -304,6 +304,23 @@ export function setShown(config: Config, selection: Selection, serial: string, s
   return { ...focused, others };
 }
 
+/**
+ * The decks remembered as shown (the editor preferences' `shownDecks`) added
+ * beside the focused deck, each on its start page — followDeck then moves
+ * each to what it shows. Only connected decks this editor lists; a remembered
+ * deck not plugged in is skipped, and stays remembered. Done once, when the
+ * daemon first reports its decks: the window opens before that, and
+ * reconciling then would drop every remembered deck as unplugged.
+ */
+export function restoreShown(config: Config, daemon: DaemonView, selection: Selection, remembered: string[]): Selection {
+  const connected = deckChoices(config, selection.profile, daemon).map((d) => d.id);
+  let next = selection;
+  for (const serial of remembered) {
+    if (connected.includes(serial)) next = setShown(config, next, serial, true, connected);
+  }
+  return next;
+}
+
 /** Change the page one shown deck shows, focused or not. The focused deck's key selection goes with its page. */
 export function setDeckPage(selection: Selection, serial: string, page: string): Selection {
   if (serial === selection.serial) return page === selection.page ? selection : { ...selection, page, key: null, keys: [] };

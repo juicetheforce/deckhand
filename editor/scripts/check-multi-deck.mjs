@@ -68,7 +68,8 @@ await daemon.attach(XL, new FakeDeck());
 await daemon.attach(V2, new FakeDeck({ columns: 5, rows: 3, pixels: 72, model: 'originalv2', productName: 'Fake V2' }));
 const stopWatching = await reloadLikeTheDaemon(daemon);
 
-const output = await runElectronCheck('multi-deck', { configDir, stateDir: path.join(scratch, 'state'), socket: daemon.socket }, 90_000);
+const stateDir = path.join(scratch, 'state');
+const output = await runElectronCheck('multi-deck', { configDir, stateDir, socket: daemon.socket }, 90_000);
 const r = output.report?.renderer;
 
 check('electron ran the check', () => {
@@ -153,7 +154,16 @@ if (r && !r.error) {
   check('its "Add a layout" button gives that deck a layout, drawn in its panel', () => assert.equal(r.layoutAdded, true));
 }
 
+// The run ended with both decks shown. The shown decks are remembered in the
+// editor's preferences, never config.json, and a second opening shows both.
+const prefsFile = path.join(stateDir, 'editor', 'preferences.json');
+const prefs = JSON.parse(await fs.readFile(prefsFile, 'utf8').catch(() => '{}'));
+check('the shown decks are remembered in the editor preferences, by serial', () => assert.deepEqual(prefs.shownDecks, [XL, V2]));
+const reopened = (await runElectronCheck('multi-deck-reopen', { configDir, stateDir, socket: daemon.socket }, 60_000)).report?.renderer;
+check('reopened, the editor shows the decks it was left showing', () => assert.deepEqual(reopened, { panels: [XL, V2], grids: 2, edited: XL }));
+
 const saved = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
+check('nothing about which decks are shown is written to config.json', () => assert.equal(JSON.stringify(saved).includes('shown'), false));
 check('the V2 layout was added to the profile being edited, and to nothing else', () => {
   assert.ok(saved.profiles.solo.layouts[V2], 'no V2 layout in Solo');
   assert.deepEqual(Object.keys(saved.profiles.solo.layouts).sort(), [XL, V2].sort());

@@ -12,6 +12,7 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
+import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
@@ -751,6 +752,19 @@ function registerIpc(): void {
   ipcMain.handle('setCollapsedLibrary', async (event, groups: unknown) => {
     if (!fromOurWindow(event) || !Array.isArray(groups) || groups.some((g) => typeof g !== 'string')) return;
     await preferences.set({ collapsedLibrary: groups });
+  });
+  // The decks shown in the editor, by serial (SHOW IN EDITOR). Written only
+  // when the person changes them; never pruned here, so a deck unplugged for
+  // a while is still shown when it comes back.
+  ipcMain.handle('shownDecks', async (event) => {
+    if (!fromOurWindow(event)) return [];
+    const saved = (await preferences.read()).shownDecks;
+    return Array.isArray(saved) ? saved.filter((s): s is string => typeof s === 'string').slice(0, MAX_SHOWN_DECKS) : [];
+  });
+  ipcMain.handle('setShownDecks', async (event, serials: unknown) => {
+    if (!fromOurWindow(event) || !Array.isArray(serials) || serials.length > MAX_SHOWN_DECKS) return;
+    if (serials.some((s) => typeof s !== 'string' || s.length === 0 || s.length > 200)) return;
+    await preferences.set({ shownDecks: serials });
   });
   ipcMain.handle('bookmarks', async (event) => (fromOurWindow(event) ? existingFolders(await bookmarks.list(), os.homedir(), true) : []));
   ipcMain.handle('addBookmark', async (event, folder: unknown) => {

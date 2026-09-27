@@ -23,6 +23,7 @@ import {
   followDeck,
   othersToStartPages,
   pageOf,
+  restoreShown,
   setDeckPage,
   setShown,
   shownDecks,
@@ -55,12 +56,15 @@ export function App() {
   const snapshot = useEditor();
   // The app settings, read before the editor mounts: its first selection opens on the Default deck.
   const [defaultDeck, setDefaultDeck] = useState<string | null | undefined>(undefined);
+  // And the decks last shown beside it (SHOW IN EDITOR), restored once the daemon reports them.
+  const [rememberedShown, setRememberedShown] = useState<string[] | undefined>(undefined);
   useEffect(() => {
     void window.deckhand.appSettings().then((s) => setDefaultDeck(s.defaultDeck));
+    void window.deckhand.shownDecks().then(setRememberedShown);
   }, []);
-  if (!snapshot || defaultDeck === undefined) return <div className="app-loading">Loading…</div>;
+  if (!snapshot || defaultDeck === undefined || rememberedShown === undefined) return <div className="app-loading">Loading…</div>;
   if (!snapshot.store.open) return <CannotOpen error={snapshot.store.error} />;
-  return <Editor store={snapshot.store.state} daemon={snapshot.daemon} defaultDeck={defaultDeck} />;
+  return <Editor store={snapshot.store.state} daemon={snapshot.daemon} defaultDeck={defaultDeck} rememberedShown={rememberedShown} />;
 }
 
 function CannotOpen({ error }: { error: string }) {
@@ -73,7 +77,7 @@ function CannotOpen({ error }: { error: string }) {
   );
 }
 
-function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: DaemonView; defaultDeck: string | null }) {
+function Editor({ store, daemon, defaultDeck, rememberedShown }: { store: StoreState; daemon: DaemonView; defaultDeck: string | null; rememberedShown: string[] }) {
   const config = store.config;
   // Only when the window opens: changing the setting later moves nothing until the next opening.
   const [selection, setSelection] = useState<Selection>(() => followDeck(config, daemon, reconcileSelection(config, daemon, null, defaultDeck)));
@@ -87,9 +91,14 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
 
   // Follow the decks: any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
+  // The first time the daemon reports its decks, the decks remembered as
+  // shown join the one the editor opened on (model.ts restoreShown).
+  const restored = useRef(false);
   useEffect(() => {
     if (inFlight > 0) return;
-    setSelection((current) => followDeck(config, daemon, current));
+    const restore = !restored.current && daemon.connected && daemon.decks !== null;
+    if (restore) restored.current = true;
+    setSelection((current) => followDeck(config, daemon, restore ? restoreShown(config, daemon, current, rememberedShown) : current));
   }, [config, daemon, inFlight]);
 
   // The latest daemon view, for code waiting inside a switch.
@@ -434,8 +443,15 @@ function Editor({ store, daemon, defaultDeck }: { store: StoreState; daemon: Dae
         }}
         onDeletePage={setPendingDelete}
         shown={shown}
-        onShowOnly={(serial) => select({ serial })}
-        onSetShown={(serial, visible) => setSelection((s) => setShown(config, s, serial, visible, shown))}
+        onShowOnly={(serial) => {
+          select({ serial });
+          void window.deckhand.setShownDecks([serial]);
+        }}
+        onSetShown={(serial, visible) => {
+          const next = setShown(config, selection, serial, visible, shown);
+          setSelection(next);
+          void window.deckhand.setShownDecks(shownDecks(config, daemon, next));
+        }}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
         <Library

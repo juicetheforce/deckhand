@@ -77,6 +77,9 @@ export interface SystemShortcut {
  */
 export const MAX_BOOKMARKS = 12;
 
+/** At most this many remembered shown decks: a guard against a corrupt preferences file, not a limit. */
+export const MAX_SHOWN_DECKS = 32;
+
 /** A folder or image in the icon picker (src/main/icon-browser.ts). */
 export interface IconFolderEntry {
   name: string;
@@ -170,6 +173,13 @@ export interface DeckhandBridge {
    */
   collapsedLibrary(): Promise<string[]>;
   setCollapsedLibrary(groups: string[]): Promise<void>;
+
+  /**
+   * The decks shown in the editor, by serial, as last chosen in SHOW IN
+   * EDITOR. Global, not per profile; editor preferences, never config.json.
+   */
+  shownDecks(): Promise<string[]>;
+  setShownDecks(serials: string[]): Promise<void>;
 
   /** Bookmarked icon folders, in order; missing ones are kept and marked (src/main/preferences.ts). */
   bookmarks(): Promise<IconFolderEntry[]>;
