@@ -21,7 +21,10 @@
 //
 //   node scripts/demo.mjs
 //
-// Ctrl-C in this terminal to finish; that also removes the scratch directory.
+// Closing the editor's window reopens it on the same state (the daemon keeps
+// running), so positions, locks and the decks shown can be seen surviving a
+// restart. Ctrl-C in this terminal to finish; that also removes the scratch
+// directory.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -255,9 +258,14 @@ if (await fs.stat(realFontconfig).catch(() => null)) {
   await fs.symlink(realFontconfig, path.join(home, '.config', 'fontconfig'));
 }
 await fs.mkdir(path.join(stateDir, 'editor'), { recursive: true });
+// Close to tray off: the private bus has no tray host, yet Electron's Tray is
+// still built, so a closed window would hide with nothing to bring it back
+// (the gap the installer's tray warning names) — and the demo reopens the
+// editor on a close only if it quits. Tick it in Settings before shooting the
+// settings screenshot, where the default (on) should show.
 await fs.writeFile(
   path.join(stateDir, 'editor', 'preferences.json'),
-  JSON.stringify({ bookmarks: BOOKMARKS.map((folder) => path.join(home, folder)) }, null, 2) + '\n',
+  JSON.stringify({ bookmarks: BOOKMARKS.map((folder) => path.join(home, folder)), closeToTray: false }, null, 2) + '\n',
 );
 
 // --- Fakes: pactl, the input helper, a player -----------------------------------
@@ -291,7 +299,9 @@ console.log(`
   Deckhand demo — everything here is invented, and scratch:
     ${scratch}
   Nothing here touches the installed daemon, the installed editor or your decks.
-  This editor has no tray icon; Ctrl-C here to finish.
+  This editor has no tray icon. Closing its window reopens it on the same
+  state, with the daemon still running — to see what an editor remembers
+  (the decks shown, where they are, which are locked). Ctrl-C here to finish.
 `);
 
 // --- The editor --------------------------------------------------------------------
@@ -310,7 +320,18 @@ for (const name of ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_S
 // binary into plain Node with no BrowserWindow.
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(electronPath, [editorRoot], { env, stdio: 'inherit' });
+// Closing the window reopens the editor against the same scratch state, so
+// what it remembers across a restart can be seen (positions, locks, the decks
+// shown), with the daemon already running. An editor that fails, or goes
+// within a few seconds of opening, ends the demo instead of looping.
+const REOPEN_AFTER_MS = 3000;
+let child;
+let exited;
+function open() {
+  child = spawn(electronPath, [editorRoot], { env, stdio: 'inherit' });
+  exited = new Promise((resolve) => child.on('exit', (code) => resolve(code)));
+}
+open();
 
 // One way out, whichever comes first. Ctrl-C reaches every process in the
 // group, dbus-daemon included, so the private bus can vanish under the fake
@@ -319,7 +340,6 @@ const child = spawn(electronPath, [editorRoot], { env, stdio: 'inherit' });
 // gone. So a signal and an uncaught error both come here, once, and the
 // directory is removed first.
 let shuttingDown = false;
-const exited = new Promise((resolve) => child.on('exit', resolve));
 async function shutDown(code) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -338,6 +358,14 @@ process.on('uncaughtException', (err) => {
 });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => void shutDown(0));
 
-// The window closed some other way (or a screenshot run finished).
-await exited;
-await shutDown(0);
+for (;;) {
+  const opened = Date.now();
+  const code = await exited;
+  if (shuttingDown) break;
+  if (code !== 0 || Date.now() - opened < REOPEN_AFTER_MS) {
+    await shutDown(code === 0 ? 0 : 1);
+    break;
+  }
+  console.log('  The editor closed; reopening it on the same state. Ctrl-C here to finish.');
+  open();
+}
