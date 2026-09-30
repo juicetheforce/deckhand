@@ -1,12 +1,12 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Check v0.4.1's status-line reserve on the decks on Nobara."
+next = "Choose the next milestone; nothing is in progress."
 category = "Gaming"
 paused = false
 focus = false
 notes = """
 Public repo; releases install with a one-line curl script (prebuilt, brings its own Node).
 Daemon and editor are separate programs: the editor only writes config.
-v0.4.0 added multi-deck editing (confirmed on Nobara 2026-09-27). v0.4.1 isn't checked on the decks yet.
+v0.4.0 added multi-deck editing (confirmed on Nobara 2026-09-27); v0.4.1 (status line no longer moves the grid) confirmed there 2026-09-30.
 """
