@@ -2724,6 +2724,79 @@ body.settings-body {
   color: #f19a9a;
 }
 
+/* Settings › Integrations › OBS: a card holding a small form. */
+.obs-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  scroll-margin-top: 12px;
+}
+
+.obs-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.obs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.obs-field-port {
+  flex: 0 0 80px;
+}
+
+.settings-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 8px;
+  color: #eef0fa;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.settings-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.obs-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.obs-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.obs-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-button-primary {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
 .settings-button-danger {
   background: rgba(241, 154, 154, 0.14);
   border-color: rgba(241, 154, 154, 0.45);

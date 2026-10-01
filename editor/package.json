@@ -31,7 +31,8 @@
     "check:failures": "npm run build && node scripts/check-failures.mjs",
     "check:empty": "npm run build && node scripts/check-empty.mjs",
     "check:one-deck": "npm run build && node scripts/check-one-deck.mjs",
-    "check:multi-deck": "npm run build && node scripts/check-multi-deck.mjs"
+    "check:multi-deck": "npm run build && node scripts/check-multi-deck.mjs",
+    "check:obs": "npm run build && node scripts/check-obs.mjs"
   },
   "engines": {
     "node": ">=22.12"

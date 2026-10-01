@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { ActionNeeded, NotSetUp } from '../action-error.js';
 import { obsCredentials, type ObsCredentials } from '../credentials.js';
+import type { ObsAttempt, ObsConnection, ObsOutputPhase } from '../control/protocol.js';
 import { OBS_EVENTS, ObsClient, ObsError } from './obs-client.js';
 
 /**
@@ -25,20 +26,9 @@ import { OBS_EVENTS, ObsClient, ObsError } from './obs-client.js';
  * Key faces read cachedState() only — never a request in a render.
  */
 
-/** Where an output is, as a key shows it. obs-websocket's OBS_WEBSOCKET_OUTPUT_* states, folded. */
-export type OutputPhase = 'stopped' | 'starting' | 'live' | 'stopping' | 'reconnecting';
-
-export type ObsConnection =
-  /** Nothing needs OBS, and no connection has been tried. */
-  | 'idle'
-  /** No saved connection: OBS has not been set up in Deckhand's Settings. Nothing connects. */
-  | 'not-set-up'
-  | 'connecting'
-  | 'connected'
-  /** OBS is not running, its WebSocket server is off, or it went away. */
-  | 'unavailable'
-  /** OBS refused the password, or asked for one and none is set. */
-  | 'auth-failed';
+export type { ObsAttempt, ObsConnection } from '../control/protocol.js';
+/** Where an output is, as a key shows it. */
+export type OutputPhase = ObsOutputPhase;
 
 export interface ObsState {
   connection: ObsConnection;
@@ -116,11 +106,6 @@ export function credentialsChanged(): void {
   announce();
   if (wanted) void ensureConnected().catch(() => undefined);
 }
-
-/** How one attempt to reach OBS went: Save's report, and Test connection's. */
-export type ObsAttempt =
-  | { ok: true; obsVersion: string }
-  | { ok: false; reason: 'not-set-up' | 'not-running' | 'server-off' | 'unreachable' | 'auth' | 'no-password' | 'protocol'; message: string };
 
 /**
  * One connection attempt now, as a press makes: what Settings' Save asks

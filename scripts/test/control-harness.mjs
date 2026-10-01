@@ -6,13 +6,24 @@
  * Set DECKHAND_INPUT_BIN before importing this file if the input helper
  * should be the fake one: src/input.js reads it when first imported.
  */
-import { promises as fs } from 'node:fs';
+import { promises as fs, rmSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// The daemon's state directory holds the rolling backups and credentials.json
+// (OBS's password). A script that has not chosen one gets a scratch directory,
+// never the real ~/.local/state/deckhand: the editor asks obs.status on every
+// connection, so a screenshot or a check would otherwise read — and a Save
+// write — the real credentials. Read by dist/backups.js when first imported.
+if (!process.env.DECKHAND_STATE_DIR) {
+  const scratchState = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-state-'));
+  process.env.DECKHAND_STATE_DIR = scratchState;
+  process.on('exit', () => rmSync(scratchState, { recursive: true, force: true }));
+}
 const dist = (file) => path.join(REPO, 'dist', file);
 
 export const { DeckSession } = await import(dist('deck.js'));
@@ -21,6 +32,7 @@ export const { KeyFailures } = await import(dist('key-failures.js'));
 export const { validateConfig } = await import(dist('config.js'));
 export const server = await import(dist('control/server.js'));
 export const commands = await import(dist('control/commands.js'));
+const obsService = await import(dist('services/obs.js'));
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -89,6 +101,8 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   };
   const control = new server.ControlServer(commands.createHandlers(deps));
   events = commands.eventNotifiers(control, deps);
+  // As src/index.ts: OBS's status reaches subscribers as the "obs" event.
+  const stopObs = obsService.subscribe(() => events.obs());
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
@@ -111,6 +125,7 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   }
 
   async function stop() {
+    stopObs();
     await control.stop();
     for (const session of sessions.values()) await session.close();
   }

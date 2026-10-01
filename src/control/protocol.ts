@@ -94,3 +94,36 @@ export type DecksResult = Array<{ serial: string } & DeckGeometry>;
 
 /** The "profile.switch" result. */
 export type SwitchResult = { active: { id: string; name: string | null }; changed: boolean };
+
+/** Where an OBS output is, as a key shows it: obs-websocket's output states, folded. */
+export type ObsOutputPhase = 'stopped' | 'starting' | 'live' | 'stopping' | 'reconnecting';
+
+export type ObsConnection =
+  /** Nothing needs OBS, and no connection has been tried. */
+  | 'idle'
+  /** No saved connection: OBS has not been set up in Deckhand's Settings. Nothing connects. */
+  | 'not-set-up'
+  | 'connecting'
+  | 'connected'
+  /** OBS is not running, its WebSocket server is off, or it went away. */
+  | 'unavailable'
+  /** OBS refused the password, or asked for one and none is set. */
+  | 'auth-failed';
+
+/** The "obs.status" result, and what the "obs" event carries. Never a secret: only whether a password is set. */
+export interface ObsStatus {
+  connection: ObsConnection;
+  stream: ObsOutputPhase;
+  record: ObsOutputPhase;
+  recordPaused: boolean;
+  /** A connection is saved: OBS keys can do something. */
+  setUp: boolean;
+  host: string | null;
+  port: number | null;
+  passwordSet: boolean;
+}
+
+/** How one attempt to reach OBS went: "obs.test", and "obs.credentials"'s `attempt`. */
+export type ObsAttempt =
+  | { ok: true; obsVersion: string }
+  | { ok: false; reason: 'not-set-up' | 'not-running' | 'server-off' | 'unreachable' | 'auth' | 'no-password' | 'protocol'; message: string };

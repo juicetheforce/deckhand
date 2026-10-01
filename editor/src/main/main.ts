@@ -11,7 +11,7 @@ import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, StoreView, WindowState } from '../shared/bridge.js';
+import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
@@ -118,10 +118,33 @@ let lastFrame: Electron.NativeImage | null = null;
 let store: ConfigStore | null = null;
 let storeError: string | null = null;
 
+/** The OBS status last sent to the settings window, so it is told only of a change. */
+let sentObs = '';
+
 const daemon = new DaemonClient({
   socketPath: socketPath(),
-  onChange: (view) => window?.webContents.send('daemon', view),
+  onChange: (view) => {
+    window?.webContents.send('daemon', view);
+    const obs = JSON.stringify(view.obs ?? null);
+    if (obs === sentObs) return;
+    sentObs = obs;
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('obsStatus', view.obs ?? null);
+  },
 });
+
+/**
+ * The settings window's OBS form, from the page: only the fields it may set,
+ * of the right types. A password is a string, "" or null (remove it); the
+ * port a whole number in range; anything else is left out.
+ */
+function cleanObsForm(values: unknown): ObsForm {
+  const v = (typeof values === 'object' && values !== null ? values : {}) as Record<string, unknown>;
+  const form: ObsForm = {};
+  if (typeof v.host === 'string' && v.host.trim() !== '') form.host = v.host.trim();
+  if (typeof v.port === 'number' && Number.isInteger(v.port) && v.port >= 1 && v.port <= 65535) form.port = v.port;
+  if (typeof v.password === 'string' || v.password === null) form.password = v.password;
+  return form;
+}
 
 function storeView(): StoreView {
   return store ? { open: true, state: store.state() } : { open: false, error: storeError ?? 'config.json is not open' };
@@ -342,11 +365,12 @@ async function broadcastSettings(): Promise<void> {
   for (const w of [window, settingsWindow]) if (w && !w.isDestroyed()) w.webContents.send('appSettings', settings);
 }
 
-function openSettings(): void {
+function openSettings(section?: SettingsSection): void {
   if (!window) return;
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show();
     settingsWindow.focus();
+    if (section) settingsWindow.webContents.send('settingsSection', section);
     return;
   }
   // A new page, so the same rule as a new editor window (installChanged):
@@ -395,7 +419,8 @@ function openSettings(): void {
     if (settingsWindow === created) settingsWindow = null;
   });
   reportWindowState(created);
-  void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings' } });
+  sentObs = JSON.stringify(daemon.view().obs ?? null);
+  void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings', ...(section ? { section } : {}) } });
 }
 
 /**
@@ -660,8 +685,35 @@ function registerIpc(): void {
   ipcMain.handle('cancelImport', (event, id: unknown) => {
     if (fromSettingsWindow(event) && pendingImport?.id === id) pendingImport = null;
   });
-  ipcMain.handle('openSettings', (event) => {
-    if (fromOurWindow(event)) openSettings();
+  ipcMain.handle('openSettings', (event, section: unknown) => {
+    if (fromOurWindow(event)) openSettings(section === 'obs' ? 'obs' : undefined);
+  });
+  // --- OBS, in Settings › Integrations. Never a secret back: the daemon reports only whether a password is set. ---
+  ipcMain.handle('obsStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().obs ?? null) : null));
+  ipcMain.handle('obsTest', async (event, values: unknown) => {
+    if (!fromSettingsWindow(event)) return { ok: false, reason: 'daemon', message: 'not allowed' };
+    try {
+      return await daemon.obsTest(cleanObsForm(values));
+    } catch (err) {
+      return { ok: false, reason: 'daemon', message: `Deckhand's service did not answer: ${(err as Error).message}` };
+    }
+  });
+  ipcMain.handle('obsSave', async (event, values: unknown): Promise<ObsSaveResult> => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    try {
+      const { attempt, ...status } = await daemon.obsSave(cleanObsForm(values));
+      return { ok: true, status, attempt };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+  ipcMain.handle('obsRemove', async (event) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    try {
+      return { ok: true, status: await daemon.obsRemove() };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
   });
   ipcMain.handle('closeSettings', (event) => {
     if (fromSettingsWindow(event)) settingsWindow?.close();

@@ -475,7 +475,8 @@ The checks:
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
   `check:tray`, `check:settings`, `check:titlebar`, `check:failures`,
-  `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck` — real
+  `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
+  `check:obs` — real
   Electron against a test harness for the control socket.
 - **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
   through `scripts/hooks/pre-commit`, once a clone has run `git config

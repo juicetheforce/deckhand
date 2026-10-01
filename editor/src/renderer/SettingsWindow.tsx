@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
+import { ObsSettings } from './ObsSettings.js';
 
 /**
- * The settings window: DEVICES, BEHAVIOR, APPEARANCE and BACKUP (export and
- * import of the whole configuration), one card per setting, and a footer.
+ * The settings window: DEVICES, BEHAVIOR, INTEGRATIONS (OBS; Twitch and
+ * VTube Studio later), APPEARANCE and BACKUP (export and import of the whole
+ * configuration), one card per setting, and a footer.
  * Every change is saved at once and reaches the editor behind it at once,
  * except an import, which waits for its review to be confirmed — so Done only
  * closes the window.
@@ -17,6 +19,8 @@ export function SettingsWindow() {
   const [decks, setDecks] = useState<DeckOption[]>([]);
   /** In config.json, not with the settings above; null while it is not open. */
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
+  /** Bumped each time the window is asked to show the OBS section: opened at it, or asked again while open. */
+  const [obsFocus, setObsFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'obs' ? 1 : 0));
 
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
@@ -29,9 +33,13 @@ export function SettingsWindow() {
     // A deck plugged in while the window is open shows the next time it is looked at.
     window.addEventListener('focus', refreshDecks);
     const stop = window.deckhand.onAppSettings(setSettings);
+    const stopSection = window.deckhand.onSettingsSection((section) => {
+      if (section === 'obs') setObsFocus((n) => n + 1);
+    });
     return () => {
       window.removeEventListener('focus', refreshDecks);
       stop();
+      stopSection();
     };
   }, []);
 
@@ -101,6 +109,9 @@ export function SettingsWindow() {
           onChange={(e) => changeNotifications(e.target.checked)}
         />
       </div>
+
+      <span className="settings-heading">INTEGRATIONS</span>
+      <ObsSettings focus={obsFocus} />
 
       <span className="settings-heading">APPEARANCE</span>
       <div className="settings-row">

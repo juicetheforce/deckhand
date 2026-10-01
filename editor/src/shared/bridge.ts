@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AppListing, AudioList, DecksResult, StatusResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsStatus, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -62,7 +62,29 @@ export interface DaemonView {
    * whenever the App form opens (refreshApps). Absent or null until read.
    */
   apps?: AppListing[] | null;
+  /**
+   * OBS: whether it is set up, and its connection (obs.status, kept current
+   * by the "obs" event). Never a secret. What gates the library's OBS actions
+   * and the not-set-up faces. Absent or null from a daemon without OBS.
+   */
+  obs?: ObsStatus | null;
 }
+
+/**
+ * Settings' OBS form, as sent to the daemon: a field left out is the saved
+ * one (Test) or unchanged (Save); a password of null or "" removes it.
+ */
+export interface ObsForm {
+  host?: string;
+  port?: number;
+  password?: string | null;
+}
+
+/** Save's answer: the status, and how its one attempt to connect went. */
+export type ObsSaveResult = { ok: true; status: ObsStatus; attempt: ObsAttempt } | { ok: false; error: string };
+
+/** Where to open the settings window: its top, or one section. */
+export type SettingsSection = 'obs';
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
@@ -273,8 +295,20 @@ export interface DeckhandBridge {
   /** Carry out the import the review with this id described. */
   confirmImport(id: string): Promise<ImportResult>;
   cancelImport(id: string): Promise<void>;
-  /** Open the settings window, or bring it forward (editor window only). */
-  openSettings(): Promise<void>;
+  /** Open the settings window, or bring it forward (editor window only) — at a section, if given. */
+  openSettings(section?: SettingsSection): Promise<void>;
+  /** The settings window: called when it is asked to show a section (it is already open). */
+  onSettingsSection(callback: (section: SettingsSection) => void): () => void;
+  /** OBS's status, for the settings window; null with no daemon, or one without OBS. */
+  obsStatus(): Promise<ObsStatus | null>;
+  /** Called when OBS's status changes (settings window). */
+  onObsStatus(callback: (status: ObsStatus | null) => void): () => void;
+  /** Test connection with the form's values; changes nothing (settings window only). */
+  obsTest(values: ObsForm): Promise<ObsAttempt | { ok: false; reason: 'daemon'; message: string }>;
+  /** Save the form: sets OBS up, and tries once (settings window only). */
+  obsSave(values: ObsForm): Promise<ObsSaveResult>;
+  /** Remove OBS's saved connection; keys untouched (settings window only). */
+  obsRemove(): Promise<{ ok: true; status: ObsStatus } | { ok: false; error: string }>;
   /** Close the settings window: its Done button (settings window only). */
   closeSettings(): Promise<void>;
   onAppSettings(callback: (settings: AppSettings) => void): () => void;

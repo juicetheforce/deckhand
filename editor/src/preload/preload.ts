@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { DaemonView, DeckhandBridge, StoreView, WindowState } from '../shared/bridge.js';
+import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
+import type { ObsStatus } from '../../../src/control/protocol.js';
 import type { AppSettings } from '../shared/settings.js';
 
 // Sandboxed preload: bundled to CommonJS by scripts/build-main.mjs, because a
@@ -59,7 +60,13 @@ const bridge: DeckhandBridge = {
   chooseImport: () => ipcRenderer.invoke('chooseImport'),
   confirmImport: (id) => ipcRenderer.invoke('confirmImport', id),
   cancelImport: (id) => ipcRenderer.invoke('cancelImport', id),
-  openSettings: () => ipcRenderer.invoke('openSettings'),
+  openSettings: (section) => ipcRenderer.invoke('openSettings', section),
+  onSettingsSection: (callback) => subscribe<SettingsSection>('settingsSection', callback),
+  obsStatus: () => ipcRenderer.invoke('obsStatus'),
+  onObsStatus: (callback) => subscribe<ObsStatus | null>('obsStatus', callback),
+  obsTest: (values) => ipcRenderer.invoke('obsTest', values),
+  obsSave: (values) => ipcRenderer.invoke('obsSave', values),
+  obsRemove: () => ipcRenderer.invoke('obsRemove'),
   closeSettings: () => ipcRenderer.invoke('closeSettings'),
   onAppSettings: (callback) => subscribe<AppSettings>('appSettings', callback),
   windowControl: (action) => ipcRenderer.invoke('windowControl', action),

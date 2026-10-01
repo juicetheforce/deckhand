@@ -8,7 +8,7 @@ import * as obsService from '../services/obs.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
-import type { AppListing, AudioList, BackupStatus, DeckStatus, ReloadResult, StateSnapshot } from './protocol.js';
+import type { AppListing, AudioList, BackupStatus, DeckStatus, ObsStatus, ReloadResult, StateSnapshot } from './protocol.js';
 import {
   ControlError,
   EVENT_NAMES,
@@ -461,7 +461,7 @@ export function optionalString(args: Record<string, unknown>, name: string): str
   return requireString(args, name);
 }
 
-async function obsStatus() {
+async function obsStatus(): Promise<ObsStatus> {
   const credentials = await obsCredentials();
   return {
     ...obsService.cachedState(),
