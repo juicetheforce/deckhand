@@ -524,6 +524,10 @@ Each has been hit more than once.
   hide failures in an earlier one. And **run `tsc` first**: it emits output
   despite type errors, so a green smoke run after a failed `tsc` proves
   nothing.
+- **The editor's checks run the daemon from the root `dist/`.** An
+  `npm run check:*` in `editor/` builds the editor, not the daemon: after
+  changing `src/`, run `npm run build:ts` at the root first, or the check
+  drives the old daemon and fails for a reason that is not the code.
 - **After a deliberate break, rebuild before the next clean run.** A break
   runner that restores the source leaves `dist/` built from the break. A break
   that fails to build is not a pass either.
