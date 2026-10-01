@@ -194,10 +194,26 @@ check('Record: a press starts recording', await until(() => fake.recording && ob
 await tap(2);
 check('Pause: a press pauses it', await until(() => obs.cachedState().recordPaused));
 check('the Record key shows paused', defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' })) === 'obs-record-paused');
+check('the Pause key shows paused', defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-record-paused');
+await tap(2);
+check('Pause again: resumes, and the Pause key shows press-to-pause', await until(() => !obs.cachedState().recordPaused) && defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-record-pause');
+check('a pause OBS confirmed leaves the key unmarked', failedKey(2) === null);
+
+// OBS cannot pause this recording (Recording Quality "Same as stream"): it
+// answers success and does nothing. The key must not look like it worked.
+fake.pausable = false;
+const pressedAt = Date.now();
+await tap(2);
+check('Pause when OBS cannot pause: the key is marked, saying why', await until(() => /did not pause.*Same as stream/.test(failedKey(2) ?? ''), 3000));
+check('it gave OBS about a second to say it had paused', Date.now() - pressedAt >= 900);
+check('and the recording is not shown as paused', !obs.cachedState().recordPaused && !fake.paused);
+fake.pausable = true;
+
 await tap(1);
 check('Record again: stops, and paused clears', await until(() => !fake.recording && obs.cachedState().record === 'stopped' && !obs.cachedState().recordPaused));
 await tap(2);
-check('Pause with nothing recording: the key is marked with OBS\'s reason', await until(() => /not running/.test(failedKey(2) ?? '')));
+check('Pause with nothing recording: the key is marked, saying so', await until(() => /Nothing is recording/.test(failedKey(2) ?? '')));
+check('and nothing was asked of OBS but whether it records', fake.requests.at(-1)?.type === 'GetRecordStatus');
 
 // No secret on the socket.
 const status = await client.request('obs.status', {});

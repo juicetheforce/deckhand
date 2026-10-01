@@ -37,6 +37,12 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
     streaming: false,
     recording: false,
     paused: false,
+    /**
+     * Whether OBS can pause the recording. A real OBS cannot when the
+     * recording shares the stream's encoder (Simple output, Recording Quality
+     * "Same as stream" — the default), and then ignores a pause in silence.
+     */
+    pausable: true,
     setStream(on) {
       obs.streaming = on;
       broadcast('StreamStateChanged', { outputActive: on, outputState: on ? 'OBS_WEBSOCKET_OUTPUT_STARTED' : 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
@@ -150,10 +156,13 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
         }
         broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING' });
         return broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
+      // As obs-websocket does (RequestHandler_Record.cpp): success, always,
+      // whatever OBS then does — nothing at all when nothing is recording or
+      // the recording cannot be paused (OBS's PauseRecording()).
       case 'ToggleRecordPause':
-        if (!obs.recording) return reply(false, null, 'The record output is not running.');
+        reply(true, { outputPaused: !obs.paused });
+        if (!obs.recording || !obs.pausable) return undefined;
         obs.paused = !obs.paused;
-        reply(true);
         return broadcast('RecordStateChanged', { outputActive: true, outputState: obs.paused ? 'OBS_WEBSOCKET_OUTPUT_PAUSED' : 'OBS_WEBSOCKET_OUTPUT_RESUMED' });
       default:
         return reply(false, null, `fake OBS does not know ${d.requestType}`);

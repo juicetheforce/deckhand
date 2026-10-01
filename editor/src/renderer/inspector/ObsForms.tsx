@@ -15,7 +15,7 @@ const ABOUT: Record<string, { heading: string; text: string }> = {
   },
   'obs.recordPause': {
     heading: 'Pause recording',
-    text: 'Press to pause the recording, and again to resume. With nothing recording, a press is marked as failed.',
+    text: 'Press to pause what Record is recording, and again to resume. Recordings only: OBS cannot pause a stream. OBS cannot pause a recording that shares the stream\'s settings either (Settings › Output › Recording Quality "Same as stream", its default) — the key is marked as failed and says so.',
   },
 };
 

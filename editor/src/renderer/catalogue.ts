@@ -76,7 +76,7 @@ export const CATALOGUE: CatalogueGroup[] = [
     entries: [
       { type: 'obs.stream', name: 'Stream', description: 'Go live in OBS; hold to stop', aliases: ['broadcast', 'twitch', 'youtube', 'streaming', 'on air'] },
       { type: 'obs.record', name: 'Record', description: 'Start or stop recording in OBS', aliases: ['capture', 'video'] },
-      { type: 'obs.recordPause', name: 'Pause recording', description: 'Pause or resume the recording in OBS', aliases: ['break'] },
+      { type: 'obs.recordPause', name: 'Pause recording', description: 'Pause or resume an OBS recording, not a stream', aliases: ['break'] },
     ],
   },
   {

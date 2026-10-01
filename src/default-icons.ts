@@ -38,9 +38,11 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
-  // OBS: the Stream key off air and live, the Record key stopped, recording and paused.
+  // OBS: the Stream key off air and live, the Record key stopped, recording and
+  // paused, and the Pause key's two faces: press to pause, and paused.
   'obs-record',
   'obs-record-live',
+  'obs-record-pause',
   'obs-record-paused',
   'obs-stream',
   'obs-stream-live',
@@ -167,7 +169,7 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       if (state.live && state.paused) return 'obs-record-paused';
       return state.live ? 'obs-record-live' : 'obs-record';
     case 'obs.recordPause':
-      return 'obs-record-paused';
+      return state.paused ? 'obs-record-paused' : 'obs-record-pause';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

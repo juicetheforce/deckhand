@@ -77,15 +77,40 @@ export const record: ActionHandler = {
   },
 };
 
+/** How long a Pause press waits for OBS to say it paused or resumed. */
+export const PAUSE_CONFIRM_MS = 1000;
+
 /**
- * obs.recordPause — pause and resume a recording. Fails, with OBS's reason,
- * when nothing is recording.
+ * obs.recordPause — pause and resume a recording. Recordings only: OBS
+ * cannot pause a stream.
  *
  *   { "type": "obs.recordPause" }
+ *
+ * obs-websocket answers ToggleRecordPause with success whatever OBS does, and
+ * OBS silently ignores it when nothing is recording or the recording shares
+ * the stream's encoder (Simple output, Recording Quality "Same as stream" —
+ * OBS's own PauseRecording()). So the press checks there is a recording, and
+ * then waits for OBS's own paused or resumed event; without one, the press
+ * fails and the key says why. A press that did nothing never looks like one
+ * that worked.
  */
 export const recordPause: ActionHandler = {
   async execute(_ctx, _params: ActionDef) {
-    await obs.request('ToggleRecordPause');
+    const status = await obs.request('GetRecordStatus');
+    if (status.outputActive !== true) throw new Error('Nothing is recording: Pause recording pauses what Record records');
+    const pausing = status.outputPaused !== true;
+    const wanted = pausing ? 'OBS_WEBSOCKET_OUTPUT_PAUSED' : 'OBS_WEBSOCKET_OUTPUT_RESUMED';
+    const done = await obs.requestAndConfirm(
+      'ToggleRecordPause',
+      undefined,
+      (type, data) => type === 'RecordStateChanged' && data.outputState === wanted,
+      PAUSE_CONFIRM_MS,
+    );
+    if (done) return;
+    if (pausing) {
+      throw new Error('OBS did not pause: it cannot pause a recording that shares the stream\'s encoder (OBS: Settings › Output › Recording Quality, anything but "Same as stream")');
+    }
+    throw new Error('OBS did not resume the recording');
   },
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),

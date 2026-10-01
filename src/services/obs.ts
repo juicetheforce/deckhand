@@ -49,6 +49,8 @@ let connecting: Promise<ObsClient> | null = null;
 let wanted = false;
 /** Presses waiting on OBS: a connection a press opened is kept until it is answered. */
 let pressing = 0;
+/** Presses waiting for an event that says OBS really did what it was asked (requestAndConfirm). */
+const waiters = new Set<{ match(type: string, data: Record<string, unknown>): boolean; resolve(): void }>();
 const listeners = new Set<() => void>();
 
 export function cachedState(): ObsState {
@@ -99,10 +101,54 @@ export function credentialsChanged(): void {
  * a message fit for the key's failure badge.
  */
 export async function request(requestType: string, requestData?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return pressWith(async (connected) => connected.request(requestType, requestData));
+}
+
+/**
+ * Send a request, and resolve true once OBS sends the event that says it was
+ * done, false if none comes within `withinMs` — for a request obs-websocket
+ * answers "success" whether or not OBS acted on it (ToggleRecordPause: OBS
+ * ignores a pause it cannot do, and says nothing). The wait is one-shot,
+ * inside the press; the waiter is in place before the request is sent, since
+ * OBS may send the event before its answer.
+ */
+export async function requestAndConfirm(
+  requestType: string,
+  requestData: Record<string, unknown> | undefined,
+  match: (type: string, data: Record<string, unknown>) => boolean,
+  withinMs: number,
+): Promise<boolean> {
+  return pressWith(async (connected) => {
+    let waiter!: { match: typeof match; resolve(): void };
+    const seen = new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        waiters.delete(waiter);
+        resolve(false);
+      }, withinMs);
+      waiter = {
+        match,
+        resolve: () => {
+          clearTimeout(timer);
+          resolve(true);
+        },
+      };
+      waiters.add(waiter);
+    });
+    try {
+      await connected.request(requestType, requestData);
+    } catch (err) {
+      waiters.delete(waiter);
+      waiter.resolve();
+      throw err;
+    }
+    return seen;
+  });
+}
+
+async function pressWith<T>(run: (connected: ObsClient) => Promise<T>): Promise<T> {
   pressing++;
   try {
-    const connected = await ensureConnected();
-    return await connected.request(requestType, requestData);
+    return await run(await ensureConnected());
   } catch (err) {
     throw new Error(describeFailure(err));
   } finally {
@@ -201,6 +247,11 @@ export function phaseOf(outputState: unknown, current: OutputPhase): OutputPhase
 }
 
 function onEvent(type: string, data: Record<string, unknown>): void {
+  for (const waiter of [...waiters]) {
+    if (!waiter.match(type, data)) continue;
+    waiters.delete(waiter);
+    waiter.resolve();
+  }
   switch (type) {
     case 'StreamStateChanged':
       update({ stream: phaseOf(data.outputState, state.stream) });
