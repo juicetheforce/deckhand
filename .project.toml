@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "OBS session 1: test the OBS keys on the real decks (developer install), then session 2: scenes, mute, sources."
+next = "OBS session 2: Scene, Mute and Source keys, the editor's OBS forms, OBS connection in Settings; swap in the new default icons."
 category = "Gaming"
 paused = false
 focus = true
