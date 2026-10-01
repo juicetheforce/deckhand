@@ -503,7 +503,9 @@ fails.** That has caught weak checks many times. **Before a break runner's
 failures mean anything, run it on unbroken source and see it pass.** A runner
 that cannot resolve the test's imports, or builds the wrong file, prints
 nothing and exits non-zero, and "no failures" then reads exactly like a
-passing break. A break runner is untested code too.
+passing break. A break runner is untested code too: **restore from a copy
+of the file and compare checksums**, never by reversing the replacement — a
+short replacement reversed lands on its first match anywhere in the file.
 
 For looking rather than checking: `node editor/scripts/screenshot.mjs --out
 x.png` renders the editor to a PNG; `node editor/scripts/empty-state.mjs
@@ -545,9 +547,20 @@ Each has been hit more than once.
   passes or fails for the wrong reason.
 - **Editor checks must never touch an installed daemon or the real session
   bus.** They point `DECKHAND_SOCKET`, `DECKHAND_CONFIG_DIR` and
-  `DECKHAND_STATE_DIR` at scratch paths. Electron's startup asks the session
+  `DECKHAND_STATE_DIR` at scratch paths. The daemon the control harness
+  runs in-process takes its own `DECKHAND_STATE_DIR` — where
+  `credentials.json` lives — and gets a scratch one unless the script set
+  it. A check window is never shown, on every path that opens one, or it
+  takes the desktop's keyboard mid-run. Electron's startup asks the session
   bus for the desktop portal, starting services that outlive the run — why
   `screenshot.mjs` uses a bus config with no service directories.
+- **`inPage` sends a page script as one line**, so a `//` comment in it
+  swallows everything after it; the script then "failed to execute" with no
+  message. Use `/* */`, or keep comments outside the string.
+- **`elementFromPoint` finds nothing off-screen.** A pointer drag from a
+  library row below the fold of its pane never starts, so "the drop placed
+  nothing" passes whether or not the code blocked it. Scroll the row into
+  view, and check the press lands on it before trusting the result.
 - **Electron's helpers write to its user-data directory for a moment after it
   exits**, so removing a check's scratch directory can meet `ENOTEMPTY`; the
   checks retry the removal.
