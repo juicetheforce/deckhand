@@ -567,6 +567,18 @@ Each has been hit more than once.
 
 ### Environment traps
 
+- **Never run `npx <tool>` for a tool that should come from the project.**
+  Outside a project, or with a typo, `npx` does not fail: it fetches
+  whatever package on the registry has that name and runs it. `npx tsc`
+  outside the repository fetches the package called `tsc` — not TypeScript
+  — and executes its code. Use the project's own binary:
+  `./node_modules/.bin/tsc` (or the `npm run` script that wraps it). If
+  `npx` is unavoidable, `npx --no-install <tool>` fails rather than fetch
+  (`[confirmed]` on npm 11.16.0) — **but only if `~/.npm/_npx` does not
+  already hold a package of that name**: one fetched before runs without
+  asking. Clear `~/.npm/_npx` after any accidental fetch. `npx --no tool
+  --flag` is no substitute: on npm 11 it answered `--version` with npm's own.
+
 - **A shell inside VS Code has `ELECTRON_RUN_AS_NODE=1`**, which makes the
   Electron binary plain Node with no `BrowserWindow`. `npm start` and
   `editor/scripts/lib/run-electron-check.mjs` clear it; any new way of
