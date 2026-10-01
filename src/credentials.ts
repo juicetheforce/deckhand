@@ -45,10 +45,16 @@ async function readFile(): Promise<CredentialsFile> {
   return parsed as CredentialsFile;
 }
 
-/** OBS's credentials, or an empty object when none are set. A file that cannot be read or parsed throws: a broken file is not "no password". */
-export async function obsCredentials(): Promise<ObsCredentials> {
+/**
+ * OBS's saved connection, or null when **OBS is not set up**: no entry at all.
+ * Settings always saves host and port, so an OBS with authentication off is
+ * set up too — set up means saved, not "has a password" and not "has
+ * connected once" (scope §7, "Streaming integrations"). A file that cannot be
+ * read or parsed throws: a broken file is not "not set up".
+ */
+export async function obsCredentials(): Promise<ObsCredentials | null> {
   const obs = (await readFile()).obs;
-  if (!obs || typeof obs !== 'object') return {};
+  if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return null;
   return {
     host: typeof obs.host === 'string' && obs.host !== '' ? obs.host : undefined,
     port: typeof obs.port === 'number' && Number.isInteger(obs.port) ? obs.port : undefined,
@@ -71,9 +77,21 @@ export async function setObsCredentials(change: { host?: string | null; port?: n
     if (value === null || value === '') delete obs[key];
     else (obs as Record<string, unknown>)[key] = value;
   }
-  const next: CredentialsFile = { ...file, obs };
-  if (Object.keys(obs).length === 0) delete next.obs;
+  // An entry with nothing in it is still an entry: OBS stays set up, on the
+  // defaults, until removeObsCredentials.
+  await writeFile({ ...file, obs });
+}
 
+/** Remove OBS's saved connection entirely: OBS is no longer set up. Nothing else in the file is touched. */
+export async function removeObsCredentials(): Promise<void> {
+  const file = await readFile();
+  if (!('obs' in file)) return;
+  const next = { ...file };
+  delete next.obs;
+  await writeFile(next);
+}
+
+async function writeFile(next: CredentialsFile): Promise<void> {
   // Created owner-only if it is not there yet; an existing state directory is
   // left as it is — it holds the backups and the editor's state too, and the
   // file's own 0600 is what keeps the secret.

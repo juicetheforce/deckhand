@@ -67,7 +67,7 @@ export interface DeckSessionOptions {
    * to do (src/action-error.ts) — not again while the same message stands.
    * The daemon shows it as a desktop notification, unless turned off.
    */
-  onActionNeeded?: (failure: { slot: string; key: number; label: string | undefined; message: string }) => void;
+  onActionNeeded?: (failure: { slot: string; key: number; label: string | undefined; message: string; notSetUp?: boolean }) => void;
   /** Keys whose last press failed, held for the daemon (src/key-failures.ts). */
   failures: KeyFailures;
   /** The profile this deck is showing, which the failed keys are keyed by. */
@@ -398,6 +398,12 @@ export class DeckSession implements DeckHandle {
     const button = this.currentButtons()[String(index)];
     const failure = await run(this.context(index));
     if (!judged()) return;
+    if (failure?.notSetUp) {
+      // Not this key's failure: its face says the integration is not set up,
+      // and a mark would outlast the setup. Told once, daemon-wide (index.ts).
+      this.onActionNeeded({ slot: 'not-set-up', key: index, label: button?.label, message: failure.message, notSetUp: true });
+      return;
+    }
     const changed =
       failure === null
         ? clearOnSuccess && this.failures.clear(this.serial, profile, page, index)

@@ -25,6 +25,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 
 if (!process.env.DECKHAND_SMOKE_PRIVATE_BUS) {
@@ -80,6 +81,15 @@ async function until(fn, ms = 3000) {
   return false;
 }
 const types = (fake) => fake.requests.map((r) => r.type);
+/** A port nothing listens on: taken, then let go. */
+const freePort = () =>
+  new Promise((resolve) => {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
 const PASSWORD = 'correct horse battery staple';
 
 // The auth string is not checked against a known answer: obs-websocket's
@@ -267,6 +277,64 @@ obs.credentialsChanged();
 check('no password set while OBS asks for one: auth-failed, not unavailable', await until(() => obs.cachedState().connection === 'auth-failed'));
 await credentials.setObsCredentials({ password: PASSWORD });
 
+// --- Not set up: no saved connection (scope §7; credentials.ts) ----------------
+await until(() => obs.cachedState().connection === 'connected');
+await credentials.removeObsCredentials();
+obs.credentialsChanged();
+check('removed: not set up, and disconnected at once', await until(() => obs.cachedState().connection === 'not-set-up' && fake2.open === 0));
+check('obs.status says not set up', (await client.request('obs.status', {})).result?.setUp === false);
+let tries = fake2.connections;
+obs.retry();
+obs.retry();
+await sleep(300);
+check('the scan never tries a connection that is not set up', fake2.connections === tries);
+check(
+  'every OBS key draws its not-set-up face',
+  (await describeAction({}, { type: 'obs.stream' }))?.unset === true &&
+    (await describeAction({}, { type: 'obs.record' }))?.unset === true &&
+    (await describeAction({}, { type: 'obs.recordPause' }))?.unset === true,
+);
+check('a press says where to set it up', /not set up: connect it in Deckhand's Settings › Integrations/.test(await obs.request('GetStreamStatus').catch((e) => e.message)));
+await tap(1);
+await sleep(300);
+check('and is not a mark on the key: its face already says so', failedKey(1) === null && fake2.connections === tries);
+
+// Test connection: says which thing is wrong, and changes nothing.
+const test = async (args) => (await client.request('obs.test', args)).result ?? {};
+const t1 = await test({ port: fake2.port, password: PASSWORD });
+check('Test connection with the right values connects, naming OBS', t1.ok === true && t1.obsVersion === '32.1.1-fake');
+check('and changes nothing: still not set up', obs.cachedState().connection === 'not-set-up' && (await client.request('obs.status', {})).result?.setUp === false);
+check('a wrong password is named as such', (await test({ port: fake2.port, password: 'wrong' })).reason === 'auth');
+check('no password, where OBS asks for one, is named as such', (await test({ port: fake2.port, password: '' })).reason === 'no-password');
+const closedPort = await freePort();
+const realObs = await obs.obsIsRunning();
+const t4 = await test({ port: closedPort });
+check(`nothing listening and ${realObs ? 'a real OBS running: server off' : 'no OBS process: not running'}`, t4.reason === (realObs ? 'server-off' : 'not-running'));
+// A process named obs, as the RPM's and the Flatpak's both are: the server is off.
+const fakeObsBin = path.join(TMP, 'obs');
+await fs.copyFile('/usr/bin/sleep', fakeObsBin);
+await fs.chmod(fakeObsBin, 0o755);
+const obsProcess = spawn(fakeObsBin, ['30'], { stdio: 'ignore' });
+await sleep(100);
+const t5 = await test({ port: closedPort });
+check('OBS running with nothing listening: its WebSocket server is off, and where to turn it on', t5.reason === 'server-off' && /Tools › WebSocket Server Settings/.test(t5.message));
+obsProcess.kill();
+check('another host cannot be told apart: unreachable, saying both', (await test({ host: '127.0.0.2', port: closedPort })).reason === 'unreachable');
+check('a field left out uses the saved one — none saved, so the default port', (await test({ host: '127.0.0.1' })).ok === false);
+
+// Save: sets OBS up, tries once at once, and the keys come back by themselves.
+const savedOff = await client.request('obs.credentials', { host: '127.0.0.1', port: closedPort, password: PASSWORD });
+check('Save with OBS not there: set up, saved, and the attempt says why', savedOff.ok && savedOff.result.setUp === true && savedOff.result.attempt?.ok === false);
+check('and the keys wait for the scan: unavailable, not not-set-up', obs.cachedState().connection === 'unavailable' && (await describeAction({}, { type: 'obs.record' })) === null);
+tries = fake2.connections;
+const savedOn = await client.request('obs.credentials', { port: fake2.port });
+check('Save with OBS there: connected, naming it', savedOn.ok && savedOn.result.attempt?.ok === true && savedOn.result.attempt.obsVersion === '32.1.1-fake');
+check('one attempt, not one per key', fake2.connections === tries + 1);
+check('every key comes back live, with nothing else done', obs.cachedState().connection === 'connected' && (await describeAction({}, { type: 'obs.stream' })) === null);
+const kept = await client.request('obs.credentials', { password: '' });
+check('an entry with no password is still set up — OBS can run without authentication', kept.result?.setUp === true);
+await credentials.setObsCredentials({ password: PASSWORD });
+
 // Nothing wants it: it lets go.
 obs.credentialsChanged();
 await until(() => obs.cachedState().connection === 'connected');
@@ -429,6 +497,32 @@ check('daemon: "notifications" that is not true or false is refused', await unti
 }));
 await writeConfig(DAEMON_CONFIG);
 await until(async () => (await ctl.request('status', {})).result.config.lastReload.ok === true);
+
+// Remove: the keys stay, show not set up, and a press is told once — never marked.
+await ctl.request('subscribe', { events: ['obs'] });
+const obsEvents = () => ctl.events.filter((e) => e.event === 'obs').map((e) => e.data);
+const removed = await ctl.request('obs.remove', {});
+check('daemon: Remove disconnects at once', removed.ok && removed.result.setUp === false && (await until(() => fake3.open === 0)));
+check('daemon: and says so as an obs event', await until(() => obsEvents().some((d) => d.setUp === false)));
+const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+check('daemon: no key is removed', config.profiles.default.layouts[DECK_SERIAL].pages.live.buttons[0]?.action?.type === 'obs.stream');
+const notesBefore = notes.calls.length;
+await pressInChild(0);
+check('daemon: a not-set-up press is notified, saying where to set it up', await until(() => notes.calls.length === notesBefore + 1 && /Settings › Integrations/.test(notes.calls.at(-1)?.body ?? '')));
+await pressInChild(3);
+await pressInChild(0);
+await sleep(300);
+check('daemon: once, whichever key — not per press', notes.calls.length === notesBefore + 1);
+const unmarked = (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed ?? [];
+check('daemon: and never marks the key', !unmarked.some((f) => /not set up/.test(f.error)));
+const setUpAgain = await ctl.request('obs.credentials', { port: fake3.port, password: PASSWORD });
+check('daemon: set up again, the keys connect by themselves', setUpAgain.result?.attempt?.ok === true && (await until(() => fake3.open === 1)));
+check('daemon: an obs event says set up and connected', await until(() => obsEvents().some((d) => d.setUp === true && d.connection === 'connected')));
+await ctl.request('obs.remove', {});
+await pressInChild(0);
+check('daemon: removed again, the next not-set-up press is told again', await until(() => notes.calls.length === notesBefore + 2));
+await ctl.request('obs.credentials', { port: fake3.port, password: PASSWORD });
+await until(() => fake3.open === 1);
 
 await goTo('main');
 check('daemon: back to a page with none, it lets go', await until(() => fake3.open === 0));

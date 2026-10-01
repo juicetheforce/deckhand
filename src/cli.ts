@@ -164,6 +164,7 @@ function parseJsonArgument(text: string | undefined, what: string): Record<strin
 
 interface ObsStatus {
   connection: string;
+  setUp: boolean;
   stream: string;
   record: string;
   recordPaused: boolean;
@@ -342,7 +343,7 @@ async function main(argv: string[]): Promise<void> {
         const r = resultOf<ObsStatus>(await client.request(Object.keys(change).length === 0 ? 'obs.status' : 'obs.credentials', change));
         print(json, r, () =>
           [
-            `connection: ${r.connection}`,
+            `connection: ${r.connection}${r.setUp ? '' : " (OBS is not set up: Deckhand's Settings › Integrations, or deckhand obs password)"}`,
             `stream: ${r.stream}`,
             `recording: ${r.record}${r.recordPaused ? ' (paused)' : ''}`,
             `address: ${r.host ?? '127.0.0.1'}:${r.port ?? 4455}`,

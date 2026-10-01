@@ -2,7 +2,7 @@ import { isKnownAction } from '../actions/index.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
-import { obsCredentials, setObsCredentials } from '../credentials.js';
+import { obsCredentials, removeObsCredentials, setObsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
 import * as obsService from '../services/obs.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
@@ -50,12 +50,13 @@ export interface ControlDeps {
 }
 
 /**
- * The three event notifications, for the daemon to call when things change.
+ * The event notifications, for the daemon to call when things change.
  * Each is cheap to call often: the server merges calls within one event-loop
  * turn, and "audio" is sent only when a device list actually changed.
  */
 export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
   let lastAudio = '';
+  let obsEvents = Promise.resolve();
   return {
     state: () => server.notify('state', () => stateSnapshot(deps)),
     config: () => server.notify('config', () => deps.lastReload()),
@@ -66,6 +67,14 @@ export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
       if (serialized === lastAudio) return;
       lastAudio = serialized;
       server.notify('audio', () => lists);
+    },
+    // obs.status's reply, which reads the credentials file: read in order, so
+    // a later change is never overtaken by an earlier one's slower read.
+    obs: () => {
+      obsEvents = obsEvents.then(async () => {
+        const status = await obsStatus().catch(() => null);
+        if (status) server.notify('obs', () => status);
+      });
     },
   };
 }
@@ -256,8 +265,10 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
     },
 
     /**
-     * Set OBS's host, port or password. A field left out is unchanged; null or
-     * "" removes it. Replies as obs.status does, never echoing the password.
+     * Set OBS's host, port or password — which sets OBS up, if it was not. A
+     * field left out is unchanged; null or "" removes it. Then one attempt to
+     * connect, as a press makes, so the reply can say how it went (`attempt`).
+     * Replies as obs.status does, never echoing the password.
      */
     async 'obs.credentials'(args) {
       const change: { host?: string | null; port?: number | null; password?: string | null } = {};
@@ -276,6 +287,36 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       }
       if (Object.keys(change).length === 0) throw new ControlError('bad_request', 'give at least one of "host", "port" and "password"');
       await setObsCredentials(change);
+      obsService.credentialsChanged();
+      const attempt = await obsService.connectNow();
+      return { ...(await obsStatus()), attempt };
+    },
+
+    /**
+     * Settings' Test connection: connect with these values and let go — the
+     * form's, saved or not; a field left out uses the saved one. Says which
+     * thing is wrong. Changes nothing.
+     */
+    async 'obs.test'(args) {
+      const saved = (await obsCredentials()) ?? {};
+      const host = 'host' in args ? args.host : saved.host;
+      const port = 'port' in args ? args.port : saved.port;
+      const password = 'password' in args ? args.password : saved.password;
+      if (host !== undefined && host !== null && typeof host !== 'string') throw new ControlError('bad_request', '"host" must be a string');
+      if (port !== undefined && port !== null && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535)) {
+        throw new ControlError('bad_request', '"port" must be a whole number from 1 to 65535');
+      }
+      if (password !== undefined && password !== null && typeof password !== 'string') throw new ControlError('bad_request', '"password" must be a string');
+      return obsService.testConnection({ host: host || undefined, port: port ?? undefined, password: password || undefined });
+    },
+
+    /**
+     * Remove OBS's saved connection: disconnects at once and deletes its
+     * credentials. No key is touched — OBS keys stay where they are, show
+     * that OBS is not set up, and come back when it is set up again.
+     */
+    async 'obs.remove'() {
+      await removeObsCredentials();
       obsService.credentialsChanged();
       return obsStatus();
     },
@@ -424,8 +465,10 @@ async function obsStatus() {
   const credentials = await obsCredentials();
   return {
     ...obsService.cachedState(),
-    host: credentials.host ?? null,
-    port: credentials.port ?? null,
-    passwordSet: credentials.password !== undefined,
+    /** A connection is saved (credentials.ts): OBS keys can do something. */
+    setUp: credentials !== null,
+    host: credentials?.host ?? null,
+    port: credentials?.port ?? null,
+    passwordSet: credentials?.password !== undefined,
   };
 }

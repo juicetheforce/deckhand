@@ -62,6 +62,9 @@ let events: ReturnType<typeof eventNotifiers> | null = null;
  * while a shown page has an OBS key (services/obs.ts). A scan of the shown
  * pages' keys; no timer.
  */
+/** Not-set-up messages already notified (deck.ts settle): told once daemon-wide, until the setup changes. */
+const notSetUpTold = new Set<string>();
+
 const syncServiceDemand = () => obsService.setWanted([...sessions.values()].some((s) => s.shows('obs.')));
 const notifyState = () => {
   syncServiceDemand();
@@ -238,6 +241,11 @@ async function attach(devicePath: string): Promise<void> {
     // unless notifications are off in the config (read now, so a reload counts).
     onActionNeeded: (failure) => {
       if (config?.notifications === false) return;
+      // Not set up: once, whichever key, until the setup changes — the keys' faces say it the rest of the time.
+      if (failure.notSetUp) {
+        if (notSetUpTold.has(failure.message)) return;
+        notSetUpTold.add(failure.message);
+      }
       const deck = config?.decks?.[serial]?.name ?? raw.PRODUCT_NAME;
       void notifications.notify(failure.slot, `${deck}: ${failure.label ?? `key ${failure.key + 1}`}`, failure.message);
     },
@@ -440,7 +448,12 @@ async function main(): Promise<void> {
   const stopMpris = mprisService.subscribe(() =>
     sessions.forEach((s) => s.invalidateByType(['media.control', 'media.info'])),
   );
-  const stopObs = obsService.subscribe(() => sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause'])));
+  const stopObs = obsService.subscribe(() => {
+    // Set up again (or connecting at all): the next not-set-up press is told again.
+    if (obsService.cachedState().connection !== 'not-set-up') notSetUpTold.clear();
+    sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause']));
+    events?.obs();
+  });
 
   const stopHotplug = watchHotplug((action, devpath) => {
     console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);

@@ -103,6 +103,11 @@ export interface Display {
   background: string;
   /** The key's last press failed: drawn with a badge over everything else. */
   failed?: boolean;
+  /**
+   * The integration the key needs (OBS) is not set up: its icon drawn at 40%,
+   * like app-launch-unset, with the not-set-up badge instead of the failed one.
+   */
+  unset?: boolean;
 }
 
 /** Partial display override returned by an action's describe(). */

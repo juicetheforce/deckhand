@@ -20,6 +20,10 @@ export const HOLD_TO_STOP_MS = 1000;
  */
 const RECONNECTING_BACKGROUND = '#5a4a1d';
 
+/** OBS is not set up: every OBS key draws dimmed, with the not-set-up badge. */
+const UNSET: DisplayPatch = { unset: true };
+const notSetUp = () => obs.cachedState().connection === 'not-set-up';
+
 /**
  * Stream keys whose press found the stream running, so their release may stop
  * it — by deck and key. A press that started the stream is not here, so
@@ -61,6 +65,7 @@ export const stream: ActionHandler = {
   iconState: () => ({ live: obs.cachedState().stream !== 'stopped' }),
 
   async describe(): Promise<DisplayPatch | null> {
+    if (notSetUp()) return UNSET;
     return obs.cachedState().stream === 'reconnecting' ? { background: RECONNECTING_BACKGROUND } : null;
   },
 };
@@ -76,6 +81,8 @@ export const record: ActionHandler = {
   },
 
   iconState: () => ({ live: obs.cachedState().record !== 'stopped', paused: obs.cachedState().recordPaused }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
 };
 
 /** How long a Pause press waits for OBS to say it paused or resumed. */
@@ -115,4 +122,6 @@ export const recordPause: ActionHandler = {
   },
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
 };

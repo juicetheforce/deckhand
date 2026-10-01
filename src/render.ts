@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
 import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
-import { failedBadgePlacement, failedBadgeSvg } from './failed-badge.js';
+import { failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
 import type { Display } from './types.js';
 
@@ -58,6 +58,16 @@ async function labelSvg(display: Display, size: number): Promise<Buffer> {
 function failedBadge(size: number): OverlayOptions {
   const { diameter, inset } = failedBadgePlacement(size);
   return { input: Buffer.from(failedBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
+}
+
+function unsetBadge(size: number): OverlayOptions {
+  const { diameter, inset } = failedBadgePlacement(size);
+  return { input: Buffer.from(unsetBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
+}
+
+/** An icon layer at 40% opacity: a key whose integration is not set up, as app-launch-unset is drawn. */
+function dimmed(layer: Buffer): Promise<Buffer> {
+  return sharp(layer).ensureAlpha().linear([1, 1, 1, 0.4], [0, 0, 0, 0]).png().toBuffer();
 }
 
 async function iconStamp(iconPath: string): Promise<string> {
@@ -137,7 +147,7 @@ export async function renderButton(display: Display, size: number, strictIcon = 
   if (iconPath) {
     try {
       const icon = await iconLayer(iconPath, size, display.iconFit === 'contain' ? 'contain' : 'cover');
-      layers.push({ input: icon, top: 0, left: 0 });
+      layers.push({ input: display.unset ? await dimmed(icon) : icon, top: 0, left: 0 });
     } catch (err) {
       if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
       if (!warnedMissing.has(iconPath)) {
@@ -155,7 +165,9 @@ export async function renderButton(display: Display, size: number, strictIcon = 
   // Last, so it is over the label as well as the icon. `failed` is part of the
   // cache key (JSON.stringify(display), above), so a marked face and a clean
   // one are two entries and never stand in for each other.
-  if (display.failed) layers.push(failedBadge(size));
+  // Not set up says why the key cannot work, so it stands in for a failure mark.
+  if (display.unset) layers.push(unsetBadge(size));
+  else if (display.failed) layers.push(failedBadge(size));
 
   if (layers.length > 0) base = base.composite(layers);
 

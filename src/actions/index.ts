@@ -1,4 +1,4 @@
-import { ActionNeeded } from '../action-error.js';
+import { ActionNeeded, NotSetUp } from '../action-error.js';
 import type { IconState } from '../default-icons.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import * as keyboard from './keyboard.js';
@@ -102,9 +102,15 @@ export async function runAction(ctx: ActionContext, action: ActionDef): Promise<
 export interface ActionFailure {
   message: string;
   actionNeeded: boolean;
+  /** An integration the key needs is not set up (NotSetUp): not marked on the key, whose face already says so. */
+  notSetUp?: boolean;
 }
 
-const failureOf = (err: unknown): ActionFailure => ({ message: (err as Error).message, actionNeeded: err instanceof ActionNeeded });
+const failureOf = (err: unknown): ActionFailure => ({
+  message: (err as Error).message,
+  actionNeeded: err instanceof ActionNeeded,
+  notSetUp: err instanceof NotSetUp,
+});
 
 /** runAction, keeping whether the failure tells the person what to do: what a deck key press uses. */
 export async function attempt(ctx: ActionContext, action: ActionDef): Promise<ActionFailure | null> {
