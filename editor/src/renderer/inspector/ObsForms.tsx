@@ -7,11 +7,11 @@
 const ABOUT: Record<string, { heading: string; text: string }> = {
   'obs.stream': {
     heading: 'Stream',
-    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. The key turns red while live.',
+    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. Its icon turns red while live, and the key amber if OBS is reconnecting.',
   },
   'obs.record': {
     heading: 'Record',
-    text: 'Press to start recording, and again to stop. The key turns red while recording.',
+    text: 'Press to start recording, and again to stop. Its icon turns red while recording, and amber while paused.',
   },
   'obs.recordPause': {
     heading: 'Pause recording',

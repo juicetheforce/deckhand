@@ -38,14 +38,32 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
-  // OBS: the Stream key off air and live, the Record key stopped, recording and
-  // paused, and the Pause key's two faces: press to pause, and paused.
+  // OBS (Claude Design, screen 10a): state pairs, the active face changing
+  // shape and colour both — teal a running mode, red broadcasting or muted,
+  // amber paused — and one-shot actions. The keys not built yet (replay,
+  // virtual camera, studio mode, screenshot, transition, marker) are ready.
+  'obs-audio',
+  'obs-audio-muted',
+  'obs-marker',
+  'obs-pause',
+  'obs-paused',
   'obs-record',
-  'obs-record-live',
-  'obs-record-pause',
-  'obs-record-paused',
+  'obs-record-on',
+  'obs-replay',
+  'obs-replay-on',
+  'obs-save-replay',
+  'obs-scene',
+  'obs-scene-active',
+  'obs-screenshot',
+  'obs-source',
+  'obs-source-hidden',
   'obs-stream',
-  'obs-stream-live',
+  'obs-stream-on',
+  'obs-studio',
+  'obs-studio-on',
+  'obs-transition',
+  'obs-vcam',
+  'obs-vcam-on',
   'output-cycle',
   'output-select',
   'pause',
@@ -164,12 +182,13 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.muted ? 'speaker-muted' : 'speaker';
     // Shows what is happening, as the mute pairs do: the state is the point.
     case 'obs.stream':
-      return state.live ? 'obs-stream-live' : 'obs-stream';
+      return state.live ? 'obs-stream-on' : 'obs-stream';
     case 'obs.record':
-      if (state.live && state.paused) return 'obs-record-paused';
-      return state.live ? 'obs-record-live' : 'obs-record';
+      // Paused is not recording: red would say it is.
+      if (state.live && state.paused) return 'obs-paused';
+      return state.live ? 'obs-record-on' : 'obs-record';
     case 'obs.recordPause':
-      return state.paused ? 'obs-record-paused' : 'obs-record-pause';
+      return state.paused ? 'obs-paused' : 'obs-pause';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

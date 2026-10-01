@@ -116,9 +116,13 @@ const before = changes;
 fake.setStream(true);
 check('OBS going live is pushed, not polled', await until(() => obs.cachedState().stream === 'live'));
 check('and the change is announced', changes > before);
-check('the Stream key\'s default icon is the live one', defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-live');
+check('the Stream key\'s default icon is the live one', defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-on');
+check('live, the Stream key keeps its own background: the icon carries the state', (await describeAction({}, { type: 'obs.stream' })) === null);
+fake.event('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_RECONNECTING' });
+check('reconnecting, the Stream key turns amber — a dropped stream never looks live', await until(async () => (await describeAction({}, { type: 'obs.stream' }))?.background === '#5a4a1d'));
 fake.setStream(false);
 await until(() => obs.cachedState().stream === 'stopped');
+check('off air, its own background again', (await describeAction({}, { type: 'obs.stream' })) === null);
 
 // The keys, on a real DeckSession.
 const SERIAL = 'OBS-XL';
@@ -197,10 +201,10 @@ await tap(1);
 check('Record: a press starts recording', await until(() => fake.recording && obs.cachedState().record === 'live'));
 await tap(2);
 check('Pause: a press pauses it', await until(() => obs.cachedState().recordPaused));
-check('the Record key shows paused', defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' })) === 'obs-record-paused');
-check('the Pause key shows paused', defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-record-paused');
+check('the Record key shows paused', defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' })) === 'obs-paused');
+check('the Pause key shows paused', defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-paused');
 await tap(2);
-check('Pause again: resumes, and the Pause key shows press-to-pause', await until(() => !obs.cachedState().recordPaused) && defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-record-pause');
+check('Pause again: resumes, and the Pause key shows press-to-pause', await until(() => !obs.cachedState().recordPaused) && defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-pause');
 check('a pause OBS confirmed leaves the key unmarked', failedKey(2) === null);
 
 // OBS cannot pause this recording (Recording Quality "Same as stream"): it

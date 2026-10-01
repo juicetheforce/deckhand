@@ -47,6 +47,10 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
       obs.streaming = on;
       broadcast('StreamStateChanged', { outputActive: on, outputState: on ? 'OBS_WEBSOCKET_OUTPUT_STARTED' : 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
     },
+    /** Send any event to every identified client, as OBS would. */
+    event(type, data) {
+      broadcast(type, data);
+    },
     /** Clients connected right now. */
     get open() {
       return [...sockets].filter((s) => s.identifiedAt !== undefined).length;

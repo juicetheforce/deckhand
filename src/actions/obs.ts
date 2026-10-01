@@ -12,9 +12,13 @@ import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../t
 /** How long the Stream key must be held to stop a stream. */
 export const HOLD_TO_STOP_MS = 1000;
 
-const LIVE_BACKGROUND = '#5a1d1d';
+/**
+ * The icons carry state on their own (shape and colour), so keys keep their
+ * own background — except a reconnecting stream, which has no icon yet: amber,
+ * the set's caution colour, so a dropped stream never looks live. Goes when
+ * Claude Design's reconnecting icon arrives.
+ */
 const RECONNECTING_BACKGROUND = '#5a4a1d';
-const IDLE_BACKGROUND = '#101014';
 
 /**
  * Stream keys whose press found the stream running, so their release may stop
@@ -57,7 +61,7 @@ export const stream: ActionHandler = {
   iconState: () => ({ live: obs.cachedState().stream !== 'stopped' }),
 
   async describe(): Promise<DisplayPatch | null> {
-    return { background: backgroundOf(obs.cachedState().stream) };
+    return obs.cachedState().stream === 'reconnecting' ? { background: RECONNECTING_BACKGROUND } : null;
   },
 };
 
@@ -72,11 +76,6 @@ export const record: ActionHandler = {
   },
 
   iconState: () => ({ live: obs.cachedState().record !== 'stopped', paused: obs.cachedState().recordPaused }),
-
-  async describe(): Promise<DisplayPatch | null> {
-    const state = obs.cachedState();
-    return { background: state.recordPaused ? RECONNECTING_BACKGROUND : backgroundOf(state.record) };
-  },
 };
 
 /** How long a Pause press waits for OBS to say it paused or resumed. */
@@ -116,14 +115,4 @@ export const recordPause: ActionHandler = {
   },
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),
-
-  async describe(): Promise<DisplayPatch | null> {
-    return { background: obs.cachedState().recordPaused ? RECONNECTING_BACKGROUND : IDLE_BACKGROUND };
-  },
 };
-
-function backgroundOf(phase: obs.OutputPhase): string {
-  if (phase === 'live' || phase === 'starting' || phase === 'stopping') return LIVE_BACKGROUND;
-  if (phase === 'reconnecting') return RECONNECTING_BACKGROUND;
-  return IDLE_BACKGROUND;
-}
