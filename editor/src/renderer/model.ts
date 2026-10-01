@@ -605,6 +605,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
   'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
+  // Nothing to set: what they act on is OBS itself.
+  'obs.stream': [],
+  'obs.record': [],
+  'obs.recordPause': [],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */

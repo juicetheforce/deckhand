@@ -187,7 +187,8 @@ if (r && !r.error) {
   });
   check("a key with an action and no icon draws its default in the grid; library rows draw theirs, all loaded", () => {
     assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
-    assert.equal(r.libraryIcons.length, 21, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    assert.equal(r.libraryIcons.length, 24, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    assert.deepEqual(r.libraryIcons.filter((n) => n.startsWith('obs-')), ['obs-stream', 'obs-record', 'obs-record-paused'], 'the OBS keys draw their off-air faces in the library');
     assert.ok(r.libraryIcons.includes('toggle-off'), 'Toggle should draw the up half of its pair');
     assert.ok(r.libraryIcons.includes('app-launch') && !r.libraryIcons.includes('app-launch-unset'), 'Open app shows its full icon in the library');
     assert.ok(r.libraryIcons.includes('press-release') && r.libraryIcons.includes('now-playing'), JSON.stringify(r.libraryIcons));
