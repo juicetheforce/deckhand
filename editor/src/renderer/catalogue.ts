@@ -77,6 +77,9 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'obs.stream', name: 'Stream', description: 'Go live in OBS; hold to stop', aliases: ['broadcast', 'twitch', 'youtube', 'streaming', 'on air'] },
       { type: 'obs.record', name: 'Record', description: 'Start or stop recording in OBS', aliases: ['capture', 'video'] },
       { type: 'obs.recordPause', name: 'Pause recording', description: 'Pause or resume an OBS recording, not a stream', aliases: ['break'] },
+      { type: 'obs.scene', name: 'Scene', description: 'Switch OBS to a scene; lit while it is on air', aliases: ['camera', 'program', 'brb', 'starting soon'] },
+      { type: 'obs.mute', name: 'Mute input', description: "Mute or unmute one of OBS's audio inputs", aliases: ['mic', 'microphone', 'desktop audio', 'stream audio'] },
+      { type: 'obs.source', name: 'Show/hide source', description: 'Show or hide a source in an OBS scene', aliases: ['visibility', 'webcam', 'overlay', 'toggle', 'item'] },
     ],
   },
   {

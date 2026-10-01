@@ -15,7 +15,7 @@ import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as obsService from './services/obs.js';
 import { KeyFailures } from './key-failures.js';
-import type { Config } from './types.js';
+import type { ActionDef, Config } from './types.js';
 
 /**
  * Decks are found by udev hotplug events (services/hotplug.ts). This poll is
@@ -62,10 +62,25 @@ let events: ReturnType<typeof eventNotifiers> | null = null;
  * while a shown page has an OBS key (services/obs.ts). A scan of the shown
  * pages' keys; no timer.
  */
+const syncServiceDemand = () => {
+  const shown = [...sessions.values()].flatMap((s) => s.shownActions('obs.'));
+  obsService.setWanted(shown.length > 0, obsNeedsOf(shown));
+};
+
+/** What the shown OBS keys name: Mute keys' inputs, Source keys' scene items. */
+function obsNeedsOf(actions: ActionDef[]): obsService.ObsNeeds {
+  const named = (v: unknown): v is string => typeof v === 'string' && v !== '';
+  const inputs = new Set<string>();
+  const items = new Map<string, { scene: string; source: string }>();
+  for (const a of actions) {
+    if (a.type === 'obs.mute' && named(a.input)) inputs.add(a.input);
+    if (a.type === 'obs.source' && named(a.scene) && named(a.source)) items.set(obsService.itemKey(a.scene, a.source), { scene: a.scene, source: a.source });
+  }
+  return { inputs: [...inputs], items: [...items.values()] };
+}
+
 /** Not-set-up messages already notified (deck.ts settle): told once daemon-wide, until the setup changes. */
 const notSetUpTold = new Set<string>();
-
-const syncServiceDemand = () => obsService.setWanted([...sessions.values()].some((s) => s.shows('obs.')));
 const notifyState = () => {
   syncServiceDemand();
   events?.state();
@@ -451,7 +466,7 @@ async function main(): Promise<void> {
   const stopObs = obsService.subscribe(() => {
     // Set up again (or connecting at all): the next not-set-up press is told again.
     if (obsService.cachedState().connection !== 'not-set-up') notSetUpTold.clear();
-    sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause']));
+    sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source']));
     events?.obs();
   });
 

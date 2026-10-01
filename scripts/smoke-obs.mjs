@@ -118,8 +118,12 @@ check('nothing connects while no key wants OBS', fake.connections === 0 && obs.c
 
 obs.setWanted(true);
 check('a key wanting OBS connects and identifies', await until(() => obs.cachedState().connection === 'connected'));
-check('it subscribes to General and Outputs only — never the volume meters', fake.eventSubscriptions === ((1 << 0) | (1 << 6)));
-check('its first requests seed the state: stream and record status', JSON.stringify(types(fake).slice(0, 2).sort()) === JSON.stringify(['GetRecordStatus', 'GetStreamStatus']));
+check(
+  'it subscribes to General, Scenes, Inputs, Outputs and SceneItems — never the volume meters or any high-volume category',
+  fake.eventSubscriptions === ((1 << 0) | (1 << 2) | (1 << 3) | (1 << 6) | (1 << 7)) && (fake.eventSubscriptions & 0xf0000) === 0,
+);
+check('and learns the program scene on connecting', obs.cachedState().programScene === 'Starting');
+check('its first requests seed the state: stream, record and program scene', JSON.stringify(types(fake).slice(0, 3).sort()) === JSON.stringify(['GetCurrentProgramScene', 'GetRecordStatus', 'GetStreamStatus']));
 
 // OBS goes live by itself (its own UI): the event alone moves the face.
 const before = changes;
@@ -146,7 +150,17 @@ const CONFIG = {
         [SERIAL]: {
           startPage: 'main',
           pages: {
-            main: { name: 'Main', buttons: { 0: { action: { type: 'obs.stream' } }, 1: { action: { type: 'obs.record' } }, 2: { action: { type: 'obs.recordPause' } } } },
+            main: {
+              name: 'Main',
+              buttons: {
+                0: { action: { type: 'obs.stream' } },
+                1: { action: { type: 'obs.record' } },
+                2: { action: { type: 'obs.recordPause' } },
+                3: { action: { type: 'obs.scene', scene: 'Gameplay' } },
+                4: { action: { type: 'obs.mute', input: 'Mic/Aux' } },
+                5: { action: { type: 'obs.source', scene: 'Gameplay', source: 'Webcam' } },
+              },
+            },
             other: { name: 'Other', buttons: {} },
           },
         },
@@ -232,6 +246,69 @@ check('Record again: stops, and paused clears', await until(() => !fake.recordin
 await tap(2);
 check('Pause with nothing recording: the key is marked, saying so', await until(() => /Nothing is recording/.test(failedKey(2) ?? '')));
 check('and nothing was asked of OBS but whether it records', fake.requests.at(-1)?.type === 'GetRecordStatus');
+
+// --- Scene, Mute and Source: what the shown keys name, asked once, then fed by events ---
+const face = (action) => defaultIconFor(action, iconStateOf(action));
+const SCENE_KEY = { type: 'obs.scene', scene: 'Gameplay' };
+const MUTE_KEY = { type: 'obs.mute', input: 'Mic/Aux' };
+const SOURCE_KEY = { type: 'obs.source', scene: 'Gameplay', source: 'Webcam' };
+const WEBCAM = obs.itemKey('Gameplay', 'Webcam');
+mark = fake.requests.length;
+obs.setWanted(true, { inputs: ['Mic/Aux'], items: [{ scene: 'Gameplay', source: 'Webcam' }] });
+check('a newly shown input and scene item are asked for once', await until(() => obs.cachedState().inputMuted['Mic/Aux'] === false && obs.cachedState().itemEnabled[WEBCAM] === true));
+check('one request for the input, two for the item (its id, then its state)', JSON.stringify(requestsAfter(mark).sort()) === JSON.stringify(['GetInputMute', 'GetSceneItemEnabled', 'GetSceneItemId']));
+mark = fake.requests.length;
+obs.setWanted(true, { inputs: ['Mic/Aux'], items: [{ scene: 'Gameplay', source: 'Webcam' }] });
+await sleep(200);
+check('the same keys shown again: nothing asked again', fake.requests.length === mark);
+
+check('Scene: not the program scene, its resting icon', face(SCENE_KEY) === 'obs-scene');
+await tap(3);
+check('Scene: a press switches the program scene', await until(() => fake.program === 'Gameplay'));
+check("and its key lights, from OBS's event", await until(() => face(SCENE_KEY) === 'obs-scene-active'));
+fake.setProgram('BRB');
+check('OBS switching scene by itself: the key goes out', await until(() => face(SCENE_KEY) === 'obs-scene'));
+
+await tap(4);
+check('Mute: a press mutes the input', await until(() => fake.inputs[0].muted === true));
+check("and shows muted, from OBS's event", await until(() => face(MUTE_KEY) === 'obs-audio-muted'));
+fake.setMuted('Mic/Aux', false);
+check('unmuted in OBS: the key follows', await until(() => face(MUTE_KEY) === 'obs-audio'));
+fake.setMuted('Desktop Audio', true);
+await sleep(150);
+check('an input no key names is not kept', !('Desktop Audio' in obs.cachedState().inputMuted));
+
+await tap(5);
+check('Source: a press hides it', await until(() => fake.items.Gameplay[0].enabled === false));
+check('and shows hidden', await until(() => face(SOURCE_KEY) === 'obs-source-hidden'));
+fake.setItemEnabled('Gameplay', 'Webcam', true);
+check('shown again in OBS: the key follows', await until(() => face(SOURCE_KEY) === 'obs-source'));
+fake.setItemEnabled('Starting', 'Countdown', false);
+await sleep(150);
+check('an item with the same id in another scene does not move the key', obs.cachedState().itemEnabled[WEBCAM] === true);
+
+// Renamed in OBS: the key names the old name, so it is forgotten, and a press says what to do.
+fake.renameInput('Mic/Aux', 'Mic');
+check('an input renamed in OBS: its key forgets the old state', await until(() => !('Mic/Aux' in obs.cachedState().inputMuted)));
+await tap(4);
+check('and a press says what is missing, and what to do', await until(() => /no input named "Mic\/Aux".*Choose it again/.test(failedKey(4) ?? '')));
+fake.renameInput('Mic', 'Mic/Aux');
+check('renamed back: known again, by the event alone', await until(() => obs.cachedState().inputMuted['Mic/Aux'] === false));
+await tap(4);
+await until(() => failedKey(4) === null);
+fake.setMuted('Mic/Aux', false);
+
+// The pickers.
+const listed = async (kind, scene) => (await client.request('obs.list', { kind, ...(scene ? { scene } : {}) })).result ?? {};
+check("obs.list scenes: in OBS's order, top first", JSON.stringify((await listed('scenes')).names) === JSON.stringify(['Starting', 'Gameplay', 'BRB']));
+check('obs.list inputs: audio inputs only, by name', JSON.stringify((await listed('inputs')).names) === JSON.stringify(['Desktop Audio', 'Mic/Aux']));
+check("obs.list sources: the scene's, top first", JSON.stringify((await listed('sources', 'Gameplay')).names) === JSON.stringify(['Webcam', 'Game capture']));
+check('obs.list sources of a scene OBS has not got: not-found', (await listed('sources', 'Nope')).reason === 'not-found');
+check('obs.list without a kind is refused', (await client.request('obs.list', {})).ok === false);
+
+// Not shown any more: forgotten.
+obs.setWanted(true, { inputs: [], items: [] });
+check('keys no longer shown: what they named is forgotten', Object.keys(obs.cachedState().inputMuted).length === 0 && Object.keys(obs.cachedState().itemEnabled).length === 0);
 
 // No secret on the socket.
 const status = await client.request('obs.status', {});
@@ -383,6 +460,7 @@ const DAEMON_CONFIG = {
                 1: { action: { type: 'page', to: 'main' } },
                 2: { action: { type: 'page', to: 'nowhere' } },
                 3: { action: { type: 'obs.recordPause' } },
+                5: { action: { type: 'obs.mute', input: 'Desktop Audio' } },
               },
             },
           },
@@ -450,6 +528,10 @@ check('daemon: no OBS key shown, no connection to OBS at all', fake3.connections
 
 await goTo('live');
 check('daemon: a page with an OBS key shown connects', await until(() => fake3.open === 1));
+check(
+  "daemon: a shown Mute key's input is asked for, once",
+  await until(() => fake3.requests.filter((r) => r.type === 'GetInputMute' && r.data?.inputName === 'Desktop Audio').length === 1),
+);
 const shown = await ctl.request('obs.status', {});
 check('daemon: obs.status says connected', shown.ok && shown.result.connection === 'connected');
 

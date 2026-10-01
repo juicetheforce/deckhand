@@ -127,3 +127,12 @@ export interface ObsStatus {
 export type ObsAttempt =
   | { ok: true; obsVersion: string }
   | { ok: false; reason: 'not-set-up' | 'not-running' | 'server-off' | 'unreachable' | 'auth' | 'no-password' | 'protocol'; message: string };
+
+/**
+ * The "obs.list" result: what an OBS key's picker offers — scenes, audio
+ * inputs, or one scene's sources — in OBS's own order where it has one. Not
+ * reachable is an answer, not an error: the picker says "Start OBS to choose".
+ */
+export type ObsList =
+  | { ok: true; names: string[] }
+  | { ok: false; reason: 'not-set-up' | 'unavailable' | 'auth' | 'not-found' | 'other'; message: string };

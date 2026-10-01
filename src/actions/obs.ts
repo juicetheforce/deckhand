@@ -125,3 +125,73 @@ export const recordPause: ActionHandler = {
 
   describe: async () => (notSetUp() ? UNSET : null),
 };
+
+const CHOOSE_AGAIN = 'renamed or deleted in OBS? Choose it again in the editor';
+const named = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+
+/**
+ * obs.scene — switch OBS's program scene.
+ *
+ *   { "type": "obs.scene", "scene": "Gameplay" }
+ *
+ * Lit while it is the program scene, from OBS's CurrentProgramSceneChanged.
+ * **Known gap (Ryan, 2026-10-01)**: in studio mode it switches program
+ * directly, skipping the preview that studio mode exists for; revisit if a
+ * studio-mode user asks.
+ */
+export const scene: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const sceneName = named(params.scene);
+    if (!sceneName) throw new Error('no scene chosen');
+    await obs.request('SetCurrentProgramScene', { sceneName }, `OBS has no scene named "${sceneName}": ${CHOOSE_AGAIN}`);
+  },
+
+  iconState: (params) => ({ active: named(params.scene) !== null && obs.cachedState().programScene === params.scene }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
+
+/**
+ * obs.mute — mute and unmute one of OBS's audio inputs (a mic, desktop audio).
+ *
+ *   { "type": "obs.mute", "input": "Mic/Aux" }
+ *
+ * Its own state, not the default device's: that is audio.micMute. Shows
+ * muted from OBS's InputMuteStateChanged.
+ */
+export const mute: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const inputName = named(params.input);
+    if (!inputName) throw new Error('no input chosen');
+    await obs.request('ToggleInputMute', { inputName }, `OBS has no input named "${inputName}": ${CHOOSE_AGAIN}`);
+  },
+
+  iconState: (params) => ({ muted: obs.cachedState().inputMuted[String(params.input)] === true }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
+
+/**
+ * obs.source — show and hide a source in a scene (a scene item).
+ *
+ *   { "type": "obs.source", "scene": "Gameplay", "source": "Webcam" }
+ *
+ * Named by scene and source, never by OBS's item id, so the config reads as
+ * what it is; the id is looked up on the press. A source in the scene twice:
+ * the first. Shows hidden from OBS's SceneItemEnableStateChanged.
+ */
+export const source: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const sceneName = named(params.scene);
+    const sourceName = named(params.source);
+    if (!sceneName || !sourceName) throw new Error('no scene and source chosen');
+    const missing = `OBS has no source "${sourceName}" in the scene "${sceneName}": ${CHOOSE_AGAIN}`;
+    const { sceneItemId } = await obs.request('GetSceneItemId', { sceneName, sourceName }, missing);
+    const { sceneItemEnabled } = await obs.request('GetSceneItemEnabled', { sceneName, sceneItemId }, missing);
+    await obs.request('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: sceneItemEnabled !== true }, missing);
+  },
+
+  iconState: (params) => ({ hidden: obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};

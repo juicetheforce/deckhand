@@ -630,6 +630,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'obs.stream': [],
   'obs.record': [],
   'obs.recordPause': [],
+  // Picked from OBS's own lists, by name (inspector/ObsForms.tsx).
+  'obs.scene': ['scene'],
+  'obs.mute': ['input'],
+  'obs.source': ['scene', 'source'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -727,6 +731,12 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
     // No `matches` form for audio.cycleSource: it has only ever taken `devices`.
     case 'audio.cycleSource':
       return !(Array.isArray(action.devices) && action.devices.length >= 2);
+    case 'obs.scene':
+      return !nonEmpty(action.scene);
+    case 'obs.mute':
+      return !nonEmpty(action.input);
+    case 'obs.source':
+      return !nonEmpty(action.scene) || !nonEmpty(action.source);
     default:
       return false;
   }

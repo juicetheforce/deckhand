@@ -41,6 +41,9 @@ export const registry: Record<string, ActionHandler> = {
   'obs.stream': obs.stream,
   'obs.record': obs.record,
   'obs.recordPause': obs.recordPause,
+  'obs.scene': obs.scene,
+  'obs.mute': obs.mute,
+  'obs.source': obs.source,
 };
 
 /**

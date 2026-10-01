@@ -49,10 +49,15 @@ export class ObsError extends Error {
   constructor(
     readonly kind: ObsFailure,
     message: string,
+    /** A refused request's status code (requestStatus.code): 600 is RESOURCE_NOT_FOUND. */
+    readonly code?: number,
   ) {
     super(message);
   }
 }
+
+/** obs-websocket's RequestStatus::ResourceNotFound: no scene, input or scene item by that name. */
+export const RESOURCE_NOT_FOUND = 600;
 
 const sha256base64 = (text: string) => createHash('sha256').update(text).digest('base64');
 
@@ -170,7 +175,7 @@ export class ObsClient {
         clearTimeout(pending.timer);
         const status = message.d.requestStatus as { result?: boolean; code?: number; comment?: string } | undefined;
         if (status?.result) pending.resolve((message.d.responseData as Record<string, unknown>) ?? {});
-        else pending.reject(new ObsError('protocol', status?.comment ?? `OBS refused ${String(message.d.requestType)} (code ${status?.code ?? '?'})`));
+        else pending.reject(new ObsError('protocol', status?.comment ?? `OBS refused ${String(message.d.requestType)} (code ${status?.code ?? '?'})`, status?.code));
       }
     });
     this.ws.addEventListener('close', (event) => {

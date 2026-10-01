@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsStatus, StatusResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -187,6 +187,12 @@ export interface DeckhandBridge {
    * never types into the editor itself.
    */
   testRun(serial: string, action: ActionDef): Promise<DaemonResult>;
+  /**
+   * What an OBS key's picker offers, asked of OBS now (editor window only):
+   * scenes, audio inputs, or one scene's sources. OBS not reachable is an
+   * answer — the picker says "Start OBS to choose".
+   */
+  obsList(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList>;
   /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
   refreshApps(): Promise<void>;
 

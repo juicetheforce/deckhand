@@ -10,6 +10,7 @@ import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
+import type { ObsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
@@ -775,6 +776,16 @@ function registerIpc(): void {
       return { ok: false, code: 'not_allowed', error: 'not allowed' };
     }
     return testRun(serial, a as ActionDef);
+  });
+  ipcMain.handle('obsList', async (event, kind: unknown, scene: unknown): Promise<ObsList> => {
+    if (!fromOurWindow(event) || (kind !== 'scenes' && kind !== 'inputs' && kind !== 'sources')) return { ok: false, reason: 'other', message: 'not allowed' };
+    if (kind === 'sources' && (typeof scene !== 'string' || scene === '')) return { ok: false, reason: 'other', message: 'Choose a scene first' };
+    try {
+      return await daemon.obsList(kind, kind === 'sources' ? (scene as string) : undefined);
+    } catch (err) {
+      // No daemon, or one from before OBS: the picker says why.
+      return { ok: false, reason: 'other', message: (err as Error).message };
+    }
   });
   ipcMain.handle('refreshApps', async (event) => {
     if (fromOurWindow(event)) await daemon.refreshApps();

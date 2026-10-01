@@ -311,6 +311,18 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
     },
 
     /**
+     * What an OBS key's picker offers: `kind` "scenes", "inputs" (audio ones)
+     * or "sources" (of `scene`). Connects as a press does; OBS not there is
+     * an answer (ok false, a reason), not an error.
+     */
+    async 'obs.list'(args) {
+      const kind = args.kind;
+      if (kind !== 'scenes' && kind !== 'inputs' && kind !== 'sources') throw new ControlError('bad_request', '"kind" must be "scenes", "inputs" or "sources"');
+      if (kind === 'sources' && (typeof args.scene !== 'string' || args.scene === '')) throw new ControlError('bad_request', '"scene" must name a scene');
+      return obsService.list(kind, kind === 'sources' ? (args.scene as string) : undefined);
+    },
+
+    /**
      * Remove OBS's saved connection: disconnects at once and deletes its
      * credentials. No key is touched — OBS keys stay where they are, show
      * that OBS is not set up, and come back when it is set up again.

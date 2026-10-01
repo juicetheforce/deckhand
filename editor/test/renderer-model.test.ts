@@ -117,7 +117,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.record', 'obs.recordPause', 'obs.stream', 'page', 'profile', 'text', 'toggle']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle']);
 });
 
 console.log('the navigation guard');
@@ -178,7 +178,7 @@ await check('search matches aliases, not just the names the daemon uses', () => 
 
 await check('deliberately ambiguous words find every action they could mean', () => {
   assert.deepEqual(names('macro'), ['Multi action', 'Type text']);
-  assert.deepEqual(names('mute'), ['Mic mute', 'Mute output']);
+  assert.deepEqual(names('mute'), ['Mic mute', 'Mute input', 'Mute output']);
 });
 
 await check('search is case-insensitive, an empty query matches nothing, and player names are not aliases', () => {

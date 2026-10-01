@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -121,6 +121,11 @@ export class DaemonClient {
   /** Clear one key's failure mark (failure.clear). */
   async clearFailure(serial: string, profile: string, page: string, key: number): Promise<void> {
     await this.request('failure.clear', { serial, profile, page, key });
+  }
+
+  /** What an OBS key's picker offers (obs.list): scenes, audio inputs, or one scene's sources. */
+  async obsList(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList> {
+    return (await this.request('obs.list', kind === 'sources' ? { kind, scene } : { kind })) as ObsList;
   }
 
   /** Settings' Test connection: the form's values, saved or not; changes nothing. */

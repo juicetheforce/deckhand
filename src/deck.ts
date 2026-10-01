@@ -575,8 +575,13 @@ export class DeckSession implements DeckHandle {
    * counted — they have no face to keep current, and a press connects anyway.
    */
   shows(prefix: string): boolean {
-    return Object.values(this.currentButtons()).some(
-      (button) => button.action?.type.startsWith(prefix) === true || button.onRelease?.type.startsWith(prefix) === true,
+    return this.shownActions(prefix).length > 0;
+  }
+
+  /** The actions of this type family on the shown page, press and release: what services/obs.ts is told the keys name. */
+  shownActions(prefix: string): ActionDef[] {
+    return Object.values(this.currentButtons()).flatMap((button) =>
+      [button.action, button.onRelease].filter((a): a is ActionDef => a?.type.startsWith(prefix) === true),
     );
   }
 

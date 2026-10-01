@@ -87,7 +87,7 @@ export type BuiltinIcon = (typeof BUILTIN_ICONS)[number];
 
 /** What a state-pair default needs to know: read from the daemon's caches, never from a subprocess or D-Bus call. */
 export interface IconState {
-  /** audio.micMute: the default input is muted. audio.mute: the default output is muted. */
+  /** audio.micMute: the default input is muted. audio.mute: the default output is muted. obs.mute: its OBS input is muted. */
   muted?: boolean;
   /** media.control playpause: the chosen player is playing. */
   playing?: boolean;
@@ -99,6 +99,10 @@ export interface IconState {
   live?: boolean;
   /** obs.record, obs.recordPause: the recording is paused. */
   paused?: boolean;
+  /** obs.scene: its scene is OBS's program scene. */
+  active?: boolean;
+  /** obs.source: its source is hidden in its scene. */
+  hidden?: boolean;
 }
 
 const MEDIA_METHODS: Record<string, BuiltinIcon> = {
@@ -189,6 +193,14 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.live ? 'obs-record-on' : 'obs-record';
     case 'obs.recordPause':
       return state.paused ? 'obs-paused' : 'obs-pause';
+    case 'obs.scene':
+      return state.active ? 'obs-scene-active' : 'obs-scene';
+    // One icon per type: several scene, mute or source keys look alike until
+    // the person names them — no default label (Ryan, 2026-10-01).
+    case 'obs.mute':
+      return state.muted ? 'obs-audio-muted' : 'obs-audio';
+    case 'obs.source':
+      return state.hidden ? 'obs-source-hidden' : 'obs-source';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

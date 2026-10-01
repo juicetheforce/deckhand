@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import { ActionNeeded, NotSetUp } from '../action-error.js';
 import { obsCredentials, type ObsCredentials } from '../credentials.js';
-import type { ObsAttempt, ObsConnection, ObsOutputPhase } from '../control/protocol.js';
-import { OBS_EVENTS, ObsClient, ObsError } from './obs-client.js';
+import type { ObsAttempt, ObsConnection, ObsList, ObsOutputPhase } from '../control/protocol.js';
+import { OBS_EVENTS, ObsClient, ObsError, RESOURCE_NOT_FOUND } from './obs-client.js';
 
 /**
  * OBS Studio, through obs-websocket: the connection and the state OBS keys
@@ -35,17 +35,46 @@ export interface ObsState {
   stream: OutputPhase;
   record: OutputPhase;
   recordPaused: boolean;
+  /** The program scene's name; null when not known (not connected). */
+  programScene: string | null;
+  /** Whether each input a shown Mute key names is muted, by input name. Absent: not known, or OBS has no such input. */
+  inputMuted: Record<string, boolean>;
+  /** Whether each scene item a shown Source key names is shown, by itemKey(scene, source). Absent: not known, or not there. */
+  itemEnabled: Record<string, boolean>;
 }
 
-const EVENTS = OBS_EVENTS.General | OBS_EVENTS.Outputs;
+/**
+ * What the shown keys name in OBS, beyond what every OBS key shows: the
+ * inputs Mute keys toggle and the scene items Source keys show and hide. Only
+ * these are asked for and kept — once each, when they are first shown, and
+ * then kept current by OBS's events. Never polled.
+ */
+export interface ObsNeeds {
+  inputs: string[];
+  items: Array<{ scene: string; source: string }>;
+}
+
+const NO_NEEDS: ObsNeeds = { inputs: [], items: [] };
+
+/** A scene item as the state keys it: OBS's events name the scene, the keys name the scene and the source. */
+export const itemKey = (scene: string, source: string) => `${scene}\u0000${source}`;
+
+// Low-volume categories only — never the volume meters or the transform
+// stream (high-volume, outside "All"). Inputs' busiest event is
+// InputVolumeChanged while someone drags a fader: parsed and ignored.
+const EVENTS = OBS_EVENTS.General | OBS_EVENTS.Outputs | OBS_EVENTS.Scenes | OBS_EVENTS.Inputs | OBS_EVENTS.SceneItems;
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 4455;
 
 /** What a press of an OBS key says while OBS is not set up. */
 export const NOT_SET_UP_MESSAGE = "OBS is not set up: connect it in Deckhand's Settings › Integrations";
-const OFF_AIR = { stream: 'stopped', record: 'stopped', recordPaused: false } as const;
+/** With no connection, nothing OBS showed is known any more. */
+const NOTHING_KNOWN = { stream: 'stopped', record: 'stopped', recordPaused: false, programScene: null, inputMuted: {}, itemEnabled: {} } as const;
 
-let state: ObsState = { connection: 'idle', stream: 'stopped', record: 'stopped', recordPaused: false };
+let state: ObsState = { connection: 'idle', ...NOTHING_KNOWN };
+let needs: ObsNeeds = NO_NEEDS;
+/** Each needed scene item's id in its scene: OBS's enable events carry the scene and the id, not the source. */
+const itemIds = new Map<string, number>();
 let client: ObsClient | null = null;
 let connecting: Promise<ObsClient> | null = null;
 let wanted = false;
@@ -77,11 +106,21 @@ function announce(): void {
 }
 
 /**
- * Whether a page some deck shows has an OBS key. Shown: connect if not
- * connected. Not shown: let go of the connection.
+ * Whether a page some deck shows has an OBS key, and what those keys name.
+ * Shown: connect if not connected. Not shown: let go of the connection. A
+ * newly shown input or scene item is asked for once, now.
  */
-export function setWanted(want: boolean): void {
-  if (want === wanted) return;
+export function setWanted(want: boolean, shown: ObsNeeds = NO_NEEDS): void {
+  const added: ObsNeeds = {
+    inputs: shown.inputs.filter((i) => !needs.inputs.includes(i)),
+    items: shown.items.filter((it) => !needs.items.some((n) => itemKey(n.scene, n.source) === itemKey(it.scene, it.source))),
+  };
+  needs = shown;
+  forgetUnneeded();
+  if (want === wanted) {
+    if (client?.isOpen && (added.inputs.length > 0 || added.items.length > 0)) void seed(client, added).catch(() => undefined);
+    return;
+  }
   wanted = want;
   if (want) {
     if (state.connection !== 'auth-failed') void ensureConnected().catch(() => undefined);
@@ -209,8 +248,8 @@ const urlOf = (host: string, port: number) => `ws://${host.includes(':') ? `[${h
  * Send a request for a key press, connecting first if need be. Rejects with
  * a message fit for the key's failure badge.
  */
-export async function request(requestType: string, requestData?: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return pressWith(async (connected) => connected.request(requestType, requestData));
+export async function request(requestType: string, requestData?: Record<string, unknown>, notFound?: string): Promise<Record<string, unknown>> {
+  return pressWith(async (connected) => connected.request(requestType, requestData), notFound);
 }
 
 /**
@@ -254,16 +293,66 @@ export async function requestAndConfirm(
   });
 }
 
-async function pressWith<T>(run: (connected: ObsClient) => Promise<T>): Promise<T> {
+/**
+ * `notFound`: what to say when OBS has nothing by the name the key gives
+ * (RESOURCE_NOT_FOUND) — a scene or input renamed or deleted in OBS, which
+ * the person can fix, so it is notified.
+ */
+async function pressWith<T>(run: (connected: ObsClient) => Promise<T>, notFound?: string): Promise<T> {
   return holding(async () => {
     try {
       return await run(await ensureConnected());
     } catch (err) {
       if (err instanceof NotSetUp) throw err;
+      if (notFound && err instanceof ObsError && err.code === RESOURCE_NOT_FOUND) throw new ActionNeeded(notFound);
       // Not running, or the password: the message says what to do. A request
       // OBS itself refused is OBS's business, and only badges the key.
       const needed = err instanceof ObsError && (err.kind === 'unavailable' || err.kind === 'auth');
       throw needed ? new ActionNeeded(describeFailure(err)) : new Error(describeFailure(err));
+    }
+  });
+}
+
+/** libobs' OBS_SOURCE_AUDIO output flag (obs-source.h): an input with audio, which a Mute key can mute. */
+const OBS_SOURCE_AUDIO = 1 << 1;
+
+/**
+ * What an OBS key's picker offers, asked of OBS now — connecting as a press
+ * does, and letting go after if no key is shown. Scenes and a scene's sources
+ * in the order OBS's own lists show them (highest index first — `[inference]`
+ * from obs-websocket's sceneIndex, not checked against OBS's window); audio
+ * inputs only, by name.
+ */
+export async function list(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList> {
+  return holding(async () => {
+    let connected: ObsClient;
+    try {
+      connected = await ensureConnected();
+    } catch (err) {
+      if (err instanceof NotSetUp) return { ok: false, reason: 'not-set-up', message: err.message };
+      if (err instanceof ObsError && err.kind === 'auth') return { ok: false, reason: 'auth', message: describeFailure(err) };
+      return { ok: false, reason: 'unavailable', message: 'Start OBS to choose' };
+    }
+    const byIndex = (index: string) => (a: Record<string, unknown>, b: Record<string, unknown>) => Number(b[index] ?? 0) - Number(a[index] ?? 0);
+    const records = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => typeof v === 'object' && v !== null) : []);
+    const names = (items: Record<string, unknown>[], field: string) => [...new Set(items.map((i) => i[field]).filter((n): n is string => typeof n === 'string'))];
+    try {
+      if (kind === 'scenes') {
+        const { scenes } = await connected.request('GetSceneList');
+        return { ok: true, names: names(records(scenes).sort(byIndex('sceneIndex')), 'sceneName') };
+      }
+      if (kind === 'inputs') {
+        const { inputs } = await connected.request('GetInputList');
+        // inputKindCaps since obs-websocket 5.? — without it, every input is offered.
+        const audio = records(inputs).filter((i) => typeof i.inputKindCaps !== 'number' || (i.inputKindCaps & OBS_SOURCE_AUDIO) !== 0);
+        return { ok: true, names: names(audio, 'inputName').sort((a, b) => a.localeCompare(b)) };
+      }
+      if (!scene) return { ok: false, reason: 'other', message: 'Choose a scene first' };
+      const { sceneItems } = await connected.request('GetSceneItemList', { sceneName: scene });
+      return { ok: true, names: names(records(sceneItems).sort(byIndex('sceneItemIndex')), 'sourceName') };
+    } catch (err) {
+      if (err instanceof ObsError && err.code === RESOURCE_NOT_FOUND) return { ok: false, reason: 'not-found', message: `OBS has no scene named "${scene}"` };
+      return { ok: false, reason: err instanceof ObsError && err.kind === 'unavailable' ? 'unavailable' : 'other', message: (err as Error).message };
     }
   });
 }
@@ -300,11 +389,11 @@ async function connect(): Promise<ObsClient> {
   // Read first, and outside the try: not set up is not OBS being unavailable,
   // and the 60-second scan must not retry it (retry() only retries unavailable).
   const saved = await obsCredentials().catch((err: Error) => {
-    update({ connection: 'unavailable', ...OFF_AIR });
+    update({ connection: 'unavailable', ...NOTHING_KNOWN });
     throw err;
   });
   if (!saved) {
-    update({ connection: 'not-set-up', ...OFF_AIR });
+    update({ connection: 'not-set-up', ...NOTHING_KNOWN });
     throw new NotSetUp(NOT_SET_UP_MESSAGE);
   }
   update({ connection: 'connecting' });
@@ -321,25 +410,32 @@ async function connect(): Promise<ObsClient> {
         if (client !== opened) return;
         client = null;
         // Gone: nothing it showed is known any more.
-        update({ connection: 'unavailable', stream: 'stopped', record: 'stopped', recordPaused: false });
+        itemIds.clear();
+        update({ connection: 'unavailable', ...NOTHING_KNOWN });
       },
     });
   } catch (err) {
     const auth = err instanceof ObsError && err.kind === 'auth';
-    update({ connection: auth ? 'auth-failed' : 'unavailable', stream: 'stopped', record: 'stopped', recordPaused: false });
+    update({ connection: auth ? 'auth-failed' : 'unavailable', ...NOTHING_KNOWN });
     if (auth) console.error(`[obs] ${(err as Error).message}`);
     throw err;
   }
   client = opened;
   console.log(`[obs] connected to OBS ${opened.obsVersion}`);
   try {
-    const [stream, record] = await Promise.all([opened.request('GetStreamStatus'), opened.request('GetRecordStatus')]);
+    const [stream, record, scene] = await Promise.all([
+      opened.request('GetStreamStatus'),
+      opened.request('GetRecordStatus'),
+      opened.request('GetCurrentProgramScene'),
+    ]);
     update({
       connection: 'connected',
       stream: stream.outputReconnecting === true ? 'reconnecting' : stream.outputActive === true ? 'live' : 'stopped',
       record: record.outputActive === true ? 'live' : 'stopped',
       recordPaused: record.outputPaused === true,
+      programScene: programSceneOf(scene),
     });
+    await seed(opened, needs);
   } catch (err) {
     opened.close();
     throw err;
@@ -354,7 +450,8 @@ function disconnect(): void {
   client = null;
   open?.close();
   if (state.connection === 'connected' || state.connection === 'connecting') {
-    update({ connection: 'idle', stream: 'stopped', record: 'stopped', recordPaused: false });
+    itemIds.clear();
+    update({ connection: 'idle', ...NOTHING_KNOWN });
   }
 }
 
@@ -379,6 +476,74 @@ export function phaseOf(outputState: unknown, current: OutputPhase): OutputPhase
   }
 }
 
+/** GetCurrentProgramScene's answer: `sceneName` since 5.?, `currentProgramSceneName` before (deprecated, still sent). */
+function programSceneOf(data: Record<string, unknown>): string | null {
+  const name = data.sceneName ?? data.currentProgramSceneName;
+  return typeof name === 'string' ? name : null;
+}
+
+/** Forget what no shown key names any more. */
+function forgetUnneeded(): void {
+  const inputs = Object.fromEntries(Object.entries(state.inputMuted).filter(([name]) => needs.inputs.includes(name)));
+  const wantedItems = new Set(needs.items.map((it) => itemKey(it.scene, it.source)));
+  const items = Object.fromEntries(Object.entries(state.itemEnabled).filter(([key]) => wantedItems.has(key)));
+  for (const key of itemIds.keys()) if (!wantedItems.has(key)) itemIds.delete(key);
+  update({ inputMuted: inputs, itemEnabled: items });
+}
+
+/**
+ * Ask OBS for these inputs' mute states and these items' visibility, once:
+ * when first shown, on connecting, and when OBS renames, adds or removes
+ * something a key names. One request per input, two per item (its id, then
+ * its state). One OBS has no longer is forgotten — the key shows its resting
+ * face, and a press says what is missing.
+ */
+async function seed(connected: ObsClient, which: ObsNeeds): Promise<void> {
+  const muted = await Promise.all(
+    which.inputs.map((inputName) =>
+      connected.request('GetInputMute', { inputName }).then(
+        (r) => [inputName, r.inputMuted === true] as const,
+        () => [inputName, null] as const,
+      ),
+    ),
+  );
+  const enabled = await Promise.all(
+    which.items.map(async ({ scene, source }) => {
+      const key = itemKey(scene, source);
+      try {
+        const { sceneItemId } = await connected.request('GetSceneItemId', { sceneName: scene, sourceName: source });
+        if (typeof sceneItemId !== 'number') throw new Error('no id');
+        itemIds.set(key, sceneItemId);
+        const r = await connected.request('GetSceneItemEnabled', { sceneName: scene, sceneItemId });
+        return [key, r.sceneItemEnabled === true] as const;
+      } catch {
+        itemIds.delete(key);
+        return [key, null] as const;
+      }
+    }),
+  );
+  if (client !== connected) return;
+  const inputMuted = { ...state.inputMuted };
+  for (const [name, value] of muted) {
+    if (value === null || !needs.inputs.includes(name)) delete inputMuted[name];
+    else inputMuted[name] = value;
+  }
+  const itemEnabled = { ...state.itemEnabled };
+  for (const [key, value] of enabled) {
+    if (value === null) delete itemEnabled[key];
+    else itemEnabled[key] = value;
+  }
+  update({ inputMuted, itemEnabled });
+}
+
+/** The names an OBS event about inputs, scenes or scene items mentions. */
+const STRUCTURE_EVENTS = new Set(['InputCreated', 'InputRemoved', 'InputNameChanged', 'SceneRemoved', 'SceneNameChanged', 'SceneItemCreated', 'SceneItemRemoved']);
+
+function namesKeysUse(data: Record<string, unknown>): boolean {
+  const names = [data.inputName, data.oldInputName, data.sceneName, data.oldSceneName, data.sourceName].filter((n): n is string => typeof n === 'string');
+  return names.some((n) => needs.inputs.includes(n) || needs.items.some((it) => it.scene === n || it.source === n));
+}
+
 function onEvent(type: string, data: Record<string, unknown>): void {
   for (const waiter of [...waiters]) {
     if (!waiter.match(type, data)) continue;
@@ -396,7 +561,28 @@ function onEvent(type: string, data: Record<string, unknown>): void {
       update({ record, recordPaused: paused });
       break;
     }
+    case 'CurrentProgramSceneChanged':
+      if (typeof data.sceneName === 'string') update({ programScene: data.sceneName });
+      break;
+    case 'SceneNameChanged':
+      // The program scene renamed is still the program scene.
+      if (typeof data.sceneName === 'string' && data.oldSceneName === state.programScene) update({ programScene: data.sceneName });
+      break;
+    case 'InputMuteStateChanged':
+      if (typeof data.inputName === 'string' && needs.inputs.includes(data.inputName)) {
+        update({ inputMuted: { ...state.inputMuted, [data.inputName]: data.inputMuted === true } });
+      }
+      break;
+    case 'SceneItemEnableStateChanged':
+      for (const [key, id] of itemIds) {
+        if (id === data.sceneItemId && key.startsWith(`${String(data.sceneName)}\u0000`)) {
+          update({ itemEnabled: { ...state.itemEnabled, [key]: data.sceneItemEnabled === true } });
+        }
+      }
+      break;
     default:
       break;
   }
+  // Something a key names appeared, went or was renamed: ask again for what the shown keys need.
+  if (STRUCTURE_EVENTS.has(type) && client && namesKeysUse(data)) void seed(client, needs).catch(() => undefined);
 }

@@ -8,7 +8,7 @@ import { CycleForm, CycleInputsForm, InputForm, OutputForm, type AudioLists } fr
 import { HotkeyForm, PressReleaseForm, ToggleForm } from './HotkeyForm.js';
 import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
-import { ObsForm } from './ObsForms.js';
+import { ObsForm, ObsMuteForm, ObsSceneForm, ObsSourceForm } from './ObsForms.js';
 import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
 import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
@@ -89,6 +89,12 @@ export function ActionForm(p: ActionFormProps) {
     case 'obs.record':
     case 'obs.recordPause':
       return <ObsForm type={p.type} />;
+    case 'obs.scene':
+      return <ObsSceneForm {...common} />;
+    case 'obs.mute':
+      return <ObsMuteForm {...common} />;
+    case 'obs.source':
+      return <ObsSourceForm {...common} />;
     default:
       return null;
   }

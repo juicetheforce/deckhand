@@ -265,6 +265,55 @@ r.setUpAgain = await section(editor);
 // Set up: every OBS key and row comes back, with nothing else done.
 r.backFace = (await until(async () => (await editorFace()).keyUnset === false)) && (await editorFace());
 
+// --- The pickers: OBS's own lists, never typed ----------------------------------
+const picker = (what) =>
+  inPage(
+    editor,
+    'editor',
+    `(() => { const ul = document.querySelector('.inspector [data-obs-picker=${what}]'); return ul && {
+      names: [...ul.querySelectorAll('[data-obs-name]')].map((b) => b.dataset.obsName),
+      selected: [...ul.querySelectorAll('.target-selected')].map((b) => b.dataset.obsName),
+      missing: [...ul.querySelectorAll('.target-note')].map((n) => n.textContent),
+      unavailable: document.querySelector('.inspector [data-obs-list]')?.textContent ?? null,
+      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea') !== null,
+    }; })()`,
+  );
+const pickName = (what, name) => inPage(editor, 'editor', clickIn(`.inspector [data-obs-picker=${what}] [data-obs-name="${name}"]`));
+const pickFor = async (key, type) => {
+  await inPage(editor, 'editor', clickIn(`.key[data-key-index="${key}"]`));
+  await sleep(200);
+  await inPage(editor, 'editor', clickIn(`.library-entry[data-action-type="${type}"]`));
+};
+await pickFor(4, 'obs.scene');
+await until(async () => (await picker('scene'))?.names.length > 0);
+r.scenePicker = await picker('scene');
+await pickName('scene', 'Gameplay');
+r.sceneSaved = await until(async () => (await buttonsNow())['4']?.action?.scene === 'Gameplay');
+await pickFor(5, 'obs.mute');
+await until(async () => (await picker('input'))?.names.length > 0);
+r.inputPicker = await picker('input');
+await pickName('input', 'Mic/Aux');
+r.inputSaved = await until(async () => (await buttonsNow())['5']?.action?.input === 'Mic/Aux');
+await pickFor(6, 'obs.source');
+await until(async () => (await picker('scene'))?.names.length > 0);
+await pickName('scene', 'Gameplay');
+await until(async () => (await picker('source'))?.names.length > 0);
+r.sourcePicker = await picker('source');
+await pickName('source', 'Webcam');
+r.sourceSaved = await until(async () => JSON.stringify((await buttonsNow())['6']?.action) === JSON.stringify({ type: 'obs.source', scene: 'Gameplay', source: 'Webcam' }));
+// Renamed in OBS: the saved name is kept, first, and marked.
+fake.renameInput('Mic/Aux', 'Mic');
+await inPage(editor, 'editor', clickIn('.key[data-key-index="5"]'));
+await until(async () => (await picker('input'))?.names.includes('Mic'));
+r.renamedPicker = await picker('input');
+fake.renameInput('Mic', 'Mic/Aux');
+// OBS closed: nothing to pick from, and the saved choice still shown.
+await fake.stop();
+await inPage(editor, 'editor', clickIn('.key[data-key-index="4"]'));
+await until(async () => (await picker('scene'))?.unavailable !== null);
+r.closedPicker = await picker('scene');
+r.sceneKeptAfterClose = (await buttonsNow())['4']?.action?.scene;
+
 editor.child.kill();
 await until(() => editor.exited !== null, 10_000);
 
@@ -293,6 +342,32 @@ check('set up again: the key, its library row and the inspector come back by the
   assert.equal(r.backFace?.keyUnset, false);
   assert.deepEqual(r.backFace?.obsRows, [false, false, false]);
   assert.equal(r.backFace?.callout, null);
+});
+check("Scene's picker lists OBS's scenes, in OBS's order; a pick saves the scene by name", () => {
+  assert.deepEqual(r.scenePicker.names, ['Starting', 'Gameplay', 'BRB']);
+  assert.equal(r.sceneSaved, true);
+});
+check("Mute input's picker lists OBS's audio inputs only — not the webcam", () => {
+  assert.deepEqual(r.inputPicker.names, ['Desktop Audio', 'Mic/Aux']);
+  assert.equal(r.inputSaved, true);
+});
+check("Show/hide source: a scene, then that scene's sources; saved as scene and source", () => {
+  assert.deepEqual(r.sourcePicker.names, ['Webcam', 'Game capture']);
+  assert.equal(r.sourceSaved, true);
+});
+check('no picker has a text field: names come from OBS, never typed', () => {
+  for (const p of [r.scenePicker, r.inputPicker, r.sourcePicker]) assert.equal(p.typed, false);
+});
+check('a saved name OBS no longer has is kept, first, selected and marked', () => {
+  assert.equal(r.renamedPicker.names[0], 'Mic/Aux');
+  assert.deepEqual(r.renamedPicker.selected, ['Mic/Aux']);
+  assert.deepEqual(r.renamedPicker.missing, ['not in OBS now']);
+  assert.ok(r.renamedPicker.names.includes('Mic'));
+});
+check('OBS closed: "Start OBS to choose", the saved scene still shown, nothing else to pick, nothing changed', () => {
+  assert.equal(r.closedPicker.unavailable, 'Start OBS to choose.');
+  assert.deepEqual(r.closedPicker.names, ['Gameplay']);
+  assert.equal(r.sceneKeptAfterClose, 'Gameplay');
 });
 check('the editor opens Settings at the OBS section, under INTEGRATIONS, in view, the host focused', () => {
   assert.ok(r.deepLink.headings.includes('INTEGRATIONS'), JSON.stringify(r.deepLink.headings));
@@ -356,7 +431,6 @@ check('Remove: credentials deleted, not set up — and the OBS key stays in conf
 });
 check('set up again from the same form: set up', () => assert.equal(r.setUpAgain.state, 'set-up'));
 
-await fake.stop();
 stopWatching();
 await daemon.stop();
 await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
