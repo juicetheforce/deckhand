@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Check OBS session 2 on the deck against real OBS (icons, Scene/Mute/Source, Settings › Integrations); then session 3: Claude Design's reconnecting icon and badge glyph, polish, release."
+next = "OBS session 3: polish, the public docs for OBS (setup, keys, the strong-password advice), and a release."
 category = "Gaming"
 paused = false
 focus = true
