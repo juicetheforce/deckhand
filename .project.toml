@@ -1,12 +1,13 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Choose the next milestone; nothing is in progress."
+next = "OBS session 1: test the OBS keys on the real decks (developer install), then session 2: scenes, mute, sources."
 category = "Gaming"
 paused = false
-focus = false
+focus = true
 notes = """
 Public repo; releases install with a one-line curl script (prebuilt, brings its own Node).
 Daemon and editor are separate programs: the editor only writes config.
 v0.4.0 added multi-deck editing (confirmed on Nobara 2026-09-27); v0.4.1 (status line no longer moves the grid) confirmed there 2026-09-30.
+Streaming in scope since 2026-10-01: OBS built in (a client of obs-websocket, not a plugin), then Twitch as actions only; virtual decks recorded for later.
 """
