@@ -8,6 +8,12 @@
  * scripts/smoke-unattached.mjs proves a scan does not reopen a deck it already
  * knows.
  *
+ * Key presses: when `FAKE_DECKS_PRESS` names a file, every write of
+ * `{ "id": …, "serial": …, "index": …, "holdMs": … }` to it presses that key
+ * on that deck and releases it holdMs later — watched, not polled, and a file
+ * rather than a signal: SIGUSR2 is the forced scan, and SIGUSR1 would start
+ * Node's inspector.
+ *
  * The surface is the one scripts/test/control-harness.mjs's FakeDeck provides,
  * plus `getSerialNumber()`, because `src/index.ts` attach() reads the serial
  * from the opened device rather than from the enumeration entry.
@@ -15,9 +21,29 @@
  * Substituted for '@elgato-stream-deck/node' by
  * scripts/test/fake-decks-hooks.mjs, in the child only.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, watch } from 'node:fs';
 
 const LOG = process.env.FAKE_DECKS_LOG;
+/** Open fake decks by serial, for FAKE_DECKS_PRESS. */
+const open = new Map();
+
+const PRESS = process.env.FAKE_DECKS_PRESS;
+if (PRESS) {
+  let last = null;
+  watch(PRESS, () => {
+    let press;
+    try {
+      press = JSON.parse(readFileSync(PRESS, 'utf8'));
+    } catch {
+      return; // a write still in progress; its last event comes
+    }
+    if (press.id === last) return;
+    last = press.id;
+    const deck = open.get(press.serial);
+    deck?.handlers.down?.({ type: 'button', index: press.index });
+    setTimeout(() => deck?.handlers.up?.({ type: 'button', index: press.index }), press.holdMs ?? 30);
+  }).unref();
+}
 
 function record(event, detail) {
   if (LOG) appendFileSync(LOG, `${event} ${detail}\n`);
@@ -46,7 +72,9 @@ export async function openStreamDeck(devicePath) {
   const spec = devices().find((d) => d.path === devicePath);
   if (!spec) throw new Error(`no fake deck at ${devicePath}`);
   record('open', spec.serialNumber);
-  return new FakeStreamDeck(spec);
+  const deck = new FakeStreamDeck(spec);
+  open.set(spec.serialNumber, deck);
+  return deck;
 }
 
 class FakeStreamDeck {
@@ -75,6 +103,7 @@ class FakeStreamDeck {
   async clearPanel() {}
   async setBrightness() {}
   async close() {
+    if (open.get(this.serialNumber) === this) open.delete(this.serialNumber);
     record('close', this.serialNumber);
   }
 }

@@ -144,6 +144,16 @@ them type keystrokes. OBS's WebSocket server listens on every network
 interface with its password as the only protection, so that password should
 be a strong one.
 
+**A key that needs you to do something says so on the desktop.** Every
+failed press is badged on its key. A failure whose message tells the person
+what to do — hold Stream to stop it, start OBS, nothing is recording — is
+also sent as a desktop notification through `org.freedesktop.Notifications`
+on the session bus: the ordinary notification service, not a portal. Once
+per message, replacing that key's last notification rather than stacking;
+nothing is connected until the first one. Turned off with
+`"notifications": false` in `config.json` (the editor's Settings), because the
+daemon is what sends them.
+
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
 unplugged deck, or a restarted helper. A key held down at the evdev layer with
@@ -201,7 +211,8 @@ is here so the test is not "fixed" instead.
 | a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
 | `src/credentials.ts`, or anything that stores a password or token | **a secret is never in `config.json`, an export or a backup**, and the control socket never returns one — only whether it is set. The file is written 0600 by temp file and rename |
 | `src/services/obs.ts`, any OBS `describe()` / `iconState()` | **connected only while a shown page has an OBS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; a refused password is never retried until the credentials change; key faces read the state cache, fed by OBS's events, never a request in a render |
-| `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page |
+| `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page. **The release decides a hold's mark**: the press succeeding alone does not clear it (or every short press would flicker the badge and notify again), and a release with nothing to do leaves the press's own failure in place |
+| `src/action-error.ts`, `DeckSession.settle()`, `src/services/notifications.ts` | **only a failure whose message tells the person what to do (`ActionNeeded`) is notified**, and only when the key's mark is newly set or its message changes — never per press; `"notifications": false` is read at the moment of the failure, so a reload counts |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 
 ## The control socket

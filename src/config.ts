@@ -101,6 +101,10 @@ export function validateConfig(config: unknown): Config {
     }
   }
 
+  if (config.notifications !== undefined && typeof config.notifications !== 'boolean') {
+    throw new Error('"notifications" must be true or false');
+  }
+
   if (config.startProfile !== undefined) {
     const valid = config as unknown as Config;
     if (typeof config.startProfile !== 'string' || resolveProfile(valid, config.startProfile) === null) {

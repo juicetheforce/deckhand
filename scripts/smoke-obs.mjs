@@ -11,8 +11,11 @@
  *    nothing reconnecting by itself; the 60-second scan's retry; the file's
  *    mode, and no secret on the socket.
  * 2. The real `dist/index.js` in a child, with a fake deck: **OBS is connected
- *    only while a shown page has an OBS key** — that wiring lives in
- *    src/index.ts, which only a live process runs.
+ *    only while a shown page has an OBS key**, and **a key that needs the
+ *    person to do something says so as a desktop notification** (a fake
+ *    org.freedesktop.Notifications on the private bus), unless the config
+ *    turns them off — that wiring lives in src/index.ts, which only a live
+ *    process runs.
  *
  * Everything it writes is in a scratch directory; it runs itself on a
  * private D-Bus session, as the other daemon tests do.
@@ -60,6 +63,7 @@ process.env.DECKHAND_INPUT_BIN = path.join(path.dirname(new URL(import.meta.url)
 
 const { REPO, check, failureCount, sleep, FakeDeck, startDaemon, connect } = await import('./test/control-harness.mjs');
 const { startFakeObs } = await import('./test/fake-obs.mjs');
+const { startFakeNotifications } = await import('./test/fake-notifications.mjs');
 const obs = await import(path.join(REPO, 'dist/services/obs.js'));
 const credentials = await import(path.join(REPO, 'dist/credentials.js'));
 const { iconStateOf, describeAction } = await import(path.join(REPO, 'dist/actions/index.js'));
@@ -247,6 +251,8 @@ await sleep(300);
 check('the scan never retries a refused password', fake2.connections === attempts);
 await tap(0);
 check('a press with it fails, and says so', await until(() => /refused the password/.test(failedKey(0) ?? '')));
+await sleep(300);
+check('and letting go of the key does not clear that mark', /refused the password/.test(failedKey(0) ?? ''));
 await credentials.setObsCredentials({ password: PASSWORD });
 obs.credentialsChanged();
 check('changing the credentials tries again, and connects', await until(() => obs.cachedState().connection === 'connected'));
@@ -298,7 +304,15 @@ const DAEMON_CONFIG = {
           startPage: 'main',
           pages: {
             main: { name: 'Main', buttons: { 0: { label: 'Plain' }, 1: { action: { type: 'page', to: 'live' } } } },
-            live: { name: 'Live', buttons: { 0: { action: { type: 'obs.stream' } }, 1: { action: { type: 'page', to: 'main' } } } },
+            live: {
+              name: 'Live',
+              buttons: {
+                0: { label: 'Go live', action: { type: 'obs.stream' } },
+                1: { action: { type: 'page', to: 'main' } },
+                2: { action: { type: 'page', to: 'nowhere' } },
+                3: { action: { type: 'obs.recordPause' } },
+              },
+            },
           },
         },
       },
@@ -312,6 +326,15 @@ const writeConfig = async (config) => {
 };
 await writeConfig(DAEMON_CONFIG);
 await fs.writeFile(DECKS_FILE, JSON.stringify([{ model: 'xl', path: '/fake/xl-0', serialNumber: DECK_SERIAL, productName: 'Fake XL' }]));
+const PRESS_FILE = path.join(TMP, 'press.json');
+await fs.writeFile(PRESS_FILE, '{}');
+let pressId = 0;
+/** Press a key on the child's fake deck (scripts/test/fake-deck-device.mjs, FAKE_DECKS_PRESS). */
+const pressInChild = async (index, holdMs = 30) => {
+  await fs.writeFile(PRESS_FILE, JSON.stringify({ id: ++pressId, serial: DECK_SERIAL, index, holdMs }));
+  await sleep(holdMs + 150);
+};
+const notes = await startFakeNotifications();
 
 const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], {
   env: {
@@ -322,6 +345,7 @@ const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test
     FAKE_INPUT_LOG: path.join(TMP, 'input.log'),
     FAKE_DECKS_FILE: DECKS_FILE,
     FAKE_DECKS_LOG: path.join(TMP, 'opens.log'),
+    FAKE_DECKS_PRESS: PRESS_FILE,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -357,6 +381,51 @@ check('daemon: a page with an OBS key shown connects', await until(() => fake3.o
 const shown = await ctl.request('obs.status', {});
 check('daemon: obs.status says connected', shown.ok && shown.result.connection === 'connected');
 
+// Notifications: only for a failure that says what to do, once per message.
+fake3.setStream(true);
+await pressInChild(0, 50);
+check('daemon: a short press while live is notified, naming the deck and key', await until(() => notes.calls.length === 1));
+const note = notes.calls[0] ?? {};
+check(
+  'daemon: the notification says what to do, from Deckhand, with its icon',
+  note.appName === 'Deckhand' && note.summary === 'Deck: Go live' && /Hold for 1 second/.test(note.body ?? '') && note.appIcon === 'io.github.juicetheforce.Deckhand',
+);
+await pressInChild(0, 50);
+await sleep(300);
+check('daemon: the same failure again is not notified again', notes.calls.length === 1);
+await pressInChild(2);
+const failedNowhere = await until(async () => {
+  const st = await ctl.request('status', {});
+  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 2);
+});
+await sleep(300);
+check('daemon: a failure that says nothing to do is badged, not notified', failedNowhere && notes.calls.length === 1);
+await pressInChild(0, 1200);
+check('daemon: a hold stops the stream', await until(() => !fake3.streaming));
+
+// Turned off in the config: read at the moment of the failure, so a reload counts.
+const quiet = structuredClone(DAEMON_CONFIG);
+quiet.notifications = false;
+await writeConfig(quiet);
+await until(async () => (await ctl.request('status', {})).result.config.lastReload.at !== undefined, 1000);
+await sleep(800);
+await pressInChild(3);
+const pauseFailed = await until(async () => {
+  const st = await ctl.request('status', {});
+  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 3 && /Nothing is recording/.test(f.error));
+});
+await sleep(300);
+check('daemon: with notifications off, a failure that says what to do is badged only', pauseFailed && notes.calls.length === 1);
+const wrong = structuredClone(DAEMON_CONFIG);
+wrong.notifications = 'no';
+await writeConfig(wrong);
+check('daemon: "notifications" that is not true or false is refused', await until(async () => {
+  const st = await ctl.request('status', {});
+  return st.result.config.lastReload.ok === false && /notifications/.test(st.result.config.lastReload.error ?? '');
+}));
+await writeConfig(DAEMON_CONFIG);
+await until(async () => (await ctl.request('status', {})).result.config.lastReload.ok === true);
+
 await goTo('main');
 check('daemon: back to a page with none, it lets go', await until(() => fake3.open === 0));
 
@@ -373,6 +442,7 @@ child.kill('SIGTERM');
 const code = await Promise.race([exited, sleep(5000).then(() => 'timeout')]);
 check('daemon: stops cleanly', code === 0 || code === null);
 await fake3.stop();
+await notes.stop();
 if (failureCount() > 0) console.log(output.join('').split('\n').slice(-40).join('\n'));
 
 await fs.rm(TMP, { recursive: true, force: true });

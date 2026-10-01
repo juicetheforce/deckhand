@@ -1,5 +1,5 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runAction, runActionOrThrow, runRelease } from './actions/index.js';
+import { attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
@@ -62,6 +62,12 @@ export interface DeckSessionOptions {
   switchProfile: (profile: string) => Promise<void>;
   /** Called when what the control socket's "status" shows for this deck changes: page, brightness, previews, failed keys. */
   onStateChange?: () => void;
+  /**
+   * A key was newly marked with a failure whose message tells the person what
+   * to do (src/action-error.ts) — not again while the same message stands.
+   * The daemon shows it as a desktop notification, unless turned off.
+   */
+  onActionNeeded?: (failure: { slot: string; key: number; label: string | undefined; message: string }) => void;
   /** Keys whose last press failed, held for the daemon (src/key-failures.ts). */
   failures: KeyFailures;
   /** The profile this deck is showing, which the failed keys are keyed by. */
@@ -87,6 +93,7 @@ export class DeckSession implements DeckHandle {
   private defaults: Required<Defaults>;
   private switchProfile: (profile: string) => Promise<void>;
   private onStateChange: () => void;
+  private onActionNeeded: NonNullable<DeckSessionOptions['onActionNeeded']>;
   private failures: KeyFailures;
   private profileOf: () => string;
   /** ID of the page shown. */
@@ -126,6 +133,7 @@ export class DeckSession implements DeckHandle {
     this.defaults = { ...DEFAULTS, ...options.defaults };
     this.switchProfile = options.switchProfile;
     this.onStateChange = options.onStateChange ?? (() => undefined);
+    this.onActionNeeded = options.onActionNeeded ?? (() => undefined);
     this.failures = options.failures;
     this.profileOf = options.profileOf;
 
@@ -215,7 +223,7 @@ export class DeckSession implements DeckHandle {
     if (hold) {
       this.holds.delete(index);
       const heldMs = Date.now() - hold.at;
-      void this.settle(index, (ctx) => runRelease(ctx, hold.action, heldMs));
+      void this.settleRelease(index, hold.action, heldMs);
     }
 
     const release = this.heldRelease.get(index);
@@ -361,20 +369,43 @@ export class DeckSession implements DeckHandle {
    * write, no timer.
    */
   private dispatch(index: number, action: ActionDef): Promise<void> {
-    return this.settle(index, (ctx) => runAction(ctx, action));
+    // An action that acts on its release (a hold) is judged by the release: its
+    // press alone succeeding must not clear a mark the release will set again,
+    // or every short press would flicker the badge and notify afresh.
+    return this.settle(index, (ctx) => attempt(ctx, action), !hasRelease(action));
+  }
+
+  /** A hold's release: judged only if it acted — one with nothing to do leaves the press's mark alone. */
+  private async settleRelease(index: number, action: ActionDef, heldMs: number): Promise<void> {
+    let acted = false;
+    const run = async (ctx: ActionContext) => {
+      const outcome = await runRelease(ctx, action, heldMs);
+      acted = outcome !== undefined;
+      return outcome ?? null;
+    };
+    await this.settle(index, run, true, () => acted);
   }
 
   /** Run a key's press or release and mark or clear its failure (dispatch, above). */
-  private async settle(index: number, run: (ctx: ActionContext) => Promise<string | null>): Promise<void> {
+  private async settle(
+    index: number,
+    run: (ctx: ActionContext) => Promise<ActionFailure | null>,
+    clearOnSuccess = true,
+    judged: () => boolean = () => true,
+  ): Promise<void> {
     const profile = this.profileOf();
     const page = this.page;
     const button = this.currentButtons()[String(index)];
     const failure = await run(this.context(index));
+    if (!judged()) return;
     const changed =
       failure === null
-        ? this.failures.clear(this.serial, profile, page, index)
-        : this.failures.mark(this.serial, { profile, page, key: index, error: failure }, button);
+        ? clearOnSuccess && this.failures.clear(this.serial, profile, page, index)
+        : this.failures.mark(this.serial, { profile, page, key: index, error: failure.message }, button);
     if (changed) this.onStateChange();
+    if (changed && failure?.actionNeeded) {
+      this.onActionNeeded({ slot: `${this.serial}:${profile}:${page}:${index}`, key: index, label: button?.label, message: failure.message });
+    }
     // Most actions change something visible; a cheap targeted repaint beats
     // waiting up to a full tick for the button to catch up.
     void this.renderButtonAt(index, true);

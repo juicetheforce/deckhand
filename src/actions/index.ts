@@ -1,3 +1,4 @@
+import { ActionNeeded } from '../action-error.js';
 import type { IconState } from '../default-icons.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import * as keyboard from './keyboard.js';
@@ -94,20 +95,33 @@ export function isDynamic(action: ActionDef | undefined): boolean {
  * key does nothing.
  */
 export async function runAction(ctx: ActionContext, action: ActionDef): Promise<string | null> {
+  return (await attempt(ctx, action))?.message ?? null;
+}
+
+/** A failed press: its message, and whether that message tells the person what to do (src/action-error.ts). */
+export interface ActionFailure {
+  message: string;
+  actionNeeded: boolean;
+}
+
+const failureOf = (err: unknown): ActionFailure => ({ message: (err as Error).message, actionNeeded: err instanceof ActionNeeded });
+
+/** runAction, keeping whether the failure tells the person what to do: what a deck key press uses. */
+export async function attempt(ctx: ActionContext, action: ActionDef): Promise<ActionFailure | null> {
   const handler = registry[action.type];
   if (!handler) {
     const message = `unknown action type "${action.type}"`;
     ctx.log(message);
-    return message;
+    return { message, actionNeeded: false };
   }
   if (!handler.execute) return null;
   try {
     await handler.execute(ctx, action);
     return null;
   } catch (err) {
-    const message = (err as Error).message;
-    ctx.log(`action "${action.type}" failed: ${message}`);
-    return message;
+    const failure = failureOf(err);
+    ctx.log(`action "${action.type}" failed: ${failure.message}`);
+    return failure;
   }
 }
 
@@ -116,17 +130,20 @@ export function hasRelease(action: ActionDef): boolean {
   return typeof registry[action.type]?.release === 'function';
 }
 
-/** Run an action's release, held this long. Failures are returned, as runAction's are. */
-export async function runRelease(ctx: ActionContext, action: ActionDef, heldMs: number): Promise<string | null> {
+/**
+ * Run an action's release, held this long. Failures are returned, as
+ * attempt()'s are; undefined when the release had nothing to do, so the
+ * key's mark stays as its press left it.
+ */
+export async function runRelease(ctx: ActionContext, action: ActionDef, heldMs: number): Promise<ActionFailure | null | undefined> {
   const handler = registry[action.type];
-  if (!handler?.release) return null;
+  if (!handler?.release) return undefined;
   try {
-    await handler.release(ctx, action, heldMs);
-    return null;
+    return (await handler.release(ctx, action, heldMs)) ? null : undefined;
   } catch (err) {
-    const message = (err as Error).message;
-    ctx.log(`action "${action.type}" failed on release: ${message}`);
-    return message;
+    const failure = failureOf(err);
+    ctx.log(`action "${action.type}" failed on release: ${failure.message}`);
+    return failure;
   }
 }
 

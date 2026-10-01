@@ -1,3 +1,4 @@
+import { ActionNeeded } from '../action-error.js';
 import * as obs from '../services/obs.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
@@ -47,9 +48,10 @@ export const stream: ActionHandler = {
   },
 
   async release(ctx, _params: ActionDef, heldMs: number) {
-    if (!armed.delete(keyOf(ctx))) return;
-    if (heldMs < HOLD_TO_STOP_MS) throw new Error(`Hold for ${HOLD_TO_STOP_MS / 1000} second to stop the stream`);
+    if (!armed.delete(keyOf(ctx))) return false;
+    if (heldMs < HOLD_TO_STOP_MS) throw new ActionNeeded(`Hold for ${HOLD_TO_STOP_MS / 1000} second to stop the stream`);
     await obs.request('StopStream');
+    return true;
   },
 
   iconState: () => ({ live: obs.cachedState().stream !== 'stopped' }),
@@ -97,7 +99,7 @@ export const PAUSE_CONFIRM_MS = 1000;
 export const recordPause: ActionHandler = {
   async execute(_ctx, _params: ActionDef) {
     const status = await obs.request('GetRecordStatus');
-    if (status.outputActive !== true) throw new Error('Nothing is recording: Pause recording pauses what Record records');
+    if (status.outputActive !== true) throw new ActionNeeded('Nothing is recording: Pause recording pauses what Record records');
     const pausing = status.outputPaused !== true;
     const wanted = pausing ? 'OBS_WEBSOCKET_OUTPUT_PAUSED' : 'OBS_WEBSOCKET_OUTPUT_RESUMED';
     const done = await obs.requestAndConfirm(
@@ -108,7 +110,7 @@ export const recordPause: ActionHandler = {
     );
     if (done) return;
     if (pausing) {
-      throw new Error('OBS did not pause: it cannot pause a recording that shares the stream\'s encoder (OBS: Settings › Output › Recording Quality, anything but "Same as stream")');
+      throw new ActionNeeded('OBS did not pause: it cannot pause a recording that shares the stream\'s encoder (OBS: Settings › Output › Recording Quality, anything but "Same as stream")');
     }
     throw new Error('OBS did not resume the recording');
   },

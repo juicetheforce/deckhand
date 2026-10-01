@@ -12,6 +12,7 @@ import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
 import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
+import * as notifications from './services/notifications.js';
 import * as obsService from './services/obs.js';
 import { KeyFailures } from './key-failures.js';
 import type { Config } from './types.js';
@@ -233,6 +234,13 @@ async function attach(devicePath: string): Promise<void> {
       await profileState.switchTo(ref, sessions);
     },
     onStateChange: notifyState,
+    // A key that needs the person to do something says so on the desktop too,
+    // unless notifications are off in the config (read now, so a reload counts).
+    onActionNeeded: (failure) => {
+      if (config?.notifications === false) return;
+      const deck = config?.decks?.[serial]?.name ?? raw.PRODUCT_NAME;
+      void notifications.notify(failure.slot, `${deck}: ${failure.label ?? `key ${failure.key + 1}`}`, failure.message);
+    },
     failures: keyFailures,
     // Recorded as shown only once the deck has started (below), so until then
     // it is the profile it was attached with.

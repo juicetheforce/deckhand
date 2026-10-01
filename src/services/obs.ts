@@ -1,3 +1,4 @@
+import { ActionNeeded } from '../action-error.js';
 import { obsCredentials } from '../credentials.js';
 import { OBS_EVENTS, ObsClient, ObsError } from './obs-client.js';
 
@@ -150,7 +151,10 @@ async function pressWith<T>(run: (connected: ObsClient) => Promise<T>): Promise<
   try {
     return await run(await ensureConnected());
   } catch (err) {
-    throw new Error(describeFailure(err));
+    // Not running, or the password: the message says what to do. A request
+    // OBS itself refused is OBS's business, and only badges the key.
+    const needed = err instanceof ObsError && (err.kind === 'unavailable' || err.kind === 'auth');
+    throw needed ? new ActionNeeded(describeFailure(err)) : new Error(describeFailure(err));
   } finally {
     pressing--;
     // A press from a script, with no OBS key shown, does not keep OBS open.
@@ -161,6 +165,7 @@ async function pressWith<T>(run: (connected: ObsClient) => Promise<T>): Promise<
 function describeFailure(err: unknown): string {
   if (!(err instanceof ObsError)) return (err as Error).message;
   if (err.kind === 'unavailable') return 'OBS is not running, or its WebSocket server is off (OBS: Tools › WebSocket Server Settings)';
+  if (err.kind === 'auth') return `${err.message}: set the password from OBS (Tools › WebSocket Server Settings › Show Connect Info) with deckhand obs password`;
   return err.message;
 }
 

@@ -84,6 +84,12 @@ export interface Config {
   profiles: Record<string, ProfileDef>;
   /** Profile ID or name. Defaults to the first profile. */
   startProfile?: string;
+  /**
+   * Desktop notifications for a key whose press failed with a message that
+   * says what to do (src/action-error.ts). On unless false; set in the
+   * editor's Settings.
+   */
+  notifications?: boolean;
 }
 
 /** What a button should look like right now, after dynamic state is applied. */
@@ -168,7 +174,9 @@ export interface ActionHandler {
    * whose press and hold mean different things: obs.stream starts on a press
    * and stops only on a hold. Measured from two timestamps — no timer. Not run
    * when the page, profile or layout changed while the key was down. Throw to
-   * fail the release, as execute() does.
+   * fail the release, as execute() does. Resolves whether it acted: a release
+   * with nothing to do (the press did not arm one) leaves the key's mark as
+   * the press left it — the press's own failure must not be cleared by it.
    */
-  release?(ctx: ActionContext, params: ActionDef, heldMs: number): Promise<void>;
+  release?(ctx: ActionContext, params: ActionDef, heldMs: number): Promise<boolean>;
 }
