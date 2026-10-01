@@ -197,7 +197,7 @@ is here so the test is not "fixed" instead.
 | `src/render.ts`, `src/builtin-icons.ts` | built-ins are resolved by name; a default is never written to `config.json`, and a chosen built-in is written as `builtin:<name>`, never as a path into the app directory |
 | `src/default-icons.ts` | pure so the editor can import it; an icon not drawn yet maps to no default, never to `missing`. `BUILTIN_ICONS` = `assets/icons/`, held by `scripts/smoke-defaults.mjs` |
 | `src/deck.ts`'s `heldRelease` / `latched`, or anything that changes the page, profile, layout or connection | **nothing may leave a key held at the evdev layer** — every path off a page fires pending releases and releases latches |
-| `src/key-failures.ts`, `DeckSession.dispatch()` | a failed key clears only on a successful press or an edit — never a timer or a page switch; marks cost nothing at rest and notify only on change |
+| `src/key-failures.ts`, `DeckSession.dispatch()` | a failed key clears only on a successful press, an edit, or the person's **Clear** in the editor (`failure.clear`) — never a timer or a page switch; a cleared key that fails again is marked again; marks cost nothing at rest and notify only on change |
 | `src/failed-badge.ts` | the one drawing of the failed-key badge, shared by the deck and the editor's grid; import-free so the editor can import it |
 | `src/services/mpris.ts`, any media `describe()` / `iconState()` | key faces read the player state cache; no D-Bus call in a render |
 | `src/index.ts`'s `scan()` / `unattached` / `reevaluateUnattached` | a deck with no layout is left alone until a **reload** re-evaluates it; skipping `unattached` unconditionally strands a deck that has just been given one, until it is replugged |

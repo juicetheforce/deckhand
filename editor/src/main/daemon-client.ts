@@ -118,6 +118,11 @@ export class DaemonClient {
    * the socket has no page command, and this needs none. Like every socket action it gets "busy"
    * while another socket action runs.
    */
+  /** Clear one key's failure mark (failure.clear). */
+  async clearFailure(serial: string, profile: string, page: string, key: number): Promise<void> {
+    await this.request('failure.clear', { serial, profile, page, key });
+  }
+
   async showPage(serial: string, page: string): Promise<void> {
     await this.request('action.run', { serial, action: { type: 'page', to: page } });
   }

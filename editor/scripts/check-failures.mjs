@@ -141,6 +141,18 @@ try {
   r.calloutFailed = await calloutOf(0);
   r.calloutHealthy = await calloutOf(1);
 
+  // Clear, in the callout: that key's badge goes, here and in the daemon; the
+  // other failed key keeps its own. It still fails, so a press marks it again.
+  await calloutOf(3);
+  await inPage(editor, 'editor', "(document.querySelector('.inspector .key-failure-clear').click(), true)");
+  r.clearedOne = await until(async () => {
+    const b = await badges(editor);
+    return b[3] === undefined && b[0] !== undefined;
+  }, 5000);
+  r.clearedInDaemon = !daemon.failures.forDeck(XL).some((f) => f.key === 3) && daemon.failures.forDeck(XL).some((f) => f.key === 0);
+  fake.press(3);
+  r.failsAgain = await until(async () => (await badges(editor))[3] !== undefined, 5000);
+
   // Editing key 3 clears its mark; key 0, not edited, keeps its own.
   editor.send(`edit ${JSON.stringify({ kind: 'setLabel', at: at(3), label: 'to nowhere, edited' })}`);
   r.editClears = await until(async () => {
@@ -173,6 +185,11 @@ check('a selected failed key says why in the inspector, in words; a healthy key 
   assert.equal(r.calloutHealthy, null);
 });
 check('once a press of it works, the inspector says nothing again', () => assert.equal(r.calloutAfterSuccess, null));
+check('Clear in the inspector clears that key\'s badge, here and in the daemon, and no other', () => {
+  assert.equal(r.clearedOne, true, JSON.stringify({ clearedOne: r.clearedOne, clearedInDaemon: r.clearedInDaemon }));
+  assert.equal(r.clearedInDaemon, true);
+});
+check('a cleared key that fails again is badged again: Clear acknowledges, it does not hide', () => assert.equal(r.failsAgain, true));
 check('a failed press on the deck badges that key in the grid, with the error as its tooltip', () => {
   assert.equal(r.twoFailed, true);
   assert.match(r.afterPresses[0], /^Its last press failed: .*Later/);

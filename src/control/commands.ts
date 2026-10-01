@@ -237,6 +237,16 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
     },
 
     /**
+     * Clear one key's failure mark, at the person's word (the editor's
+     * Clear). A press that works and an edit of the key clear it too; nothing
+     * else does — never a timer or a page switch (ARCHITECTURE).
+     */
+    async 'failure.clear'(args) {
+      const session = sessionFor(deps, requireString(args, 'serial'));
+      return { cleared: session.clearFailure(requireString(args, 'profile'), requireString(args, 'page'), requireKey(args, 'key')) };
+    },
+
+    /**
      * OBS: the connection, what it shows, and which credentials are set —
      * never a secret. The password is reported only as set or not
      * (credentials.ts; scope §3, "Secrets").

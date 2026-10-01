@@ -208,6 +208,9 @@ function KeyInspector({ at, button, failure, editingBlocked, pick, pages, profil
       {failure !== undefined && (
         <p className="key-failure" role="status">
           <strong>Its last press failed.</strong> {failure}
+          <button className="link-button key-failure-clear" title="Clear the badge on this key, here and on the deck" onClick={() => void window.deckhand.clearFailure(at)}>
+            Clear
+          </button>
         </p>
       )}
       <div className="inspector-tabs" role="tablist">

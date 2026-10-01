@@ -153,6 +153,8 @@ export interface DeckhandBridge {
   switchProfile(to: string): Promise<DaemonResult>;
   /** Show a page on a deck, saving any unsaved edits first so a new page exists for the daemon. */
   showPage(serial: string, page: string): Promise<DaemonResult>;
+  /** Clear a key's failure badge, on the deck and here: the inspector's Clear. */
+  clearFailure(at: ButtonLocation): Promise<DaemonResult>;
   /** The KDE global shortcut a combo is bound to, or null — including when KDE's service is not there. */
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
   previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;

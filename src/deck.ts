@@ -411,6 +411,19 @@ export class DeckSession implements DeckHandle {
     void this.renderButtonAt(index, true);
   }
 
+  /**
+   * Clear a key's failure mark because the person said so (the editor's
+   * Clear) — the one way besides a press that works or an edit. Repaints the
+   * key when its page is the one shown. Returns whether it had a mark.
+   */
+  clearFailure(profile: string, page: string, key: number): boolean {
+    const changed = this.failures.clear(this.serial, profile, page, key);
+    if (!changed) return false;
+    this.onStateChange();
+    if (page === this.page && profile === this.profileOf()) void this.renderButtonAt(key, true);
+    return true;
+  }
+
   /** This deck's failed keys, on every page and profile, for the control socket's status. */
   failedKeys(): KeyFailure[] {
     return this.failures.forDeck(this.serial);

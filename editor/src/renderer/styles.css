@@ -333,7 +333,11 @@ button:disabled {
   font-size: 12px;
 }
 
-/* A selected key whose last press failed: what its badge means, in words. */
+/* A selected key whose last press failed: what its badge means, in words, and Clear. */
+.key-failure-clear {
+  margin-left: 6px;
+}
+
 .key-failure {
   margin: 0 0 10px;
   padding: 8px 10px;

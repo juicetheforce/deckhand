@@ -729,6 +729,13 @@ function registerIpc(): void {
   ipcMain.handle('switchProfile', (event, to: string) =>
     fromOurWindow(event) ? switchProfile(to) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
+  ipcMain.handle('clearFailure', (event, at: unknown) => {
+    const a = at as { profile?: unknown; serial?: unknown; page?: unknown; index?: unknown } | null;
+    if (!fromOurWindow(event) || !a || typeof a.serial !== 'string' || typeof a.profile !== 'string' || typeof a.page !== 'string' || typeof a.index !== 'number') {
+      return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    }
+    return daemonCall(() => daemon.clearFailure(a.serial as string, a.profile as string, a.page as string, a.index as number));
+  });
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
