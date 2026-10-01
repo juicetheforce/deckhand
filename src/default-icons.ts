@@ -38,6 +38,12 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
+  // OBS: the Stream key off air and live, the Record key stopped, recording and paused.
+  'obs-record',
+  'obs-record-live',
+  'obs-record-paused',
+  'obs-stream',
+  'obs-stream-live',
   'output-cycle',
   'output-select',
   'pause',
@@ -69,6 +75,10 @@ export interface IconState {
   idle?: boolean;
   /** toggle: the key is latched down. */
   latched?: boolean;
+  /** obs.stream, obs.record: the stream or recording is running (starting, live, reconnecting or stopping). */
+  live?: boolean;
+  /** obs.record, obs.recordPause: the recording is paused. */
+  paused?: boolean;
 }
 
 const MEDIA_METHODS: Record<string, BuiltinIcon> = {
@@ -150,6 +160,14 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return typeof action.delta === 'number' && action.delta < 0 ? 'volume-down' : 'speaker';
     case 'audio.mute':
       return state.muted ? 'speaker-muted' : 'speaker';
+    // Shows what is happening, as the mute pairs do: the state is the point.
+    case 'obs.stream':
+      return state.live ? 'obs-stream-live' : 'obs-stream';
+    case 'obs.record':
+      if (state.live && state.paused) return 'obs-record-paused';
+      return state.live ? 'obs-record-live' : 'obs-record';
+    case 'obs.recordPause':
+      return 'obs-record-paused';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

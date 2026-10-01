@@ -125,7 +125,24 @@ needs a reason good enough to join this list. Media players are discovered
 from D-Bus's `NameOwnerChanged`, not by rescanning. One `setTimeout` a grep
 will find is not a recurring timer: after the session bus is lost,
 `src/services/mpris.ts` retries once, 2 s later, and further retries ride the
-60-second scan.
+60-second scan. **OBS is connected only while a page a deck shows has an OBS
+key**, or a press is waiting on it; if OBS is not running, the next try rides
+the same 60-second scan — it has no timer of its own. The `setTimeout`s in
+`src/services/obs-client.ts` are one-shot deadlines for a handshake or a
+request, not recurring timers.
+
+**Secrets live in one owner-only file, never in the config.** Credentials for
+the services Deckhand is a client of — OBS's WebSocket password — are kept in
+`~/.local/state/deckhand/credentials.json`, mode 0600, outside the config
+directory people sync, and outside everything that copies the config: an
+export bundles `config.json` and its icons, and the rolling backups copy
+`config.json`. The control socket sets them and reports only whether one is
+set. Not the desktop keyring: that is a different backend on every desktop,
+can be locked when the daemon starts at login, and does not separate one
+user's programs from each other — Deckhand's udev rule already lets any of
+them type keystrokes. OBS's WebSocket server listens on every network
+interface with its password as the only protection, so that password should
+be a strong one.
 
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
@@ -182,6 +199,9 @@ is here so the test is not "fixed" instead.
 | `src/services/apps.ts`, `src/services/icon-theme.ts`, an action's `defaultIcon()` | an app's icon is resolved when drawn and **never written to `config.json`**; every answer is cached, and nothing watches the disk — the socket's `apps` command, which the editor's app list asks, is the one thing that forgets and re-reads |
 | the config watcher, or anything written near `config.json` | it is safe only because it is non-recursive and filters on the file name |
 | a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
+| `src/credentials.ts`, or anything that stores a password or token | **a secret is never in `config.json`, an export or a backup**, and the control socket never returns one — only whether it is set. The file is written 0600 by temp file and rename |
+| `src/services/obs.ts`, any OBS `describe()` / `iconState()` | **connected only while a shown page has an OBS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; a refused password is never retried until the credentials change; key faces read the state cache, fed by OBS's events, never a request in a render |
+| `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 
 ## The control socket

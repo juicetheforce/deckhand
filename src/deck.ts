@@ -1,5 +1,5 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { defaultIconFileOf, describeAction, iconStateOf, isDynamic, runAction, runActionOrThrow } from './actions/index.js';
+import { defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runAction, runActionOrThrow, runRelease } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
@@ -101,6 +101,13 @@ export class DeckSession implements DeckHandle {
   private closed = false;
   private heldRelease = new Map<number, ActionDef>();
   /**
+   * Keys down whose action acts on its release (ActionHandler.release), and
+   * when they went down: how long a key was held is two timestamps, not a
+   * timer. Dropped on every way off the page (fireHeldReleases) — a hold
+   * holds nothing at the evdev layer, so dropping it leaves nothing down.
+   */
+  private holds = new Map<number, { at: number; action: ActionDef }>();
+  /**
    * Latching toggles: key index → the combo it holds
    * down. Memory only, like failure marks — a restart starts with the helper's
    * virtual keyboard new, so nothing is held.
@@ -199,8 +206,16 @@ export class DeckSession implements DeckHandle {
       // so a held key cannot get stuck.)
       if (this.previews.has(index)) return;
       if (button?.onRelease) this.heldRelease.set(index, button.onRelease);
+      if (button?.action && hasRelease(button.action)) this.holds.set(index, { at: Date.now(), action: button.action });
       if (button?.action) void this.dispatch(index, button.action);
       return;
+    }
+
+    const hold = this.holds.get(index);
+    if (hold) {
+      this.holds.delete(index);
+      const heldMs = Date.now() - hold.at;
+      void this.settle(index, (ctx) => runRelease(ctx, hold.action, heldMs));
     }
 
     const release = this.heldRelease.get(index);
@@ -316,6 +331,7 @@ export class DeckSession implements DeckHandle {
    * invisible and unclearable.
    */
   private async fireHeldReleases(reason: string): Promise<void> {
+    this.holds.clear();
     const pending = [...this.heldRelease.entries()];
     this.heldRelease.clear();
     for (const [index, action] of pending) {
@@ -344,11 +360,16 @@ export class DeckSession implements DeckHandle {
    * deck. The repaint after every press draws or removes the badge: no extra
    * write, no timer.
    */
-  private async dispatch(index: number, action: ActionDef): Promise<void> {
+  private dispatch(index: number, action: ActionDef): Promise<void> {
+    return this.settle(index, (ctx) => runAction(ctx, action));
+  }
+
+  /** Run a key's press or release and mark or clear its failure (dispatch, above). */
+  private async settle(index: number, run: (ctx: ActionContext) => Promise<string | null>): Promise<void> {
     const profile = this.profileOf();
     const page = this.page;
     const button = this.currentButtons()[String(index)];
-    const failure = await runAction(this.context(index), action);
+    const failure = await run(this.context(index));
     const changed =
       failure === null
         ? this.failures.clear(this.serial, profile, page, index)
@@ -496,6 +517,18 @@ export class DeckSession implements DeckHandle {
   private previews = new Map<number, ButtonDef>();
   /** One preview render per key at a time, plus at most one follow-up. */
   private previewRenders = new Map<number, { running: Promise<void>; followUp: Promise<void> | null }>();
+
+  /**
+   * Whether the page shown has a key whose action type starts with `prefix`
+   * ("obs."), pressed or released: what a service that connects only while a
+   * key needs it asks (services/obs.ts). A multi action's steps are not
+   * counted — they have no face to keep current, and a press connects anyway.
+   */
+  shows(prefix: string): boolean {
+    return Object.values(this.currentButtons()).some(
+      (button) => button.action?.type.startsWith(prefix) === true || button.onRelease?.type.startsWith(prefix) === true,
+    );
+  }
 
   /** True if `index` is one of this deck's keys. */
   hasKey(index: number): boolean {

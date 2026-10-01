@@ -12,6 +12,7 @@ import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
 import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
+import * as obsService from './services/obs.js';
 import { KeyFailures } from './key-failures.js';
 import type { Config } from './types.js';
 
@@ -54,7 +55,17 @@ let reevaluateUnattached = false;
 let control: ControlServer | null = null;
 /** Event notifications for the control socket; null until it exists, so calls before then do nothing. */
 let events: ReturnType<typeof eventNotifiers> | null = null;
-const notifyState = () => events?.state();
+/**
+ * After anything that can change what a deck shows — a page, a profile, a
+ * layout, a deck attached or gone — and after a reload: OBS is connected only
+ * while a shown page has an OBS key (services/obs.ts). A scan of the shown
+ * pages' keys; no timer.
+ */
+const syncServiceDemand = () => obsService.setWanted([...sessions.values()].some((s) => s.shows('obs.')));
+const notifyState = () => {
+  syncServiceDemand();
+  events?.state();
+};
 /** Keys whose last press failed, for every deck, kept across unplugging (src/key-failures.ts). */
 const keyFailures = new KeyFailures();
 
@@ -340,6 +351,8 @@ async function reload(): Promise<void> {
 
     const applyStarted = Date.now();
     await profiles?.applyReload(next, sessions);
+    // A reload that kept the page can still add or remove an OBS key on it.
+    syncServiceDemand();
     // Announced only once every deck has the new layout. The editor takes this
     // event as "saved and on the decks" and clears its preview on it. Sent
     // before applyReload, a cleared key would be redrawn from the old layout
@@ -419,6 +432,7 @@ async function main(): Promise<void> {
   const stopMpris = mprisService.subscribe(() =>
     sessions.forEach((s) => s.invalidateByType(['media.control', 'media.info'])),
   );
+  const stopObs = obsService.subscribe(() => sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause'])));
 
   const stopHotplug = watchHotplug((action, devpath) => {
     console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);
@@ -426,11 +440,13 @@ async function main(): Promise<void> {
   });
 
   await requestScan();
-  // The same tick retries a lost session bus (mpris.ts retryLostBus), so that
-  // needs no timer of its own; it does nothing while the bus is fine.
+  // The same tick retries a lost session bus (mpris.ts retryLostBus) and an OBS
+  // that was not there while a key wanted it (obs.ts retry), so neither needs
+  // a timer of its own; each does nothing while there is nothing to retry.
   const scanner = setInterval(() => {
     void requestScan();
     mprisService.retryLostBus();
+    obsService.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
 
   // After the decks, and not awaited by anything they need: the socket must
@@ -461,6 +477,8 @@ async function main(): Promise<void> {
       stopWatching();
       stopAudio();
       stopMpris();
+      stopObs();
+      obsService.setWanted(false);
       void shutdown(signal);
     });
   }

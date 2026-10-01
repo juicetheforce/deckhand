@@ -279,9 +279,9 @@ preflight_checks() {
   fi
 
   # Node: the unit runs $SERVICE_NODE, and native modules are built by the
-  # node on PATH, so they must be the same one. 22.12, not the daemon's own
-  # 20: building the editor needs it (Electron's package and the editor's
-  # build tools declare >= 22.12).
+  # node on PATH, so they must be the same one. 22.12: the daemon needs Node's
+  # own WebSocket client (stable since 22.4, for OBS), and building the editor
+  # needs 22.12 (Electron's package and the editor's build tools declare it).
   #
   # Only the "no node at all" case carries a package key. A node that is
   # present but too old, or present at the wrong path, is advice and nothing

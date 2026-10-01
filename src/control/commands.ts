@@ -2,7 +2,9 @@ import { isKnownAction } from '../actions/index.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
+import { obsCredentials, setObsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
+import * as obsService from '../services/obs.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
@@ -234,6 +236,40 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       return { events: [...connection.subscriptions] };
     },
 
+    /**
+     * OBS: the connection, what it shows, and which credentials are set —
+     * never a secret. The password is reported only as set or not
+     * (credentials.ts; scope §3, "Secrets").
+     */
+    async 'obs.status'() {
+      return obsStatus();
+    },
+
+    /**
+     * Set OBS's host, port or password. A field left out is unchanged; null or
+     * "" removes it. Replies as obs.status does, never echoing the password.
+     */
+    async 'obs.credentials'(args) {
+      const change: { host?: string | null; port?: number | null; password?: string | null } = {};
+      for (const name of ['host', 'password'] as const) {
+        if (!(name in args)) continue;
+        const value = args[name];
+        if (value !== null && typeof value !== 'string') throw new ControlError('bad_request', `"${name}" must be a string or null`);
+        change[name] = value;
+      }
+      if ('port' in args) {
+        const port = args.port;
+        if (port !== null && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535)) {
+          throw new ControlError('bad_request', '"port" must be a whole number from 1 to 65535, or null');
+        }
+        change.port = port;
+      }
+      if (Object.keys(change).length === 0) throw new ControlError('bad_request', 'give at least one of "host", "port" and "password"');
+      await setObsCredentials(change);
+      obsService.credentialsChanged();
+      return obsStatus();
+    },
+
     // Both read the audio cache, which pactl subscribe keeps current: a request
     // never spawns pactl, so a burst of them cannot become a burst of processes.
     // The installed applications an app key can open, each with its icon
@@ -372,4 +408,14 @@ export function requireString(args: Record<string, unknown>, name: string): stri
 export function optionalString(args: Record<string, unknown>, name: string): string | undefined {
   if (args[name] === undefined) return undefined;
   return requireString(args, name);
+}
+
+async function obsStatus() {
+  const credentials = await obsCredentials();
+  return {
+    ...obsService.cachedState(),
+    host: credentials.host ?? null,
+    port: credentials.port ?? null,
+    passwordSet: credentials.password !== undefined,
+  };
 }

@@ -163,4 +163,12 @@ export interface ActionHandler {
    * answer from a cache after its first call — it runs on every render.
    */
   defaultIcon?(params: ActionDef, size: number): Promise<string | null>;
+  /**
+   * Optional. Run when the key is let go, with how long it was held, for a key
+   * whose press and hold mean different things: obs.stream starts on a press
+   * and stops only on a hold. Measured from two timestamps — no timer. Not run
+   * when the page, profile or layout changed while the key was down. Throw to
+   * fail the release, as execute() does.
+   */
+  release?(ctx: ActionContext, params: ActionDef, heldMs: number): Promise<void>;
 }

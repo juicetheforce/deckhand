@@ -23,6 +23,10 @@ const USAGE = `usage: deckhand <command> [--json]
   sinks                               audio outputs you can pick
   sources                             audio inputs you can pick
   apps                                installed applications an app key can open
+  obs                                 OBS: connected or not, streaming, recording
+  obs password                        set OBS's WebSocket password, read from stdin
+                                        (OBS: Tools > WebSocket Server Settings)
+  obs port <port>                     set OBS's WebSocket port, if not 4455
   watch                               print state, config and audio events until Ctrl+C
   raw '<request>'                     send one request as JSON and print the reply
 
@@ -158,6 +162,58 @@ function parseJsonArgument(text: string | undefined, what: string): Record<strin
   return value as Record<string, unknown>;
 }
 
+interface ObsStatus {
+  connection: string;
+  stream: string;
+  record: string;
+  recordPaused: boolean;
+  host: string | null;
+  port: number | null;
+  passwordSet: boolean;
+}
+
+/**
+ * One line from stdin. At a terminal, asked for with a prompt on stderr and
+ * not echoed; piped, read as it comes (`deckhand obs password < file`).
+ */
+async function readSecret(prompt: string): Promise<string> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    let text = '';
+    for await (const chunk of stdin) text += String(chunk);
+    return text.split(/\r?\n/)[0] ?? '';
+  }
+  process.stderr.write(prompt);
+  stdin.setRawMode(true);
+  stdin.setEncoding('utf8');
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let text = '';
+      const onData = (chunk: string) => {
+        for (const ch of chunk) {
+          if (ch === '\r' || ch === '\n') {
+            stdin.off('data', onData);
+            resolve(text);
+            return;
+          }
+          if (ch === '\u0003') {
+            stdin.off('data', onData);
+            reject(new CliExit(130, ''));
+            return;
+          }
+          if (ch === '\u007f' || ch === '\b') text = text.slice(0, -1);
+          else text += ch;
+        }
+      };
+      stdin.on('data', onData);
+    });
+  } finally {
+    stdin.setRawMode(false);
+    stdin.pause();
+    process.stderr.write('\n');
+  }
+}
+
 function print(json: boolean, value: unknown, text: () => string): void {
   console.log(json ? JSON.stringify(value, null, 2) : text());
 }
@@ -169,7 +225,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -269,6 +325,30 @@ async function main(argv: string[]): Promise<void> {
       case 'apps': {
         const r = resultOf<AppListing[]>(await client.request('apps'));
         print(json, r, () => r.map((a) => `${a.name}\n    ${a.id}${a.icon ? '' : '  (no icon found)'}`).join('\n'));
+        break;
+      }
+      case 'obs': {
+        const change: Record<string, unknown> = {};
+        if (args[1] === 'password') {
+          // From stdin, never an argument: arguments are visible to every process in ps.
+          change.password = await readSecret('OBS WebSocket password (empty to remove): ');
+        } else if (args[1] === 'port') {
+          const port = Number(args[2]);
+          if (!Number.isInteger(port)) throw new CliExit(2, `obs port needs a number\n\n${USAGE}`);
+          change.port = port;
+        } else if (args[1] !== undefined && args[1] !== 'status') {
+          throw new CliExit(2, `unknown obs command "${args[1]}"\n\n${USAGE}`);
+        }
+        const r = resultOf<ObsStatus>(await client.request(Object.keys(change).length === 0 ? 'obs.status' : 'obs.credentials', change));
+        print(json, r, () =>
+          [
+            `connection: ${r.connection}`,
+            `stream: ${r.stream}`,
+            `recording: ${r.record}${r.recordPaused ? ' (paused)' : ''}`,
+            `address: ${r.host ?? '127.0.0.1'}:${r.port ?? 4455}`,
+            `password: ${r.passwordSet ? 'set' : 'not set'}`,
+          ].join('\n'),
+        );
         break;
       }
       case 'raw': {

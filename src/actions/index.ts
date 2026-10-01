@@ -3,6 +3,7 @@ import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../t
 import * as keyboard from './keyboard.js';
 import * as audio from './audio.js';
 import * as media from './media.js';
+import * as obs from './obs.js';
 import * as system from './system.js';
 
 /**
@@ -35,6 +36,10 @@ export const registry: Record<string, ActionHandler> = {
 
   'media.control': media.control,
   'media.info': media.info,
+
+  'obs.stream': obs.stream,
+  'obs.record': obs.record,
+  'obs.recordPause': obs.recordPause,
 };
 
 /**
@@ -102,6 +107,25 @@ export async function runAction(ctx: ActionContext, action: ActionDef): Promise<
   } catch (err) {
     const message = (err as Error).message;
     ctx.log(`action "${action.type}" failed: ${message}`);
+    return message;
+  }
+}
+
+/** Whether the action does something when its key is let go (ActionHandler.release). */
+export function hasRelease(action: ActionDef): boolean {
+  return typeof registry[action.type]?.release === 'function';
+}
+
+/** Run an action's release, held this long. Failures are returned, as runAction's are. */
+export async function runRelease(ctx: ActionContext, action: ActionDef, heldMs: number): Promise<string | null> {
+  const handler = registry[action.type];
+  if (!handler?.release) return null;
+  try {
+    await handler.release(ctx, action, heldMs);
+    return null;
+  } catch (err) {
+    const message = (err as Error).message;
+    ctx.log(`action "${action.type}" failed on release: ${message}`);
     return message;
   }
 }
