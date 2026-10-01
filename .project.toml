@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "OBS session 2: Scene, Mute and Source keys, the editor's OBS forms, OBS connection in Settings; swap in the new default icons."
+next = "Check OBS session 2 on the deck against real OBS (icons, Scene/Mute/Source, Settings › Integrations); then session 3: Claude Design's reconnecting icon and badge glyph, polish, release."
 category = "Gaming"
 paused = false
 focus = true
@@ -10,4 +10,5 @@ Public repo; releases install with a one-line curl script (prebuilt, brings its 
 Daemon and editor are separate programs: the editor only writes config.
 v0.4.0 added multi-deck editing (confirmed on Nobara 2026-09-27); v0.4.1 (status line no longer moves the grid) confirmed there 2026-09-30.
 Streaming in scope since 2026-10-01: OBS built in (a client of obs-websocket, not a plugin), then Twitch as actions only; virtual decks recorded for later.
+OBS is "set up" when a connection is saved (not when it has a password or has connected once); its pickers come only from OBS, never typed.
 """
