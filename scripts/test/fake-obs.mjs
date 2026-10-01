@@ -133,13 +133,23 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
       case 'StopStream':
         if (!obs.streaming) return reply(false, null, 'The stream output is not running.');
         reply(true);
+        broadcast('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING' });
         obs.streaming = false;
         return broadcast('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
+      // The four states in the order a real OBS sends them, outputActive as it
+      // reports it: STARTING false, STARTED true, STOPPING false, STOPPED false
+      // (OBS 32.1.1, seen 2026-10-01; code-state, OBS session 1). Streaming is
+      // given the same shape, unobserved.
       case 'ToggleRecord':
         obs.recording = !obs.recording;
         if (!obs.recording) obs.paused = false;
         reply(true, { outputActive: obs.recording });
-        return broadcast('RecordStateChanged', { outputActive: obs.recording, outputState: obs.recording ? 'OBS_WEBSOCKET_OUTPUT_STARTED' : 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
+        if (obs.recording) {
+          broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING' });
+          return broadcast('RecordStateChanged', { outputActive: true, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED' });
+        }
+        broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING' });
+        return broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
       case 'ToggleRecordPause':
         if (!obs.recording) return reply(false, null, 'The record output is not running.');
         obs.paused = !obs.paused;
