@@ -368,8 +368,12 @@ async function broadcastSettings(): Promise<void> {
 function openSettings(section?: SettingsSection): void {
   if (!window) return;
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    settingsWindow.show();
-    settingsWindow.focus();
+    // A check's windows are never shown (created with show: false): show()
+    // here would map one on the desktop and hand it the keyboard mid-check.
+    if (CHECK === null) {
+      settingsWindow.show();
+      settingsWindow.focus();
+    }
     if (section) settingsWindow.webContents.send('settingsSection', section);
     return;
   }

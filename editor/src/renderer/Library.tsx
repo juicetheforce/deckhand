@@ -22,10 +22,19 @@ import { CATALOGUE, libraryIcon, searchCatalogue, type CatalogueEntry } from './
 export function Library({
   onPick,
   onDragStart,
+  notSetUp,
+  onSetUp,
 }: {
   onPick: (type: string) => void;
   /** A press on a row that may become a drag onto a key (useActionDrag); null while editing is blocked. */
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
+  /**
+   * Why an action cannot be placed yet — its integration (OBS) is not set up
+   * — or null. Such a row neither drags nor picks: a key that can do nothing
+   * looks broken. Clicking it opens Settings at that integration instead.
+   */
+  notSetUp: (type: string) => string | null;
+  onSetUp: (type: string) => void;
 }) {
   // Starts expanded and stays that way until the saved state arrives, so a
   // slow read can never flash sections shut.
@@ -70,7 +79,7 @@ export function Library({
           <ul>
             {matches.map(({ group, entry }) => (
               <li key={entry.type}>
-                <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} />
+                <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
                 {/* Matches come from every section, so each says where it lives. */}
                 <span className="library-result-group">{group.name}</span>
               </li>
@@ -101,7 +110,7 @@ export function Library({
               <ul>
                 {group.entries.map((entry) => (
                   <li key={entry.type}>
-                    <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} />
+                    <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
                   </li>
                 ))}
               </ul>
@@ -118,19 +127,26 @@ function Entry({
   entry,
   onPick,
   onDragStart,
+  blocked,
+  onSetUp,
 }: {
   entry: CatalogueEntry;
   onPick: (type: string) => void;
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
+  /** Why it cannot be placed yet, or null. */
+  blocked: string | null;
+  onSetUp: (type: string) => void;
 }) {
   const icon = libraryIcon(entry.type);
   return (
     <button
-      className="library-entry"
-      title={`${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
+      className={blocked ? 'library-entry library-entry-unset' : 'library-entry'}
+      title={blocked ? `${blocked} Click to set it up.` : `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
+      aria-disabled={blocked ? true : undefined}
       data-action-type={entry.type}
-      onPointerDown={(e) => onDragStart?.(entry.type, e)}
-      onClick={() => onPick(entry.type)}
+      data-not-set-up={blocked ? true : undefined}
+      onPointerDown={(e) => !blocked && onDragStart?.(entry.type, e)}
+      onClick={() => (blocked ? onSetUp(entry.type) : onPick(entry.type))}
     >
       {/* The same built-in the deck draws for a key with no icon of its own. */}
       {icon === null ? (

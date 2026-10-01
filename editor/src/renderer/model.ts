@@ -23,6 +23,27 @@ export type DeckGeometryWithSerial = DecksResult[number];
  * selection's profile and page, not by what the deck shows: a key failed on
  * a page stays failed while the deck is elsewhere.
  */
+/**
+ * The integration an action needs set up in Settings before it can do
+ * anything: OBS's actions need OBS. Null for every other action.
+ */
+export function integrationOf(type: string | undefined): 'obs' | null {
+  return type?.startsWith('obs.') ? 'obs' : null;
+}
+
+/**
+ * Whether this action's integration is known not to be set up — the daemon
+ * says so (obs.status's setUp). Not knowing (no daemon, or one without OBS)
+ * is not "not set up": nothing is blocked on a guess. Gates the library's OBS
+ * actions, and draws an OBS key's not-set-up face in the grid and inspector.
+ */
+export function notSetUp(daemon: DaemonView, type: string | undefined): boolean {
+  return integrationOf(type) === 'obs' && daemon.obs?.setUp === false;
+}
+
+/** What a not-set-up action says, on hover and in the inspector. */
+export const OBS_NOT_SET_UP = "OBS needs connecting in Deckhand's Settings before its keys can do anything.";
+
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
   const failed: Record<number, string> = {};

@@ -10,7 +10,7 @@ import { ActionForm } from './inspector/ActionForm.js';
 import type { AppListing } from '../../../src/control/protocol.js';
 import type { AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
-import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, type Choice } from './model.js';
+import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, OBS_NOT_SET_UP, type Choice } from './model.js';
 import type { Bulk } from './useBulk.js';
 
 interface Props {
@@ -21,6 +21,8 @@ interface Props {
   button: ButtonDef | undefined;
   /** Why this key's last press on the deck failed, if it did (model.ts failedKeysOn): what its badge means, said plainly. */
   failure: string | undefined;
+  /** Its integration (OBS) is not set up (model.ts notSetUp): said in place of a failure, with the way to Settings. */
+  notSetUp: boolean;
   editingBlocked: boolean;
   /** Bumped when a library entry is clicked: configure the key as that action. */
   pick: Pick | null;
@@ -59,7 +61,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, button, failure, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -88,6 +90,7 @@ export function Inspector({ selectedCount, bulk, at, button, failure, editingBlo
       at={at}
       button={button}
       failure={failure}
+      notSetUp={notSetUp}
       editingBlocked={editingBlocked}
       pick={pick}
       pages={pages}
@@ -153,7 +156,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, failure, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -205,7 +208,15 @@ function KeyInspector({ at, button, failure, editingBlocked, pick, pages, profil
   return (
     <aside className="inspector glass" aria-label="Inspector">
       <h2 className="inspector-title">Key {at.index + 1}</h2>
-      {failure !== undefined && (
+      {notSetUp && (
+        <p className="key-unset-callout" role="status" data-not-set-up="obs">
+          <strong>OBS is not set up.</strong> {OBS_NOT_SET_UP}
+          <button className="link-button key-failure-clear" onClick={() => void window.deckhand.openSettings('obs')}>
+            Set up OBS
+          </button>
+        </p>
+      )}
+      {failure !== undefined && !notSetUp && (
         <p className="key-failure" role="status">
           <strong>Its last press failed.</strong> {failure}
           <button className="link-button key-failure-clear" title="Clear the badge on this key, here and on the deck" onClick={() => void window.deckhand.clearFailure(at)}>

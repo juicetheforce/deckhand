@@ -129,6 +129,75 @@ const editor = startEditorAt(electronPath, editorRoot, env);
 await until(() => editor.reports.some((x) => x.event === 'ready'), 30_000);
 await until(async () => (await inPage(editor, 'editor', "document.querySelector('.toolbar .pill-connected') !== null")) === true);
 
+// --- The editor while OBS is not set up -----------------------------------------
+const configJson = async () => JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
+const buttonsNow = async () => (await configJson()).profiles.default.layouts[XL].pages.main.buttons;
+const editorFace = () =>
+  inPage(
+    editor,
+    'editor',
+    `(() => {
+      const row = (t) => document.querySelector('.library-entry[data-action-type="' + t + '"]');
+      const key0 = document.querySelector('.key[data-key-index="0"]');
+      return {
+        obsRows: ['obs.stream', 'obs.record', 'obs.recordPause'].map((t) => row(t)?.dataset.notSetUp === 'true'),
+        obsTitle: row('obs.record')?.title ?? null,
+        hotkeyBlocked: row('hotkey')?.dataset.notSetUp ?? null,
+        keyUnset: key0?.classList.contains('key-unset') ?? null,
+        keyBadge: key0?.querySelector('.key-unset-badge') !== null,
+        keyFailedBadge: key0?.querySelector('.key-failed:not(.key-unset-badge)') !== null,
+        callout: document.querySelector('.inspector [data-not-set-up=obs]')?.textContent ?? null,
+      };
+    })()`,
+  );
+/**
+ * Drag a library row onto a key, as checks.ts does: pointer events at the row
+ * and the key's centres. The row is scrolled into view first — off-screen,
+ * elementFromPoint finds nothing and the press never reaches it — and the
+ * drag refuses to run unless the press would land on that row. Resolves true,
+ * or with why not. (No // comments in the page script: inPage joins it onto
+ * one line.)
+ */
+const dragRow = (type, to) =>
+  inPage(
+    editor,
+    'editor',
+    `(async () => {
+      const centre = (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+      const pointer = (kind, x, y) => (document.elementFromPoint(x, y) ?? document.body).dispatchEvent(new PointerEvent(kind, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 7, button: 0, isPrimary: true }));
+      const row = document.querySelector('.library-entry[data-action-type="${type}"]');
+      row.scrollIntoView({ block: 'center' });
+      const a = centre(row);
+      const pressed = document.elementFromPoint(a.x, a.y)?.closest('[data-action-type]')?.dataset.actionType;
+      if (pressed !== '${type}') return 'the press would land on ' + pressed + ', not the ${type} row';
+      const b = centre(document.querySelector('.key[data-key-index="${to}"]'));
+      pointer('pointerdown', a.x, a.y);
+      pointer('pointermove', a.x + 10, a.y + 10);
+      pointer('pointermove', b.x, b.y);
+      await new Promise((r) => setTimeout(r, 50));
+      pointer('pointerup', b.x, b.y);
+      return true;
+    })()`,
+  );
+
+await until(async () => (await editorFace()).obsRows.every(Boolean));
+await inPage(editor, 'editor', clickIn('.key[data-key-index="0"]'));
+await until(async () => (await editorFace()).callout !== null);
+r.notSetUpFace = await editorFace();
+// A drag of an OBS action places nothing; a Hotkey dragged the same way does — the control.
+r.obsDragStarted = await dragRow('obs.record', 2);
+await sleep(600);
+r.obsDragged = (await buttonsNow())['2'] ?? null;
+r.hotkeyDragStarted = await dragRow('hotkey', 3);
+r.hotkeyDragged = await until(async () => (await buttonsNow())['3']?.action?.type === 'hotkey');
+// A click on it, with a key selected, does not retarget the key: it opens Settings at OBS.
+await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
+await sleep(200);
+await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="obs.record"]'));
+r.clickOpensSettings = await until(async () => (await stateOf(editor)).settingsOpen);
+await sleep(400);
+r.clickedKey1 = (await buttonsNow())['1'] ?? null;
+
 // The editor window opens Settings at the OBS section: the deep link a not-set-up action uses.
 await inPage(editor, 'editor', "window.deckhand.openSettings('obs').then(() => true)");
 await until(async () => (await stateOf(editor)).settingsOpen);
@@ -186,16 +255,45 @@ r.kept = { section: await section(editor), credentials: await credentials() };
 await inPage(editor, 'settings', clickIn('[data-obs=remove]'));
 await press(editor, 'confirm-remove');
 r.removed = { section: await section(editor), credentials: await credentials() };
+r.removedFace = (await until(async () => (await editorFace()).keyUnset === true)) && (await editorFace());
 r.keysKept = JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8')).profiles.default.layouts[XL].pages.main.buttons[0]?.action?.type;
 
 // Set up again: the section follows.
 await inPage(editor, 'settings', type('password', PASSWORD));
 await press(editor, 'save');
 r.setUpAgain = await section(editor);
+// Set up: every OBS key and row comes back, with nothing else done.
+r.backFace = (await until(async () => (await editorFace()).keyUnset === false)) && (await editorFace());
 
 editor.child.kill();
 await until(() => editor.exited !== null, 10_000);
 
+check('not set up: the library shows the OBS actions but marks them, saying why on hover; other actions are untouched', () => {
+  assert.deepEqual(r.notSetUpFace.obsRows, [true, true, true]);
+  assert.match(r.notSetUpFace.obsTitle, /OBS needs connecting in Deckhand's Settings.*Click to set it up/);
+  assert.equal(r.notSetUpFace.hotkeyBlocked, null);
+});
+check('not set up: an OBS key in the grid is dimmed with the not-set-up badge, not the failed one', () => {
+  assert.equal(r.notSetUpFace.keyUnset, true);
+  assert.equal(r.notSetUpFace.keyBadge, true);
+  assert.equal(r.notSetUpFace.keyFailedBadge, false);
+});
+check('not set up: the inspector says so for a selected OBS key, with the way to Settings', () => assert.match(r.notSetUpFace.callout, /OBS is not set up.*Set up OBS/));
+check('not set up: an OBS action dragged onto a key places nothing (a Hotkey dragged the same way does)', () => {
+  assert.deepEqual([r.obsDragStarted, r.hotkeyDragStarted], [true, true], 'both presses landed on their rows');
+  assert.equal(r.obsDragged, null);
+  assert.equal(r.hotkeyDragged, true, 'the control: the drag itself works');
+});
+check('not set up: clicking an OBS action opens Settings, and does not retarget the selected key', () => {
+  assert.equal(r.clickOpensSettings, true);
+  assert.deepEqual(r.clickedKey1, { label: 'Plain' });
+});
+check('removed: the OBS key goes back to its not-set-up face, live', () => assert.equal(r.removedFace?.keyUnset, true));
+check('set up again: the key, its library row and the inspector come back by themselves', () => {
+  assert.equal(r.backFace?.keyUnset, false);
+  assert.deepEqual(r.backFace?.obsRows, [false, false, false]);
+  assert.equal(r.backFace?.callout, null);
+});
 check('the editor opens Settings at the OBS section, under INTEGRATIONS, in view, the host focused', () => {
   assert.ok(r.deepLink.headings.includes('INTEGRATIONS'), JSON.stringify(r.deepLink.headings));
   assert.equal(r.deepLink.inView, true);

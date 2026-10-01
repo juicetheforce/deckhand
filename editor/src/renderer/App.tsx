@@ -22,6 +22,8 @@ import {
   deviceTargets,
   emptyState,
   failedKeysOn,
+  notSetUp,
+  OBS_NOT_SET_UP,
   latchedKeysOn,
   focusDeck,
   followDeck,
@@ -427,6 +429,7 @@ function Editor({
         appIcons={appIcons}
         failedKeys={failedKeysOn(daemon, at)}
         latchedKeys={latchedKeysOn(daemon, at)}
+        notSetUp={(type) => notSetUp(daemon, type)}
         selectedKeys={focused ? selection.keys : []}
         onClickKey={(index, modifiers) =>
           focused ? setSelection((s) => ({ ...s, ...clickKeys(gridGeometry, s, index, modifiers) })) : focusKey(serial, index)
@@ -536,6 +539,8 @@ function Editor({
             if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: true }));
           }}
           onDragStart={editingBlocked || !page || !geometry ? null : actionDrag.start}
+          notSetUp={(type) => (notSetUp(daemon, type) ? OBS_NOT_SET_UP : null)}
+          onSetUp={() => void window.deckhand.openSettings('obs')}
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
@@ -629,6 +634,7 @@ function Editor({
           at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
           failure={selection.key === null ? undefined : failedKeysOn(daemon, { profile: selection.profile, serial: selection.serial, page: selection.page })[selection.key]}
+          notSetUp={selection.key !== null && notSetUp(daemon, page?.buttons[String(selection.key)]?.action?.type)}
           editingBlocked={editingBlocked}
           pick={pick}
           pages={layout ? pageChoices(layout) : []}

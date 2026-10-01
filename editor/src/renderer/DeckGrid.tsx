@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import missingIconUrl from '../../../assets/icons/missing.svg';
-import { failedBadgeSvg } from '../../../src/failed-badge.js';
+import { failedBadgeSvg, unsetBadgeSvg } from '../../../src/failed-badge.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
@@ -17,6 +17,8 @@ interface Props {
   appIcons: AppIcons;
   /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
   failedKeys: Record<number, string>;
+  /** Whether an action's integration is not set up (model.ts notSetUp): its key is drawn as the deck draws it — dimmed, with the not-set-up badge. */
+  notSetUp: (type: string | undefined) => boolean;
   /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
   latchedKeys: number[];
   selectedKeys: number[];
@@ -154,7 +156,7 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
   };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -179,6 +181,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           iconStamps={iconStamps}
           appIcons={appIcons}
           failure={failedKeys[k.index]}
+          unset={notSetUp(page.buttons[String(k.index)]?.action?.type)}
           latched={latchedKeys.includes(k.index)}
           selected={selectedKeys.includes(k.index)}
           onClick={(modifiers) => {
@@ -208,6 +211,8 @@ interface KeyProps {
   appIcons: AppIcons;
   /** The error, if this key's last press on the deck failed. */
   failure: string | undefined;
+  /** Its integration (OBS) is not set up: drawn dimmed with the not-set-up badge, which stands in for a failure badge, as on the deck. */
+  unset: boolean;
   /** This key is latched down on the deck right now. */
   latched: boolean;
   selected: boolean;
@@ -220,7 +225,7 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ serial, config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ serial, config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
   const face = keyFace(config, button, iconSize, latched, appIcons);
@@ -239,11 +244,14 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
     dropTarget ? 'key-drop-target' : '',
     incomplete ? 'key-incomplete' : '',
     latched ? 'key-latched' : '',
+    unset ? 'key-unset' : '',
   ]
     .filter(Boolean)
     .join(' ');
   const title =
-    kind === 'empty' ? `Key ${index + 1}: empty` : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}`;
+    kind === 'empty'
+      ? `Key ${index + 1}: empty`
+      : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ' — OBS is not set up' : ''}`;
 
   return (
     <button
@@ -303,7 +311,11 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
           no action
         </span>
       )}
-      {failure !== undefined && (
+      {unset && (
+        // The deck's not-set-up badge, from the same drawing (src/failed-badge.ts).
+        <span className="key-failed key-unset-badge" title="OBS is not set up: connect it in Deckhand's Settings" dangerouslySetInnerHTML={{ __html: unsetBadgeSvg(100) }} />
+      )}
+      {failure !== undefined && !unset && (
         // The deck's own badge, from the same drawing (src/failed-badge.ts),
         // inlined: the page's CSP refuses data: images. Sized in CSS.
         <span className="key-failed" title={`Its last press failed: ${failure}`} dangerouslySetInnerHTML={{ __html: failedBadgeSvg(100) }} />

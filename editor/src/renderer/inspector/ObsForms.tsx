@@ -1,7 +1,7 @@
 /**
  * The OBS keys (scope §7, "Streaming integrations"): nothing to set — what
  * they act on is OBS itself — so each form says what the key does and what it
- * needs. The connection is set from the command line until Settings has it.
+ * needs. The connection is set in Settings › Integrations › OBS.
  */
 
 const ABOUT: Record<string, { heading: string; text: string }> = {
@@ -27,8 +27,11 @@ export function ObsForm({ type }: { type: string }) {
       <h3 className="section-heading">{about.heading}</h3>
       <p className="muted small">{about.text}</p>
       <p className="muted small">
-        Needs OBS running with its WebSocket server on (OBS: Tools › WebSocket Server Settings). Set its password once with{' '}
-        <code>deckhand obs password</code>.
+        Needs OBS running with its WebSocket server on (OBS: Tools › WebSocket Server Settings), and OBS set up in Deckhand's{' '}
+        <button className="link-button" onClick={() => void window.deckhand.openSettings('obs')}>
+          Settings › Integrations
+        </button>
+        .
       </p>
     </section>
   );
