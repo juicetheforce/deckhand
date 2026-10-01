@@ -209,7 +209,10 @@ r.deepLink = await inPage(
   `(() => { const s = document.querySelector('#settings-obs').getBoundingClientRect(); return { inView: s.top >= 0 && s.top < window.innerHeight, focused: document.activeElement?.dataset.obsField ?? null, headings: [...document.querySelectorAll('.settings-heading')].map((h) => h.textContent) }; })()`,
 );
 
-// Test connection: says which thing is wrong, and saves nothing.
+// Test connection: says which thing is wrong, and saves nothing. Never on the
+// default port: a real OBS on this machine may be listening there.
+const nothingThere = await freePort();
+await inPage(editor, 'settings', type('port', String(nothingThere)));
 r.testNoPassword = await messageAfter(editor, 'test');
 await inPage(editor, 'settings', type('port', String(fake.port)));
 r.testNoPasswordRightPort = await messageAfter(editor, 'test');

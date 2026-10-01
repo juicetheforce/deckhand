@@ -133,7 +133,11 @@ check('and the change is announced', changes > before);
 check('the Stream key\'s default icon is the live one', defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-on');
 check('live, the Stream key keeps its own background: the icon carries the state', (await describeAction({}, { type: 'obs.stream' })) === null);
 fake.event('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_RECONNECTING' });
-check('reconnecting, the Stream key turns amber — a dropped stream never looks live', await until(async () => (await describeAction({}, { type: 'obs.stream' }))?.background === '#5a4a1d'));
+check(
+  'reconnecting, the Stream key draws its own icon — never the live one, and never a pulse — on its own background',
+  await until(() => defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-reconnecting') &&
+    (await describeAction({}, { type: 'obs.stream' })) === null,
+);
 fake.setStream(false);
 await until(() => obs.cachedState().stream === 'stopped');
 check('off air, its own background again', (await describeAction({}, { type: 'obs.stream' })) === null);
@@ -397,7 +401,6 @@ const t5 = await test({ port: closedPort });
 check('OBS running with nothing listening: its WebSocket server is off, and where to turn it on', t5.reason === 'server-off' && /Tools › WebSocket Server Settings/.test(t5.message));
 obsProcess.kill();
 check('another host cannot be told apart: unreachable, saying both', (await test({ host: '127.0.0.2', port: closedPort })).reason === 'unreachable');
-check('a field left out uses the saved one — none saved, so the default port', (await test({ host: '127.0.0.1' })).ok === false);
 
 // Save: sets OBS up, tries once at once, and the keys come back by themselves.
 const savedOff = await client.request('obs.credentials', { host: '127.0.0.1', port: closedPort, password: PASSWORD });
@@ -407,6 +410,8 @@ tries = fake2.connections;
 const savedOn = await client.request('obs.credentials', { port: fake2.port });
 check('Save with OBS there: connected, naming it', savedOn.ok && savedOn.result.attempt?.ok === true && savedOn.result.attempt.obsVersion === '32.1.1-fake');
 check('one attempt, not one per key', fake2.connections === tries + 1);
+// Never the default port in a test: a real OBS on this machine may listen there.
+check("Test with host and port left out uses the saved ones — the fake's", (await test({ password: PASSWORD })).ok === true);
 check('every key comes back live, with nothing else done', obs.cachedState().connection === 'connected' && (await describeAction({}, { type: 'obs.stream' })) === null);
 const kept = await client.request('obs.credentials', { password: '' });
 check('an entry with no password is still set up — OBS can run without authentication', kept.result?.setUp === true);

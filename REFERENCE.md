@@ -554,6 +554,10 @@ Each has been hit more than once.
   takes the desktop's keyboard mid-run. Electron's startup asks the session
   bus for the desktop portal, starting services that outlive the run — why
   `screenshot.mjs` uses a bus config with no service directories.
+- **No test connects to OBS's default port, 4455.** A real OBS on the
+  machine may be listening there, and the test then talks to it — and
+  passes or fails on what that OBS says. Tests use the fake's own port, or
+  one taken and let go (`freePort`) for "nothing listening".
 - **`inPage` sends a page script as one line**, so a `//` comment in it
   swallows everything after it; the script then "failed to execute" with no
   message. Use `/* */`, or keep comments outside the string.

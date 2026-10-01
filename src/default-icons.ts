@@ -59,6 +59,7 @@ export const BUILTIN_ICONS = [
   'obs-source-hidden',
   'obs-stream',
   'obs-stream-on',
+  'obs-stream-reconnecting',
   'obs-studio',
   'obs-studio-on',
   'obs-transition',
@@ -99,6 +100,8 @@ export interface IconState {
   live?: boolean;
   /** obs.record, obs.recordPause: the recording is paused. */
   paused?: boolean;
+  /** obs.stream: OBS is reconnecting the stream. */
+  reconnecting?: boolean;
   /** obs.scene: its scene is OBS's program scene. */
   active?: boolean;
   /** obs.source: its source is hidden in its scene. */
@@ -186,6 +189,10 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.muted ? 'speaker-muted' : 'speaker';
     // Shows what is happening, as the mute pairs do: the state is the point.
     case 'obs.stream':
+      // Reconnecting has its own icon: amber, broken arcs, a hollow centre —
+      // only live has the solid dot. Never animated: a pulse would repaint
+      // the key for as long as it is shown.
+      if (state.reconnecting) return 'obs-stream-reconnecting';
       return state.live ? 'obs-stream-on' : 'obs-stream';
     case 'obs.record':
       // Paused is not recording: red would say it is.

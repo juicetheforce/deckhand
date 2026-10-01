@@ -16,7 +16,7 @@ import { actionOf, nextAction, type FormProps } from './controls.js';
 const ABOUT: Record<string, { heading: string; text: string }> = {
   'obs.stream': {
     heading: 'Stream',
-    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. Its icon turns red while live, and the key amber if OBS is reconnecting.',
+    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. Its icon turns red while live, and amber with broken arcs while OBS is reconnecting.',
   },
   'obs.record': {
     heading: 'Record',

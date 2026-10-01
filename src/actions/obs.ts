@@ -12,14 +12,6 @@ import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../t
 /** How long the Stream key must be held to stop a stream. */
 export const HOLD_TO_STOP_MS = 1000;
 
-/**
- * The icons carry state on their own (shape and colour), so keys keep their
- * own background — except a reconnecting stream, which has no icon yet: amber,
- * the set's caution colour, so a dropped stream never looks live. Goes when
- * Claude Design's reconnecting icon arrives.
- */
-const RECONNECTING_BACKGROUND = '#5a4a1d';
-
 /** OBS is not set up: every OBS key draws dimmed, with the not-set-up badge. */
 const UNSET: DisplayPatch = { unset: true };
 const notSetUp = () => obs.cachedState().connection === 'not-set-up';
@@ -62,11 +54,11 @@ export const stream: ActionHandler = {
     return true;
   },
 
-  iconState: () => ({ live: obs.cachedState().stream !== 'stopped' }),
+  iconState: () => ({ live: obs.cachedState().stream !== 'stopped', reconnecting: obs.cachedState().stream === 'reconnecting' }),
 
   async describe(): Promise<DisplayPatch | null> {
-    if (notSetUp()) return UNSET;
-    return obs.cachedState().stream === 'reconnecting' ? { background: RECONNECTING_BACKGROUND } : null;
+    // The icons carry state on their own, reconnecting included: keys keep their own background.
+    return notSetUp() ? UNSET : null;
   },
 };
 
