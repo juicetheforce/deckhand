@@ -15,10 +15,16 @@ import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../
 export function SettingsWindow() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [decks, setDecks] = useState<DeckOption[]>([]);
+  /** In config.json, not with the settings above; null while it is not open. */
+  const [notifications, setNotificationsState] = useState<boolean | null>(null);
 
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
-    const refreshDecks = () => void window.deckhand.settingsDecks().then(setDecks);
+    const refreshDecks = () => {
+      void window.deckhand.settingsDecks().then(setDecks);
+      // config.json edited by hand while the window is open shows the next time it is looked at.
+      void window.deckhand.notifications().then(setNotificationsState);
+    };
     refreshDecks();
     // A deck plugged in while the window is open shows the next time it is looked at.
     window.addEventListener('focus', refreshDecks);
@@ -31,6 +37,7 @@ export function SettingsWindow() {
 
   if (!settings) return null;
   const change = (patch: Partial<AppSettings>) => void window.deckhand.setAppSettings(patch).then(setSettings);
+  const changeNotifications = (on: boolean) => void window.deckhand.setNotifications(on).then(setNotificationsState);
 
   return (
     <main className="settings">
@@ -74,6 +81,26 @@ export function SettingsWindow() {
           onChange={(e) => change({ closeToTray: e.target.checked })}
         />
       </div>
+      <div className="settings-row">
+        <div className="settings-text">
+          <label className="settings-title" htmlFor="settings-notifications">
+            Notifications
+          </label>
+          <span className="settings-sub">
+            {notifications === null
+              ? 'Needs config.json to be open'
+              : 'A desktop notification when a key needs you to do something, such as holding Stream to stop'}
+          </span>
+        </div>
+        <input
+          id="settings-notifications"
+          type="checkbox"
+          className="settings-check"
+          checked={notifications ?? true}
+          disabled={notifications === null}
+          onChange={(e) => changeNotifications(e.target.checked)}
+        />
+      </div>
 
       <span className="settings-heading">APPEARANCE</span>
       <div className="settings-row">
@@ -104,7 +131,14 @@ export function SettingsWindow() {
 
       <div className="settings-footer">
         <span className="settings-note">Settings apply immediately</span>
-        <button onClick={() => void window.deckhand.resetAppSettings().then(setSettings)}>Reset to defaults</button>
+        <button
+          onClick={() => {
+            void window.deckhand.resetAppSettings().then(setSettings);
+            if (notifications === false) changeNotifications(true);
+          }}
+        >
+          Reset to defaults
+        </button>
         <button className="primary" onClick={() => void window.deckhand.closeSettings()}>
           Done
         </button>

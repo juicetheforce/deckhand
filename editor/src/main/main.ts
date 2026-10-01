@@ -608,6 +608,17 @@ function registerIpc(): void {
     await broadcastSettings();
     return appSettings();
   });
+  // In config.json, not the preferences: the daemon sends the notifications.
+  const notificationsOn = (): boolean | null => {
+    const view = store?.state();
+    return view ? view.config.notifications !== false : null;
+  };
+  ipcMain.handle('notifications', (event) => (fromSettingsWindow(event) ? notificationsOn() : null));
+  ipcMain.handle('setNotifications', (event, on: unknown) => {
+    if (!fromSettingsWindow(event) || typeof on !== 'boolean' || !store) return notificationsOn();
+    store.apply({ kind: 'setNotifications', on });
+    return notificationsOn();
+  });
   ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
     if (!fromSettingsWindow(event)) return [];
     return deckOptions(store?.state().config ?? null, daemon.view().decks);

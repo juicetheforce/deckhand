@@ -177,9 +177,17 @@ editor.send('click');
 await until(async () => (await stateOf(editor)).windowOpen);
 r.replugReopensOn = await until(async () => (await openDeck(editor)) === XL);
 
-// Reset to defaults: all three back, the accent gone from the editor.
+// Notifications: in config.json, because the daemon sends them — not in the preferences.
 await openSettings(editor);
+const configJson = async () => JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
+r.notificationsShown = await inPage(editor, 'settings', "[document.querySelector('#settings-notifications').checked, document.querySelector('#settings-notifications').disabled]");
+await inPage(editor, 'settings', clickIn('#settings-notifications'));
+r.notificationsOffSaved = await until(async () => (await configJson()).notifications === false);
+r.notificationsNotInPrefs = !('notifications' in (await prefs()));
+
+// Reset to defaults: all three back, the accent gone from the editor, notifications on again.
 await inPage(editor, 'settings', clickButton('Reset to defaults'));
+r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
@@ -215,6 +223,12 @@ check('the settings window shows every deck by name, Automatic, close-to-tray on
   assert.equal(r.shown.title, 'Deckhand Settings');
 });
 check('the editor window cannot change settings through the bridge', () => assert.notEqual(r.editorRefused, 'teal'));
+check('Notifications starts ticked; unticking writes "notifications": false to config.json, not the preferences', () => {
+  assert.deepEqual(r.notificationsShown, [true, false]);
+  assert.equal(r.notificationsOffSaved, true);
+  assert.equal(r.notificationsNotInPrefs, true);
+});
+check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
 check('each change is saved at once; the accent reaches the editor behind it live, and the settings window too', () => {
   assert.equal(r.deckSaved, true);
   assert.equal(r.accentSaved, true);

@@ -333,6 +333,17 @@ button:disabled {
   font-size: 12px;
 }
 
+/* A selected key whose last press failed: what its badge means, in words. */
+.key-failure {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(232, 90, 110, 0.55);
+  background: rgba(232, 90, 110, 0.09);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 /* Panes */
 
 .panes {

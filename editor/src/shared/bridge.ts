@@ -235,6 +235,15 @@ export interface DeckhandBridge {
   /** The decks the Default deck setting offers (settings window only). */
   settingsDecks(): Promise<DeckOption[]>;
   /**
+   * Whether the daemon shows a desktop notification when a key needs the
+   * person to do something — kept in config.json (the daemon reads it), not
+   * with the app settings. Null when config.json is not open (settings window
+   * only).
+   */
+  notifications(): Promise<boolean | null>;
+  /** Turn them on or off; resolves with the setting as it now is. */
+  setNotifications(on: boolean): Promise<boolean | null>;
+  /**
    * Export the whole configuration as a .zip (settings window
    * only): with every icon file it names, or config only. Asks where to save.
    */

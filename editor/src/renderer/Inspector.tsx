@@ -19,6 +19,8 @@ interface Props {
   bulk: Bulk;
   at: ButtonLocation | null;
   button: ButtonDef | undefined;
+  /** Why this key's last press on the deck failed, if it did (model.ts failedKeysOn): what its badge means, said plainly. */
+  failure: string | undefined;
   editingBlocked: boolean;
   /** Bumped when a library entry is clicked: configure the key as that action. */
   pick: Pick | null;
@@ -57,7 +59,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, button, failure, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -85,6 +87,7 @@ export function Inspector({ selectedCount, bulk, at, button, editingBlocked, pic
       key={`${at.profile}/${at.serial}/${at.page}/${at.index}`}
       at={at}
       button={button}
+      failure={failure}
       editingBlocked={editingBlocked}
       pick={pick}
       pages={pages}
@@ -150,7 +153,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, button, failure, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -202,6 +205,11 @@ function KeyInspector({ at, button, editingBlocked, pick, pages, profiles, cover
   return (
     <aside className="inspector glass" aria-label="Inspector">
       <h2 className="inspector-title">Key {at.index + 1}</h2>
+      {failure !== undefined && (
+        <p className="key-failure" role="status">
+          <strong>Its last press failed.</strong> {failure}
+        </p>
+      )}
       <div className="inspector-tabs" role="tablist">
         <button role="tab" className={`inspector-tab ${tab === 'key' ? 'inspector-tab-selected' : ''}`} aria-selected={tab === 'key'} onClick={() => onTab('key')}>
           Key

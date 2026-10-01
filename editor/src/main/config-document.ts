@@ -386,6 +386,11 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       }
       return {};
     }
+    case 'setNotifications': {
+      if (edit.on) delete config.notifications;
+      else config.notifications = false;
+      return {};
+    }
     case 'renameDeck': {
       const name = edit.name === null ? '' : edit.name.trim();
       config.decks ??= {};

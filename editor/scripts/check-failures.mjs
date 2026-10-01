@@ -132,6 +132,15 @@ try {
     })()`,
   );
 
+  // Selecting a failed key says why in the inspector, in words; a healthy key says nothing.
+  const calloutOf = async (index) => {
+    await inPage(editor, 'editor', `(document.querySelectorAll('.grid .key')[${index}].click(), true)`);
+    await sleep(300);
+    return inPage(editor, 'editor', "document.querySelector('.inspector .key-failure')?.textContent ?? null");
+  };
+  r.calloutFailed = await calloutOf(0);
+  r.calloutHealthy = await calloutOf(1);
+
   // Editing key 3 clears its mark; key 0, not edited, keeps its own.
   editor.send(`edit ${JSON.stringify({ kind: 'setLabel', at: at(3), label: 'to nowhere, edited' })}`);
   r.editClears = await until(async () => {
@@ -150,6 +159,7 @@ try {
   r.successClears = await until(() => !daemon.failures.forDeck(XL).some((f) => f.key === 0), 5000);
   await daemon.sessions.get(XL).goToPage('main');
   r.cleanOnMain = await until(async () => Object.keys(await badges(editor)).length === 0, 5000);
+  r.calloutAfterSuccess = await calloutOf(0);
 } catch (err) {
   r.stoppedAt = err.message;
   console.log(`the run stopped early: ${err.message}`);
@@ -158,6 +168,11 @@ editor.child.kill();
 
 check('the run reached the end', () => assert.equal(r.stoppedAt, undefined));
 check('no key is badged before anything fails', () => assert.deepEqual(r.none, {}));
+check('a selected failed key says why in the inspector, in words; a healthy key says nothing', () => {
+  assert.match(r.calloutFailed ?? '', /^Its last press failed\. .*no page/);
+  assert.equal(r.calloutHealthy, null);
+});
+check('once a press of it works, the inspector says nothing again', () => assert.equal(r.calloutAfterSuccess, null));
 check('a failed press on the deck badges that key in the grid, with the error as its tooltip', () => {
   assert.equal(r.twoFailed, true);
   assert.match(r.afterPresses[0], /^Its last press failed: .*Later/);

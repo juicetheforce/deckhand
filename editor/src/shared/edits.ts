@@ -89,6 +89,12 @@ export type Edit =
    */
   | { kind: 'renameDeck'; serial: string; name: string | null }
   /**
+   * Desktop notifications for a key that needs the person to do something
+   * (src/action-error.ts). In config.json because the daemon sends them; on
+   * is the field's absence, so a default config does not carry it.
+   */
+  | { kind: 'setNotifications'; on: boolean }
+  /**
    * Rename a page.
    *
    * Pages resolve by ID first and then by name, and the editor writes
