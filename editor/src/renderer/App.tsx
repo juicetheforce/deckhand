@@ -539,7 +539,7 @@ function Editor({
             if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: true }));
           }}
           onDragStart={editingBlocked || !page || !geometry ? null : actionDrag.start}
-          notSetUp={(type) => (notSetUp(daemon, type) ? OBS_NOT_SET_UP : null)}
+          notSetUp={(type) => (notSetUp(daemon, type) ? `OBS is not set up. ${OBS_NOT_SET_UP}` : null)}
           onSetUp={() => void window.deckhand.openSettings('obs')}
         />
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />

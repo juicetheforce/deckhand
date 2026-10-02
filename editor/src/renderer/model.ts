@@ -41,8 +41,8 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
   return integrationOf(type) === 'obs' && daemon.obs?.setUp === false;
 }
 
-/** What a not-set-up action says, on hover and in the inspector. */
-export const OBS_NOT_SET_UP = "OBS needs connecting in Deckhand's Settings before its keys can do anything.";
+/** What a not-set-up action says: the inspector's callout, after "OBS is not set up." */
+export const OBS_NOT_SET_UP = 'Its keys do nothing until it is connected in Settings › Integrations.';
 
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);

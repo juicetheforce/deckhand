@@ -108,6 +108,7 @@ const section = (editor) =>
       port: s.querySelector('[data-obs-field=port]')?.value ?? null,
       password: s.querySelector('[data-obs-field=password]')?.value ?? null,
       placeholder: s.querySelector('[data-obs-field=password]')?.placeholder ?? null,
+      afterFields: s.querySelector('.obs-fields')?.nextElementSibling?.textContent ?? null,
       confirm: s.querySelector('[data-obs-confirm]')?.textContent ?? null,
       removable: s.querySelector('[data-obs=remove]') !== null,
       busy: s.querySelector('[data-obs=save]')?.disabled ?? null,
@@ -322,7 +323,7 @@ await until(() => editor.exited !== null, 10_000);
 
 check('not set up: the library shows the OBS actions but marks them, saying why on hover; other actions are untouched', () => {
   assert.deepEqual(r.notSetUpFace.obsRows, [true, true, true]);
-  assert.match(r.notSetUpFace.obsTitle, /OBS needs connecting in Deckhand's Settings.*Click to set it up/);
+  assert.match(r.notSetUpFace.obsTitle, /^OBS is not set up\. Its keys do nothing until it is connected in Settings › Integrations\. Click to set it up\.$/);
   assert.equal(r.notSetUpFace.hotkeyBlocked, null);
 });
 check('not set up: an OBS key in the grid is dimmed with the not-set-up badge, not the failed one', () => {
@@ -383,6 +384,9 @@ check('with nothing saved: not set up, on the defaults, no password saved', () =
   assert.deepEqual([r.opened.host, r.opened.port, r.opened.placeholder], ['127.0.0.1', '4455', 'None saved']);
   assert.equal(r.opened.removable, false, 'nothing to remove');
 });
+check('the password field is followed by the strong-password advice', () =>
+  assert.match(r.opened.afterFields ?? '', /strong password.*listens on your whole network/),
+);
 check(`Test, nothing on the port: ${realObs ? 'a real OBS runs here, so its server is off' : 'OBS is not running'}`, () =>
   assert.match(r.testNoPassword, realObs ? /WebSocket server is off/ : /OBS is not running/),
 );

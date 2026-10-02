@@ -17,6 +17,8 @@ import type { ObsForm } from '../shared/bridge.js';
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 4455;
 const WHERE = 'In OBS: Tools › WebSocket Server Settings. Turn on Enable WebSocket server; Show Connect Info has the port and password.';
+/** obs-websocket listens on every network interface, IPv4 and IPv6, with no local-only option: the password is all that guards OBS. */
+const STRONG = "Use a strong password: OBS's WebSocket server listens on your whole network, and the password is all that guards it.";
 
 type Message = { kind: 'ok' | 'warn' | 'error'; text: string };
 
@@ -157,6 +159,9 @@ export function ObsSettings({ focus }: { focus: number }) {
           />
         </label>
       </div>
+      <span className="settings-sub" data-obs-hint="strong-password">
+        {STRONG}
+      </span>
       {status.passwordSet && !clearPassword && password === '' && (
         <button className="obs-link" onClick={() => setClearPassword(true)} data-obs="clear-password">
           Remove the saved password (OBS with authentication off)

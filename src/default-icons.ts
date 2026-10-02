@@ -38,7 +38,7 @@ export const BUILTIN_ICONS = [
   'multi-action',
   'next',
   'now-playing',
-  // OBS (Claude Design, screen 10a): state pairs, the active face changing
+  // OBS: state pairs, the active face changing
   // shape and colour both — teal a running mode, red broadcasting or muted,
   // amber paused — and one-shot actions. The keys not built yet (replay,
   // virtual camera, studio mode, screenshot, transition, marker) are ready.

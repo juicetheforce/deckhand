@@ -1,5 +1,5 @@
 /**
- * The key badges, Claude Design's set (screen 10a): failed and not set up,
+ * The key badges, failed and not set up, one set with the OBS icons:
  * drawn alike so they read as a pair in the same corner. The failed-key
  * badge: a red disc with a white X, with a dark ring so it holds over red
  * icons and bright album art. The one drawing of it:
@@ -9,9 +9,8 @@
  * Pure and import-free, so the editor can import it.
  *
  * 30% of the key, in its top-right corner: 22 px on a 72 px key, 29 on a 96 px
- * one. Until 2026-10-01 a drawing of Claude's own, with a longer X, checked on
- * both deck sizes; Claude Design's X is about 28% shorter — its legibility at
- * 72 px is Ryan's to judge on the deck.
+ * one. Its X is about 28% shorter than the earlier badge's, which was drawn
+ * apart from the set; checked legible on a 72 px key.
  */
 
 /** The badge's diameter and its inset from the key's top and right edges, for a key `size` pixels square. */
@@ -19,7 +18,7 @@ export function failedBadgePlacement(size: number): { diameter: number; inset: n
   return { diameter: Math.round(size * 0.3), inset: Math.round(size * 0.04) };
 }
 
-/** The badge as SVG text, `diameter` pixels square: Claude Design's `badge-failed.svg`, as drawn. */
+/** The badge as SVG text, `diameter` pixels square: `badge-failed.svg` from the icon set, as drawn. */
 export function failedBadgeSvg(diameter: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 24 24">
   <circle cx="12" cy="12" r="11" fill="#e0465c" stroke="#11121c" stroke-width="2"/>
@@ -30,9 +29,8 @@ export function failedBadgeSvg(diameter: number): string {
 /**
  * The not-set-up badge: a grey disc with a white plug, in the failed badge's
  * place, for a key whose integration (OBS) is not set up — drawn instead of
- * the failed badge, so the two are never confused. Claude Design's
- * `badge-not-setup.svg` (screen 10a), as drawn; generic, so Twitch and
- * VTube Studio reuse it.
+ * the failed badge, so the two are never confused. `badge-not-setup.svg`
+ * from the icon set, as drawn; generic, so later integrations can reuse it.
  */
 export function unsetBadgeSvg(diameter: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 24 24">
