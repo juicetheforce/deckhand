@@ -16,10 +16,16 @@
 //   key shows the demo's fake player and not whatever is playing on the
 //   desktop. Nothing can reach a tray there, so this editor has no tray icon.
 // - A fake pactl with invented devices, so the audio lists are not yours.
+// - A fake OBS (scripts/test/fake-obs.mjs) with invented scenes and inputs,
+//   set up in the demo's own credentials.json, so the OBS keys draw connected
+//   and Settings shows OBS set up. Never your OBS, never port 4455.
 //
 // Usage, from editor/ after npm run build (and the daemon's npm run build:ts):
 //
-//   node scripts/demo.mjs
+//   node scripts/demo.mjs                  one deck shown, the Desk profile
+//   node scripts/demo.mjs --view multi     both decks shown, side by side on the canvas
+//   node scripts/demo.mjs --view obs       both decks on the Stream profile: OBS keys, live
+//   node scripts/demo.mjs --view settings  the Stream profile, Settings' defaults as shipped
 //
 // Closing the editor's window reopens it on the same state (the daemon keeps
 // running), so positions, locks and the decks shown can be seen surviving a
@@ -73,6 +79,14 @@ if (!process.env.DECKHAND_DEMO_PRIVATE_BUS) {
 
 // --- The invented setup -------------------------------------------------------
 
+const VIEWS = ['default', 'multi', 'obs', 'settings'];
+const viewAt = process.argv.indexOf('--view');
+const VIEW = viewAt === -1 ? 'default' : process.argv[viewAt + 1];
+if (!VIEWS.includes(VIEW)) {
+  console.error(`demo: --view takes one of ${VIEWS.join(', ')}`);
+  process.exit(2);
+}
+
 const XL = 'DEMO-XL-0001';
 const V2 = 'DEMO-V2-0002';
 
@@ -101,6 +115,26 @@ const media = {
   2: { action: { type: 'media.control', method: 'playpause' } },
   3: { action: { type: 'media.control', method: 'next' } },
 };
+
+// The fake OBS's invented scenes, inputs and sources (OBS's own order, top first).
+const OBS_SCENES = ['Starting soon', 'Gameplay', 'Just chatting', 'Be right back', 'Ending'];
+const OBS_SCENE_ITEMS = {
+  'Starting soon': [{ id: 1, source: 'Countdown', enabled: true }],
+  Gameplay: [
+    { id: 1, source: 'Alerts', enabled: true },
+    { id: 2, source: 'Webcam', enabled: true },
+    { id: 3, source: 'Game capture', enabled: true },
+  ],
+  'Just chatting': [
+    { id: 1, source: 'Chat box', enabled: false },
+    { id: 2, source: 'Webcam', enabled: true },
+  ],
+  'Be right back': [{ id: 1, source: 'Slideshow', enabled: true }],
+  Ending: [{ id: 1, source: 'Credits', enabled: true }],
+};
+const scene = (name, label) => ({ label, action: { type: 'obs.scene', scene: name } });
+const obsMute = (input, label) => ({ label, action: { type: 'obs.mute', input } });
+const obsSource = (sceneName, source, label) => ({ label, action: { type: 'obs.source', scene: sceneName, source } });
 
 const CONFIG = {
   decks: { [XL]: { name: 'Stream Deck XL' }, [V2]: { name: 'Stream Deck' } },
@@ -213,7 +247,61 @@ const CONFIG = {
       },
     },
   },
-  startProfile: 'desk',
+  // Settings too, so its Integrations section reads "Set up, and connected":
+  // OBS is connected only while a shown page has an OBS key.
+  startProfile: VIEW === 'obs' || VIEW === 'settings' ? 'stream' : 'desk',
+};
+CONFIG.profiles.stream = {
+  name: 'Stream',
+  layouts: {
+    [XL]: {
+      startPage: 'main',
+      pages: {
+        main: {
+          name: 'Live',
+          buttons: {
+            0: { action: { type: 'obs.stream' } },
+            1: { action: { type: 'obs.record' } },
+            2: { action: { type: 'obs.recordPause' } },
+            4: obsMute('Mic/Aux', 'Mic'),
+            5: obsMute('Desktop Audio', 'Desktop'),
+            6: obsMute('Music', 'Music'),
+            7: { action: { type: 'clock' } },
+            8: scene('Starting soon', 'Start'),
+            9: scene('Gameplay', 'Game'),
+            10: scene('Just chatting', 'Chat'),
+            11: scene('Be right back', 'BRB'),
+            12: scene('Ending', 'End'),
+            16: obsSource('Gameplay', 'Webcam', 'Webcam'),
+            17: obsSource('Gameplay', 'Alerts', 'Alerts'),
+            18: obsSource('Just chatting', 'Chat box', 'Chatbox'),
+            24: { ...media[0] },
+            25: { ...media[2] },
+            28: { action: { type: 'audio.micMute' } },
+            31: { label: 'Desk', action: { type: 'profile', to: 'desk' } },
+          },
+        },
+      },
+    },
+    [V2]: {
+      startPage: 'main',
+      pages: {
+        main: {
+          name: 'Live',
+          buttons: {
+            0: { action: { type: 'obs.stream' } },
+            1: { action: { type: 'obs.record' } },
+            2: obsMute('Mic/Aux', 'Mic'),
+            5: scene('Gameplay', 'Game'),
+            6: scene('Just chatting', 'Chat'),
+            7: scene('Be right back', 'BRB'),
+            10: obsSource('Gameplay', 'Webcam', 'Webcam'),
+            14: { label: 'Desk', action: { type: 'profile', to: 'desk' } },
+          },
+        },
+      },
+    },
+  },
 };
 
 // The demo's icon folders: copies of built-in icons under invented names.
@@ -263,10 +351,17 @@ await fs.mkdir(path.join(stateDir, 'editor'), { recursive: true });
 // (the gap the installer's tray warning names) — and the demo reopens the
 // editor on a close only if it quits. Tick it in Settings before shooting the
 // settings screenshot, where the default (on) should show.
-await fs.writeFile(
-  path.join(stateDir, 'editor', 'preferences.json'),
-  JSON.stringify({ bookmarks: BOOKMARKS.map((folder) => path.join(home, folder)), closeToTray: false }, null, 2) + '\n',
-);
+// --view settings keeps the shipped default (on), so the screenshot shows it;
+// closing that window then hides it for good — Ctrl-C to finish.
+// --view multi and obs show both decks, the V2 to the right of the XL, by a
+// key's width, centred on its height — positions are key units (deck-positions.ts).
+const both = VIEW === 'multi' || VIEW === 'obs';
+const PREFERENCES = {
+  bookmarks: BOOKMARKS.map((folder) => path.join(home, folder)),
+  closeToTray: VIEW === 'settings',
+  ...(both ? { shownDecks: [XL, V2], deckPositions: { [XL]: { x: 0, y: 0 }, [V2]: { x: 9, y: 0.5 } } } : {}),
+};
+await fs.writeFile(path.join(stateDir, 'editor', 'preferences.json'), JSON.stringify(PREFERENCES, null, 2) + '\n');
 
 // --- Fakes: pactl, the input helper, a player -----------------------------------
 
@@ -279,6 +374,34 @@ process.env.FAKE_PACTL_DEVICES = path.join(scratch, 'devices.json');
 process.env.FAKE_PACTL_STATE = path.join(scratch, 'pactl-state.json');
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
 
+// The fake OBS: live, on Gameplay, its music muted — so the keys show
+// their faces. Set up in the demo's credentials.json, where the daemon reads it
+// (DECKHAND_STATE_DIR, below), with an invented password.
+const { startFakeObs } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-obs.mjs')).href);
+// On OBS's default port when nothing listens there, so Settings shows 4455 as
+// a reader's would; if your OBS has it, a free port instead. The fake is the
+// server: the demo never talks to your OBS. An OBS started during the demo
+// finds 4455 taken, and its WebSocket server off, until the demo ends.
+const fakeObs = await startFakeObs({ password: 'demo-password-not-real', port: 4455 }).catch(() =>
+  startFakeObs({ password: 'demo-password-not-real' }),
+);
+if (fakeObs.port !== 4455) console.log(`  OBS's port 4455 is taken (your OBS?): the demo's fake OBS is on ${fakeObs.port}.`);
+fakeObs.scenes = OBS_SCENES;
+fakeObs.items = OBS_SCENE_ITEMS;
+fakeObs.program = 'Gameplay';
+fakeObs.streaming = true;
+fakeObs.inputs = [
+  { name: 'Mic/Aux', caps: 1 << 1, muted: false },
+  { name: 'Desktop Audio', caps: 1 << 1, muted: false },
+  { name: 'Music', caps: 1 << 1, muted: true },
+  { name: 'Webcam', caps: 1 << 0, muted: false },
+];
+await fs.writeFile(
+  path.join(stateDir, 'credentials.json'),
+  JSON.stringify({ obs: { host: '127.0.0.1', port: fakeObs.port, password: fakeObs.password } }, null, 2) + '\n',
+  { mode: 0o600 },
+);
+
 const { startFakePlayer } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-mpris-player.mjs')).href);
 const player = await startFakePlayer('demo', { status: 'Playing', track: { title: 'Harbour Lights', artist: 'The Night Ferries' } });
 
@@ -287,10 +410,13 @@ const player = await startFakePlayer('demo', { status: 'Playing', track: { title
 // After the config directory exists: dist/config.js reads DECKHAND_CONFIG_DIR
 // when it is first imported, and control-harness.mjs imports it.
 process.env.DECKHAND_CONFIG_DIR = configDir;
+// The demo's state directory for the daemon too, where its credentials.json is
+// (control-harness.mjs would otherwise give it a scratch one of its own).
+process.env.DECKHAND_STATE_DIR = stateDir;
 const harness = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const audio = await import(pathToFileURL(path.join(repoRoot, 'dist/services/audio.js')).href);
 await audio.refreshCache();
-const daemon = await harness.startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState() });
+const daemon = await harness.startDaemon(scratch, CONFIG, { audioState: () => audio.cachedState() }, { obsDemand: true });
 await daemon.attach(XL, new harness.FakeDeck());
 await daemon.attach(V2, new harness.FakeDeck({ columns: 5, rows: 3, pixels: 72, model: 'original-v2', productName: 'Stream Deck' }));
 daemon.events.state();
@@ -350,6 +476,7 @@ async function shutDown(code) {
   // Bounded: control.stop() waits on the editor's open connection (empty-state.mjs).
   await Promise.race([daemon.stop().catch(() => undefined), new Promise((r) => setTimeout(r, 2000))]);
   await player.stop().catch(() => undefined);
+  await fakeObs.stop().catch(() => undefined);
   process.exit(code);
 }
 process.on('uncaughtException', (err) => {

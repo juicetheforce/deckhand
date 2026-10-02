@@ -77,8 +77,13 @@ export class FakeDeck {
 /**
  * A daemon-shaped setup around a config. extraDeps fills in or overrides
  * ControlDeps (releaseSocketKeys, audioState) for tests that need them.
+ *
+ * options.obsDemand: as src/index.ts's syncServiceDemand, tell the OBS
+ * service whenever a shown page has an OBS key, and what those keys name, so
+ * OBS connects as it does in the real daemon (the demo). Off by default: the
+ * checks drive the OBS service themselves.
  */
-export async function startDaemon(directory, config, extraDeps = {}) {
+export async function startDaemon(directory, config, extraDeps = {}, options = {}) {
   const socket = path.join(directory, 'c.sock');
   const state = { config: validateConfig(structuredClone(config)), lastReload: { ok: true, at: 'start' } };
   const profiles = new Profiles(state.config);
@@ -86,7 +91,19 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   const sessions = new Map();
   const unattached = new Map();
   let events = null;
-  profiles.setChangeListener(() => events?.state());
+  const syncObsDemand = () => {
+    if (!options.obsDemand) return;
+    const shown = [...sessions.values()].flatMap((s) => s.shownActions('obs.'));
+    const named = (v) => typeof v === 'string' && v !== '';
+    const inputs = [...new Set(shown.filter((a) => a.type === 'obs.mute' && named(a.input)).map((a) => a.input))];
+    const items = shown.filter((a) => a.type === 'obs.source' && named(a.scene) && named(a.source)).map((a) => ({ scene: a.scene, source: a.source }));
+    obsService.setWanted(shown.length > 0, { inputs, items });
+  };
+  const stateChanged = () => {
+    syncObsDemand();
+    events?.state();
+  };
+  profiles.setChangeListener(stateChanged);
 
   const deps = {
     sessions,
@@ -102,7 +119,13 @@ export async function startDaemon(directory, config, extraDeps = {}) {
   const control = new server.ControlServer(commands.createHandlers(deps));
   events = commands.eventNotifiers(control, deps);
   // As src/index.ts: OBS's status reaches subscribers as the "obs" event.
-  const stopObs = obsService.subscribe(() => events.obs());
+  const stopObs = obsService.subscribe(() => {
+    // With obsDemand, as src/index.ts: the OBS keys' faces follow OBS's state.
+    if (options.obsDemand) {
+      for (const s of sessions.values()) s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source']);
+    }
+    events.obs();
+  });
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
@@ -113,18 +136,19 @@ export async function startDaemon(directory, config, extraDeps = {}) {
       layout: profiles.layoutFor(id, serial),
       defaults: {},
       switchProfile: async (ref) => { await profiles.switchTo(ref, sessions); },
-      onStateChange: () => events?.state(),
+      onStateChange: stateChanged,
       failures,
       profileOf: () => profiles.shownProfileFor(serial) ?? id,
     });
     await session.start();
     sessions.set(serial, session);
     profiles.markShown(serial, id);
-    events.state();
+    stateChanged();
     return session;
   }
 
   async function stop() {
+    if (options.obsDemand) obsService.setWanted(false);
     stopObs();
     await control.stop();
     for (const session of sessions.values()) await session.close();
