@@ -24,6 +24,61 @@ const notSetUp = () => obs.cachedState().connection === 'not-set-up';
 const armed = new Set<string>();
 const keyOf = (ctx: ActionContext) => `${ctx.deck.serial}:${ctx.buttonIndex}`;
 
+/** How long a Stream or Record press waits for OBS to say it started, or did not. */
+export const START_CONFIRM_MS = 5000;
+
+const STARTED = 'OBS_WEBSOCKET_OUTPUT_STARTED';
+const STOPPED = 'OBS_WEBSOCKET_OUTPUT_STOPPED';
+
+const OUTPUTS = {
+  stream: {
+    start: 'StartStream',
+    event: 'StreamStateChanged',
+    status: 'GetStreamStatus',
+    failed: "OBS has not started the stream: OBS's window says why — often no stream service set up (OBS: Settings › Stream)",
+  },
+  record: {
+    start: 'StartRecord',
+    event: 'RecordStateChanged',
+    status: 'GetRecordStatus',
+    failed: "OBS has not started recording: OBS's window says why",
+  },
+} as const;
+
+/**
+ * Start the stream or a recording, and make sure OBS did. obs-websocket
+ * answers StartStream and StartRecord with success at once, and OBS then
+ * sends STARTING; a start that fails straight away (no stream service set
+ * up, an encoder that will not start) shows OBS's error dialog and sends
+ * nothing more, and one whose connection fails later sends STOPPED (OBS 32.1,
+ * OBSBasic_Streaming.cpp and OBSBasic_Recording.cpp). So the press waits for
+ * STARTED or STOPPED. With neither within START_CONFIRM_MS, it asks OBS:
+ * running — the event was missed — is a start; anything else is not. A start
+ * that did not happen marks the key, and the cached state is corrected so no
+ * key goes on saying "starting".
+ *
+ * OBS reports a stream as not active while it is still connecting (libobs
+ * sets `active` only once data flows), so a connection slower than
+ * START_CONFIRM_MS is marked too; its key still turns red when OBS says
+ * STARTED.
+ */
+async function startAndConfirm(output: keyof typeof OUTPUTS): Promise<void> {
+  const { start, event, status, failed } = OUTPUTS[output];
+  const answer = await obs.requestAndConfirm(
+    start,
+    undefined,
+    (type, data) => type === event && (data.outputState === STARTED || data.outputState === STOPPED),
+    START_CONFIRM_MS,
+  );
+  if (answer?.outputState === STARTED) return;
+  if (answer === null && (await obs.request(status)).outputActive === true) return;
+  await obs.refreshOutputs().catch(() => undefined);
+  throw new ActionNeeded(failed);
+}
+
+/** A stream or recording is on air, as its key shows: not while it is only starting — OBS may never get there. */
+const running = (phase: string) => phase === 'live' || phase === 'stopping' || phase === 'reconnecting';
+
 /**
  * obs.stream — go live, and stop.
  *
@@ -40,11 +95,12 @@ export const stream: ActionHandler = {
     armed.delete(keyOf(ctx));
     const status = await obs.request('GetStreamStatus');
     if (status.outputActive !== true) {
-      await obs.request('StartStream');
+      await startAndConfirm('stream');
       return;
     }
     if (ctx.source === 'socket') throw new Error('the stream is live; stopping it takes a hold on the deck key');
     armed.add(keyOf(ctx));
+    return 'armed';
   },
 
   async release(ctx, _params: ActionDef, heldMs: number) {
@@ -54,7 +110,7 @@ export const stream: ActionHandler = {
     return true;
   },
 
-  iconState: () => ({ live: obs.cachedState().stream !== 'stopped', reconnecting: obs.cachedState().stream === 'reconnecting' }),
+  iconState: () => ({ live: running(obs.cachedState().stream), reconnecting: obs.cachedState().stream === 'reconnecting' }),
 
   async describe(): Promise<DisplayPatch | null> {
     // The icons carry state on their own, reconnecting included: keys keep their own background.
@@ -63,16 +119,22 @@ export const stream: ActionHandler = {
 };
 
 /**
- * obs.record — start and stop recording, one press each.
+ * obs.record — start and stop recording, one press each. Asks OBS first, so
+ * it acts on what OBS is doing now; a start is confirmed as the stream's is.
  *
  *   { "type": "obs.record" }
  */
 export const record: ActionHandler = {
   async execute(_ctx, _params: ActionDef) {
-    await obs.request('ToggleRecord');
+    const status = await obs.request('GetRecordStatus');
+    if (status.outputActive === true) {
+      await obs.request('StopRecord');
+      return;
+    }
+    await startAndConfirm('record');
   },
 
-  iconState: () => ({ live: obs.cachedState().record !== 'stopped', paused: obs.cachedState().recordPaused }),
+  iconState: () => ({ live: running(obs.cachedState().record), paused: obs.cachedState().recordPaused }),
 
   describe: async () => (notSetUp() ? UNSET : null),
 };
@@ -100,12 +162,12 @@ export const recordPause: ActionHandler = {
     if (status.outputActive !== true) throw new ActionNeeded('Nothing is recording: Pause recording pauses what Record records');
     const pausing = status.outputPaused !== true;
     const wanted = pausing ? 'OBS_WEBSOCKET_OUTPUT_PAUSED' : 'OBS_WEBSOCKET_OUTPUT_RESUMED';
-    const done = await obs.requestAndConfirm(
+    const done = (await obs.requestAndConfirm(
       'ToggleRecordPause',
       undefined,
       (type, data) => type === 'RecordStateChanged' && data.outputState === wanted,
       PAUSE_CONFIRM_MS,
-    );
+    )) !== null;
     if (done) return;
     if (pausing) {
       throw new ActionNeeded('OBS did not pause: it cannot pause a recording that shares the stream\'s encoder (OBS: Settings › Output › Recording Quality, anything but "Same as stream")');

@@ -16,11 +16,11 @@ import { actionOf, nextAction, type FormProps } from './controls.js';
 const ABOUT: Record<string, { heading: string; text: string }> = {
   'obs.stream': {
     heading: 'Stream',
-    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. Its icon turns red while live, and amber with broken arcs while OBS is reconnecting.',
+    text: 'Press to go live. To stop, hold the key for a second: a short press while live does nothing but mark the key, so a stray press never ends a stream. Its icon turns red once OBS is live, and amber with broken arcs while OBS is reconnecting. If OBS cannot start the stream (often no stream service set up in OBS), the key stays off and is marked; OBS\'s window says why.',
   },
   'obs.record': {
     heading: 'Record',
-    text: 'Press to start recording, and again to stop. Its icon turns red while recording, and amber while paused.',
+    text: 'Press to start recording, and again to stop. Its icon turns red once OBS is recording, and amber while paused. If OBS cannot start recording, the key stays off and is marked; OBS\'s window says why.',
   },
   'obs.recordPause': {
     heading: 'Pause recording',

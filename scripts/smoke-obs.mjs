@@ -69,7 +69,7 @@ const obs = await import(path.join(REPO, 'dist/services/obs.js'));
 const credentials = await import(path.join(REPO, 'dist/credentials.js'));
 const { iconStateOf, describeAction } = await import(path.join(REPO, 'dist/actions/index.js'));
 const { defaultIconFor } = await import(path.join(REPO, 'dist/default-icons.js'));
-const { HOLD_TO_STOP_MS } = await import(path.join(REPO, 'dist/actions/obs.js'));
+const { HOLD_TO_STOP_MS, START_CONFIRM_MS } = await import(path.join(REPO, 'dist/actions/obs.js'));
 
 /** Wait until fn() is truthy, up to ms. */
 async function until(fn, ms = 3000) {
@@ -250,6 +250,55 @@ check('Record again: stops, and paused clears', await until(() => !fake.recordin
 await tap(2);
 check('Pause with nothing recording: the key is marked, saying so', await until(() => /Nothing is recording/.test(failedKey(2) ?? '')));
 check('and nothing was asked of OBS but whether it records', fake.requests.at(-1)?.type === 'GetRecordStatus');
+
+// A start OBS never makes (no stream service set up): STARTING, then nothing
+// — OBS shows its error dialog and sends no STOPPED (OBS 32.1 source; seen
+// by Ryan, 2026-10-01: the key showed live and stayed so).
+const streamFace = () => defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' }));
+const recordFace = () => defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' }));
+const clearKey = (key) => session.clearFailure('default', 'main', key);
+fake.setStream(false);
+await until(() => obs.cachedState().stream === 'stopped');
+clearKey(0);
+fake.startOutcome.stream = 'silent';
+let startedAt = Date.now();
+await tap(0);
+check('a start OBS never makes: STARTING alone is not drawn live', (await until(() => obs.cachedState().stream === 'starting')) && streamFace() === 'obs-stream');
+check(
+  'after the wait the key is marked, saying OBS has not started the stream and where to look',
+  await until(() => /has not started the stream.*Settings › Stream/.test(failedKey(0) ?? ''), START_CONFIRM_MS + 3000),
+);
+check('it waited the whole time for OBS', Date.now() - startedAt >= START_CONFIRM_MS - 100);
+check('and nothing goes on saying "starting"', obs.cachedState().stream === 'stopped' && streamFace() === 'obs-stream');
+
+// The connection fails after starting: STARTING, then STOPPED — marked at once.
+clearKey(0);
+fake.startOutcome.stream = 'stopped';
+startedAt = Date.now();
+await tap(0);
+check('a start whose connection fails is marked as soon as OBS says so', await until(() => /has not started the stream/.test(failedKey(0) ?? '')) && Date.now() - startedAt < START_CONFIRM_MS);
+check('and drawn off', obs.cachedState().stream === 'stopped' && streamFace() === 'obs-stream');
+
+// Then a start that works: live, and the earlier mark cleared by it.
+fake.startOutcome.stream = 'ok';
+await tap(0);
+check('a start that works shows live', await until(() => obs.cachedState().stream === 'live' && streamFace() === 'obs-stream-on'));
+check('and clears the mark a failed start left', await until(() => failedKey(0) === null));
+fake.setStream(false);
+await until(() => obs.cachedState().stream === 'stopped');
+
+// Recording has the same hole: OBSBasic::StartRecording ignores a failed start.
+clearKey(1);
+fake.startOutcome.record = 'silent';
+await tap(1);
+check('a recording OBS never starts: not drawn recording', (await until(() => obs.cachedState().record === 'starting')) && recordFace() === 'obs-record');
+check('and the Record key is marked after the wait', await until(() => /has not started recording/.test(failedKey(1) ?? ''), START_CONFIRM_MS + 3000));
+check('and nothing goes on saying "starting"', obs.cachedState().record === 'stopped');
+fake.startOutcome.record = 'ok';
+await tap(1);
+check('a recording that starts clears it', await until(() => fake.recording && failedKey(1) === null && recordFace() === 'obs-record-on'));
+await tap(1);
+check('and Record stops it again', await until(() => !fake.recording && obs.cachedState().record === 'stopped'));
 
 // --- Scene, Mute and Source: what the shown keys name, asked once, then fed by events ---
 const face = (action) => defaultIconFor(action, iconStateOf(action));

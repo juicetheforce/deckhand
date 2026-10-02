@@ -55,6 +55,16 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
      * "Same as stream" — the default), and then ignores a pause in silence.
      */
     pausable: true,
+    /**
+     * How the next start goes, for the stream and the recording: 'ok'; 'silent',
+     * as a real OBS fails a start it cannot make (no stream service set up, an
+     * encoder that will not start) — STARTING, then nothing at all, since
+     * OBSBasic::StartStreaming and StartRecording return after their error
+     * dialog without a STOPPED (OBS 32.1 source, read 2026-10-01); or
+     * 'stopped', as a connection that fails afterwards — STARTING, then
+     * STOPPED (OBSBasic::StreamingStop).
+     */
+    startOutcome: { stream: 'ok', record: 'ok' },
     /** Scenes as OBS's window lists them, top first; the program scene. */
     scenes: ['Starting', 'Gameplay', 'BRB'],
     program: 'Starting',
@@ -189,9 +199,7 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
       case 'StartStream':
         if (obs.streaming) return reply(false, null, 'The stream output is already running.');
         reply(true);
-        broadcast('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING' });
-        obs.streaming = true;
-        return broadcast('StreamStateChanged', { outputActive: true, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED' });
+        return start('StreamStateChanged', obs.startOutcome.stream, () => (obs.streaming = true));
       case 'StopStream':
         if (!obs.streaming) return reply(false, null, 'The stream output is not running.');
         reply(true);
@@ -202,6 +210,17 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
       // reports it: STARTING false, STARTED true, STOPPING false, STOPPED false
       // (OBS 32.1.1, seen 2026-10-01; code-state, OBS session 1). Streaming is
       // given the same shape, unobserved.
+      case 'StartRecord':
+        if (obs.recording) return reply(false, null, 'The record output is already running.');
+        reply(true);
+        return start('RecordStateChanged', obs.startOutcome.record, () => (obs.recording = true));
+      case 'StopRecord':
+        if (!obs.recording) return reply(false, null, 'The record output is not running.');
+        obs.recording = false;
+        obs.paused = false;
+        reply(true, { outputPath: '/tmp/fake.mkv' });
+        broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING' });
+        return broadcast('RecordStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
       case 'ToggleRecord':
         obs.recording = !obs.recording;
         if (!obs.recording) obs.paused = false;
@@ -267,6 +286,15 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
   }
 
   /** Events go to identified clients that asked for their category (Outputs unless given), as OBS's do. */
+  /** A start as obs.startOutcome says: STARTING, then STARTED, nothing, or STOPPED. */
+  function start(eventType, outcome, began) {
+    broadcast(eventType, { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING' });
+    if (outcome === 'silent') return undefined;
+    if (outcome === 'stopped') return broadcast(eventType, { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
+    began();
+    return broadcast(eventType, { outputActive: true, outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED' });
+  }
+
   function broadcast(eventType, eventData, intent = OUTPUTS) {
     for (const socket of sockets) {
       if (socket.identifiedAt === undefined || !(obs.eventSubscriptions & intent)) continue;
@@ -279,7 +307,14 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
     await new Promise((resolve) => server.close(resolve));
   }
 
-  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+  // A port already taken rejects (EADDRINUSE) rather than leaving an unhandled error.
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
   obs.port = server.address().port;
   return obs;
 }

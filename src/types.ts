@@ -154,8 +154,13 @@ export interface ActionContext {
 }
 
 export interface ActionHandler {
-  /** Run the action. Throw to fail the press: the caller logs it and marks the key. Never kills the daemon. */
-  execute?(ctx: ActionContext, params: ActionDef): Promise<void>;
+  /**
+   * Run the action. Throw to fail the press: the caller logs it and marks the
+   * key. Never kills the daemon. Resolve 'armed' when the press only armed
+   * its release (obs.stream, live: a hold will stop it) — the release then
+   * decides the key's mark. Any other success clears it.
+   */
+  execute?(ctx: ActionContext, params: ActionDef): Promise<void | 'armed'>;
   /**
    * Optional. Return live display overrides (track title, current sink, etc).
    * Presence of this method is what makes a button refresh on a timer.

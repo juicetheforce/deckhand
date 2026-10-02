@@ -14,7 +14,7 @@ import { OBS_EVENTS, ObsClient, ObsError, RESOURCE_NOT_FOUND } from './obs-clien
  * connected while OBS runs and a key needs it, fed by OBS's events — no
  * polling. **No timer of its own**: if OBS is not there, the next try is the
  * daemon's 60-second safety scan (retry), the same tick that retries a lost
- * session bus, or the next page shown, or a press.
+ * session bus, or a press, or an OBS key coming into view when none was.
  *
  * A refused password is never retried by the scan: retrying cannot fix it.
  * Changing the credentials (credentialsChanged) clears it.
@@ -81,7 +81,7 @@ let wanted = false;
 /** Presses waiting on OBS: a connection a press opened is kept until it is answered. */
 let pressing = 0;
 /** Presses waiting for an event that says OBS really did what it was asked (requestAndConfirm). */
-const waiters = new Set<{ match(type: string, data: Record<string, unknown>): boolean; resolve(): void }>();
+const waiters = new Set<{ match(type: string, data: Record<string, unknown>): boolean; resolve(data: Record<string, unknown> | null): void }>();
 const listeners = new Set<() => void>();
 
 export function cachedState(): ObsState {
@@ -253,31 +253,34 @@ export async function request(requestType: string, requestData?: Record<string, 
 }
 
 /**
- * Send a request, and resolve true once OBS sends the event that says it was
- * done, false if none comes within `withinMs` — for a request obs-websocket
- * answers "success" whether or not OBS acted on it (ToggleRecordPause: OBS
- * ignores a pause it cannot do, and says nothing). The wait is one-shot,
- * inside the press; the waiter is in place before the request is sent, since
- * OBS may send the event before its answer.
+ * Send a request, and resolve with the data of the first event `match`
+ * accepts, or null if none comes within `withinMs` — for a request
+ * obs-websocket answers "success" whether or not OBS acted on it.
+ * ToggleRecordPause: OBS ignores a pause it cannot do, and says nothing.
+ * StartStream and StartRecord: OBS sends STARTING, and a start that then
+ * fails at once sends nothing more (OBSBasic::StartStreaming and
+ * StartRecording return after their error dialog, without a STOPPED). The
+ * wait is one-shot, inside the press; the waiter is in place before the
+ * request is sent, since OBS may send the event before its answer.
  */
 export async function requestAndConfirm(
   requestType: string,
   requestData: Record<string, unknown> | undefined,
   match: (type: string, data: Record<string, unknown>) => boolean,
   withinMs: number,
-): Promise<boolean> {
+): Promise<Record<string, unknown> | null> {
   return pressWith(async (connected) => {
-    let waiter!: { match: typeof match; resolve(): void };
-    const seen = new Promise<boolean>((resolve) => {
+    let waiter!: { match: typeof match; resolve(data: Record<string, unknown> | null): void };
+    const seen = new Promise<Record<string, unknown> | null>((resolve) => {
       const timer = setTimeout(() => {
         waiters.delete(waiter);
-        resolve(false);
+        resolve(null);
       }, withinMs);
       waiter = {
         match,
-        resolve: () => {
+        resolve: (data) => {
           clearTimeout(timer);
-          resolve(true);
+          resolve(data);
         },
       };
       waiters.add(waiter);
@@ -286,10 +289,27 @@ export async function requestAndConfirm(
       await connected.request(requestType, requestData);
     } catch (err) {
       waiters.delete(waiter);
-      waiter.resolve();
+      waiter.resolve(null);
       throw err;
     }
     return seen;
+  });
+}
+
+/**
+ * Ask OBS whether it is streaming and recording, and correct what the keys
+ * show: for a start that OBS never finished and never said so (above), which
+ * would otherwise stay "starting" until OBS's next output event. One request
+ * each, after a press; never on a schedule.
+ */
+export async function refreshOutputs(): Promise<void> {
+  const [stream, record] = await Promise.all([request('GetStreamStatus'), request('GetRecordStatus')]);
+  // Running: live, unless it is on its way out (still active while stopping).
+  const running = (current: OutputPhase): OutputPhase => (current === 'stopping' ? 'stopping' : 'live');
+  update({
+    stream: stream.outputReconnecting === true ? 'reconnecting' : stream.outputActive === true ? running(state.stream) : 'stopped',
+    record: record.outputActive === true ? running(state.record) : 'stopped',
+    recordPaused: record.outputActive === true && record.outputPaused === true,
   });
 }
 
@@ -319,9 +339,9 @@ const OBS_SOURCE_AUDIO = 1 << 1;
 /**
  * What an OBS key's picker offers, asked of OBS now — connecting as a press
  * does, and letting go after if no key is shown. Scenes and a scene's sources
- * in the order OBS's own lists show them (highest index first — `[inference]`
- * from obs-websocket's sceneIndex, not checked against OBS's window); audio
- * inputs only, by name.
+ * in the order OBS's own lists show them (highest index first, from
+ * obs-websocket's sceneIndex and sceneItemIndex — checked against OBS's
+ * window by eye); audio inputs only, by name.
  */
 export async function list(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList> {
   return holding(async () => {
@@ -343,7 +363,8 @@ export async function list(kind: 'scenes' | 'inputs' | 'sources', scene?: string
       }
       if (kind === 'inputs') {
         const { inputs } = await connected.request('GetInputList');
-        // inputKindCaps since obs-websocket 5.? — without it, every input is offered.
+        // GetInputList carries inputKindCaps since obs-websocket 5.6.0 (its source; protocol.md lists it only
+        // on InputCreated). Without it, every input is offered.
         const audio = records(inputs).filter((i) => typeof i.inputKindCaps !== 'number' || (i.inputKindCaps & OBS_SOURCE_AUDIO) !== 0);
         return { ok: true, names: names(audio, 'inputName').sort((a, b) => a.localeCompare(b)) };
       }
@@ -476,7 +497,7 @@ export function phaseOf(outputState: unknown, current: OutputPhase): OutputPhase
   }
 }
 
-/** GetCurrentProgramScene's answer: `sceneName` since 5.?, `currentProgramSceneName` before (deprecated, still sent). */
+/** GetCurrentProgramScene's answer: `sceneName` since obs-websocket 5.4.0, `currentProgramSceneName` before (deprecated, still sent). */
 function programSceneOf(data: Record<string, unknown>): string | null {
   const name = data.sceneName ?? data.currentProgramSceneName;
   return typeof name === 'string' ? name : null;
@@ -548,7 +569,7 @@ function onEvent(type: string, data: Record<string, unknown>): void {
   for (const waiter of [...waiters]) {
     if (!waiter.match(type, data)) continue;
     waiters.delete(waiter);
-    waiter.resolve();
+    waiter.resolve(data);
   }
   switch (type) {
     case 'StreamStateChanged':

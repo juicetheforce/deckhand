@@ -115,8 +115,12 @@ const failureOf = (err: unknown): ActionFailure => ({
   notSetUp: err instanceof NotSetUp,
 });
 
-/** runAction, keeping whether the failure tells the person what to do: what a deck key press uses. */
-export async function attempt(ctx: ActionContext, action: ActionDef): Promise<ActionFailure | null> {
+/**
+ * runAction, keeping whether the failure tells the person what to do: what a
+ * deck key press uses. `onArmed` is called when the press only armed its
+ * release (ActionHandler.execute resolved 'armed').
+ */
+export async function attempt(ctx: ActionContext, action: ActionDef, onArmed?: () => void): Promise<ActionFailure | null> {
   const handler = registry[action.type];
   if (!handler) {
     const message = `unknown action type "${action.type}"`;
@@ -125,7 +129,7 @@ export async function attempt(ctx: ActionContext, action: ActionDef): Promise<Ac
   }
   if (!handler.execute) return null;
   try {
-    await handler.execute(ctx, action);
+    if ((await handler.execute(ctx, action)) === 'armed') onArmed?.();
     return null;
   } catch (err) {
     const failure = failureOf(err);

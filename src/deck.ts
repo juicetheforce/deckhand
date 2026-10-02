@@ -369,10 +369,13 @@ export class DeckSession implements DeckHandle {
    * write, no timer.
    */
   private dispatch(index: number, action: ActionDef): Promise<void> {
-    // An action that acts on its release (a hold) is judged by the release: its
-    // press alone succeeding must not clear a mark the release will set again,
-    // or every short press would flicker the badge and notify afresh.
-    return this.settle(index, (ctx) => attempt(ctx, action), !hasRelease(action));
+    // A press that armed a release (a hold: Stream, live) is judged by the
+    // release: its success alone must not clear a mark the release will set
+    // again, or every short press would flicker the badge and notify afresh.
+    // A press that did the whole action — Stream starting — is judged here,
+    // so a start that worked clears a start that failed.
+    let armed = false;
+    return this.settle(index, (ctx) => attempt(ctx, action, () => (armed = true)), () => !armed);
   }
 
   /** A hold's release: judged only if it acted — one with nothing to do leaves the press's mark alone. */
@@ -383,14 +386,14 @@ export class DeckSession implements DeckHandle {
       acted = outcome !== undefined;
       return outcome ?? null;
     };
-    await this.settle(index, run, true, () => acted);
+    await this.settle(index, run, () => true, () => acted);
   }
 
   /** Run a key's press or release and mark or clear its failure (dispatch, above). */
   private async settle(
     index: number,
     run: (ctx: ActionContext) => Promise<ActionFailure | null>,
-    clearOnSuccess = true,
+    clearOnSuccess: () => boolean = () => true,
     judged: () => boolean = () => true,
   ): Promise<void> {
     const profile = this.profileOf();
@@ -406,7 +409,7 @@ export class DeckSession implements DeckHandle {
     }
     const changed =
       failure === null
-        ? clearOnSuccess && this.failures.clear(this.serial, profile, page, index)
+        ? clearOnSuccess() && this.failures.clear(this.serial, profile, page, index)
         : this.failures.mark(this.serial, { profile, page, key: index, error: failure.message }, button);
     if (changed) this.onStateChange();
     if (changed && failure?.actionNeeded) {
