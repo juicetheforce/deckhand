@@ -184,8 +184,9 @@ That's what shapes it.
 - [SECURITY.md](SECURITY.md): reporting a security problem privately, and
   where the OBS password is kept.
 
-Bug reports are welcome as issues. I answer them when I can; feature requests
-are weighed against what I use.
+Bug reports are welcome as issues: include the version from the editor's
+**Settings › About**. I answer them when I can; feature requests are weighed
+against what I use.
 
 Licensed under the GNU General Public License, version 3 or later:
 [LICENSE](LICENSE).

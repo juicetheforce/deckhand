@@ -498,6 +498,12 @@ waits on a client: one that stops reading is disconnected.
 
 ## Troubleshooting
 
+**Which version is installed.** The editor's **Settings › About** shows it:
+a release's tag, or `git describe` for a developer install. It can be
+selected and copied into an issue. **Releases on GitHub** there opens the
+releases page, where every release and its installer are listed; Deckhand
+itself never checks for updates. To update, run the install line again.
+
 **Deck not found.** `deckhand decks` lists what the daemon can see. If a deck
 is missing, run the install line again with `bash -s -- install --reinstall`
 (or `scripts/install.sh update` in a developer install), which reinstalls the
