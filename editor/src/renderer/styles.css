@@ -2797,6 +2797,17 @@ body.settings-body {
   flex-wrap: wrap;
 }
 
+.settings-version {
+  user-select: text;
+  cursor: text;
+  font-variant-numeric: tabular-nums;
+}
+
+/* In a settings row, centred like every other row's control. */
+.obs-link.about-link {
+  align-self: center;
+}
+
 .obs-link {
   align-self: flex-start;
   padding: 0;

@@ -57,8 +57,16 @@ await daemon.attach(V2, new FakeDeck({ columns: 5, rows: 3, pixels: 72, model: '
 await daemon.attach(XL, new FakeDeck());
 const stopWatching = await reloadLikeTheDaemon(daemon);
 
+// ABOUT: a VERSION file standing in for an install's, and a file the
+// releases link writes to instead of opening a browser.
+const versionFile = path.join(scratch, 'VERSION');
+await fs.writeFile(versionFile, 'v9.8.7-check\n');
+const openLog = path.join(scratch, 'opened.log');
+
 const env = {
   ...process.env,
+  DECKHAND_CHECK_VERSION_FILE: versionFile,
+  DECKHAND_CHECK_OPEN_LOG: openLog,
   DECKHAND_EDITOR_CHECK: 'tray',
   DECKHAND_CONFIG_DIR: configDir,
   DECKHAND_STATE_DIR: stateDir,
@@ -122,6 +130,17 @@ r.shown = await inPage(
     title: document.title,
   })`,
 );
+
+// ABOUT: the version, selectable; the releases link opens only the releases page.
+r.about = await inPage(
+  editor,
+  'settings',
+  `(() => { const v = document.querySelector('.settings-version'); return { text: v.textContent, select: getComputedStyle(v).userSelect }; })()`,
+);
+r.editorOpenRefused = await inPage(editor, 'editor', 'window.deckhand.openReleases()');
+await inPage(editor, 'settings', clickIn('[data-about=releases]'));
+await sleep(300);
+r.opened = await fs.readFile(openLog, 'utf8').catch(() => '');
 
 // The editor window cannot change settings, even through the bridge.
 // Read back from main, not preferences.json: the file is written 400 ms after
@@ -223,6 +242,14 @@ check('the settings window shows every deck by name, Automatic, close-to-tray on
   assert.equal(r.shown.title, 'Deckhand Settings');
 });
 check('the editor window cannot change settings through the bridge', () => assert.notEqual(r.editorRefused, 'teal'));
+check('ABOUT shows the installed version, selectable to copy', () => {
+  assert.equal(r.about.text, 'v9.8.7-check');
+  assert.equal(r.about.select, 'text');
+});
+check('the releases link opens the GitHub releases page, once, and only from the settings window', () => {
+  assert.equal(r.opened, 'https://github.com/juicetheforce/deckhand/releases\n');
+  assert.equal(r.editorOpenRefused.ok, false);
+});
 check('Notifications starts ticked; unticking writes "notifications": false to config.json, not the preferences', () => {
   assert.deepEqual(r.notificationsShown, [true, false]);
   assert.equal(r.notificationsOffSaved, true);

@@ -5,8 +5,8 @@ import { ObsSettings } from './ObsSettings.js';
 
 /**
  * The settings window: DEVICES, BEHAVIOR, INTEGRATIONS (OBS; Twitch and
- * VTube Studio later), APPEARANCE and BACKUP (export and import of the whole
- * configuration), one card per setting, and a footer.
+ * VTube Studio later), APPEARANCE, BACKUP (export and import of the whole
+ * configuration) and ABOUT (the version), one card per setting, and a footer.
  * Every change is saved at once and reaches the editor behind it at once,
  * except an import, which waits for its review to be confirmed — so Done only
  * closes the window.
@@ -140,6 +140,9 @@ export function SettingsWindow() {
       <ExportRow />
       <ImportAndKept />
 
+      <span className="settings-heading">ABOUT</span>
+      <AboutRow />
+
       <div className="settings-footer">
         <span className="settings-note">Settings apply immediately</span>
         <button
@@ -155,6 +158,43 @@ export function SettingsWindow() {
         </button>
       </div>
     </main>
+  );
+}
+
+/**
+ * The installed version, selectable so it can be copied into an issue, and
+ * the releases page. No update check: Deckhand never asks the network what is
+ * newer (main/about.ts). If the browser cannot be opened, the message names
+ * the URL, to copy.
+ */
+function AboutRow() {
+  /** undefined while it is read; null in a checkout, with no VERSION file. */
+  const [version, setVersion] = useState<string | null | undefined>(undefined);
+  const [openError, setOpenError] = useState<string | null>(null);
+  useEffect(() => {
+    void window.deckhand.appVersion().then(setVersion);
+  }, []);
+  return (
+    <div className="settings-row" data-about="version">
+      <div className="settings-text">
+        <span className="settings-title">Deckhand</span>
+        <span className="settings-sub settings-version" data-about-version={version ?? ''}>
+          {version === undefined ? '' : version === null ? 'A development build: not installed' : version}
+        </span>
+        {openError && <span className="settings-status settings-status-error">{openError}</span>}
+      </div>
+      <button
+        className="obs-link about-link"
+        title="github.com/juicetheforce/deckhand/releases"
+        onClick={() => {
+          setOpenError(null);
+          void window.deckhand.openReleases().then((r) => setOpenError(r.ok ? null : r.error));
+        }}
+        data-about="releases"
+      >
+        Releases on GitHub
+      </button>
+    </div>
   );
 }
 

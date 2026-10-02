@@ -271,6 +271,10 @@ export interface DeckhandBridge {
    * only).
    */
   notifications(): Promise<boolean | null>;
+  /** The installed version (the app directory's VERSION), or null in a checkout. Settings window only. */
+  appVersion(): Promise<string | null>;
+  /** Open the GitHub releases page in the browser. Settings window only; the URL is fixed in the main process. */
+  openReleases(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Turn them on or off; resolves with the setting as it now is. */
   setNotifications(on: boolean): Promise<boolean | null>;
   /**

@@ -27,6 +27,7 @@ import { buildExport, suggestedExportName, writeExport } from './export-bundle.j
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
+import { editorVersion, openReleases } from './about.js';
 import { Launcher } from './launcher.js';
 import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
@@ -644,6 +645,18 @@ function registerIpc(): void {
     return view ? view.config.notifications !== false : null;
   };
   ipcMain.handle('notifications', (event) => (fromSettingsWindow(event) ? notificationsOn() : null));
+  // ABOUT: the installed version, and the releases page in the browser — no update check (about.ts).
+  ipcMain.handle('appVersion', (event) => {
+    if (!fromSettingsWindow(event)) return null;
+    // A check may stand in a VERSION file for an install's.
+    const checkFile = CHECK === null ? undefined : process.env.DECKHAND_CHECK_VERSION_FILE;
+    return editorVersion(checkFile);
+  });
+  ipcMain.handle('openReleases', (event) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not from the settings window' };
+    // A check opens nothing: it may name a file to see what would have opened.
+    return openReleases(CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
+  });
   ipcMain.handle('setNotifications', (event, on: unknown) => {
     if (!fromSettingsWindow(event) || typeof on !== 'boolean' || !store) return notificationsOn();
     store.apply({ kind: 'setNotifications', on });
