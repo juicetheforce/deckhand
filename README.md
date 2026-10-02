@@ -6,7 +6,7 @@
 
 Stream Deck software for Linux. A small background service drives the decks,
 and an editor lets you set them up: hotkeys, opening apps, audio device
-switching, media controls, pages and profiles.
+switching, media controls, OBS Studio, pages and profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -19,8 +19,8 @@ It's one person's project, used every day.
   decks and sends the keys. The editor only writes a config file. A slow,
   closed or crashed editor can't delay a key press.
 - **It does nothing when nothing is happening.** It waits for key presses,
-  devices and players rather than checking on them. On my laptop, with music
-  playing and live keys on screen, it idles at about 1% of one CPU core.
+  devices, players and OBS rather than checking on them. On my laptop, with
+  music playing and live keys on screen, it idles at about 1% of one CPU core.
 - **It's native, not a Flatpak.** It needs a udev rule, `/dev/uinput` and your
   audio and media services, which is what a sandbox exists to withhold. Keys
   come from its own virtual keyboard at the kernel's input layer, so games see
@@ -46,6 +46,49 @@ It's one person's project, used every day.
   when you plug it back in it comes back on the active profile's start page.
   Any key it was holding down is released when it goes.
 
+![Two decks side by side in the editor](assets/screenshots/multi-deck.png)
+
+## OBS Studio
+
+Keys for OBS: go live, record, pause a recording, switch scenes, mute one of
+OBS's audio inputs, and show or hide a source. Each key shows what OBS is
+doing, whoever did it: start a recording from OBS's own window and the Record
+key turns red.
+
+- **Stream starts on a press and stops only on a one-second hold.** A quick
+  press while you're live does nothing but mark the key, so a stray tap can't
+  end a stream.
+- **Scenes, inputs and sources are picked from OBS's own lists**, never
+  typed, so OBS needs to be running while you set those keys up.
+- **Deckhand talks to OBS only while a deck shows an OBS key.** Start OBS
+  after Deckhand and the keys catch up within a minute, or at once when you
+  press one.
+- **When the fix is yours to make**, such as starting OBS, or holding Stream
+  to stop it, a desktop notification says so, once. They can be turned off
+  in Settings.
+
+![A page of OBS keys on two decks](assets/screenshots/obs.png)
+
+To set it up:
+
+1. In OBS, open **Tools › WebSocket Server Settings** and tick **Enable
+   WebSocket server**. It's off by default, and that's the most common
+   reason OBS keys do nothing. **Show Connect Info** there has the port and
+   password.
+2. In Deckhand's editor, open **Settings › Integrations › OBS Studio**, enter
+   the password, and press **Test connection**. It says what's wrong if
+   anything is: OBS not running, its server off, or the password. Then
+   **Save**.
+
+**Use a strong password for OBS.** Its WebSocket server listens on every
+network interface, not just this computer, and the password is the only thing
+protecting it. Deckhand keeps the password in a file only you can read, never
+in its configuration, exports or backups ([SECURITY.md](SECURITY.md)).
+
+OBS can't pause a recording that shares the stream's encoder, which is OBS's
+default (Settings › Output › Recording Quality "Same as stream"). Choose any
+other quality there to use the Pause recording key.
+
 ## Screenshots
 
 Setting up a hotkey:
@@ -56,7 +99,7 @@ Choosing an icon from a folder of your own:
 
 ![The icon picker, open on a bookmarked folder](assets/screenshots/icon-picker.png)
 
-Settings:
+Settings, with notifications and the OBS connection:
 
 ![The settings window](assets/screenshots/settings.png)
 
@@ -113,6 +156,12 @@ And what it doesn't do well yet:
   because `pactl` doesn't report the description. They still work.
 - **A Run command key never shows that it failed.** It starts the program
   and moves on, so a mistyped command just does nothing.
+- **OBS's studio mode is ignored.** A Scene key switches what's on air
+  directly, not the preview.
+- **OBS sources inside a group** can't be chosen for a Show/hide source key.
+- **Renaming a scene, input or source in OBS** breaks the keys that use it
+  until you choose it again in the editor. The key is marked, and says which
+  name is missing.
 
 ## Things I'd like to add
 
@@ -124,13 +173,16 @@ That's what shapes it.
 - Volume for individual devices, not just the default one.
 - Window actions on KDE Plasma.
 - Dials and the touch strip, if I ever have a Stream Deck+ to test on.
+- More OBS keys (replay buffer, virtual camera, studio mode) when someone
+  asks for them.
 
 ## More
 
 - [REFERENCE.md](REFERENCE.md): the config format, every action, the
   `deckhand` command, the control socket, troubleshooting and development.
 - [ARCHITECTURE.md](ARCHITECTURE.md): why it's built the way it is.
-- [SECURITY.md](SECURITY.md): reporting a security problem privately.
+- [SECURITY.md](SECURITY.md): reporting a security problem privately, and
+  where the OBS password is kept.
 
 Bug reports are welcome as issues. I answer them when I can; feature requests
 are weighed against what I use.

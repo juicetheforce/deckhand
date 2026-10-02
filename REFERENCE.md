@@ -12,6 +12,7 @@ on the code. Why things are the way they are is in
 - [The deckhand command](#the-deckhand-command)
 - [Configuration](#configuration)
 - [Actions](#actions)
+- [OBS Studio](#obs-studio)
 - [The control socket](#the-control-socket)
 - [Troubleshooting](#troubleshooting)
 - [Developing](#developing): [running it](#running-it-while-developing),
@@ -235,6 +236,9 @@ deckhand run --deck <serial> '{"type":"hotkey","keys":"ctrl+1"}'   # run an acti
 deckhand sinks                      # audio outputs you can pick (* = current default)
 deckhand sources                    # audio inputs you can pick
 deckhand apps                       # installed applications an app key can open, with their IDs
+deckhand obs                        # OBS: connected or not, streaming, recording, which settings are saved
+deckhand obs password               # set OBS's WebSocket password, typed or piped in, never an argument
+deckhand obs port 4456              # set OBS's WebSocket port, if it isn't 4455
 deckhand watch                      # print changes as they happen, until Ctrl+C
 deckhand raw '<request>'            # send one request as JSON and print the reply
 ```
@@ -280,7 +284,8 @@ scripts. `config.example.json` shows a complete file — its serials and audio
     }
   },
 
-  "startProfile": "Gaming"                     // profile ID or name, optional
+  "startProfile": "Gaming",                    // profile ID or name, optional
+  "notifications": false                       // desktop notifications for failed keys; on unless false
 }
 ```
 
@@ -332,6 +337,12 @@ can't be drawn shows a dashed "missing" icon.
 | `audio.mute` | Toggles output mute; `iconMuted` / `iconUnmuted` |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconPlaying` / `iconPaused` |
 | `media.info` | Live now-playing key, with album art via `showArt`. `maxChars` cuts the title and artist at a number of characters instead of at the key's width |
+| `obs.stream` | Goes live in OBS on a press; stops only when held for a second. Red while live, amber with broken arcs while OBS reconnects |
+| `obs.record` | Starts and stops recording in OBS. Red while recording, amber while paused |
+| `obs.recordPause` | Pauses and resumes OBS's recording |
+| `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air |
+| `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`) |
+| `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first |
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -358,8 +369,87 @@ failed to start, and nothing on the deck shows the wait: a second press
 during it opens a second copy. Other keys work during the pause.
 
 A key whose press fails wears a red badge, on the deck and in the editor,
-until a press of it succeeds or it is edited. A `command` key without `wait`
-is never badged: the press returns before the program could fail.
+until a press of it succeeds, it is edited, or you clear it: select it in the
+editor, which says why its last press failed, and press **Clear**. A
+`command` key without `wait` is never badged: the press returns before the
+program could fail.
+
+When the failure's message says what to do (hold Stream to stop it, start
+OBS, nothing is recording), a desktop notification says it too, through your
+desktop's notification service. Once per message: pressing the same key
+again with the same failure doesn't notify again, and a new message replaces
+that key's last notification. Turn them off in the editor's
+**Settings › Notifications**, or with `"notifications": false` in the config.
+
+## OBS Studio
+
+Deckhand is a client of OBS's WebSocket server (obs-websocket 5, built into
+OBS since version 28). It works with OBS from your distribution or from
+Flathub: both listen on this computer's network, which Deckhand reaches at
+`127.0.0.1`.
+
+**Setting it up.** In OBS, **Tools › WebSocket Server Settings**: tick
+**Enable WebSocket server**, which is off by default. **Show Connect Info**
+has the port (4455 unless you changed it) and the password. Then, in
+Deckhand's editor, **Settings › Integrations › OBS Studio**: the host
+(`127.0.0.1` for this computer), the port and the password. **Test
+connection** tries them without saving and says which thing is wrong: OBS
+not running, its WebSocket server off (told apart by whether an OBS process
+is running on this computer; for another host it can't tell the two apart),
+the password, or no password where OBS asks for one. **Save** sets OBS up and
+connects once. If OBS isn't running, that's fine: the keys connect when it
+is. For an OBS with authentication turned off, leave the password empty
+(**Remove the saved password** clears one saved before).
+`deckhand obs password` and `deckhand obs port` set the same things from a
+terminal.
+
+**Use a strong password.** OBS's WebSocket server listens on every network
+interface, IPv4 and IPv6, with no option to listen on this computer alone, so
+the password is the only thing between your network and OBS.
+
+**Where it's kept.** `~/.local/state/deckhand/credentials.json`, readable
+only by you (mode `0600`), outside the config directory. It is never in
+`config.json`, an export or a backup, and the control socket never returns
+it, only whether one is set. An export restored on another machine brings its
+OBS keys without the password: they show that OBS isn't set up until it is.
+
+**When it's connected.** Only while a deck shows a page with an OBS key on
+it, or a press is waiting on OBS. Once connected, the keys follow OBS's own
+events, so a change made in OBS's window shows on the deck. If OBS isn't
+running, the next try is within a minute, or straight away when an OBS key is
+pressed. A password OBS refused is not retried until it is changed.
+
+**Not set up.** With no saved connection, OBS keys are drawn dimmed with a
+grey plug badge, and the editor's OBS actions can't be placed: hovering says
+why, and clicking opens Settings at OBS. Pressing such a key notifies once.
+**Remove** in Settings disconnects and deletes the saved connection; it
+removes no keys, which come back as soon as OBS is set up again.
+
+**The keys.** Stream starts on a press and stops only on a hold of one
+second: a quick press while live fails, marks the key and says to hold it,
+so a stray tap can't end a stream. Stream and Record turn red only once OBS
+says the output started. If it doesn't within 5 seconds (no stream service
+set up in OBS, say: OBS shows its own error and tells Deckhand nothing), the
+key stays off and is marked, saying OBS's window has the reason. A
+connection slower than that is marked too, and still turns red when OBS
+goes live. From `deckhand run` or the control socket,
+which have no hold, Stream only starts. Pause recording is for recordings,
+not streams, and OBS can't pause a recording that shares the stream's encoder
+(**Settings › Output › Recording Quality** "Same as stream", OBS's default in
+Simple mode); the key is marked and says so rather than doing nothing. Scene,
+Mute input and Show/hide source name what they act on, and the editor offers
+only what OBS lists, so OBS must be running to choose. Their icons are the
+same for every key of a type, so give each a label.
+
+**Known gaps.**
+
+- **Studio mode.** A Scene key switches the program scene directly, skipping
+  the preview.
+- **Sources inside a group** aren't offered for Show/hide source.
+- **Renames.** Keys name scenes, inputs and sources, so renaming one in OBS
+  breaks the keys that use it. A press is marked with the missing name, and
+  the editor shows the saved name as "not in OBS now" until you choose again.
+  Deckhand never rewrites your config to follow a rename.
 
 ## The control socket
 
@@ -387,7 +477,13 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | `action.run` | `serial`, `action`, optional `onRelease` and `holdMs` | runs an action as if pressed on that deck, without saving it |
 | `audio.sinks`, `audio.sources` | | the devices an audio key can name, and the current default |
 | `apps` | | the installed applications an app key can open: ID, name, and icon file (null when the theme has none). Reads the disk afresh |
-| `subscribe` | `events`: any of `state`, `config`, `audio` | replaces this connection's subscriptions |
+| `failure.clear` | `serial`, `profile`, `page`, `key` | clears one key's failed badge |
+| `obs.status` | | OBS: whether it is set up, the connection, stream and recording, host and port, and whether a password is set — never the password |
+| `obs.credentials` | any of `host`, `port`, `password`; `null` removes one | saves them (which sets OBS up), then tries once to connect; replies as `obs.status`, with `attempt` |
+| `obs.test` | optional `host`, `port`, `password` (missing ones: the saved) | tries to connect and lets go; says which thing is wrong. Saves nothing |
+| `obs.list` | `kind`: `scenes`, `inputs` or `sources`; `scene` for sources | what OBS lists, in its own order; audio inputs only |
+| `obs.remove` | | deletes OBS's saved connection and disconnects. Keys are untouched |
+| `subscribe` | `events`: any of `state`, `config`, `audio`, `obs` | replaces this connection's subscriptions |
 | `preview.set`, `preview.clear` | | the editor's unsaved previews on a deck; cleared when its connection closes |
 
 After `subscribe`, events arrive as `{"event": "state", "data": {…}}`. No
@@ -418,6 +514,13 @@ Compare the key's device with `deckhand sinks` or `deckhand sources`.
 
 **Media keys do nothing.** `busctl --user list | grep mpris` — if nothing is
 listed, your player isn't exposing MPRIS.
+
+**OBS keys do nothing.** `deckhand obs` shows whether OBS is set up and
+connected. **Settings › Integrations › OBS Studio › Test connection** says
+which thing is wrong. The most common one: OBS's WebSocket server is off by
+default (**Tools › WebSocket Server Settings › Enable WebSocket server**). A
+key badged after a rename in OBS needs its scene, input or source chosen
+again in the editor.
 
 **`deckhand` says the daemon isn't running.** `systemctl --user status
 deckhand`. If the service is up, look for `[control] listening on …` in its
@@ -513,8 +616,9 @@ x.png` renders the editor to a PNG; `node editor/scripts/empty-state.mjs
 show" (`daemon-down`, `never-configured`, `all-unplugged`, `no-layout`,
 `deck-unplugged`, and `normal` as the control), against a scratch config,
 state directory and socket; `node editor/scripts/demo.mjs` opens it on an
-invented setup under its own `HOME` and a private session bus — the README's
-screenshots come from it. Closing the demo's window reopens the editor on the
+invented setup under its own `HOME` and a private session bus, with a fake OBS
+— the README's screenshots come from it: `--view multi` (both decks on the
+canvas), `--view obs` (a page of OBS keys) and `--view settings`. Closing the demo's window reopens the editor on the
 same state, to see what it remembers across a restart. Ctrl-C to finish either
 window.
 

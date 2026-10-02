@@ -29,6 +29,33 @@ usually within a few days. Only the latest release is supported.
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
   anything that writes outside the places it shows you before importing.
+- **The OBS password** Deckhand keeps: anything that puts it anywhere but its
+  own file, or lets another user read it.
+
+## Secrets
+
+Deckhand keeps one secret today: the password for OBS's WebSocket server.
+
+- It lives in `~/.local/state/deckhand/credentials.json` (under
+  `$XDG_STATE_HOME` if set), mode `0600`, written by temporary file and
+  rename so it is never on disk with wider permissions. It is outside the
+  config directory, which people sync or keep in dotfiles.
+- It is **never in `config.json`, an export or a backup**. Exports bundle the
+  config and its icons; the rolling backups copy the config. Neither touches
+  this file, so restoring an export or a backup never restores the password.
+- The editor sends it to the daemon over the control socket (mode `0600`),
+  and the daemon writes the file. **The socket never returns it**, only
+  whether one is set. `deckhand obs password` reads it from the terminal or
+  stdin, never from an argument, which every process could see.
+- It is not encrypted at rest, and not kept in the desktop keyring: the
+  keyring would not separate it from your other programs either, and the
+  udev rule above already trusts them. Full-disk encryption is what protects
+  it at rest.
+
+OBS's WebSocket server listens on every network interface, with no option to
+listen on this computer alone, so its password is all that stands between
+your network and OBS. Use a strong one: OBS's default is a generated
+16-character password, and **Show Connect Info** has it.
 
 Out of scope: that a user's own processes can use `/dev/uinput` once the rule
 is installed (that is what it is for), and anything that needs root already.
