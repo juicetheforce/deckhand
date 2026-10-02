@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Post-release OBS check on the laptop (now v0.5.1), and the About link opening the browser: Pause with \"Same as stream\", a video-only source left out of the Mute list, fader traffic."
+next = "VTube Studio: plan the integration; first settle how it gets tested under Proton and confirm a native process reaches its API."
 category = "Gaming"
 paused = false
 focus = true
