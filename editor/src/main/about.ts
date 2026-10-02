@@ -37,8 +37,8 @@ export function editorVersion(file: string = path.resolve(import.meta.dirname, '
  * no portal outside a sandbox. Not Electron's shell.openExternal: this
  * Electron's binary carries the OpenURI portal's name, so it may use it, and
  * Deckhand uses no portal (ARCHITECTURE). Detached, so the browser outlives
- * the editor. A browser that then fails to open is not seen here; the page
- * shows the URL as text to copy.
+ * the editor. A browser that then fails to open is not seen here; if gio
+ * itself cannot run, the error the page shows names the URL, to copy.
  *
  * In a check (`checkLog` set) nothing is opened: the URL is appended to that
  * file instead, so a check can see what would have been.
