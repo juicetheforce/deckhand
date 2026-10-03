@@ -136,3 +136,52 @@ export type ObsAttempt =
 export type ObsList =
   | { ok: true; names: string[] }
   | { ok: false; reason: 'not-set-up' | 'unavailable' | 'auth' | 'not-found' | 'other'; message: string };
+
+export type VtsConnection =
+  /** Nothing needs VTube Studio, and no connection has been tried. */
+  | 'idle'
+  /** No saved token: VTube Studio has not been allowed in Deckhand's Settings. Nothing connects. */
+  | 'not-set-up'
+  | 'connecting'
+  | 'connected'
+  /** VTube Studio is not running, its API is off, or it went away. */
+  | 'unavailable'
+  /** VTube Studio no longer accepts the saved token: revoked in its plugin list. Never retried until Connect. */
+  | 'refused';
+
+/**
+ * Where Settings' Connect is: asking VTube Studio for access happens in the
+ * background, and the "vts" event says how it goes. `checking`: finding VTS
+ * (a connection, then its broadcast if that fails). `waiting`: VTS is showing
+ * its window and the person has not answered. Then one outcome, kept until
+ * the next Connect: `approved` (the token is saved), `denied`, `busy` (VTS is
+ * already showing a request), `not-running`, `api-off`, `unreachable`,
+ * `failed`. `none`: never asked since the daemon started, or removed.
+ */
+export type VtsApprovalState = 'none' | 'checking' | 'waiting' | 'approved' | 'denied' | 'busy' | 'not-running' | 'api-off' | 'unreachable' | 'failed';
+
+export interface VtsApproval {
+  state: VtsApprovalState;
+  /** What to tell the person, for every state but `none`. */
+  message?: string;
+}
+
+/** The "vts.status" result, and what the "vts" event carries. Never the token: only whether VTube Studio is set up. */
+export interface VtsStatus {
+  connection: VtsConnection;
+  /** The model loaded in VTube Studio, by ID; null when none, or not known (not connected). */
+  modelId: string | null;
+  /** A token is saved: VTube Studio keys can do something. */
+  setUp: boolean;
+  port: number | null;
+  approval: VtsApproval;
+}
+
+/**
+ * The "vts.list" result: what a VTube Studio key's picker offers — models, or
+ * one model's hotkeys — by ID, with the name to show. Not reachable is an
+ * answer, not an error, as for OBS.
+ */
+export type VtsList =
+  | { ok: true; items: Array<{ id: string; name: string; type?: string; file?: string }> }
+  | { ok: false; reason: 'not-set-up' | 'unavailable' | 'refused' | 'not-found' | 'other'; message: string };

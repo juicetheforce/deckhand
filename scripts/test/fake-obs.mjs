@@ -6,8 +6,8 @@
  * of OBS's outputs, and the events OBS sends when they change.
  *
  * Node has a WebSocket client but no server, so the server side is written
- * here: the HTTP upgrade, and text, close and ping frames — unmasked from us,
- * masked from the client, as RFC 6455 says. No dependency.
+ * by hand: the HTTP upgrade here, the frames in ws-frames.mjs (shared with
+ * fake-vts.mjs). No dependency.
  *
  *   const obs = await startFakeObs({ password: 'secret' });
  *   obs.port; obs.requests; obs.connections; obs.identified;
@@ -20,6 +20,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
+import { closeSocket, readFrame, writeFrame } from './ws-frames.mjs';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 /** Event categories (Identify's eventSubscriptions): an event goes only to clients that asked for its own. */
@@ -321,54 +322,4 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
 
 function send(socket, op, d) {
   writeFrame(socket, 0x1, Buffer.from(JSON.stringify({ op, d })));
-}
-
-function closeSocket(socket, code, reason = '') {
-  const payload = Buffer.alloc(2 + Buffer.byteLength(reason));
-  payload.writeUInt16BE(code, 0);
-  payload.write(reason, 2);
-  writeFrame(socket, 0x8, payload);
-  socket.end();
-}
-
-function writeFrame(socket, opcode, payload) {
-  if (socket.destroyed || socket.writableEnded) return;
-  let header;
-  if (payload.length < 126) header = Buffer.from([0x80 | opcode, payload.length]);
-  else if (payload.length < 65536) {
-    header = Buffer.alloc(4);
-    header[0] = 0x80 | opcode;
-    header[1] = 126;
-    header.writeUInt16BE(payload.length, 2);
-  } else {
-    header = Buffer.alloc(10);
-    header[0] = 0x80 | opcode;
-    header[1] = 127;
-    header.writeBigUInt64BE(BigInt(payload.length), 2);
-  }
-  socket.write(Buffer.concat([header, payload]));
-}
-
-/** One whole frame from the front of the buffer, unmasked, or null if it has not all arrived. */
-function readFrame(buffer) {
-  if (buffer.length < 2) return null;
-  const opcode = buffer[0] & 0x0f;
-  const masked = (buffer[1] & 0x80) !== 0;
-  let length = buffer[1] & 0x7f;
-  let offset = 2;
-  if (length === 126) {
-    if (buffer.length < 4) return null;
-    length = buffer.readUInt16BE(2);
-    offset = 4;
-  } else if (length === 127) {
-    if (buffer.length < 10) return null;
-    length = Number(buffer.readBigUInt64BE(2));
-    offset = 10;
-  }
-  const maskAt = offset;
-  if (masked) offset += 4;
-  if (buffer.length < offset + length) return null;
-  const payload = Buffer.from(buffer.subarray(offset, offset + length));
-  if (masked) for (let i = 0; i < payload.length; i++) payload[i] ^= buffer[maskAt + (i % 4)];
-  return { opcode, payload, length: offset + length };
 }
