@@ -5,7 +5,7 @@ import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
 import { keyUnder, type KeyRef } from './keyUnder.js';
-import { actionIncomplete, describeAction, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
+import { actionIncomplete, describeAction, integrationOf, INTEGRATIONS, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
 
 interface Props {
   config: Config;
@@ -211,7 +211,7 @@ interface KeyProps {
   appIcons: AppIcons;
   /** The error, if this key's last press on the deck failed. */
   failure: string | undefined;
-  /** Its integration (OBS) is not set up: drawn dimmed with the not-set-up badge, which stands in for a failure badge, as on the deck. */
+  /** Its integration (OBS, VTube Studio) is not set up: drawn dimmed with the not-set-up badge, which stands in for a failure badge, as on the deck. */
   unset: boolean;
   /** This key is latched down on the deck right now. */
   latched: boolean;
@@ -226,6 +226,7 @@ interface KeyProps {
 }
 
 function Key({ serial, config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+  const unsetName = INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].name;
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
   const face = keyFace(config, button, iconSize, latched, appIcons);
@@ -251,7 +252,7 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
   const title =
     kind === 'empty'
       ? `Key ${index + 1}: empty`
-      : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ' — OBS is not set up' : ''}`;
+      : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ` — ${unsetName} is not set up` : ''}`;
 
   return (
     <button
@@ -313,7 +314,7 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
       )}
       {unset && (
         // The deck's not-set-up badge, from the same drawing (src/failed-badge.ts).
-        <span className="key-failed key-unset-badge" title="OBS is not set up: connect it in Deckhand's Settings" dangerouslySetInnerHTML={{ __html: unsetBadgeSvg(100) }} />
+        <span className="key-failed key-unset-badge" title={`${unsetName} is not set up: ${INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].notSetUp}`} dangerouslySetInnerHTML={{ __html: unsetBadgeSvg(100) }} />
       )}
       {failure !== undefined && !unset && (
         // The deck's own badge, from the same drawing (src/failed-badge.ts),

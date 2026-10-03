@@ -29,9 +29,10 @@ export function Library({
   /** A press on a row that may become a drag onto a key (useActionDrag); null while editing is blocked. */
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
   /**
-   * Why an action cannot be placed yet — its integration (OBS) is not set up
-   * — or null. Such a row neither drags nor picks: a key that can do nothing
-   * looks broken. Clicking it opens Settings at that integration instead.
+   * Why an action cannot be placed yet — its integration (OBS, VTube Studio)
+   * is not set up — or null. Such a row neither drags nor picks: a key that
+   * can do nothing looks broken. Clicking it opens Settings at that
+   * integration instead, where Settings has a section for it.
    */
   notSetUp: (type: string) => string | null;
   onSetUp: (type: string) => void;
@@ -141,7 +142,7 @@ function Entry({
   return (
     <button
       className={blocked ? 'library-entry library-entry-unset' : 'library-entry'}
-      title={blocked ? `${blocked} Click to set it up.` : `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
+      title={blocked ?? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
       aria-disabled={blocked ? true : undefined}
       data-action-type={entry.type}
       data-not-set-up={blocked ? true : undefined}

@@ -23,26 +23,55 @@ export type DeckGeometryWithSerial = DecksResult[number];
  * selection's profile and page, not by what the deck shows: a key failed on
  * a page stays failed while the deck is elsewhere.
  */
+/** The services whose keys need setting up before they can do anything. */
+export type Integration = 'obs' | 'vts';
+
 /**
- * The integration an action needs set up in Settings before it can do
- * anything: OBS's actions need OBS. Null for every other action.
+ * The integration an action needs set up before it can do anything: OBS's
+ * actions need OBS, VTube Studio's need VTube Studio. Null for every other
+ * action.
  */
-export function integrationOf(type: string | undefined): 'obs' | null {
-  return type?.startsWith('obs.') ? 'obs' : null;
+export function integrationOf(type: string | undefined): Integration | null {
+  if (type?.startsWith('obs.')) return 'obs';
+  if (type?.startsWith('vts.')) return 'vts';
+  return null;
 }
 
 /**
  * Whether this action's integration is known not to be set up — the daemon
- * says so (obs.status's setUp). Not knowing (no daemon, or one without OBS)
- * is not "not set up": nothing is blocked on a guess. Gates the library's OBS
- * actions, and draws an OBS key's not-set-up face in the grid and inspector.
+ * says so (obs.status's, vts.status's setUp). Not knowing (no daemon, or one
+ * without it) is not "not set up": nothing is blocked on a guess. Gates the
+ * library's actions, and draws a key's not-set-up face in the grid and
+ * inspector.
  */
 export function notSetUp(daemon: DaemonView, type: string | undefined): boolean {
-  return integrationOf(type) === 'obs' && daemon.obs?.setUp === false;
+  const integration = integrationOf(type);
+  if (integration === 'obs') return daemon.obs?.setUp === false;
+  if (integration === 'vts') return daemon.vts?.setUp === false;
+  return false;
 }
 
-/** What a not-set-up action says: the inspector's callout, after "OBS is not set up." */
-export const OBS_NOT_SET_UP = 'Its keys do nothing until it is connected in Settings › Integrations.';
+/**
+ * Each integration as a not-set-up key names it, and what to do.
+ * VTube Studio's Settings section comes in its session 2; until then it is
+ * set up from the command line (settingsSectionOf has no section for it).
+ */
+export const INTEGRATIONS: Record<Integration, { name: string; notSetUp: string }> = {
+  obs: { name: 'OBS', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
+  vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected: run deckhand vts connect, then allow Deckhand in VTube Studio’s window.' },
+};
+
+/** What a not-set-up action says, whole: "OBS is not set up. Its keys do nothing until…". Null for a set-up one. */
+export function notSetUpText(daemon: DaemonView, type: string | undefined): string | null {
+  const integration = integrationOf(type);
+  if (!integration || !notSetUp(daemon, type)) return null;
+  return `${INTEGRATIONS[integration].name} is not set up. ${INTEGRATIONS[integration].notSetUp}`;
+}
+
+/** The Settings section where an action's integration is set up, or null where Settings has none yet. */
+export function settingsSectionOf(type: string | undefined): 'obs' | null {
+  return integrationOf(type) === 'obs' ? 'obs' : null;
+}
 
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
@@ -634,6 +663,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'obs.scene': ['scene'],
   'obs.mute': ['input'],
   'obs.source': ['scene', 'source'],
+  // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
+  'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -737,6 +768,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.input);
     case 'obs.source':
       return !nonEmpty(action.scene) || !nonEmpty(action.source);
+    case 'vts.hotkey':
+      return !nonEmpty(action.model) || !nonEmpty(action.hotkey);
     default:
       return false;
   }

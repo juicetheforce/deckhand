@@ -13,6 +13,7 @@ import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
 import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
+import { VtsHotkeyForm } from './VtsForms.js';
 
 /** What every form may need; each takes the parts it uses. */
 export interface ActionFormProps {
@@ -95,6 +96,8 @@ export function ActionForm(p: ActionFormProps) {
       return <ObsMuteForm {...common} />;
     case 'obs.source':
       return <ObsSourceForm {...common} />;
+    case 'vts.hotkey':
+      return <VtsHotkeyForm {...common} />;
     default:
       return null;
   }

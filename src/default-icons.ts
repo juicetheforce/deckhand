@@ -124,6 +124,8 @@ export interface IconState {
   active?: boolean;
   /** obs.source: its source is hidden in its scene. */
   hidden?: boolean;
+  /** vts.hotkey: its model is not the one loaded in VTube Studio, so a press cannot run it. */
+  unavailable?: boolean;
 }
 
 const MEDIA_METHODS: Record<string, BuiltinIcon> = {
@@ -226,6 +228,9 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.muted ? 'obs-audio-muted' : 'obs-audio';
     case 'obs.source':
       return state.hidden ? 'obs-source-hidden' : 'obs-source';
+    // Dashed at full strength, no badge: not the dimmed not-set-up face, not the failed X.
+    case 'vts.hotkey':
+      return state.unavailable ? 'vts-hotkey-unavailable' : 'vts-hotkey';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

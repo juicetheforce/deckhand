@@ -2,13 +2,14 @@ import { isKnownAction } from '../actions/index.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
-import { obsCredentials, removeObsCredentials, setObsCredentials } from '../credentials.js';
+import { obsCredentials, removeObsCredentials, removeVtsCredentials, setObsCredentials, vtsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
 import * as obsService from '../services/obs.js';
+import * as vtsService from '../services/vts.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
-import type { AppListing, AudioList, BackupStatus, DeckStatus, ObsStatus, ReloadResult, StateSnapshot } from './protocol.js';
+import type { AppListing, AudioList, BackupStatus, DeckStatus, ObsStatus, ReloadResult, StateSnapshot, VtsStatus } from './protocol.js';
 import {
   ControlError,
   EVENT_NAMES,
@@ -57,6 +58,7 @@ export interface ControlDeps {
 export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
   let lastAudio = '';
   let obsEvents = Promise.resolve();
+  let vtsEvents = Promise.resolve();
   return {
     state: () => server.notify('state', () => stateSnapshot(deps)),
     config: () => server.notify('config', () => deps.lastReload()),
@@ -74,6 +76,13 @@ export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
       obsEvents = obsEvents.then(async () => {
         const status = await obsStatus().catch(() => null);
         if (status) server.notify('obs', () => status);
+      });
+    },
+    // vts.status's reply, read in order as obs's is.
+    vts: () => {
+      vtsEvents = vtsEvents.then(async () => {
+        const status = await vtsStatus().catch(() => null);
+        if (status) server.notify('vts', () => status);
       });
     },
   };
@@ -333,6 +342,54 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       return obsStatus();
     },
 
+    /**
+     * VTube Studio: the connection, the model loaded, where Connect is, and
+     * whether a token is saved — never the token itself (credentials.ts).
+     */
+    async 'vts.status'() {
+      return vtsStatus();
+    },
+
+    /**
+     * Settings' Connect: ask VTube Studio for access. Replies at once —
+     * `started` false when a request is already under way; how it goes comes
+     * as "vts" events (`approval`), since it waits for the person to answer
+     * VTS's window. `port`: where to look first (else the saved one, or
+     * 8001). Only this ever asks VTS for a token (scope §7).
+     */
+    async 'vts.connect'(args) {
+      const port = args.port;
+      if (port !== undefined && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535)) {
+        throw new ControlError('bad_request', '"port" must be a whole number from 1 to 65535');
+      }
+      const started = await vtsService.requestAccess(port as number | undefined);
+      return { started, ...(await vtsStatus()) };
+    },
+
+    /**
+     * What a VTube Studio key's picker offers: `kind` "models", or "hotkeys"
+     * of `model` (an ID). Connects as a press does; VTS not there is an
+     * answer, not an error.
+     */
+    async 'vts.list'(args) {
+      const kind = args.kind;
+      if (kind !== 'models' && kind !== 'hotkeys') throw new ControlError('bad_request', '"kind" must be "models" or "hotkeys"');
+      if (kind === 'hotkeys' && (typeof args.model !== 'string' || args.model === '')) throw new ControlError('bad_request', '"model" must name a model by its ID');
+      return vtsService.list(kind, kind === 'hotkeys' ? (args.model as string) : undefined);
+    },
+
+    /**
+     * Remove VTube Studio's saved token: disconnects and deletes it. A
+     * request still waiting in VTS's window is let go — the window stays,
+     * the person's to answer. No key is touched. Deckhand stays in VTS's own
+     * plugin list until removed there.
+     */
+    async 'vts.remove'() {
+      await removeVtsCredentials();
+      vtsService.removeAccess();
+      return vtsStatus();
+    },
+
     // Both read the audio cache, which pactl subscribe keeps current: a request
     // never spawns pactl, so a burst of them cannot become a burst of processes.
     // The installed applications an app key can open, each with its icon
@@ -471,6 +528,12 @@ export function requireString(args: Record<string, unknown>, name: string): stri
 export function optionalString(args: Record<string, unknown>, name: string): string | undefined {
   if (args[name] === undefined) return undefined;
   return requireString(args, name);
+}
+
+async function vtsStatus(): Promise<VtsStatus> {
+  const credentials = await vtsCredentials();
+  const { connection, modelId, approval } = vtsService.cachedState();
+  return { connection, modelId, approval, setUp: credentials !== null, port: credentials?.port ?? null };
 }
 
 async function obsStatus(): Promise<ObsStatus> {

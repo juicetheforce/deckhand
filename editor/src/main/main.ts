@@ -10,7 +10,7 @@ import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
-import type { ObsList } from '../../../src/control/protocol.js';
+import type { ObsList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
@@ -797,6 +797,16 @@ function registerIpc(): void {
       return await daemon.obsList(kind, kind === 'sources' ? (scene as string) : undefined);
     } catch (err) {
       // No daemon, or one from before OBS: the picker says why.
+      return { ok: false, reason: 'other', message: (err as Error).message };
+    }
+  });
+  ipcMain.handle('vtsList', async (event, kind: unknown, model: unknown): Promise<VtsList> => {
+    if (!fromOurWindow(event) || (kind !== 'models' && kind !== 'hotkeys')) return { ok: false, reason: 'other', message: 'not allowed' };
+    if (kind === 'hotkeys' && (typeof model !== 'string' || model === '')) return { ok: false, reason: 'other', message: 'Choose a model first' };
+    try {
+      return await daemon.vtsList(kind, kind === 'hotkeys' ? (model as string) : undefined);
+    } catch (err) {
+      // No daemon, or one from before VTube Studio: the picker says why.
       return { ok: false, reason: 'other', message: (err as Error).message };
     }
   });

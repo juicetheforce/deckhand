@@ -6,6 +6,7 @@ import * as audio from './audio.js';
 import * as media from './media.js';
 import * as obs from './obs.js';
 import * as system from './system.js';
+import * as vts from './vts.js';
 
 /**
  * Adding a feature later means writing one object with execute() and/or
@@ -44,6 +45,7 @@ export const registry: Record<string, ActionHandler> = {
   'obs.scene': obs.scene,
   'obs.mute': obs.mute,
   'obs.source': obs.source,
+  'vts.hotkey': vts.hotkey,
 };
 
 /**

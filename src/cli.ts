@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult } from './control/protocol.js';
+import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult, VtsList, VtsStatus } from './control/protocol.js';
 import { socketPath } from './control/server.js';
 
 /**
@@ -27,6 +27,11 @@ const USAGE = `usage: deckhand <command> [--json]
   obs password                        set OBS's WebSocket password, read from stdin
                                         (OBS: Tools > WebSocket Server Settings)
   obs port <port>                     set OBS's WebSocket port, if not 4455
+  vts                                 VTube Studio: connected or not, set up or not
+  vts connect [port]                  ask VTube Studio for access, and wait for the
+                                        answer in its window (port: if not 8001)
+  vts hotkeys                         every model's hotkeys, each as a vts.hotkey action
+  vts remove                          forget VTube Studio's access
   watch                               print state, config and audio events until Ctrl+C
   raw '<request>'                     send one request as JSON and print the reply
 
@@ -215,6 +220,52 @@ async function readSecret(prompt: string): Promise<string> {
   }
 }
 
+function vtsStatusText(r: VtsStatus): string {
+  return [
+    `connection: ${r.connection}${r.setUp ? '' : " (VTube Studio is not set up: Deckhand's Settings › Integrations, or deckhand vts connect)"}`,
+    `model loaded: ${r.modelId ?? (r.connection === 'connected' ? 'none' : 'not known')}`,
+    `port: ${r.port ?? 8001}`,
+    ...(r.approval.state === 'none' ? [] : [`access: ${r.approval.state}: ${r.approval.message ?? ''}`]),
+  ].join('\n');
+}
+
+/** States of a Connect that are its answer: the command ends on one. */
+const VTS_ANSWERS = new Set(['approved', 'denied', 'busy', 'not-running', 'api-off', 'unreachable', 'failed', 'none']);
+
+/**
+ * Ask VTube Studio for access and follow the "vts" events until it is
+ * answered, printing each step once. Exit 0 if allowed, 1 otherwise. No
+ * deadline: it waits for the person, as the daemon does; Ctrl+C stops the
+ * waiting here, not the request (VTS's window stays until answered).
+ */
+async function vtsConnect(client: Client, json: boolean, port: number | undefined): Promise<void> {
+  let last = '';
+  // An answer counts only once this request is seen under way: an earlier Connect's answer may still arrive first.
+  let underway = false;
+  let resolveAnswer!: (status: VtsStatus) => void;
+  const answered = new Promise<VtsStatus>((resolve) => (resolveAnswer = resolve));
+  const follow = (status: VtsStatus) => {
+    const step = `${status.approval.state}: ${status.approval.message ?? ''}`;
+    if (step !== last) {
+      last = step;
+      if (!json) console.error(status.approval.message ?? status.approval.state);
+    }
+    if (status.approval.state === 'checking' || status.approval.state === 'waiting') underway = true;
+    else if (underway && VTS_ANSWERS.has(status.approval.state)) resolveAnswer(status);
+  };
+  client.onEvent = (message) => {
+    if (message.event === 'vts') follow(message.data as VtsStatus);
+  };
+  resultOf<{ events: string[] }>(await client.request('subscribe', { events: ['vts'] }));
+  const reply = resultOf<VtsStatus & { started: boolean }>(await client.request('vts.connect', port === undefined ? {} : { port }));
+  if (!reply.started && !json) console.error('Already asking VTube Studio; waiting for that answer.');
+  underway = true;
+  follow(reply);
+  const status = await answered;
+  if (json) console.log(JSON.stringify(status, null, 2));
+  if (status.approval.state !== 'approved') throw new CliExit(1, '');
+}
+
 function print(json: boolean, value: unknown, text: () => string): void {
   console.log(json ? JSON.stringify(value, null, 2) : text());
 }
@@ -226,7 +277,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -350,6 +401,42 @@ async function main(argv: string[]): Promise<void> {
             `password: ${r.passwordSet ? 'set' : 'not set'}`,
           ].join('\n'),
         );
+        break;
+      }
+      case 'vts': {
+        const sub = args[1] ?? 'status';
+        if (sub === 'status' || sub === 'remove') {
+          const r = resultOf<VtsStatus>(await client.request(sub === 'status' ? 'vts.status' : 'vts.remove'));
+          print(json, r, () => vtsStatusText(r));
+        } else if (sub === 'connect') {
+          const port = args[2] === undefined ? undefined : Number(args[2]);
+          if (port !== undefined && !Number.isInteger(port)) throw new CliExit(2, `vts connect takes a port number\n\n${USAGE}`);
+          await vtsConnect(client, json, port);
+        } else if (sub === 'hotkeys') {
+          const models = resultOf<VtsList>(await client.request('vts.list', { kind: 'models' }));
+          if (!models.ok) throw new CliExit(1, models.message);
+          const lists: Array<{ model: { id: string; name: string }; hotkeys: Array<{ id: string; name: string; type?: string }> }> = [];
+          for (const model of models.items) {
+            const hotkeys = resultOf<VtsList>(await client.request('vts.list', { kind: 'hotkeys', model: model.id }));
+            lists.push({ model, hotkeys: hotkeys.ok ? hotkeys.items : [] });
+          }
+          print(json, lists, () =>
+            lists
+              .map(({ model, hotkeys }) =>
+                [
+                  `${model.name}  (${model.id})`,
+                  ...(hotkeys.length === 0 ? ['    no hotkeys'] : []),
+                  ...hotkeys.map(
+                    (h) =>
+                      `    ${h.name}  [${h.type}]\n      ${JSON.stringify({ type: 'vts.hotkey', model: model.id, hotkey: h.id, modelName: model.name, hotkeyName: h.name })}`,
+                  ),
+                ].join('\n'),
+              )
+              .join('\n'),
+          );
+        } else {
+          throw new CliExit(2, `unknown vts command "${sub}"\n\n${USAGE}`);
+        }
         break;
       }
       case 'raw': {

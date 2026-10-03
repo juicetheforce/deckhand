@@ -14,6 +14,7 @@ import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as obsService from './services/obs.js';
+import * as vtsService from './services/vts.js';
 import { KeyFailures } from './key-failures.js';
 import type { ActionDef, Config } from './types.js';
 
@@ -58,13 +59,15 @@ let control: ControlServer | null = null;
 let events: ReturnType<typeof eventNotifiers> | null = null;
 /**
  * After anything that can change what a deck shows — a page, a profile, a
- * layout, a deck attached or gone — and after a reload: OBS is connected only
- * while a shown page has an OBS key (services/obs.ts). A scan of the shown
- * pages' keys; no timer.
+ * layout, a deck attached or gone — and after a reload: OBS and VTube Studio
+ * are connected only while a shown page has one of their keys
+ * (services/obs.ts, services/vts.ts). A scan of the shown pages' keys; no
+ * timer.
  */
 const syncServiceDemand = () => {
   const shown = [...sessions.values()].flatMap((s) => s.shownActions('obs.'));
   obsService.setWanted(shown.length > 0, obsNeedsOf(shown));
+  vtsService.setWanted([...sessions.values()].some((s) => s.shows('vts.')));
 };
 
 /** What the shown OBS keys name: Mute keys' inputs, Source keys' scene items. */
@@ -469,6 +472,11 @@ async function main(): Promise<void> {
     sessions.forEach((s) => s.invalidateByType(['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source']));
     events?.obs();
   });
+  const stopVts = vtsService.subscribe(() => {
+    if (vtsService.cachedState().connection !== 'not-set-up') notSetUpTold.clear();
+    sessions.forEach((s) => s.invalidateByType(['vts.hotkey']));
+    events?.vts();
+  });
 
   const stopHotplug = watchHotplug((action, devpath) => {
     console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);
@@ -476,13 +484,15 @@ async function main(): Promise<void> {
   });
 
   await requestScan();
-  // The same tick retries a lost session bus (mpris.ts retryLostBus) and an OBS
-  // that was not there while a key wanted it (obs.ts retry), so neither needs
-  // a timer of its own; each does nothing while there is nothing to retry.
+  // The same tick retries a lost session bus (mpris.ts retryLostBus), and an
+  // OBS or a VTube Studio that was not there while a key wanted it (obs.ts,
+  // vts.ts retry), so none needs a timer of its own; each does nothing while
+  // there is nothing to retry.
   const scanner = setInterval(() => {
     void requestScan();
     mprisService.retryLostBus();
     obsService.retry();
+    vtsService.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
 
   // After the decks, and not awaited by anything they need: the socket must
@@ -515,6 +525,8 @@ async function main(): Promise<void> {
       stopMpris();
       stopObs();
       obsService.setWanted(false);
+      stopVts();
+      vtsService.setWanted(false);
       void shutdown(signal);
     });
   }

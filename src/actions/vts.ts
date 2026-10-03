@@ -1,0 +1,66 @@
+import { ActionNeeded } from '../action-error.js';
+import * as vts from '../services/vts.js';
+import { VtsError } from '../services/vts-client.js';
+import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+
+/**
+ * VTube Studio keys (scope §7, "Streaming integrations"), through
+ * services/vts.ts. Faces read its cached state, kept current by VTS's own
+ * events; a press asks VTS afresh.
+ */
+
+/** VTS is not set up: every VTS key draws dimmed, with the not-set-up badge. */
+const UNSET: DisplayPatch = { unset: true };
+const notSetUp = () => vts.cachedState().connection === 'not-set-up';
+
+const named = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+const CHOOSE_AGAIN = 'deleted in VTube Studio? Choose it again in the editor';
+
+/**
+ * vts.hotkey — trigger one of a model's hotkeys: an expression, an
+ * animation, a background, a prop… whatever VTS's hotkey does.
+ *
+ *   { "type": "vts.hotkey", "model": "<model ID>", "hotkey": "<hotkey ID>",
+ *     "modelName": "Akari", "hotkeyName": "Heart Eyes" }
+ *
+ * **By ID, never by name** (scope §7): VTS's hotkeys belong to a model, a
+ * name can repeat or be empty, and a model's name is not even spelt the same
+ * by every VTS request. The names are kept only to show, and to say what is
+ * missing. While another model is loaded the key draws its unavailable face
+ * (dashed, no badge), from VTS's ModelLoadedEvent; a press then is marked,
+ * and never falls back to a hotkey of the same name in the model loaded.
+ * VTS's answer means the hotkey ran (its event comes first, VTS session 1),
+ * so a press needs nothing more to confirm it.
+ */
+export const hotkey: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const model = named(params.model);
+    const hotkeyID = named(params.hotkey);
+    if (!model || !hotkeyID) throw new Error('no hotkey chosen');
+    const hotkeyName = named(params.hotkeyName) ?? 'This hotkey';
+    const modelName = named(params.modelName) ?? 'its model';
+    try {
+      await vts.request('HotkeyTriggerRequest', { hotkeyID });
+    } catch (err) {
+      if (!(err instanceof VtsError)) throw err;
+      // Read after the request, so the model is the one VTS had when it answered (connecting sets it before anything is sent).
+      const loaded = vts.cachedState().modelId;
+      const noModel = err.errorID === vts.VTS_ERRORS.HotkeyExecutionFailedBecauseNoModelLoaded;
+      if (noModel || (err.errorID === vts.VTS_ERRORS.HotkeyIDNotFoundInModel && loaded === null)) {
+        throw new Error(`No model is loaded in VTube Studio: "${hotkeyName}" belongs to ${modelName}`);
+      }
+      if (err.errorID === vts.VTS_ERRORS.HotkeyIDNotFoundInModel) {
+        // Another model loaded: the face already shows it unavailable, so the badge only says why.
+        if (loaded !== model) throw new Error(`"${hotkeyName}" belongs to ${modelName}, which is not the model loaded in VTube Studio`);
+        // Its own model loaded, and the hotkey gone: something the person can fix, so it is notified.
+        throw new ActionNeeded(`${modelName} has no hotkey "${hotkeyName}" any more: ${CHOOSE_AGAIN}`);
+      }
+      throw err;
+    }
+  },
+
+  // Unavailable only when known: connected, and its model not the one loaded (none loaded counts — mid-switch, ~2 s).
+  iconState: (params) => ({ unavailable: vts.cachedState().connection === 'connected' && vts.cachedState().modelId !== params.model }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};

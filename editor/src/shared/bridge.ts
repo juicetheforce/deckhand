@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -68,6 +68,13 @@ export interface DaemonView {
    * and the not-set-up faces. Absent or null from a daemon without OBS.
    */
   obs?: ObsStatus | null;
+  /**
+   * VTube Studio: whether it is set up, its connection and model (vts.status,
+   * kept current by the "vts" event). Never the token. Gates the library's
+   * VTS actions and the not-set-up faces. Absent or null from a daemon
+   * without VTube Studio.
+   */
+  vts?: VtsStatus | null;
 }
 
 /**
@@ -193,6 +200,12 @@ export interface DeckhandBridge {
    * answer — the picker says "Start OBS to choose".
    */
   obsList(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList>;
+  /**
+   * What a VTube Studio key's picker offers, asked of VTS now (editor window
+   * only): its models, or one model's hotkeys, by ID. VTS not reachable is an
+   * answer — the picker says "Start VTube Studio to choose".
+   */
+  vtsList(kind: 'models' | 'hotkeys', model?: string): Promise<VtsList>;
   /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
   refreshApps(): Promise<void>;
 

@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -91,7 +91,7 @@ export class DaemonClient {
     const socket = this.socket;
     this.socket = null; // before destroy(), so its 'close' is ignored as a stale socket's
     socket?.destroy();
-    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null });
+    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null, vts: null });
   }
 
   view(): DaemonView {
@@ -121,6 +121,11 @@ export class DaemonClient {
   /** Clear one key's failure mark (failure.clear). */
   async clearFailure(serial: string, profile: string, page: string, key: number): Promise<void> {
     await this.request('failure.clear', { serial, profile, page, key });
+  }
+
+  /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys. */
+  async vtsList(kind: 'models' | 'hotkeys', model?: string): Promise<VtsList> {
+    return (await this.request('vts.list', kind === 'hotkeys' ? { kind, model } : { kind })) as VtsList;
   }
 
   /** What an OBS key's picker offers (obs.list): scenes, audio inputs, or one scene's sources. */
@@ -199,7 +204,7 @@ export class DaemonClient {
   private connect(): void {
     if (this.stopped) return;
     if (this.socketPath === null) {
-      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null });
+      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null, vts: null });
       return; // nothing to retry: the path will not appear
     }
     const socket = net.connect(this.socketPath);
@@ -223,15 +228,20 @@ export class DaemonClient {
 
   private async handshake(socket: net.Socket): Promise<void> {
     try {
-      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs'] });
+      // A subscribe replaces the set, and a daemon from before VTube Studio refuses one naming an event it does not know — whole: then without it.
+      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts'] }).catch(() =>
+        this.request('subscribe', { events: ['state', 'config', 'audio', 'obs'] }),
+      );
       const status = (await this.request('status')) as StatusResult;
       const decks = (await this.request('decks')) as DecksResult;
       const audio = await this.readAudio();
       // A daemon from before OBS answers unknown_command: no OBS section, no gating.
       const obs = ((await this.request('obs.status').catch(() => null)) as ObsStatus | null) ?? null;
+      // Likewise a daemon from before VTube Studio: no gating.
+      const vts = ((await this.request('vts.status').catch(() => null)) as VtsStatus | null) ?? null;
       if (socket !== this.socket) return;
       this.retryMs = this.retryInitialMs;
-      this.update({ connected: true, problem: null, status, decks, audio, obs });
+      this.update({ connected: true, problem: null, status, decks, audio, obs, vts });
       // After, not during: listing the apps reads every desktop entry and
       // icon theme (about half a second on the Fedora laptop), and nothing
       // else waits for it.
@@ -259,6 +269,7 @@ export class DaemonClient {
       audio: null,
       apps: null,
       obs: null,
+      vts: null,
     });
     this.lastError = null;
     if (this.stopped) return;
@@ -333,6 +344,8 @@ export class DaemonClient {
       this.update({ audio: data as { sinks: AudioList; sources: AudioList } });
     } else if (name === 'obs') {
       this.update({ obs: data as ObsStatus });
+    } else if (name === 'vts') {
+      this.update({ vts: data as VtsStatus });
     }
   }
 

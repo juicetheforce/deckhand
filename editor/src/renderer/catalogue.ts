@@ -83,6 +83,17 @@ export const CATALOGUE: CatalogueGroup[] = [
     ],
   },
   {
+    name: 'VTube Studio',
+    entries: [
+      {
+        type: 'vts.hotkey',
+        name: 'Trigger hotkey',
+        description: "Fire one of a VTube Studio model's hotkeys",
+        aliases: ['expression', 'animation', 'vtuber', 'avatar', 'emote', 'prop', 'background'],
+      },
+    ],
+  },
+  {
     name: 'System',
     entries: [
       { type: 'app', name: 'Open app', description: 'Start an installed application', aliases: ['launch', 'program', 'desktop', 'run'] },

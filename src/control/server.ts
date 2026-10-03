@@ -47,8 +47,8 @@ export class ControlError extends Error {
   }
 }
 
-export type EventName = 'state' | 'config' | 'audio' | 'obs';
-export const EVENT_NAMES: readonly EventName[] = ['state', 'config', 'audio', 'obs'];
+export type EventName = 'state' | 'config' | 'audio' | 'obs' | 'vts';
+export const EVENT_NAMES: readonly EventName[] = ['state', 'config', 'audio', 'obs', 'vts'];
 
 type RequestId = string | number | null;
 

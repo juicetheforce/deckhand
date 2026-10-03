@@ -10,7 +10,7 @@ import { ActionForm } from './inspector/ActionForm.js';
 import type { AppListing } from '../../../src/control/protocol.js';
 import type { AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
-import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, keyKind, OBS_NOT_SET_UP, type Choice } from './model.js';
+import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, integrationOf, INTEGRATIONS, keyKind, settingsSectionOf, type Choice } from './model.js';
 import type { Bulk } from './useBulk.js';
 
 interface Props {
@@ -21,7 +21,7 @@ interface Props {
   button: ButtonDef | undefined;
   /** Why this key's last press on the deck failed, if it did (model.ts failedKeysOn): what its badge means, said plainly. */
   failure: string | undefined;
-  /** Its integration (OBS) is not set up (model.ts notSetUp): said in place of a failure, with the way to Settings. */
+  /** Its integration (OBS, VTube Studio) is not set up (model.ts notSetUp): said in place of a failure, with the way to set it up. */
   notSetUp: boolean;
   editingBlocked: boolean;
   /** Bumped when a library entry is clicked: configure the key as that action. */
@@ -199,6 +199,8 @@ function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pag
     }
   }, [pick?.token]);
 
+  const integration = integrationOf(button?.action?.type);
+
   const run = async (edit: Edit) => {
     const failure = await apply(edit);
     setError(failure);
@@ -208,12 +210,14 @@ function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pag
   return (
     <aside className="inspector glass" aria-label="Inspector">
       <h2 className="inspector-title">Key {at.index + 1}</h2>
-      {notSetUp && (
-        <p className="key-unset-callout" role="status" data-not-set-up="obs">
-          <strong>OBS is not set up.</strong> {OBS_NOT_SET_UP}
-          <button className="link-button key-failure-clear" onClick={() => void window.deckhand.openSettings('obs')}>
-            Set up OBS
-          </button>
+      {notSetUp && integration && (
+        <p className="key-unset-callout" role="status" data-not-set-up={integration}>
+          <strong>{INTEGRATIONS[integration].name} is not set up.</strong> {INTEGRATIONS[integration].notSetUp}
+          {settingsSectionOf(button?.action?.type) && (
+            <button className="link-button key-failure-clear" onClick={() => void window.deckhand.openSettings(settingsSectionOf(button?.action?.type) ?? 'obs')}>
+              Set up {INTEGRATIONS[integration].name}
+            </button>
+          )}
         </p>
       )}
       {failure !== undefined && !notSetUp && (
