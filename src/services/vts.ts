@@ -47,10 +47,13 @@ const BROADCAST_PORT = 47779;
 /** How long Connect listens for that broadcast: longer than the ~4.3 s measured between two. */
 const BROADCAST_LISTEN_MS = 6000;
 
-/** What a press of a VTS key says while VTS is not set up. */
-export const NOT_SET_UP_MESSAGE = "VTube Studio is not set up: connect it in Deckhand's Settings › Integrations";
-/** What a press says once VTS stops accepting the saved token. */
-export const REFUSED_MESSAGE = "VTube Studio no longer allows Deckhand: connect again in Deckhand's Settings › Integrations";
+/**
+ * What a press of a VTS key says while VTS is not set up, and once VTS stops
+ * accepting the saved token. Settings › Integrations has no VTube Studio
+ * section until VTS session 2, so for now they name the command.
+ */
+export const NOT_SET_UP_MESSAGE = 'VTube Studio is not set up: run deckhand vts connect, and allow Deckhand in VTube Studio';
+export const REFUSED_MESSAGE = 'VTube Studio no longer allows Deckhand: run deckhand vts connect again, and allow it in VTube Studio';
 const UNAVAILABLE_MESSAGE = "VTube Studio is not running, or its API is off (VTube Studio's settings: Allow Plugin API access)";
 
 /** Deckhand's logo, sent with the token request so VTS's window shows it: exactly 128×128, as VTS requires. Beside dist/, as built-in icons are. */
