@@ -177,8 +177,10 @@ on the session bus: the ordinary notification service, not a portal. Once
 per message, one per key: a key's next notification closes its last one and
 shows a new one, rather than stacking — and rather than replacing it in
 place, which KDE Plasma does without showing anything once the old one has
-timed out, so a key's second failure went unseen. Every notification shown
-is logged. Nothing is connected until the first one. Turned off with
+timed out, so a key's second failure went unseen. So the desktop's history
+keeps one per key too, the latest. Each names Deckhand's desktop entry, so
+the desktop files it under Deckhand, history included. Every notification
+shown is logged. Nothing is connected until the first one. Turned off with
 `"notifications": false` in `config.json` (the editor's Settings), because the
 daemon is what sends them.
 
