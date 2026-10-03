@@ -239,6 +239,10 @@ deckhand apps                       # installed applications an app key can open
 deckhand obs                        # OBS: connected or not, streaming, recording, which settings are saved
 deckhand obs password               # set OBS's WebSocket password, typed or piped in, never an argument
 deckhand obs port 4456              # set OBS's WebSocket port, if it isn't 4455
+deckhand vts                        # VTube Studio: connected or not, set up or not, the model loaded
+deckhand vts connect                # ask VTube Studio for access, and wait for the answer in its window (a port after it, if not 8001)
+deckhand vts hotkeys                # every model's hotkeys, each as a vts.hotkey action to paste into the config
+deckhand vts remove                 # forget VTube Studio's access
 deckhand watch                      # print changes as they happen, until Ctrl+C
 deckhand raw '<request>'            # send one request as JSON and print the reply
 ```
@@ -343,6 +347,9 @@ can't be drawn shows a dashed "missing" icon.
 | `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air |
 | `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`) |
 | `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first |
+| `vts.hotkey` | `model`, `hotkey` (IDs) — runs one of a model's hotkeys in VTube Studio, as set up there. Dashed while another model is loaded |
+| `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on |
+| `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded |
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -375,7 +382,7 @@ editor, which says why its last press failed, and press **Clear**. A
 program could fail.
 
 When the failure's message says what to do (hold Stream to stop it, start
-OBS, nothing is recording), a desktop notification says it too, through your
+OBS, nothing is recording, connect VTube Studio again), a desktop notification says it too, through your
 desktop's notification service. Once per message: pressing the same key
 again with the same failure doesn't notify again, and a new message replaces
 that key's last notification. Turn them off in the editor's
@@ -451,6 +458,95 @@ same for every key of a type, so give each a label.
   the editor shows the saved name as "not in OBS now" until you choose again.
   Deckhand never rewrites your config to follow a rename.
 
+## VTube Studio
+
+Deckhand is a plugin client of VTube Studio's API, at `127.0.0.1`, port 8001
+unless you changed it. VTube Studio is a Windows program; it was tested from
+Steam under Proton, version 1.35.
+
+**Setting it up.** In VTube Studio's settings, turn on **Allow Plugin API
+access**. Then, in Deckhand's editor, **Settings › Integrations › VTube
+Studio**: **Connect**. VTube Studio shows a window asking whether to allow
+"Deckhand" (by "Open-source contributors"); it may open behind other
+windows. Allow it, and VTube Studio gives Deckhand a token, which is what
+"set up" means. If Connect can't reach VTube Studio, it listens for a few
+seconds for the announcement VTube Studio broadcasts on this computer's
+network, to say whether it isn't running, its API is off, or it is on
+another port, and fills in that port. `deckhand vts connect` does the same
+from a terminal.
+
+**Only Connect asks.** No key, reconnect or restart ever asks VTube Studio
+for access, so its window can't appear by itself in the middle of a stream.
+There is no Cancel: closing the request doesn't take VTube Studio's window
+back, so answer it there. Deny it, and Connect asks again next time.
+
+**Revoked access.** If you remove Deckhand in VTube Studio's plugin list,
+its keys are marked and a notification says to connect again; Deckhand
+doesn't ask again until you press Connect. **Remove** in Settings forgets
+the token and removes no keys; Deckhand stays in VTube Studio's plugin list
+until you remove it there.
+
+**Where it's kept.** The token is in the same file as the OBS password,
+`~/.local/state/deckhand/credentials.json`, readable only by you, and never
+in `config.json`, an export or a backup. VTube Studio's API listens on every IPv4
+network interface, and the token is the only thing protecting it.
+
+**When it's connected.** As for OBS: only while a deck shows a page with a
+VTube Studio key on it, or a press is waiting. The keys follow VTube Studio's
+own events. If it isn't running, the next try is within a minute, or straight
+away when a key is pressed. With no token saved, its keys are dimmed with a
+grey plug badge and never connect, and the editor's VTube Studio actions
+can't be placed: clicking one opens Settings at VTube Studio.
+
+**Built around the model you're using.** Most VTubers use one main model,
+sometimes a second; Deckhand plans for that, and does the simplest honest
+thing beyond it:
+
+- A key for another model works once that model is loaded. A Trigger hotkey
+  key for it is drawn dashed until then; a Toggle expression key keeps its
+  usual face. A press of either is marked and says which model it needs.
+  Neither ever falls back to a hotkey or expression of the same name in the
+  model that is loaded.
+- The expression picker lists the loaded model's expressions only. Choose
+  another model and it says to load it in VTube Studio first.
+
+**Trigger hotkey or Toggle expression.** Both can turn an expression on and
+off, and they are not the same:
+
+- **Trigger hotkey** runs one of the model's hotkeys as it is set up in VTube
+  Studio: its fade time, its sounds, an auto-off after some seconds. It
+  doesn't show any state: VTube Studio doesn't say what a hotkey did.
+- **Toggle expression** turns the expression on or off directly, with VTube
+  Studio's default fade, and lights the key while the expression is on. It
+  reads the expression's state before a press, so the press always flips it.
+
+For plain on and off with the state on the key, use Toggle expression; to
+keep what the hotkey adds, use Trigger hotkey. Expressions are picked by
+file, shown with the hotkey that uses them: "EyesLove (Heart Eyes)".
+Hotkeys and models are stored by VTube Studio's IDs, never by name, so a key
+never runs the wrong thing.
+
+**The Model key** waits for VTube Studio to say the model has loaded, a
+second or two, before lighting, and is marked if it doesn't. VTube Studio
+loads at most one model every two seconds; a press inside that is marked.
+A press for the model already loaded does nothing, because VTube Studio
+would reload it and the avatar would drop out of the stream.
+
+**Known gaps.**
+
+- **An expression changed without a hotkey, on VTube Studio's stable
+  version.** Only its beta reports expression changes as events. On stable,
+  Deckhand re-reads the expressions when a key comes into view, when a
+  model loads, and after any expression hotkey, which covers VTube Studio's
+  own window and keyboard shortcuts, since those go through the model's
+  hotkeys. A change made another way, by another plugin say, isn't seen
+  until one of those happens, and a Toggle expression key shows the old
+  state until then. Deckhand doesn't poll to catch it.
+- **Deleted in VTube Studio.** Keys name models and hotkeys by VTube
+  Studio's IDs, and expressions by file. One deleted, or an expression's
+  file renamed, marks the keys that use it, saying to choose it again in the
+  editor.
+
 ## The control socket
 
 `$XDG_RUNTIME_DIR/deckhand.sock`, mode `0600`: only your user can connect.
@@ -483,7 +579,11 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | `obs.test` | optional `host`, `port`, `password` (missing ones: the saved) | tries to connect and lets go; says which thing is wrong. Saves nothing |
 | `obs.list` | `kind`: `scenes`, `inputs` or `sources`; `scene` for sources | what OBS lists, in its own order; audio inputs only |
 | `obs.remove` | | deletes OBS's saved connection and disconnects. Keys are untouched |
-| `subscribe` | `events`: any of `state`, `config`, `audio`, `obs` | replaces this connection's subscriptions |
+| `vts.status` | | VTube Studio: whether it is set up, the connection, the model loaded, the port, and how the last Connect went — never the token |
+| `vts.connect` | optional `port` | asks VTube Studio for access and replies at once; how it goes arrives as `vts` events, since it waits for someone to answer VTube Studio's window |
+| `vts.list` | `kind`: `models`, `hotkeys` or `expressions`; `model` (ID) for the last two | what VTube Studio lists; expressions for the loaded model only |
+| `vts.remove` | | forgets the token and disconnects. Keys are untouched |
+| `subscribe` | `events`: any of `state`, `config`, `audio`, `obs`, `vts` | replaces this connection's subscriptions |
 | `preview.set`, `preview.clear` | | the editor's unsaved previews on a deck; cleared when its connection closes |
 
 After `subscribe`, events arrive as `{"event": "state", "data": {…}}`. No
@@ -527,6 +627,12 @@ which thing is wrong. The most common one: OBS's WebSocket server is off by
 default (**Tools › WebSocket Server Settings › Enable WebSocket server**). A
 key badged after a rename in OBS needs its scene, input or source chosen
 again in the editor.
+
+**VTube Studio keys do nothing.** `deckhand vts` shows whether it is set up
+and connected. **Settings › Integrations › VTube Studio › Connect** says
+which thing is wrong: VTube Studio not running, **Allow Plugin API access**
+off in its settings, or another port. A key for a model that isn't loaded
+is marked and says which model it needs; load that model in VTube Studio.
 
 **`deckhand` says the daemon isn't running.** `systemctl --user status
 deckhand`. If the service is up, look for `[control] listening on …` in its

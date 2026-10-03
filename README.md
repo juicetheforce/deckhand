@@ -6,7 +6,7 @@
 
 Stream Deck software for Linux. A small background service drives the decks,
 and an editor lets you set them up: hotkeys, opening apps, audio device
-switching, media controls, OBS Studio, pages and profiles.
+switching, media controls, OBS Studio, VTube Studio, pages and profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -19,8 +19,9 @@ It's one person's project, used every day.
   decks and sends the keys. The editor only writes a config file. A slow,
   closed or crashed editor can't delay a key press.
 - **It does nothing when nothing is happening.** It waits for key presses,
-  devices, players and OBS rather than checking on them. On my laptop, with
-  music playing and live keys on screen, it idles at about 1% of one CPU core.
+  devices, players, OBS and VTube Studio rather than checking on them. On my
+  laptop, with music playing and live keys on screen, it idles at about 1% of
+  one CPU core.
 - **It's native, not a Flatpak.** It needs a udev rule, `/dev/uinput` and your
   audio and media services, which is what a sandbox exists to withhold. Keys
   come from its own virtual keyboard at the kernel's input layer, so games see
@@ -88,6 +89,49 @@ in its configuration, exports or backups ([SECURITY.md](SECURITY.md)).
 OBS can't pause a recording that shares the stream's encoder, which is OBS's
 default (Settings › Output › Recording Quality "Same as stream"). Choose any
 other quality there to use the Pause recording key.
+
+## VTube Studio
+
+Keys for VTube Studio: trigger one of a model's hotkeys, turn an expression
+on or off, and load a model. The Model key is lit while its model is
+loaded, and a Toggle expression key while its expression is on, whether
+you changed it from the deck or from VTube Studio. VTube Studio runs on
+Linux through Steam's Proton, which is how it was tested.
+
+- **Built around the model you're using.** Most VTubers have one main
+  model, sometimes a second, and Deckhand plans for that. Keys for another
+  model work once that model is loaded; until then a press is marked and
+  says which model it needs. The expression picker lists the loaded model's
+  expressions, so load a model to set up its expression keys.
+- **Trigger hotkey or Toggle expression.** Trigger hotkey runs a hotkey
+  exactly as it's set up in VTube Studio: its fade, its sounds, an auto-off.
+  Toggle expression just turns an expression on or off, and the key shows
+  whether it's on. For a plain on/off with the state on the key, use Toggle
+  expression; to keep what the hotkey adds, use Trigger hotkey.
+- **Models, hotkeys and expressions are picked from VTube Studio's own
+  lists**, so it needs to be running while you set those keys up.
+  Expressions are listed by file and by the hotkey that uses them:
+  "EyesLove (Heart Eyes)".
+- **Deckhand talks to VTube Studio only while a deck shows one of its
+  keys**, as with OBS.
+- **Pressing a Model key for the model already loaded does nothing.** VTube
+  Studio would reload it, and your avatar would vanish from the stream for a
+  moment.
+
+To set it up:
+
+1. In VTube Studio's settings, turn on **Allow Plugin API access**. The port
+   it shows is 8001 unless you changed it.
+2. In Deckhand's editor, open **Settings › Integrations › VTube Studio** and
+   press **Connect**. VTube Studio shows a window asking whether to allow
+   Deckhand; it may open behind other windows. Allow it. Deckhand asks only
+   when you press Connect, never by itself, so that window can't appear in
+   the middle of a stream.
+
+VTube Studio's API listens on every IPv4 network interface, not just this
+computer, and the access it gave Deckhand is the only thing protecting it.
+Deckhand keeps that in the same file only you can read as the OBS password
+([SECURITY.md](SECURITY.md)).
 
 ## Screenshots
 
@@ -162,6 +206,12 @@ And what it doesn't do well yet:
 - **Renaming a scene, input or source in OBS** breaks the keys that use it
   until you choose it again in the editor. The key is marked, and says which
   name is missing.
+- **On VTube Studio's stable version, an expression changed without a
+  hotkey** (by another plugin, say) isn't seen until the next model load or
+  expression hotkey, so a Toggle expression key can show the wrong state
+  until then. Changes made from VTube Studio's own window go through the
+  model's hotkeys and are seen. Its beta has an event for every expression
+  change, which Deckhand uses when it's there.
 
 ## Things I'd like to add
 
@@ -182,7 +232,7 @@ That's what shapes it.
   `deckhand` command, the control socket, troubleshooting and development.
 - [ARCHITECTURE.md](ARCHITECTURE.md): why it's built the way it is.
 - [SECURITY.md](SECURITY.md): reporting a security problem privately, and
-  where the OBS password is kept.
+  where the OBS password and VTube Studio's access are kept.
 
 Bug reports are welcome as issues: include the version from the editor's
 **Settings › About**. I answer them when I can; feature requests are weighed
