@@ -27,6 +27,7 @@ import { buildExport, suggestedExportName, writeExport } from './export-bundle.j
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
+import { oneAtATime } from './one-at-a-time.js';
 import { editorVersion, openReleases } from './about.js';
 import { Launcher } from './launcher.js';
 import { createTray, deadTray, type LauncherTray } from './tray.js';
@@ -174,6 +175,14 @@ async function openStore(): Promise<StoreView> {
   }
   return storeView();
 }
+
+/**
+ * The editor's actions on the decks — a page shown, a profile made active, a
+ * Test Run — run one at a time, each whole (its save, its request, its wait
+ * for the deck's state), so the editor never collides with itself on the
+ * daemon's one-socket-action rule (one-at-a-time.ts).
+ */
+const deckAction = oneAtATime();
 
 async function daemonCall(call: () => Promise<void>): Promise<DaemonResult> {
   try {
@@ -817,7 +826,7 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || typeof serial !== 'string' || typeof a !== 'object' || a === null || typeof a.type !== 'string') {
       return { ok: false, code: 'not_allowed', error: 'not allowed' };
     }
-    return testRun(serial, a as ActionDef);
+    return deckAction(() => testRun(serial, a as ActionDef));
   });
   ipcMain.handle('obsList', async (event, kind: unknown, scene: unknown): Promise<ObsList> => {
     if (!fromOurWindow(event) || (kind !== 'scenes' && kind !== 'inputs' && kind !== 'sources')) return { ok: false, reason: 'other', message: 'not allowed' };
@@ -846,7 +855,7 @@ function registerIpc(): void {
     fromOurWindow(event) && typeof combo === 'string' && combo.length < 200 ? findSystemShortcut(combo) : null,
   );
   ipcMain.handle('switchProfile', (event, to: string) =>
-    fromOurWindow(event) ? switchProfile(to) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+    fromOurWindow(event) ? deckAction(() => switchProfile(to)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('clearFailure', (event, at: unknown) => {
     const a = at as { profile?: unknown; serial?: unknown; page?: unknown; index?: unknown } | null;
@@ -856,7 +865,7 @@ function registerIpc(): void {
     return daemonCall(() => daemon.clearFailure(a.serial as string, a.profile as string, a.page as string, a.index as number));
   });
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
-    fromOurWindow(event) ? showPage(serial, page) : { ok: false, code: 'not_allowed', error: 'not allowed' },
+    fromOurWindow(event) ? deckAction(() => showPage(serial, page)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('watchIconFiles', (event, configPaths: unknown) => {
     if (!fromOurWindow(event) || !Array.isArray(configPaths) || configPaths.some((p) => typeof p !== 'string')) return {};
