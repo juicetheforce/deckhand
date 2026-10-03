@@ -117,7 +117,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'vts.hotkey', 'vts.model']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'vts.expression', 'vts.hotkey', 'vts.model']);
 });
 
 console.log('the navigation guard');

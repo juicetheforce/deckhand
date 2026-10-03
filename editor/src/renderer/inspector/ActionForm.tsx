@@ -13,7 +13,7 @@ import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
 import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
-import { VtsHotkeyForm, VtsModelForm } from './VtsForms.js';
+import { VtsExpressionForm, VtsHotkeyForm, VtsModelForm } from './VtsForms.js';
 
 /** What every form may need; each takes the parts it uses. */
 export interface ActionFormProps {
@@ -100,6 +100,8 @@ export function ActionForm(p: ActionFormProps) {
       return <VtsHotkeyForm {...common} />;
     case 'vts.model':
       return <VtsModelForm {...common} />;
+    case 'vts.expression':
+      return <VtsExpressionForm {...common} />;
     default:
       return null;
   }

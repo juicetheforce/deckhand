@@ -205,7 +205,7 @@ export interface DeckhandBridge {
    * only): its models, or one model's hotkeys, by ID. VTS not reachable is an
    * answer — the picker says "Start VTube Studio to choose".
    */
-  vtsList(kind: 'models' | 'hotkeys', model?: string): Promise<VtsList>;
+  vtsList(kind: 'models' | 'hotkeys' | 'expressions', model?: string): Promise<VtsList>;
   /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
   refreshApps(): Promise<void>;
 

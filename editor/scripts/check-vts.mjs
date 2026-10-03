@@ -136,6 +136,7 @@ const editorFace = () =>
         rowTitle: row?.title ?? null,
         rowName: row?.textContent ?? null,
         modelRowBlocked: document.querySelector('.library-entry[data-action-type="vts.model"]')?.dataset.notSetUp ?? null,
+        expressionRowBlocked: document.querySelector('.library-entry[data-action-type="vts.expression"]')?.dataset.notSetUp ?? null,
         group: [...document.querySelectorAll('.library-group')].some((g) => /VTube Studio/.test(g.textContent ?? '')),
         hotkeyBlocked: document.querySelector('.library-entry[data-action-type="hotkey"]')?.dataset.notSetUp ?? null,
         keyUnset: key0?.classList.contains('key-unset') ?? null,
@@ -260,6 +261,26 @@ await pick('model', 'm2');
 r.modelSaved = await until(async () => JSON.stringify((await buttonsNow())['4']?.action) === JSON.stringify({ type: 'vts.model', model: 'm2', modelName: 'Hiyori' }));
 r.modelSavedAction = (await buttonsNow())['4']?.action ?? null;
 
+// The Toggle expression key: the model, then the loaded model's expressions — another model's, never.
+await inPage(editor, 'editor', clickIn('.key[data-key-index="5"]'));
+await sleep(200);
+await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.expression"]'));
+await until(async () => (await picker('model'))?.ids.length > 0);
+r.expressionGap = await inPage(editor, 'editor', "document.querySelector('.inspector [data-vts-gap=stable]')?.textContent ?? null");
+await pick('model', 'm2');
+await until(async () => (await picker('expression'))?.unavailable != null);
+r.expressionOtherModel = await picker('expression');
+await pick('model', 'm1');
+await until(async () => (await picker('expression'))?.ids.length > 0);
+r.expressionPicker = await picker('expression');
+await pick('expression', 'EyesLove.exp3.json');
+r.expressionSaved = await until(
+  async () =>
+    JSON.stringify((await buttonsNow())['5']?.action) ===
+    JSON.stringify({ type: 'vts.expression', model: 'm1', modelName: 'Akari', expression: 'EyesLove.exp3.json', expressionName: 'EyesLove' }),
+);
+r.expressionSavedAction = (await buttonsNow())['5']?.action ?? null;
+
 // Deleted in VTS: the saved hotkey is kept, first, and marked.
 const wave = fake.hotkeys.m2;
 fake.hotkeys.m2 = [];
@@ -298,6 +319,7 @@ check('not set up: the library lists Trigger hotkey under VTube Studio, marked, 
   assert.match(r.notSetUp.rowName, /Trigger hotkey/);
   assert.equal(r.notSetUp.rowBlocked, 'true');
   assert.equal(r.notSetUp.modelRowBlocked, 'true', 'the Model row too');
+  assert.equal(r.notSetUp.expressionRowBlocked, 'true', 'the Toggle expression row too');
   assert.match(r.notSetUp.rowTitle, /^VTube Studio is not set up\. Its keys do nothing until it is connected in Settings › Integrations\. Click to set it up\.$/);
   assert.equal(r.notSetUp.hotkeyBlocked, null);
 });
@@ -375,6 +397,16 @@ check('the Model key: one picker of VTS’s models, no hotkey picker; a pick wri
   assert.deepEqual(r.modelKeyPicker.ids, ['m1', 'm2']);
   assert.equal(r.modelKeyHotkeyPicker, null);
   assert.equal(r.modelSaved, true, JSON.stringify(r.modelSavedAction));
+});
+check('Toggle expression: the stable-branch gap is stated in the form', () => assert.match(r.expressionGap ?? '', /stable version.*not shown here until the next model load or expression hotkey/));
+check('Toggle expression: a model not loaded lists nothing, and says to load it', () => {
+  assert.deepEqual(r.expressionOtherModel.ids, []);
+  assert.equal(r.expressionOtherModel.unavailable, 'Load it in VTube Studio to see its expressions.');
+});
+check('Toggle expression: the loaded model’s expressions, by file, named without the extension; a pick writes both by ID', () => {
+  assert.deepEqual(r.expressionPicker.ids, ['EyesCry.exp3.json', 'EyesLove.exp3.json']);
+  assert.deepEqual(r.expressionPicker.names, ['EyesCry', 'EyesLove']);
+  assert.equal(r.expressionSaved, true, JSON.stringify(r.expressionSavedAction));
 });
 check('a hotkey deleted in VTS: the saved one is kept, first, and marked', () => {
   assert.equal(r.deletedPicker.ids[0], 'hk-wave');

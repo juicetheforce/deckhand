@@ -13,6 +13,9 @@
  *   - a model load answers at once and completes later ("unloaded" for the
  *     old model, then "loaded"); a second within 2 s: error 153;
  *   - ExpressionToggledEvent is unknown on the stable branch: error 950;
+ *   - expression state is the loaded model's only, whatever model is named;
+ *     a model keeps its expressions across a switch; a direct activation
+ *     fires no HotkeyTriggeredEvent (VTS sessions 1 and 2);
  *   - the API turned off closes every connection and refuses new ones; the
  *     broadcast, sent only when a test asks, says active false.
  *
@@ -22,6 +25,7 @@
  *   vts.revoke();                  // every token issued so far stops working
  *   vts.loadModel('m2');           // as if the person loaded another model in VTS
  *   vts.loadDelayMs = 600;         // how long a load takes; vts.loadCompletes = false: it never does
+ *   vts.setExpression('EyesLove.exp3.json', true);   // as if turned on in VTS's own window
  *   await vts.apiOff(); await vts.apiOn();
  *   await vts.broadcast(port, { active: true });   // one UDP packet to 127.0.0.1:port
  *   await vts.stop();
@@ -75,6 +79,15 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
         { hotkeyID: 'hk-unnamed', name: '', type: 'TriggerAnimation', file: 'Shock.motion3.json' },
       ],
       m2: [{ hotkeyID: 'hk-wave', name: 'Wave', type: 'TriggerAnimation', file: 'Wave.motion3.json' }],
+    },
+    /** Each model's expressions, by file: on or off. Kept across loads, as VTS keeps them. */
+    expressions: {
+      m1: { 'EyesCry.exp3.json': false, 'EyesLove.exp3.json': false },
+      m2: {},
+    },
+    /** As if an expression of the loaded model were turned on or off in VTS's own window: an event only on the beta branch. */
+    setExpression(file, active) {
+      setExpressionOf(vts.loaded, file, active);
     },
     /** Answer the window showing, as the person would. With no connection left to tell, it just closes. */
     answer(how) {
@@ -139,6 +152,24 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
   };
 
   const nameOf = (id) => vts.models.find((m) => m.id === id)?.name ?? id;
+
+  function setExpressionOf(model, file, active) {
+    vts.expressions[model][file] = active;
+    if (vts.branch === 'beta') {
+      emit('ExpressionToggledEvent', { modelID: model, modelName: nameOf(model), isLive2DItem: false, itemInstanceID: '', justLoaded: false, expressionFile: file, expressionName: file.replace(/\.exp3\.json$/, ''), active });
+    }
+  }
+  const expressionList = (model) =>
+    Object.entries(vts.expressions[model] ?? {}).map(([file, active]) => ({
+      name: file.replace(/\.exp3\.json$/, ''),
+      file,
+      active,
+      deactivateWhenKeyIsLetGo: false,
+      autoDeactivateAfterSeconds: false,
+      secondsRemaining: 0,
+      usedInHotkeys: [],
+      parameters: [],
+    }));
 
   const server = http.createServer((_req, res) => {
     res.writeHead(426);
@@ -232,6 +263,8 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
         const hotkey = (vts.hotkeys[vts.loaded] ?? []).find((h) => h.hotkeyID === data.hotkeyID);
         if (!hotkey) return error(202, 'Hotkey execution failed because hotkey ID or name was not found in model.');
         vts.triggered.push(hotkey.hotkeyID);
+        if (hotkey.type === 'ToggleExpression') setExpressionOf(vts.loaded, hotkey.file, !vts.expressions[vts.loaded][hotkey.file]);
+        if (hotkey.type === 'RemoveAllExpressions') for (const file of Object.keys(vts.expressions[vts.loaded])) if (vts.expressions[vts.loaded][file]) setExpressionOf(vts.loaded, file, false);
         // The event first, then the answer, as VTS 1.35.10 sends them.
         emit('HotkeyTriggeredEvent', { hotkeyID: hotkey.hotkeyID, hotkeyName: hotkey.name, hotkeyAction: hotkey.type, hotkeyFile: hotkey.file, hotkeyTriggeredByAPI: true, modelID: vts.loaded, modelName: nameOf(vts.loaded), isLive2DItem: false });
         return reply('HotkeyTriggerResponse', { hotkeyID: hotkey.hotkeyID });
@@ -242,6 +275,24 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
         lastModelLoad = Date.now();
         reply('ModelLoadResponse', { modelID: data.modelID });
         return vts.loadModel(data.modelID);
+      }
+      // The loaded model's, whatever model is named: VTS 1.35.10 ignores a modelID here (VTS session 2).
+      case 'ExpressionStateRequest': {
+        if (!vts.loaded) return reply('ExpressionStateResponse', { modelLoaded: false, modelName: '', modelID: '', expressions: [] });
+        let list = expressionList(vts.loaded);
+        if (data.expressionFile) {
+          if (!String(data.expressionFile).endsWith('.exp3.json')) return error(600, 'Invalid expression file name.');
+          list = list.filter((e) => e.file === data.expressionFile);
+          if (list.length === 0) return error(601, 'Expression file not found in current model.');
+        }
+        return reply('ExpressionStateResponse', { modelLoaded: true, modelName: nameOf(vts.loaded).toLowerCase(), modelID: vts.loaded, expressions: list });
+      }
+      case 'ExpressionActivationRequest': {
+        if (!vts.loaded) return error(652, 'No model loaded.');
+        if (!String(data.expressionFile).endsWith('.exp3.json')) return error(650, 'Invalid expression file name.');
+        if (!(data.expressionFile in vts.expressions[vts.loaded])) return error(651, 'Expression file not found in current model.');
+        setExpressionOf(vts.loaded, data.expressionFile, data.active === true);
+        return reply('ExpressionActivationResponse', {});
       }
       case 'EventSubscriptionRequest': {
         const known = KNOWN_EVENTS.has(data.eventName) || (vts.branch === 'beta' && data.eventName === 'ExpressionToggledEvent');

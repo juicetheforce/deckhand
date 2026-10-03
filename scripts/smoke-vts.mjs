@@ -229,6 +229,81 @@ fake.loadDelayMs = 50;
 await sleep(2100);
 check('and the next load works', (await vts.loadModel('m1', {})) === 'loaded' && vts.cachedState().modelId === 'm1');
 
+// --- Toggle expression: the stable branch ------------------------------------------
+
+const HEART_EXPR = { type: 'vts.expression', model: 'm1', expression: 'EyesLove.exp3.json', modelName: 'Akari', expressionName: 'EyesLove' };
+const CRY_EXPR = { type: 'vts.expression', model: 'm1', expression: 'EyesCry.exp3.json', modelName: 'Akari', expressionName: 'EyesCry' };
+const lit = (a) => defaultIconFor(a, iconStateOf(a)) === 'vts-expression-on';
+const drawnOff = (a) => defaultIconFor(a, iconStateOf(a)) === 'vts-expression';
+const stateAsks = () => fake.requests.filter((r) => r.type === 'ExpressionStateRequest').length;
+const activations = () => fake.requests.filter((r) => r.type === 'ExpressionActivationRequest').length;
+check('the stable branch has no ExpressionToggledEvent (950), and the connection carries on regardless', connection() === 'connected' && fake.requests.some((r) => r.type === 'EventSubscriptionRequest' && r.data.eventName === 'ExpressionToggledEvent'));
+check('no expression key shown: no expression state is asked', stateAsks() === 0);
+fake.expressions.m1['EyesCry.exp3.json'] = true;
+vts.setWanted(true, true);
+check('an expression key comes into view: the state is asked, once', (await until(() => vts.cachedState().expressionsModel === 'm1')) && stateAsks() === 1);
+check('one already on in VTS is drawn on', lit(CRY_EXPR));
+check('one off is drawn off', drawnOff(HEART_EXPR));
+vts.setWanted(true, true);
+await sleep(100);
+check('shown again: not asked again', stateAsks() === 1);
+const asksBeforePress = stateAsks();
+check('a press turns it on', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'on' && fake.expressions.m1['EyesLove.exp3.json'] === true);
+check('the state read from VTS first, not the cache', stateAsks() === asksBeforePress + 1 && fake.requests.at(-2).data.expressionFile === 'EyesLove.exp3.json');
+check('and drawn on at once — a direct activation fires no event to say so', lit(HEART_EXPR));
+check('pressed again: off', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'off' && fake.expressions.m1['EyesLove.exp3.json'] === false && drawnOff(HEART_EXPR));
+fake.setExpression('EyesCry.exp3.json', false);
+await sleep(200);
+check("turned off in VTS's own window: not seen on the stable branch — the stated gap", lit(CRY_EXPR));
+await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' });
+check('until an expression hotkey: then the state is asked again, and both faces are right', await until(() => drawnOff(CRY_EXPR) && lit(HEART_EXPR)));
+fake.hotkeys.m1.push({ hotkeyID: 'hk-clear', name: 'Remove Expressions', type: 'RemoveAllExpressions', file: '' });
+await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-clear' });
+check('a remove-all-expressions hotkey: asked again, everything off', await until(() => drawnOff(HEART_EXPR) && drawnOff(CRY_EXPR)));
+const asksBeforeOther = stateAsks();
+await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-shake' });
+await sleep(200);
+check('an animation hotkey asks nothing', stateAsks() === asksBeforeOther);
+fake.hotkeys.m1.pop();
+await vts.toggleExpression('m1', 'EyesLove.exp3.json', {});
+fake.loadModel('m2');
+await until(() => vts.cachedState().modelId === 'm2');
+check('another model loaded: the key keeps its normal face', drawnOff(HEART_EXPR) && (await until(() => vts.cachedState().expressionsModel === 'm2')));
+const activationsBefore = activations();
+check('a press then sends nothing, and says its model is not loaded', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'not-loaded' && activations() === activationsBefore);
+const otherPicker = await vts.list('expressions', 'm1');
+check('the picker for a model not loaded says to load it — never another model’s list', !otherPicker.ok && otherPicker.reason === 'not-loaded' && otherPicker.message === 'Load it in VTube Studio to see its expressions.');
+fake.loadModel('m1');
+check('its model back: asked again — and still on, as VTS keeps a model’s expressions across a switch', await until(() => vts.cachedState().expressionsModel === 'm1' && lit(HEART_EXPR)));
+const picker = await vts.list('expressions', 'm1');
+check('the picker lists the loaded model’s expressions by file, named without the extension', picker.ok && picker.items.map((e) => `${e.id}:${e.name}`).join() === 'EyesCry.exp3.json:EyesCry,EyesLove.exp3.json:EyesLove');
+let goneExpression = null;
+await vts.toggleExpression('m1', 'Old.exp3.json', { 601: 'gone, choose it again' }).catch((err) => (goneExpression = err));
+check('an expression deleted in VTS: what the key gives for it, as something to act on', goneExpression?.message === 'gone, choose it again' && goneExpression?.constructor?.name === 'ActionNeeded');
+await vts.toggleExpression('m1', 'EyesLove.exp3.json', {});
+vts.setWanted(true, false);
+check('no expression key shown any more: the state is forgotten', vts.cachedState().expressionsModel === null && Object.keys(vts.cachedState().expressions).length === 0);
+
+// --- Toggle expression: the beta branch's ExpressionToggledEvent --------------------
+
+const beta = await startFakeVts({ approval: 'allow', branch: 'beta' });
+beta.expressions.m1['EyesLove.exp3.json'] = true;
+vts.setWanted(true, true);
+await vts.requestAccess(beta.port);
+check('beta: connected, and the expressions read', await until(() => connection() === 'connected' && vts.cachedState().expressionsModel === 'm1' && lit(HEART_EXPR)));
+check('beta: subscribed to ExpressionToggledEvent, Live2D items left out', beta.requests.some((r) => r.type === 'EventSubscriptionRequest' && r.data.eventName === 'ExpressionToggledEvent' && r.data.config?.ignoreLive2DItems === true));
+beta.setExpression('EyesLove.exp3.json', false);
+check("beta: turned off in VTS's own window, and seen", await until(() => drawnOff(HEART_EXPR)));
+const betaAsks = beta.requests.filter((r) => r.type === 'ExpressionStateRequest').length;
+await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' });
+check('beta: an expression hotkey is followed by its event, nothing asked', (await until(() => lit(HEART_EXPR))) && beta.requests.filter((r) => r.type === 'ExpressionStateRequest').length === betaAsks);
+// Back to the stable fake and its token, for what follows.
+vts.setWanted(true, false);
+await credentials.setVtsCredentials(saved);
+vts.credentialsChanged();
+await until(() => connection() === 'connected' && vts.cachedState().modelId === 'm1');
+await beta.stop();
+
 // --- Pickers ---------------------------------------------------------------------
 
 const models = await vts.list('models');
@@ -365,6 +440,7 @@ const DAEMON_CONFIG = {
                 4: { label: 'Hiyori', action: MODEL_HIYORI },
                 5: { label: 'Akari', action: MODEL_AKARI },
                 6: { label: 'Deleted', action: { type: 'vts.model', model: 'm-gone', modelName: 'Old model' } },
+                7: { label: 'Heart', action: HEART_EXPR },
               },
             },
           },
@@ -453,6 +529,14 @@ check('daemon: not notified — its face already shows it unavailable', notes.ca
 await pressInChild(3);
 check('daemon: a hotkey deleted in VTS: marked and notified, saying to choose it again', await until(() => notes.calls.length === notesBefore + 1 && /has no hotkey "Old face"/.test(notes.calls.at(-1)?.body ?? '')));
 
+check('daemon: the page shows an expression key, so the expressions are asked', fake2.requests.some((r) => r.type === 'ExpressionStateRequest'));
+// Heart Eyes is on already: the Hotkey key above fired its ToggleExpression hotkey.
+const heartBefore = fake2.expressions.m1['EyesLove.exp3.json'];
+await pressInChild(7);
+check('daemon: the Toggle expression key flips it, unmarked', await until(async () => fake2.expressions.m1['EyesLove.exp3.json'] === !heartBefore && (await failedOn(7)) === null));
+await pressInChild(7);
+check('daemon: and back', await until(() => fake2.expressions.m1['EyesLove.exp3.json'] === heartBefore));
+
 const loads2 = () => fake2.requests.filter((r) => r.type === 'ModelLoadRequest').map((r) => r.data.modelID);
 await pressInChild(5);
 check('daemon: the Model key of the model loaded: nothing sent, nothing marked', loads2().length === 0 && (await failedOn(5)) === null);
@@ -461,6 +545,10 @@ check('daemon: a Model key loads its model, and is not marked', await until(asyn
 const notesBeforeModel = notes.calls.length;
 await pressInChild(5);
 check('daemon: another load within 2 s: marked, saying to press again, and not notified', await until(async () => /one model every 2 seconds/.test((await failedOn(5)) ?? '')) && notes.calls.length === notesBeforeModel);
+const activations2 = () => fake2.requests.filter((r) => r.type === 'ExpressionActivationRequest').length;
+const activationsBefore2 = activations2();
+await pressInChild(7);
+check('daemon: an expression key while another model is loaded: marked, saying so, not notified, nothing sent', (await until(async () => /"EyesLove" belongs to Akari, which is not loaded/.test((await failedOn(7)) ?? ''))) && notes.calls.length === notesBeforeModel && activations2() === activationsBefore2);
 await sleep(2100);
 await pressInChild(6);
 check('daemon: a model deleted in VTS: marked and notified, saying to choose it again', await until(() => notes.calls.length === notesBeforeModel + 1 && /Old model is not in VTube Studio any more/.test(notes.calls.at(-1)?.body ?? '')));

@@ -67,7 +67,10 @@ let events: ReturnType<typeof eventNotifiers> | null = null;
 const syncServiceDemand = () => {
   const shown = [...sessions.values()].flatMap((s) => s.shownActions('obs.'));
   obsService.setWanted(shown.length > 0, obsNeedsOf(shown));
-  vtsService.setWanted([...sessions.values()].some((s) => s.shows('vts.')));
+  vtsService.setWanted(
+    [...sessions.values()].some((s) => s.shows('vts.')),
+    [...sessions.values()].some((s) => s.shows('vts.expression')),
+  );
 };
 
 /** What the shown OBS keys name: Mute keys' inputs, Source keys' scene items. */
@@ -474,7 +477,7 @@ async function main(): Promise<void> {
   });
   const stopVts = vtsService.subscribe(() => {
     if (vtsService.cachedState().connection !== 'not-set-up') notSetUpTold.clear();
-    sessions.forEach((s) => s.invalidateByType(['vts.hotkey', 'vts.model']));
+    sessions.forEach((s) => s.invalidateByType(['vts.hotkey', 'vts.model', 'vts.expression']));
     events?.vts();
   });
 

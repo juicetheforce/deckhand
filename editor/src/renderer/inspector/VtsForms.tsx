@@ -15,12 +15,12 @@ import { actionOf, nextAction, type FormProps } from './controls.js';
  */
 
 /** VTS's list for a picker, asked when the form opens, when its model changes, and on Refresh. Null while asking. */
-function useVtsList(kind: 'models' | 'hotkeys', model: string | null, ask: number): VtsList | null {
+function useVtsList(kind: 'models' | 'hotkeys' | 'expressions', model: string | null, ask: number): VtsList | null {
   const [list, setList] = useState<VtsList | null>(null);
   useEffect(() => {
     let alive = true;
     setList(null);
-    if (kind === 'hotkeys' && !model) return;
+    if (kind !== 'models' && !model) return;
     void window.deckhand.vtsList(kind, model ?? undefined).then((l) => alive && setList(l));
     return () => {
       alive = false;
@@ -188,6 +188,64 @@ export function VtsModelForm({ at, button, disabled, run }: FormProps) {
         onChoose={(model) => void run({ kind: 'setAction', at, action: nextAction('vts.model', button, { model: model.id, modelName: model.name }) })}
         onRefresh={() => setAsk((n) => n + 1)}
       />
+    </section>
+  );
+}
+
+/**
+ * vts.expression: turn one of a model's expressions on or off — the model
+ * first, then its expressions. VTS lists only the loaded model's (scope §7,
+ * built around the model in use): for another, the picker says to load it.
+ */
+export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
+  const [ask, setAsk] = useState(0);
+  const action = actionOf('vts.expression', button);
+  const storedModel = text(action?.model);
+  // A model picked, not yet written: the expression list follows it until an expression is chosen.
+  const [model, setModel] = useState<{ id: string; name: string } | null>(storedModel ? { id: storedModel, name: text(action?.modelName) ?? storedModel } : null);
+  const models = useVtsList('models', null, ask);
+  const expressions = useVtsList('expressions', model?.id ?? null, ask);
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Toggle expression</h3>
+      <p className="muted small">
+        Turns one of a model’s expressions on or off in VTube Studio, and is lit while it is on. Its model has to be the one loaded: with another loaded, a press
+        does nothing but say why.
+      </p>
+      <p className="muted small" data-vts-gap="stable">
+        On VTube Studio’s stable version, an expression turned on or off in VTube Studio’s own window is not shown here until the next model load or expression
+        hotkey. The beta version reports every change.
+      </p>
+      <h4 className="form-subheading">Model</h4>
+      <IdPicker
+        list={models}
+        stored={model?.id ?? null}
+        storedName={model?.name ?? null}
+        what="model"
+        disabled={disabled}
+        onChoose={setModel}
+        onRefresh={() => setAsk((n) => n + 1)}
+      />
+      {model !== null && (
+        <>
+          <h4 className="form-subheading">Expression</h4>
+          <IdPicker
+            list={expressions}
+            stored={model.id === storedModel ? text(action?.expression) : null}
+            storedName={model.id === storedModel ? text(action?.expressionName) : null}
+            what="expression"
+            disabled={disabled}
+            onChoose={(expression) =>
+              void run({
+                kind: 'setAction',
+                at,
+                action: nextAction('vts.expression', button, { model: model.id, modelName: model.name, expression: expression.id, expressionName: expression.name }),
+              })
+            }
+            onRefresh={() => setAsk((n) => n + 1)}
+          />
+        </>
+      )}
     </section>
   );
 }

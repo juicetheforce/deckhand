@@ -662,6 +662,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
   'vts.model': ['model', 'modelName'],
+  'vts.expression': ['model', 'expression', 'modelName', 'expressionName'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -769,6 +770,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.model) || !nonEmpty(action.hotkey);
     case 'vts.model':
       return !nonEmpty(action.model);
+    case 'vts.expression':
+      return !nonEmpty(action.model) || !nonEmpty(action.expression);
     default:
       return false;
   }

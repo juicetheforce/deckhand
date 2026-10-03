@@ -123,9 +123,9 @@ export class DaemonClient {
     await this.request('failure.clear', { serial, profile, page, key });
   }
 
-  /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys. */
-  async vtsList(kind: 'models' | 'hotkeys', model?: string): Promise<VtsList> {
-    return (await this.request('vts.list', kind === 'hotkeys' ? { kind, model } : { kind })) as VtsList;
+  /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys or (loaded only) expressions. */
+  async vtsList(kind: 'models' | 'hotkeys' | 'expressions', model?: string): Promise<VtsList> {
+    return (await this.request('vts.list', kind === 'models' ? { kind } : { kind, model })) as VtsList;
   }
 
   /** Settings' Connect: asks VTube Studio for access; replies at once, and how it goes arrives as "vts" events. */

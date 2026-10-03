@@ -368,14 +368,14 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
 
     /**
      * What a VTube Studio key's picker offers: `kind` "models", or "hotkeys"
-     * of `model` (an ID). Connects as a press does; VTS not there is an
-     * answer, not an error.
+     * or "expressions" of `model` (an ID). Connects as a press does; VTS not
+     * there is an answer, not an error.
      */
     async 'vts.list'(args) {
       const kind = args.kind;
-      if (kind !== 'models' && kind !== 'hotkeys') throw new ControlError('bad_request', '"kind" must be "models" or "hotkeys"');
-      if (kind === 'hotkeys' && (typeof args.model !== 'string' || args.model === '')) throw new ControlError('bad_request', '"model" must name a model by its ID');
-      return vtsService.list(kind, kind === 'hotkeys' ? (args.model as string) : undefined);
+      if (kind !== 'models' && kind !== 'hotkeys' && kind !== 'expressions') throw new ControlError('bad_request', '"kind" must be "models", "hotkeys" or "expressions"');
+      if (kind !== 'models' && (typeof args.model !== 'string' || args.model === '')) throw new ControlError('bad_request', '"model" must name a model by its ID');
+      return vtsService.list(kind, kind === 'models' ? undefined : (args.model as string));
     },
 
     /**

@@ -28,6 +28,14 @@ import { VTS_ERRORS, VtsClient, VtsError } from './vts-client.js';
  * when the connection fails — to say whether VTS is not running, its API is
  * off, or it is on another port. Never at rest (scope §7).
  *
+ * **Expression state** — what Toggle expression keys show — is VTS's for
+ * the model loaded only. It is asked once when an expression key comes into
+ * view, again on every model load, and after a ToggleExpression or
+ * RemoveAllExpressions hotkey; where VTS has ExpressionToggledEvent (its beta
+ * branch) that keeps it current too. On the stable branch an expression
+ * turned on or off in VTS's own window is not seen until the next of those
+ * (scope §7, the stated gap). Never polled.
+ *
  * Key faces read cachedState() only — never a request in a render.
  */
 
@@ -37,6 +45,10 @@ export interface VtsState {
   connection: VtsConnection;
   /** The model loaded now, by ID; null when none, or not known. */
   modelId: string | null;
+  /** The loaded model's expressions, by file: on or off. Only while an expression key is shown; empty when not known. */
+  expressions: Record<string, boolean>;
+  /** The model `expressions` were read from: they are only trusted for it. */
+  expressionsModel: string | null;
   approval: VtsApproval;
 }
 
@@ -58,12 +70,20 @@ const UNAVAILABLE_MESSAGE = "VTube Studio is not running, or its API is off (VTu
 const ICON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'logo', 'png', 'apps', '128.png');
 
 /** With no connection, nothing VTS showed is known any more. */
-const NOTHING_KNOWN = { modelId: null } as const;
+const NOTHING_KNOWN = { modelId: null, expressions: {}, expressionsModel: null } as const;
+/** Hotkey actions that change the loaded model's expressions (Files/HotkeyAction.cs). */
+const EXPRESSION_HOTKEYS = new Set(['ToggleExpression', 'RemoveAllExpressions']);
+/** ExpressionStateRequest's and ExpressionActivationRequest's invalid file, file not found (Files/ErrorID.cs). */
+export const EXPRESSION_NOT_FOUND = new Set([600, 601, 650, 651]);
 
 let state: VtsState = { connection: 'idle', ...NOTHING_KNOWN, approval: { state: 'none' } };
 let client: VtsClient | null = null;
 let connecting: Promise<VtsClient> | null = null;
 let wanted = false;
+/** An expression key is on a page a deck shows: keep the loaded model's expression state. */
+let wantExpressions = false;
+/** False once VTS has said it has no ExpressionToggledEvent (error 950, its stable branch). */
+let expressionEvents = true;
 /** Presses and picker lists waiting on VTS: a connection one opened is kept until it is answered. */
 let pressing = 0;
 /** The connection a token request is waiting on, while VTS shows its window. */
@@ -93,9 +113,20 @@ function announce(): void {
   for (const listener of listeners) listener();
 }
 
-/** Whether a page some deck shows has a VTS key. Shown: connect if not connected. Not shown: let go of the connection. */
-export function setWanted(want: boolean): void {
-  if (want === wanted) return;
+/**
+ * Whether a page some deck shows has a VTS key, and whether one of them is an
+ * expression key. Shown: connect if not connected. Not shown: let go of the
+ * connection. An expression key newly shown asks VTS for the expressions'
+ * state, once.
+ */
+export function setWanted(want: boolean, expressions = false): void {
+  const newlyExpressions = expressions && !wantExpressions;
+  wantExpressions = expressions;
+  if (!expressions && state.expressionsModel !== null) update({ expressions: {}, expressionsModel: null });
+  if (want === wanted) {
+    if (newlyExpressions && client?.isOpen) void readExpressions(client);
+    return;
+  }
   wanted = want;
   if (want) {
     if (state.connection !== 'refused') void ensureConnected().catch(() => undefined);
@@ -330,11 +361,14 @@ async function pressWith<T>(run: (connected: VtsClient) => Promise<T>, notFound?
 
 /**
  * What a VTS key's picker offers, asked of VTS now — connecting as a press
- * does, and letting go after if no key is shown: the models, or one model's
- * hotkeys (loaded or not: VTS lists any model's by ID). In VTS's own order.
- * A hotkey with no name is shown by its file.
+ * does, and letting go after if no key is shown: the models, one model's
+ * hotkeys (loaded or not: VTS lists any model's by ID), or one model's
+ * expressions — **only while it is the one loaded** (scope §7): VTS has no
+ * way to ask another model's, and answers for whichever is loaded, whatever
+ * model is named (VTS session 2), so the answer's model is checked. In VTS's
+ * own order. A hotkey with no name is shown by its file.
  */
-export async function list(kind: 'models' | 'hotkeys', modelId?: string): Promise<VtsList> {
+export async function list(kind: 'models' | 'hotkeys' | 'expressions', modelId?: string): Promise<VtsList> {
   return holding(async () => {
     let connected: VtsClient;
     try {
@@ -352,6 +386,18 @@ export async function list(kind: 'models' | 'hotkeys', modelId?: string): Promis
         return { ok: true, items: records(availableModels).map((m) => ({ id: text(m.modelID), name: text(m.modelName) })).filter((m) => m.id !== '') };
       }
       if (!modelId) return { ok: false, reason: 'other', message: 'Choose a model first' };
+      if (kind === 'expressions') {
+        const notLoaded = { ok: false, reason: 'not-loaded', message: 'Load it in VTube Studio to see its expressions.' } as const;
+        if (state.modelId !== modelId) return notLoaded;
+        const answer = await connected.request('ExpressionStateRequest', { details: false });
+        if (answer.modelLoaded !== true || answer.modelID !== modelId) return notLoaded;
+        return {
+          ok: true,
+          items: records(answer.expressions)
+            .map((e) => ({ id: text(e.file), name: text(e.name) || text(e.file) }))
+            .filter((e) => e.id !== ''),
+        };
+      }
       const answer = await connected.request('HotkeysInCurrentModelRequest', { modelID: modelId });
       // Only a list VTS says is that model's is trusted (what VTS answers for an ID it does not have is untested).
       if (answer.modelID !== modelId) return { ok: false, reason: 'not-found', message: 'VTube Studio has no such model any more' };
@@ -433,10 +479,20 @@ async function connect(): Promise<VtsClient> {
       throw new VtsError('refused', REFUSED_MESSAGE);
     }
     await opened.request('EventSubscriptionRequest', { eventName: 'ModelLoadedEvent', subscribe: true });
+    await opened.request('EventSubscriptionRequest', { eventName: 'HotkeyTriggeredEvent', subscribe: true });
+    // VTS's beta branch only; the stable one answers 950, and the hotkey event stands in for it.
+    expressionEvents = await opened.request('EventSubscriptionRequest', { eventName: 'ExpressionToggledEvent', subscribe: true, config: { ignoreLive2DItems: true } }).then(
+      () => true,
+      (err: unknown) => {
+        if (err instanceof VtsError && err.errorID === VTS_ERRORS.EventSubscriptionRequestEventTypeUnknown) return false;
+        throw err;
+      },
+    );
     const model = await opened.request('CurrentModelRequest');
     client = opened;
-    console.log(`[vts] connected to VTube Studio ${opened.vtsVersion}`);
+    console.log(`[vts] connected to VTube Studio ${opened.vtsVersion}${expressionEvents ? '' : ' (no ExpressionToggledEvent: the stable branch)'}`);
     update({ connection: 'connected', modelId: model.modelLoaded === true && typeof model.modelID === 'string' ? model.modelID : null });
+    if (wantExpressions) void readExpressions(opened);
   } catch (err) {
     opened.close();
     if (state.connection === 'connecting') update({ connection: 'unavailable', ...NOTHING_KNOWN });
@@ -475,9 +531,60 @@ function onEvent(type: string, data: Record<string, unknown>): void {
   for (const waiter of [...waiters]) if (waiter.match(type, data)) waiter.resolve(true);
   if (type === 'ModelLoadedEvent') {
     // A load sends "unloaded" for the old model, then "loaded" for the new one ~2 s later (VTS session 1).
-    if (data.modelLoaded === true && typeof data.modelID === 'string') update({ modelId: data.modelID });
-    else if (data.modelID === state.modelId) update({ modelId: null });
+    if (data.modelLoaded === true && typeof data.modelID === 'string') {
+      update({ modelId: data.modelID });
+      // A model keeps its expressions across a switch (VTS session 2): ask, never assume off.
+      if (wantExpressions && client) void readExpressions(client);
+    } else if (data.modelID === state.modelId) {
+      update({ modelId: null, expressions: {}, expressionsModel: null });
+    }
+  } else if (type === 'HotkeyTriggeredEvent') {
+    // The event comes before VTS's answer, and the state is right once answered (VTS session 2): a request sent now is answered after.
+    if (wantExpressions && !expressionEvents && client && data.isLive2DItem !== true && EXPRESSION_HOTKEYS.has(String(data.hotkeyAction))) void readExpressions(client);
+  } else if (type === 'ExpressionToggledEvent') {
+    if (data.isLive2DItem === true || data.modelID !== state.modelId || state.expressionsModel !== state.modelId) return;
+    if (typeof data.expressionFile !== 'string') return;
+    update({ expressions: { ...state.expressions, [data.expressionFile]: data.active === true } });
   }
+}
+
+/** Ask VTS for the loaded model's expressions, and keep them for that model. Failures leave nothing known. */
+async function readExpressions(connected: VtsClient): Promise<void> {
+  try {
+    const answer = await connected.request('ExpressionStateRequest', { details: false });
+    // Only an answer for the model loaded now is kept: VTS answers for whichever model is loaded (VTS session 2).
+    if (client !== connected || answer.modelLoaded !== true || answer.modelID !== state.modelId) return;
+    const expressions: Record<string, boolean> = {};
+    for (const e of Array.isArray(answer.expressions) ? (answer.expressions as unknown[]) : []) {
+      const expression = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : {};
+      if (typeof expression.file === 'string') expressions[expression.file] = expression.active === true;
+    }
+    update({ expressions, expressionsModel: state.modelId });
+  } catch (err) {
+    if (err instanceof VtsError && err.kind === 'refused') refuse();
+    else console.error(`[vts] could not read the expressions: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * The Toggle expression key's press: turn one of the loaded model's
+ * expressions on if it is off, off if it is on — the state read from VTS
+ * first, not the cache, which on VTS's stable branch can miss a change made
+ * in VTS's own window. `not-loaded`: its model is not the one loaded (or none
+ * is), and nothing is sent. A direct activation fires no event (VTS session
+ * 1), so the cache is set from what was asked.
+ */
+export async function toggleExpression(modelID: string, file: string, notFound: Record<number, string>): Promise<'on' | 'off' | 'not-loaded'> {
+  return pressWith(async (connected) => {
+    if (state.modelId !== modelID) return 'not-loaded';
+    const answer = await connected.request('ExpressionStateRequest', { details: false, expressionFile: file });
+    if (answer.modelID !== modelID) return 'not-loaded';
+    const now = (Array.isArray(answer.expressions) ? (answer.expressions as unknown[]) : []).find((e): e is Record<string, unknown> => typeof e === 'object' && e !== null && (e as Record<string, unknown>).file === file);
+    const active = !(now?.active === true);
+    await connected.request('ExpressionActivationRequest', { expressionFile: file, active });
+    if (state.expressionsModel === modelID) update({ expressions: { ...state.expressions, [file]: active } });
+    return active ? 'on' : 'off';
+  }, notFound);
 }
 
 export { VTS_ERRORS };

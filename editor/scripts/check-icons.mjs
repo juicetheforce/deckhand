@@ -187,7 +187,7 @@ if (r && !r.error) {
   });
   check("a key with an action and no icon draws its default in the grid; library rows draw theirs, all loaded", () => {
     assert.deepEqual([r.defaultInGrid, r.libraryIconsLoaded], [true, true]);
-    assert.equal(r.libraryIcons.length, 29, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
+    assert.equal(r.libraryIcons.length, 30, `every action but Nothing: ${JSON.stringify(r.libraryIcons)}`);
     assert.deepEqual(
       r.libraryIcons.filter((n) => n.startsWith('obs-')),
       ['obs-stream', 'obs-record', 'obs-pause', 'obs-scene', 'obs-audio', 'obs-source'],

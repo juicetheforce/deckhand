@@ -178,10 +178,11 @@ export interface VtsStatus {
 }
 
 /**
- * The "vts.list" result: what a VTube Studio key's picker offers — models, or
- * one model's hotkeys — by ID, with the name to show. Not reachable is an
+ * The "vts.list" result: what a VTube Studio key's picker offers — models,
+ * one model's hotkeys, or the loaded model's expressions (`not-loaded` for
+ * another) — by ID (an expression's is its file), with the name to show. Not reachable is an
  * answer, not an error, as for OBS.
  */
 export type VtsList =
   | { ok: true; items: Array<{ id: string; name: string; type?: string; file?: string }> }
-  | { ok: false; reason: 'not-set-up' | 'unavailable' | 'refused' | 'not-found' | 'other'; message: string };
+  | { ok: false; reason: 'not-set-up' | 'unavailable' | 'refused' | 'not-found' | 'not-loaded' | 'other'; message: string };

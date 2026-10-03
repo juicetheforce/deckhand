@@ -97,3 +97,39 @@ export const model: ActionHandler = {
 
   describe: async () => (notSetUp() ? UNSET : null),
 };
+
+/**
+ * vts.expression — turn one of a model's expressions on or off.
+ *
+ *   { "type": "vts.expression", "model": "<model ID>", "expression": "EyesLove.exp3.json",
+ *     "modelName": "Akari", "expressionName": "EyesLove" }
+ *
+ * By model ID and expression file: VTS knows an expression by its file, and
+ * only for the model loaded. Lit while VTS says it is on (services/vts.ts
+ * keeps that, and on VTS's stable branch misses a change made in VTS's own
+ * window until the next model load or expression hotkey — scope §7). Built
+ * around the model in use (scope §7): **while another model is loaded the
+ * key keeps its normal face**, and a press is marked, saying so.
+ */
+export const expression: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const model = named(params.model);
+    const file = named(params.expression);
+    if (!model || !file) throw new Error('no expression chosen');
+    const expressionName = named(params.expressionName) ?? file.replace(/\.exp3\.json$/, '');
+    const modelName = named(params.modelName) ?? 'its model';
+    const gone = `${modelName} has no expression "${expressionName}" any more: ${CHOOSE_AGAIN}`;
+    const outcome = await vts.toggleExpression(model, file, Object.fromEntries([...vts.EXPRESSION_NOT_FOUND].map((id) => [id, gone])));
+    if (outcome === 'not-loaded') {
+      if (vts.cachedState().modelId === null) throw new Error(`No model is loaded in VTube Studio: "${expressionName}" belongs to ${modelName}`);
+      throw new Error(`"${expressionName}" belongs to ${modelName}, which is not loaded in VTube Studio`);
+    }
+  },
+
+  iconState: (params) => {
+    const s = vts.cachedState();
+    return { active: s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true };
+  },
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
