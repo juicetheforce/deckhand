@@ -235,6 +235,7 @@ if (r && !r.error) {
     assert.deepEqual(r.folderCounts, ['BEAR=4/4 items', 'WOLF=1/1 item']);
   });
   check('a file added to the open folder appears without a refresh', () => {
+    assert.deepEqual(r.signalErrors, [], 'a signal to this script was refused');
     assert.equal(wroteNewFile, true, 'the renderer never signalled');
     assert.deepEqual([r.newFileAbsentBefore, r.watcherShowedNewFile], [true, true]);
   });
@@ -257,6 +258,7 @@ if (r && !r.error) {
     assert.equal(r.keyTabShowsPath, '~/Pictures/icons/back ground.png');
   });
   check("a key's icon file renamed away, and put back, reaches the grid with no navigation", () => {
+    assert.deepEqual(r.signalErrors, [], 'a signal to this script was refused');
     assert.ok(renamedAway && renamedBack, 'the renderer never signalled for the renames');
     assert.deepEqual([r.iconShownBeforeRename, r.renameAwayShowsMissing, r.renameBackShowsIcon], [true, true, true]);
   });

@@ -122,7 +122,8 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const snap = await api.snapshot();
   out.storeOpen = snap.store.open;
 
-  const daemon = await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected);
+  // Connected comes before the deck list (the editor asks for it once connected): wait for both, or no deck is read.
+  const daemon = await waitFor<DaemonView>(api.onDaemon, snap.daemon, (v) => v.connected && (v.decks?.length ?? 0) > 0);
   out.daemonConnected = daemon.connected;
   out.decks = (daemon.decks ?? []).map((d) => ({ serial: d.serial, keyCount: d.keyCount, rows: d.rows, columns: d.columns }));
   const serial = daemon.decks?.[0]?.serial ?? '';
@@ -607,8 +608,19 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
+  // The deck list arrives after the editor connects. Read before it, the serial
+  // was '' and every signal below was refused ("serial" must be a non-empty
+  // string), unseen — check:icons failed one run in three, four checks at once.
+  await until(async () => ((await api.snapshot()).daemon.decks?.length ?? 0) > 0, 10_000);
   const snap = await api.snapshot();
   const serial = snap.daemon.decks?.[0]?.serial ?? '';
+  /** A handshake with the script: a preview on `key`. Refused, it is recorded, so the check says why rather than "never signalled". */
+  const signalErrors: string[] = [];
+  const signal = async (key: number, label: string) => {
+    const result = await api.previewSet(serial, key, { label });
+    if (!result.ok) signalErrors.push(`key ${key}: ${result.error}`);
+  };
+  out.signalErrors = signalErrors;
   const saved = async () => {
     const s = (await api.snapshot()).store;
     if (!s.open || s.state.dirty) return null;
@@ -699,7 +711,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // 8. The open folder is watched: ask the script to add a file (signal: a preview on key 31), and it appears.
   out.newFileAbsentBefore = !names().includes('Frost.png');
-  await api.previewSet(serial, 31, { label: 'WRITE-FILE' });
+  await signal(31, 'WRITE-FILE');
   out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
   await api.previewClear(serial, 31);
 
@@ -830,10 +842,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('back ground.png');
   await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
   out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
-  await api.previewSet(serial, 30, { label: 'RENAME-AWAY' });
+  await signal(30, 'RENAME-AWAY');
   out.renameAwayShowsMissing = await until(() => iconIsMissing(), 10_000);
   await api.previewClear(serial, 30);
-  await api.previewSet(serial, 29, { label: 'RENAME-BACK' });
+  await signal(29, 'RENAME-BACK');
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
   await api.previewClear(serial, 29);
 
@@ -1739,8 +1751,10 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   click(1);
   await until(() => selected().join() === '1');
   libraryRow('profile').click();
-  await until(() => document.querySelector('.inspector .target') !== null);
-  [...document.querySelectorAll<HTMLButtonElement>('.inspector .target')].find((b) => b.textContent?.startsWith('Default'))!.click();
+  // Wait for the target itself, not any target: the list can be drawn before it holds Default (one pre-commit run failed on it).
+  const defaultTarget = () => [...document.querySelectorAll<HTMLButtonElement>('.inspector .target')].find((b) => b.textContent?.startsWith('Default'));
+  await until(() => defaultTarget() !== undefined);
+  defaultTarget()!.click();
   await until(async () => (await buttons())?.['1']?.action?.type === 'profile');
   await drag(libraryRow('hotkey'), key(7));
   await until(async () => (await buttons())?.['7'] !== undefined);
