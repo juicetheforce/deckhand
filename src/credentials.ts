@@ -3,9 +3,9 @@ import path from 'node:path';
 import { STATE_DIR } from './backups.js';
 
 /**
- * Secrets for the services Deckhand is a client of — OBS's password today,
- * Twitch's tokens later — in one owner-only file in the state directory
- * (scope §3, "Secrets"):
+ * Secrets for the services Deckhand is a client of — OBS's password and
+ * VTube Studio's token, one section each — in one owner-only file in the
+ * state directory (scope §3, "Secrets"):
  *
  *   $XDG_STATE_HOME/deckhand/credentials.json   mode 0600
  *
@@ -28,9 +28,50 @@ export interface ObsCredentials {
   password?: string;
 }
 
+/**
+ * VTube Studio's connection: the port its API listens on, and the token it
+ * gave Deckhand when the person allowed it in VTS's own window.
+ */
+export interface VtsCredentials {
+  port?: number;
+  token?: string;
+}
+
 interface CredentialsFile {
   obs?: ObsCredentials;
+  vts?: VtsCredentials;
 }
+
+type Section = keyof CredentialsFile;
+
+/** One service's entry as stored, or null when there is none (or it is not an object). */
+async function readSection(name: Section): Promise<Record<string, unknown> | null> {
+  const entry = (await readFile())[name];
+  return entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null;
+}
+
+/** Change one service's entry: each field given replaces the stored one; null or "" removes it. Creates the entry if need be. */
+async function changeSection(name: Section, change: Record<string, unknown>): Promise<void> {
+  const file = await readFile();
+  const entry: Record<string, unknown> = { ...((file[name] as Record<string, unknown> | undefined) ?? {}) };
+  for (const [key, value] of Object.entries(change)) {
+    if (value === null || value === '') delete entry[key];
+    else entry[key] = value;
+  }
+  await writeFile({ ...file, [name]: entry });
+}
+
+/** Remove one service's entry entirely. Nothing else in the file is touched. */
+async function removeSection(name: Section): Promise<void> {
+  const file = await readFile();
+  if (!(name in file)) return;
+  const next = { ...file };
+  delete next[name];
+  await writeFile(next);
+}
+
+const stringField = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
+const portField = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) ? value : undefined);
 
 async function readFile(): Promise<CredentialsFile> {
   let text: string;
@@ -53,13 +94,9 @@ async function readFile(): Promise<CredentialsFile> {
  * read or parsed throws: a broken file is not "not set up".
  */
 export async function obsCredentials(): Promise<ObsCredentials | null> {
-  const obs = (await readFile()).obs;
-  if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return null;
-  return {
-    host: typeof obs.host === 'string' && obs.host !== '' ? obs.host : undefined,
-    port: typeof obs.port === 'number' && Number.isInteger(obs.port) ? obs.port : undefined,
-    password: typeof obs.password === 'string' && obs.password !== '' ? obs.password : undefined,
-  };
+  const obs = await readSection('obs');
+  if (!obs) return null;
+  return { host: stringField(obs.host), port: portField(obs.port), password: stringField(obs.password) };
 }
 
 /**
@@ -69,26 +106,39 @@ export async function obsCredentials(): Promise<ObsCredentials | null> {
  * permissions, even for a moment.
  */
 export async function setObsCredentials(change: { host?: string | null; port?: number | null; password?: string | null }): Promise<void> {
-  const file = await readFile();
-  const obs: ObsCredentials = { ...(file.obs ?? {}) };
-  for (const key of ['host', 'port', 'password'] as const) {
-    if (!(key in change)) continue;
-    const value = change[key];
-    if (value === null || value === '') delete obs[key];
-    else (obs as Record<string, unknown>)[key] = value;
-  }
   // An entry with nothing in it is still an entry: OBS stays set up, on the
   // defaults, until removeObsCredentials.
-  await writeFile({ ...file, obs });
+  await changeSection('obs', change);
 }
 
 /** Remove OBS's saved connection entirely: OBS is no longer set up. Nothing else in the file is touched. */
 export async function removeObsCredentials(): Promise<void> {
-  const file = await readFile();
-  if (!('obs' in file)) return;
-  const next = { ...file };
-  delete next.obs;
-  await writeFile(next);
+  await removeSection('obs');
+}
+
+/**
+ * VTube Studio's saved connection, or null when **VTube Studio is not set
+ * up**: no token. The token is saved only when the person allows Deckhand in
+ * VTS's window (services/vts.ts), and the port with it, so set up means a
+ * saved token. A token VTS has since revoked still counts as set up — the
+ * connection is refused, as a wrong OBS password is (scope §7). A file that
+ * cannot be read or parsed throws.
+ */
+export async function vtsCredentials(): Promise<VtsCredentials | null> {
+  const vts = await readSection('vts');
+  const token = stringField(vts?.token);
+  if (!vts || !token) return null;
+  return { port: portField(vts.port), token };
+}
+
+/** Save VTube Studio's port and token together: what an approval in VTS's window gives. Written as OBS's are. */
+export async function setVtsCredentials(saved: { port: number; token: string }): Promise<void> {
+  await changeSection('vts', saved);
+}
+
+/** Remove VTube Studio's saved connection: VTS is no longer set up. Nothing else in the file is touched. */
+export async function removeVtsCredentials(): Promise<void> {
+  await removeSection('vts');
 }
 
 async function writeFile(next: CredentialsFile): Promise<void> {
