@@ -398,7 +398,7 @@ check('the Model key: one picker of VTS’s models, no hotkey picker; a pick wri
   assert.equal(r.modelKeyHotkeyPicker, null);
   assert.equal(r.modelSaved, true, JSON.stringify(r.modelSavedAction));
 });
-check('Toggle expression: the stable-branch gap is stated in the form', () => assert.match(r.expressionGap ?? '', /stable version.*not shown here until the next model load or expression hotkey/));
+check('Toggle expression: the stable-branch gap is stated in the form', () => assert.match(r.expressionGap ?? '', /stable version, an expression changed without a hotkey.*not shown here until the next model load or expression hotkey/));
 check('Toggle expression: a model not loaded lists nothing, and says to load it', () => {
   assert.deepEqual(r.expressionOtherModel.ids, []);
   assert.equal(r.expressionOtherModel.unavailable, 'Load it in VTube Studio to see its expressions.');

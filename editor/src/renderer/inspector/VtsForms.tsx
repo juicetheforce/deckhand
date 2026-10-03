@@ -213,8 +213,8 @@ export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
         does nothing but say why.
       </p>
       <p className="muted small" data-vts-gap="stable">
-        On VTube Studio’s stable version, an expression turned on or off in VTube Studio’s own window is not shown here until the next model load or expression
-        hotkey. The beta version reports every change.
+        On VTube Studio’s stable version, an expression changed without a hotkey — by another plugin, say — is not shown here until the next model load or
+        expression hotkey. Changes through a hotkey, in VTube Studio or from a deck, always show. The beta version reports every change.
       </p>
       <h4 className="form-subheading">Model</h4>
       <IdPicker

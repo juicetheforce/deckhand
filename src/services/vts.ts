@@ -32,9 +32,11 @@ import { VTS_ERRORS, VtsClient, VtsError } from './vts-client.js';
  * the model loaded only. It is asked once when an expression key comes into
  * view, again on every model load, and after a ToggleExpression or
  * RemoveAllExpressions hotkey; where VTS has ExpressionToggledEvent (its beta
- * branch) that keeps it current too. On the stable branch an expression
- * turned on or off in VTS's own window is not seen until the next of those
- * (scope §7, the stated gap). Never polled.
+ * branch) that keeps it current too. On the stable branch a change made
+ * through a hotkey — from VTS's own window or its keyboard shortcuts too —
+ * is seen by its HotkeyTriggeredEvent (VTS session 2, measured); one made
+ * without a hotkey (another plugin setting it directly) is not, until the
+ * next of those (scope §7, the stated gap). Never polled.
  *
  * Key faces read cachedState() only — never a request in a render.
  */
@@ -570,7 +572,7 @@ async function readExpressions(connected: VtsClient): Promise<void> {
  * The Toggle expression key's press: turn one of the loaded model's
  * expressions on if it is off, off if it is on — the state read from VTS
  * first, not the cache, which on VTS's stable branch can miss a change made
- * in VTS's own window. `not-loaded`: its model is not the one loaded (or none
+ * without a hotkey. `not-loaded`: its model is not the one loaded (or none
  * is), and nothing is sent. A direct activation fires no event (VTS session
  * 1), so the cache is set from what was asked.
  */

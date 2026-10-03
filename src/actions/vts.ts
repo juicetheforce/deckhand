@@ -106,8 +106,9 @@ export const model: ActionHandler = {
  *
  * By model ID and expression file: VTS knows an expression by its file, and
  * only for the model loaded. Lit while VTS says it is on (services/vts.ts
- * keeps that, and on VTS's stable branch misses a change made in VTS's own
- * window until the next model load or expression hotkey — scope §7). Built
+ * keeps that, and on VTS's stable branch misses a change made without a
+ * hotkey — by another plugin — until the next model load or expression
+ * hotkey; scope §7). Built
  * around the model in use (scope §7): **while another model is loaded the
  * key keeps its normal face**, and a press is marked, saying so.
  */
