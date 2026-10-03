@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "VTube Studio session 3: settle the swallowed page-tab click, polish, README / REFERENCE / SECURITY, a release (handover in docs/code-state.md)."
+next = "Ryan checks v0.6.0 on the laptop: page tabs, library search, VTS with its API off (steps in docs/code-state.md)."
 category = "Gaming"
 paused = false
 focus = true
@@ -13,5 +13,5 @@ v0.5.0 (2026-10-01): OBS keys, desktop notifications and Clear for failed keys; 
 v0.5.1 (2026-10-02): Settings › About shows the installed version and links the releases page; no update checking, by decision.
 Streaming in scope since 2026-10-01: OBS built in (a client of obs-websocket, not a plugin), then Twitch as actions only; virtual decks recorded for later.
 OBS is "set up" when a connection is saved (not when it has a password or has connected once); its pickers come only from OBS, never typed.
-VTube Studio (built, not released): built around the model in use — keys for another model work once it is loaded; expressions listed for the loaded model only.
+v0.6.0 (2026-10-03): VTube Studio keys (Trigger hotkey, Toggle expression, Model), built around the model in use; and a fix for page tabs clicked quickly losing a click.
 """
