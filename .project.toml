@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "VTube Studio: plan the integration; first settle how it gets tested under Proton and confirm a native process reaches its API."
+next = "VTube Studio session 1: Ryan installs VTS from Steam on the laptop; the reachability probe (and the plugin name/developer pair, from the real popup), then the connection, approval flow and Hotkey key."
 category = "Gaming"
 paused = false
 focus = true
