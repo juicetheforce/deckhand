@@ -46,6 +46,8 @@ export const DEFAULT_PORT = 8001;
 const BROADCAST_PORT = 47779;
 /** How long Connect listens for that broadcast: longer than the ~4.3 s measured between two. */
 const BROADCAST_LISTEN_MS = 6000;
+/** How long a Model press waits for VTS to say its model has loaded: loads took ~1.1–1.7 s on 1.35.10 (VTS session 2). */
+const MODEL_LOAD_CONFIRM_MS = 8000;
 
 /** What a press of a VTS key says while VTS is not set up, and once VTS stops accepting the saved token. */
 export const NOT_SET_UP_MESSAGE = "VTube Studio is not set up: connect it in Deckhand's Settings › Integrations";
@@ -66,6 +68,8 @@ let wanted = false;
 let pressing = 0;
 /** The connection a token request is waiting on, while VTS shows its window. */
 let asking: VtsClient | null = null;
+/** Presses waiting for an event that says VTS really did what it was asked (loadModel). */
+const waiters = new Set<{ match(type: string, data: Record<string, unknown>): boolean; resolve(seen: boolean): void }>();
 const listeners = new Set<() => void>();
 
 export function cachedState(): VtsState {
@@ -260,9 +264,54 @@ function listenForBroadcast(): Promise<{ active: boolean; port: number } | null>
  * Rejects with a message fit for the key's failure badge.
  */
 export async function request(messageType: string, data?: Record<string, unknown>, notFound?: Record<number, string>): Promise<Record<string, unknown>> {
+  return pressWith((connected) => connected.request(messageType, data), notFound);
+}
+
+/**
+ * The Model key's press: load a model, and resolve once VTS says it has
+ * loaded — VTS answers at once and loads ~1–2 s later (VTS session 2), so
+ * the answer alone proves nothing. `already`: it was loaded, so nothing is
+ * sent — **VTS reloads a model asked for again**, and the avatar drops out
+ * on stream meanwhile. `unconfirmed`: no event within the one-shot deadline.
+ * The waiter is in place before the request is sent.
+ */
+export async function loadModel(modelID: string, notFound: Record<number, string>): Promise<'loaded' | 'already' | 'unconfirmed'> {
+  return pressWith(async (connected) => {
+    if (state.modelId === modelID) return 'already';
+    const loaded = waitFor((type, data) => type === 'ModelLoadedEvent' && data.modelLoaded === true && data.modelID === modelID, MODEL_LOAD_CONFIRM_MS);
+    try {
+      await connected.request('ModelLoadRequest', { modelID });
+    } catch (err) {
+      loaded.cancel();
+      throw err;
+    }
+    return (await loaded.seen) ? 'loaded' : 'unconfirmed';
+  }, notFound);
+}
+
+/** The first event `match` accepts within `withinMs`: true, or false at the deadline, on cancel, or when the connection goes. */
+function waitFor(match: (type: string, data: Record<string, unknown>) => boolean, withinMs: number): { seen: Promise<boolean>; cancel(): void } {
+  let waiter!: { match: typeof match; resolve(seen: boolean): void };
+  const seen = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => waiter.resolve(false), withinMs);
+    waiter = {
+      match,
+      resolve: (result) => {
+        clearTimeout(timer);
+        waiters.delete(waiter);
+        resolve(result);
+      },
+    };
+    waiters.add(waiter);
+  });
+  return { seen, cancel: () => waiter.resolve(false) };
+}
+
+/** Run a press on a connection, connecting first if need be; failures become what the key's badge says. */
+async function pressWith<T>(run: (connected: VtsClient) => Promise<T>, notFound?: Record<number, string>): Promise<T> {
   return holding(async () => {
     try {
-      return await (await ensureConnected()).request(messageType, data);
+      return await run(await ensureConnected());
     } catch (err) {
       if (err instanceof NotSetUp) throw err;
       if (err instanceof VtsError) {
@@ -324,7 +373,7 @@ export async function list(kind: 'models' | 'hotkeys', modelId?: string): Promis
 }
 
 /** ModelIDMissing, ModelIDInvalid, ModelIDNotFound (Files/ErrorID.cs). */
-const MODEL_NOT_FOUND = new Set([150, 151, VTS_ERRORS.ModelIDNotFound]);
+export const MODEL_NOT_FOUND = new Set([150, 151, VTS_ERRORS.ModelIDNotFound]);
 
 /** Keep a connection open while `run` needs it; with no VTS key shown, let it go after. */
 async function holding<T>(run: () => Promise<T>): Promise<T> {
@@ -368,6 +417,7 @@ async function connect(): Promise<VtsClient> {
         // Let go of on purpose (disconnect) is not VTS going away: that is idle, already said.
         if (client !== opened) return;
         client = null;
+        releaseWaiters();
         update({ connection: 'unavailable', ...NOTHING_KNOWN });
       },
     });
@@ -403,6 +453,7 @@ function refuse(): void {
   const open = client;
   client = null;
   open?.close();
+  releaseWaiters();
   console.error('[vts] VTube Studio stopped accepting the saved token: revoked in its plugin list?');
   update({ connection: 'refused', ...NOTHING_KNOWN });
 }
@@ -411,10 +462,17 @@ function disconnect(): void {
   const open = client;
   client = null;
   open?.close();
+  releaseWaiters();
   if (state.connection === 'connected' || state.connection === 'connecting') update({ connection: 'idle', ...NOTHING_KNOWN });
 }
 
+/** The connection went: nothing a press waits for can arrive on it. */
+function releaseWaiters(): void {
+  for (const waiter of [...waiters]) waiter.resolve(false);
+}
+
 function onEvent(type: string, data: Record<string, unknown>): void {
+  for (const waiter of [...waiters]) if (waiter.match(type, data)) waiter.resolve(true);
   if (type === 'ModelLoadedEvent') {
     // A load sends "unloaded" for the old model, then "loaded" for the new one ~2 s later (VTS session 1).
     if (data.modelLoaded === true && typeof data.modelID === 'string') update({ modelId: data.modelID });

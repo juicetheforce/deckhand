@@ -135,6 +135,7 @@ const editorFace = () =>
         rowBlocked: row?.dataset.notSetUp ?? null,
         rowTitle: row?.title ?? null,
         rowName: row?.textContent ?? null,
+        modelRowBlocked: document.querySelector('.library-entry[data-action-type="vts.model"]')?.dataset.notSetUp ?? null,
         group: [...document.querySelectorAll('.library-group')].some((g) => /VTube Studio/.test(g.textContent ?? '')),
         hotkeyBlocked: document.querySelector('.library-entry[data-action-type="hotkey"]')?.dataset.notSetUp ?? null,
         keyUnset: key0?.classList.contains('key-unset') ?? null,
@@ -248,6 +249,17 @@ await pick('hotkey', 'hk-wave');
 r.saved = await until(async () => JSON.stringify((await buttonsNow())['3']?.action) === JSON.stringify({ type: 'vts.hotkey', model: 'm2', modelName: 'Hiyori', hotkey: 'hk-wave', hotkeyName: 'Wave' }));
 r.savedAction = (await buttonsNow())['3']?.action ?? null;
 
+// The Model key: one picker, VTS's models.
+await inPage(editor, 'editor', clickIn('.key[data-key-index="4"]'));
+await sleep(200);
+await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.model"]'));
+await until(async () => (await picker('model'))?.ids.length > 0);
+r.modelKeyPicker = await picker('model');
+r.modelKeyHotkeyPicker = await picker('hotkey');
+await pick('model', 'm2');
+r.modelSaved = await until(async () => JSON.stringify((await buttonsNow())['4']?.action) === JSON.stringify({ type: 'vts.model', model: 'm2', modelName: 'Hiyori' }));
+r.modelSavedAction = (await buttonsNow())['4']?.action ?? null;
+
 // Deleted in VTS: the saved hotkey is kept, first, and marked.
 const wave = fake.hotkeys.m2;
 fake.hotkeys.m2 = [];
@@ -285,6 +297,7 @@ check('not set up: the library lists Trigger hotkey under VTube Studio, marked, 
   assert.equal(r.notSetUp.group, true, 'a VTube Studio group');
   assert.match(r.notSetUp.rowName, /Trigger hotkey/);
   assert.equal(r.notSetUp.rowBlocked, 'true');
+  assert.equal(r.notSetUp.modelRowBlocked, 'true', 'the Model row too');
   assert.match(r.notSetUp.rowTitle, /^VTube Studio is not set up\. Its keys do nothing until it is connected in Settings › Integrations\. Click to set it up\.$/);
   assert.equal(r.notSetUp.hotkeyBlocked, null);
 });
@@ -357,6 +370,11 @@ check("the hotkey picker lists that model's hotkeys, a nameless one by its file,
 });
 check('a pick writes the action by ID, with the names beside them to show', () => {
   assert.equal(r.saved, true, JSON.stringify(r.savedAction));
+});
+check('the Model key: one picker of VTS’s models, no hotkey picker; a pick writes the model by ID, with its name', () => {
+  assert.deepEqual(r.modelKeyPicker.ids, ['m1', 'm2']);
+  assert.equal(r.modelKeyHotkeyPicker, null);
+  assert.equal(r.modelSaved, true, JSON.stringify(r.modelSavedAction));
 });
 check('a hotkey deleted in VTS: the saved one is kept, first, and marked', () => {
   assert.equal(r.deletedPicker.ids[0], 'hk-wave');

@@ -21,6 +21,7 @@
  *   vts.answer('allow');           // answer the window showing, as a person would
  *   vts.revoke();                  // every token issued so far stops working
  *   vts.loadModel('m2');           // as if the person loaded another model in VTS
+ *   vts.loadDelayMs = 600;         // how long a load takes; vts.loadCompletes = false: it never does
  *   await vts.apiOff(); await vts.apiOn();
  *   await vts.broadcast(port, { active: true });   // one UDP packet to 127.0.0.1:port
  *   await vts.stop();
@@ -57,6 +58,10 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
     /** Each connection's Sec-WebSocket-Extensions offer ('' for none). */
     extensionsOffered: [],
     connections: 0,
+    /** How long a model load takes after its answer (a real one took ~1.1–1.7 s). */
+    loadDelayMs,
+    /** False: a load unloads the old model and never says the new one has loaded. */
+    loadCompletes: true,
     models: [
       { id: 'm1', name: 'Akari' },
       { id: 'm2', name: 'Hiyori' },
@@ -97,10 +102,11 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
       const old = vts.loaded;
       if (old) emit('ModelLoadedEvent', { modelLoaded: false, modelName: nameOf(old), modelID: old });
       vts.loaded = null;
+      if (!vts.loadCompletes) return;
       setTimeout(() => {
         vts.loaded = id;
         emit('ModelLoadedEvent', { modelLoaded: true, modelName: nameOf(id), modelID: id });
-      }, loadDelayMs);
+      }, vts.loadDelayMs);
     },
     /** Connections open right now. */
     get open() {

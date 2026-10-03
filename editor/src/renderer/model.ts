@@ -661,6 +661,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'obs.source': ['scene', 'source'],
   // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
+  'vts.model': ['model', 'modelName'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -766,6 +767,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.scene) || !nonEmpty(action.source);
     case 'vts.hotkey':
       return !nonEmpty(action.model) || !nonEmpty(action.hotkey);
+    case 'vts.model':
+      return !nonEmpty(action.model);
     default:
       return false;
   }

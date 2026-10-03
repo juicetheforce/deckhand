@@ -474,7 +474,7 @@ async function main(): Promise<void> {
   });
   const stopVts = vtsService.subscribe(() => {
     if (vtsService.cachedState().connection !== 'not-set-up') notSetUpTold.clear();
-    sessions.forEach((s) => s.invalidateByType(['vts.hotkey']));
+    sessions.forEach((s) => s.invalidateByType(['vts.hotkey', 'vts.model']));
     events?.vts();
   });
 

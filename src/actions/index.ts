@@ -46,6 +46,7 @@ export const registry: Record<string, ActionHandler> = {
   'obs.mute': obs.mute,
   'obs.source': obs.source,
   'vts.hotkey': vts.hotkey,
+  'vts.model': vts.model,
 };
 
 /**

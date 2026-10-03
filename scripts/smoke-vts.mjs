@@ -198,6 +198,37 @@ check('…and the new one arrives', await until(() => vts.cachedState().modelId 
 fake.loadModel('m1');
 await until(() => vts.cachedState().modelId === 'm1');
 
+// --- The Model key's load ----------------------------------------------------------
+
+const MODEL_AKARI = { type: 'vts.model', model: 'm1', modelName: 'Akari' };
+const MODEL_HIYORI = { type: 'vts.model', model: 'm2', modelName: 'Hiyori' };
+const loadsSent = () => fake.requests.filter((r) => r.type === 'ModelLoadRequest').length;
+check('a Model key of the loaded model is lit', defaultIconFor(MODEL_AKARI, iconStateOf(MODEL_AKARI)) === 'vts-model-active');
+check('one of another model is not', defaultIconFor(MODEL_HIYORI, iconStateOf(MODEL_HIYORI)) === 'vts-model');
+const loadsBefore = loadsSent();
+check('loading the model already loaded sends nothing — VTS would reload it, dropping the avatar', (await vts.loadModel('m1', {})) === 'already' && loadsSent() === loadsBefore);
+fake.loadDelayMs = 600;
+const loadStarted = Date.now();
+const loadedM2 = await vts.loadModel('m2', {});
+const loadTook = Date.now() - loadStarted;
+check('a load resolves when VTS says the model has loaded, not on its answer', loadedM2 === 'loaded' && loadTook >= 550 && vts.cachedState().modelId === 'm2');
+check('and the Model keys follow: the new one lit, the old one not', defaultIconFor(MODEL_HIYORI, iconStateOf(MODEL_HIYORI)) === 'vts-model-active' && defaultIconFor(MODEL_AKARI, iconStateOf(MODEL_AKARI)) === 'vts-model');
+let cooldown = null;
+await vts.loadModel('m1', {}).catch((err) => (cooldown = err));
+check('a second load within 2 s is VTS error 153, not sent on', cooldown?.errorID === 153 && vts.cachedState().modelId === 'm2');
+let missing = null;
+await sleep(2100);
+await vts.loadModel('m-gone', { 152: 'gone, choose it again' }).catch((err) => (missing = err));
+check('a model VTS does not have: what the key gives for it, as something to act on', missing?.message === 'gone, choose it again' && missing?.constructor?.name === 'ActionNeeded');
+fake.loadCompletes = false;
+const unconfirmedStarted = Date.now();
+const unconfirmed = await vts.loadModel('m1', {});
+check('a load VTS never says has finished is "unconfirmed", at a one-shot deadline', unconfirmed === 'unconfirmed' && Date.now() - unconfirmedStarted >= 7500);
+fake.loadCompletes = true;
+fake.loadDelayMs = 50;
+await sleep(2100);
+check('and the next load works', (await vts.loadModel('m1', {})) === 'loaded' && vts.cachedState().modelId === 'm1');
+
 // --- Pickers ---------------------------------------------------------------------
 
 const models = await vts.list('models');
@@ -331,6 +362,9 @@ const DAEMON_CONFIG = {
                 1: { action: { type: 'page', to: 'main' } },
                 2: { label: 'Wave', action: OTHER_MODEL },
                 3: { label: 'Gone', action: { ...HOTKEY, hotkey: 'hk-deleted', hotkeyName: 'Old face' } },
+                4: { label: 'Hiyori', action: MODEL_HIYORI },
+                5: { label: 'Akari', action: MODEL_AKARI },
+                6: { label: 'Deleted', action: { type: 'vts.model', model: 'm-gone', modelName: 'Old model' } },
               },
             },
           },
@@ -418,6 +452,20 @@ check('daemon: a hotkey of a model not loaded: marked, saying why', await until(
 check('daemon: not notified — its face already shows it unavailable', notes.calls.length === notesBefore && !fake2.triggered.includes('hk-wave'));
 await pressInChild(3);
 check('daemon: a hotkey deleted in VTS: marked and notified, saying to choose it again', await until(() => notes.calls.length === notesBefore + 1 && /has no hotkey "Old face"/.test(notes.calls.at(-1)?.body ?? '')));
+
+const loads2 = () => fake2.requests.filter((r) => r.type === 'ModelLoadRequest').map((r) => r.data.modelID);
+await pressInChild(5);
+check('daemon: the Model key of the model loaded: nothing sent, nothing marked', loads2().length === 0 && (await failedOn(5)) === null);
+await pressInChild(4);
+check('daemon: a Model key loads its model, and is not marked', await until(async () => loads2().join() === 'm2' && (await ctl.request('vts.status', {})).result.modelId === 'm2' && (await failedOn(4)) === null));
+const notesBeforeModel = notes.calls.length;
+await pressInChild(5);
+check('daemon: another load within 2 s: marked, saying to press again, and not notified', await until(async () => /one model every 2 seconds/.test((await failedOn(5)) ?? '')) && notes.calls.length === notesBeforeModel);
+await sleep(2100);
+await pressInChild(6);
+check('daemon: a model deleted in VTS: marked and notified, saying to choose it again', await until(() => notes.calls.length === notesBeforeModel + 1 && /Old model is not in VTube Studio any more/.test(notes.calls.at(-1)?.body ?? '')));
+await pressInChild(5);
+check('daemon: a load that works clears the key’s mark', await until(async () => (await ctl.request('vts.status', {})).result.modelId === 'm1' && (await failedOn(5)) === null));
 
 const listed = await ctl.request('vts.list', { kind: 'hotkeys', model: 'm1' });
 check('daemon: vts.list gives a model’s hotkeys by ID', listed.ok && listed.result.ok && listed.result.items.some((h) => h.id === 'hk-heart'));

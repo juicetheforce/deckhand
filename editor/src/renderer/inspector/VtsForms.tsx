@@ -89,7 +89,7 @@ function IdPicker({
           VTube Studio has no {what} “{storedName ?? stored}” now: deleted there? The key does nothing until it is back, or pick another.
         </p>
       )}
-      {stored === null && list?.ok === true && items.length > 0 && <p className="muted small">Pick the {what} this key fires.</p>}
+      {stored === null && list?.ok === true && items.length > 0 && <p className="muted small">Pick the {what} for this key.</p>}
       <button className="link-button" onClick={onRefresh} data-vts-refresh={what}>
         Ask VTube Studio again
       </button>
@@ -164,6 +164,30 @@ export function VtsHotkeyForm({ at, button, disabled, run }: FormProps) {
           />
         </>
       )}
+    </section>
+  );
+}
+
+/** vts.model: load a model in VTube Studio — one picker. */
+export function VtsModelForm({ at, button, disabled, run }: FormProps) {
+  const [ask, setAsk] = useState(0);
+  const action = actionOf('vts.model', button);
+  const models = useVtsList('models', null, ask);
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Model</h3>
+      <p className="muted small">
+        Loads a model in VTube Studio. The key is lit while that model is loaded; pressed then, it does nothing, since VTube Studio would reload the model.
+      </p>
+      <IdPicker
+        list={models}
+        stored={text(action?.model)}
+        storedName={text(action?.modelName)}
+        what="model"
+        disabled={disabled}
+        onChoose={(model) => void run({ kind: 'setAction', at, action: nextAction('vts.model', button, { model: model.id, modelName: model.name }) })}
+        onRefresh={() => setAsk((n) => n + 1)}
+      />
     </section>
   );
 }

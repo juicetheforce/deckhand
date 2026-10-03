@@ -120,7 +120,7 @@ export interface IconState {
   paused?: boolean;
   /** obs.stream: OBS is reconnecting the stream. */
   reconnecting?: boolean;
-  /** obs.scene: its scene is OBS's program scene. */
+  /** obs.scene: its scene is OBS's program scene. vts.model: its model is the one loaded in VTube Studio. */
   active?: boolean;
   /** obs.source: its source is hidden in its scene. */
   hidden?: boolean;
@@ -231,6 +231,8 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     // Dashed at full strength, no badge: not the dimmed not-set-up face, not the failed X.
     case 'vts.hotkey':
       return state.unavailable ? 'vts-hotkey-unavailable' : 'vts-hotkey';
+    case 'vts.model':
+      return state.active ? 'vts-model-active' : 'vts-model';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

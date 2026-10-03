@@ -64,3 +64,36 @@ export const hotkey: ActionHandler = {
 
   describe: async () => (notSetUp() ? UNSET : null),
 };
+
+/**
+ * vts.model — load a model in VTube Studio.
+ *
+ *   { "type": "vts.model", "model": "<model ID>", "modelName": "Akari" }
+ *
+ * Lit only by VTS's ModelLoadedEvent, never by the press: VTS answers a load
+ * at once and finishes it ~1–2 s later (VTS session 2), so a press waits for
+ * the event naming its model, and is marked if none comes. A press while its
+ * model is already loaded does nothing — VTS would reload it, and the avatar
+ * would drop out on stream. VTS loads one model every 2 seconds; a press
+ * inside that is marked, not notified.
+ */
+export const model: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const modelID = named(params.model);
+    if (!modelID) throw new Error('no model chosen');
+    const modelName = named(params.modelName) ?? 'This model';
+    const gone = `${modelName} is not in VTube Studio any more: ${CHOOSE_AGAIN}`;
+    let outcome: Awaited<ReturnType<typeof vts.loadModel>>;
+    try {
+      outcome = await vts.loadModel(modelID, Object.fromEntries([...vts.MODEL_NOT_FOUND].map((id) => [id, gone])));
+    } catch (err) {
+      if (err instanceof VtsError && err.errorID === vts.VTS_ERRORS.ModelLoadCooldownNotOver) throw new Error('VTube Studio loads one model every 2 seconds: press again in a moment');
+      throw err;
+    }
+    if (outcome === 'unconfirmed') throw new Error(`VTube Studio did not say ${modelName} had loaded`);
+  },
+
+  iconState: (params) => ({ active: vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model }),
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
