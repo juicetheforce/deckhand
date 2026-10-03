@@ -82,6 +82,24 @@ export const BUILTIN_ICONS = [
   'toggle',
   'toggle-off',
   'volume-down',
+  // VTube Studio, in its section colour, lime: an active face is the glyph
+  // filled lime, never OBS teal, so it cannot read as an OBS key. A hotkey
+  // whose model is not loaded is dashed at full strength, with no badge —
+  // not the dimmed not-set-up face, not the failed X. Tracking lost is
+  // amber, the set's caution colour. The keys not built yet (item, hold
+  // expression, tracking, reset position) are ready.
+  'vts-expression',
+  'vts-expression-hold',
+  'vts-expression-on',
+  'vts-hotkey',
+  'vts-hotkey-unavailable',
+  'vts-item',
+  'vts-item-on',
+  'vts-model',
+  'vts-model-active',
+  'vts-reset-position',
+  'vts-tracking',
+  'vts-tracking-lost',
 ] as const;
 
 export type BuiltinIcon = (typeof BUILTIN_ICONS)[number];
