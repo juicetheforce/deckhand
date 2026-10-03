@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan's deck check of VTube Studio session 2 (Settings › Integrations, the Model and Toggle expression keys) on a developer install; then session 3: polish, docs, a release."
+next = "VTube Studio session 3: settle the swallowed page-tab click, polish, README / REFERENCE / SECURITY, a release (handover in docs/code-state.md)."
 category = "Gaming"
 paused = false
 focus = true
