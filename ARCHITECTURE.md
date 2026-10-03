@@ -129,10 +129,15 @@ will find is not a recurring timer: after the session bus is lost,
 key**, or a press is waiting on it; if OBS is not running, the next try rides
 the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 `src/services/obs-client.ts` are one-shot deadlines for a handshake or a
-request, not recurring timers.
+request, not recurring timers. **VTube Studio is connected the same way** —
+only while a shown page has a VTS key, retries riding the 60-second scan.
+VTS also announces itself over UDP every few seconds; **that broadcast is
+listened to only inside Settings' Connect**, for a few seconds when the
+connection fails, to say why — never at rest.
 
 **Secrets live in one owner-only file, never in the config.** Credentials for
-the services Deckhand is a client of — OBS's WebSocket password — are kept in
+the services Deckhand is a client of — OBS's WebSocket password, VTube
+Studio's token — are kept in
 `~/.local/state/deckhand/credentials.json`, mode 0600, outside the config
 directory people sync, and outside everything that copies the config: an
 export bundles `config.json` and its icons, and the rolling backups copy
@@ -143,6 +148,26 @@ user's programs from each other — Deckhand's udev rule already lets any of
 them type keystrokes. OBS's WebSocket server listens on every network
 interface with its password as the only protection, so that password should
 be a strong one.
+
+**VTube Studio is asked for access only when you click Connect.** VTS gives
+a plugin a token when the person allows it in a window inside VTS; Deckhand
+asks for one from Settings' Connect and nowhere else — no key, scan or
+reconnect does — so that window never appears by itself in the middle of
+someone's stream. A token VTS has since revoked is refused, as a wrong OBS
+password is, and never retried until Connect. **The name and developer
+Deckhand gives VTS — "Deckhand" and "Open-source contributors" — are
+permanent**: VTS refuses a saved token if either changes, so changing them
+would silently disconnect everyone. Its window shows them as a title over a
+subtitle, naming no person.
+
+**VTube Studio is reached by a WebSocket client of Deckhand's own**
+(`src/services/text-socket.ts`), not Node's built-in one. VTS's server
+compresses its messages, and Node's client (undici, as Node 24.18 bundles it)
+decodes the first compressed message and gives every later one as an empty
+string; it cannot be told not to ask for compression. Deckhand's client asks
+for none. OBS still uses Node's client, which works only because
+obs-websocket does not compress — if a future OBS does, its keys would fail
+the same way, and the fix is this client.
 
 **A key that needs you to do something says so on the desktop.** Every
 failed press is badged on its key. A failure whose message tells the person
@@ -213,6 +238,9 @@ is here so the test is not "fixed" instead.
 | `src/services/obs.ts`, any OBS `describe()` / `iconState()` | **connected only while a shown page has an OBS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; a refused password is never retried until the credentials change; **not set up — no saved connection — never connects at all**, and set up means saved, not "has a password" or "has connected once"; key faces read the state cache, fed by OBS's events, never a request in a render. **What shown keys name — Mute keys' inputs, Source keys' scene items — is asked once, when first shown, then kept by events; never polled**, and forgotten when no shown key names it |
 | `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page. **The release decides a hold's mark when the press armed one** (`execute` resolved `'armed'`): that press succeeding does not clear it (or every short press would flicker the badge and notify again), and a release with nothing to do leaves the press's own failure in place. A press that started the stream is judged by itself. **A start is shown, and succeeds, only once OBS says STARTED**: OBS sends STARTING and then nothing for a start that fails at once, so Stream and Record wait for STARTED or STOPPED (one-shot, `START_CONFIRM_MS`), mark the key otherwise, and correct the cached state |
 | `src/action-error.ts`, `DeckSession.settle()`, `src/services/notifications.ts` | **only a failure whose message tells the person what to do (`ActionNeeded`) is notified**, and only when the key's mark is newly set or its message changes — never per press; `"notifications": false` is read at the moment of the failure, so a reload counts. **A press of a key whose integration is not set up (`NotSetUp`) is never marked** — its face says so, and a mark would outlast the setup — and is notified once daemon-wide until the setup changes |
+| `src/services/vts.ts`, any VTS `describe()` / `iconState()` | **connected only while a shown page has a VTS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; **only `requestAccess` (Settings' Connect) ever asks VTS for a token**; a revoked token is refused and never retried until Connect; **not set up — no saved token — never connects at all**; the broadcast is listened to only inside Connect, never at rest; key faces read the state cache, fed by VTS's events, never a request in a render |
+| `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
+| `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 
 ## The control socket
