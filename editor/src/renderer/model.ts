@@ -51,14 +51,10 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
   return false;
 }
 
-/**
- * Each integration as a not-set-up key names it, and what to do.
- * VTube Studio's Settings section comes in its session 2; until then it is
- * set up from the command line (settingsSectionOf has no section for it).
- */
+/** Each integration as a not-set-up key names it, and what to do. */
 export const INTEGRATIONS: Record<Integration, { name: string; notSetUp: string }> = {
   obs: { name: 'OBS', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
-  vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected: run deckhand vts connect, then allow Deckhand in VTube Studio’s window.' },
+  vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
 };
 
 /** What a not-set-up action says, whole: "OBS is not set up. Its keys do nothing until…". Null for a set-up one. */
@@ -68,9 +64,9 @@ export function notSetUpText(daemon: DaemonView, type: string | undefined): stri
   return `${INTEGRATIONS[integration].name} is not set up. ${INTEGRATIONS[integration].notSetUp}`;
 }
 
-/** The Settings section where an action's integration is set up, or null where Settings has none yet. */
-export function settingsSectionOf(type: string | undefined): 'obs' | null {
-  return integrationOf(type) === 'obs' ? 'obs' : null;
+/** The Settings section where an action's integration is set up: each has its own. Null for an action of none. */
+export function settingsSectionOf(type: string | undefined): Integration | null {
+  return integrationOf(type);
 }
 
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {

@@ -1,5 +1,6 @@
-// VTube Studio in the editor, end to end in real Electron: the Trigger hotkey
-// key — its library row, its not-set-up face, and its pickers.
+// VTube Studio in the editor, end to end in real Electron: Settings ›
+// Integrations › VTube Studio (Connect, VTS's window answered, Remove), and
+// the Trigger hotkey key — its library row, its not-set-up face, its pickers.
 //
 // Driven like check-obs.mjs, on a private bus, against the control harness's
 // daemon (the real socket commands and services/vts.ts) and
@@ -12,6 +13,7 @@
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
 import { promises as fs } from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -84,6 +86,35 @@ const env = {
 delete env.ELECTRON_RUN_AS_NODE;
 
 const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
+const credentials = async () => JSON.parse(await fs.readFile(path.join(daemonState, 'credentials.json'), 'utf8').catch(() => '{}'));
+const freePort = () =>
+  new Promise((resolve) => {
+    const s = net.createServer().listen(0, '127.0.0.1', () => {
+      const { port } = s.address();
+      s.close(() => resolve(port));
+    });
+  });
+const typePort = (value) =>
+  `(() => { const i = document.querySelector('[data-vts-field=port]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(value)}); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
+const section = () =>
+  inPage(
+    editor,
+    'settings',
+    `(() => { const s = document.querySelector('#settings-vts'); return s && {
+      state: s.dataset.vtsSection ?? null,
+      status: s.querySelector('[data-vts-status]')?.dataset.vtsStatus ?? null,
+      statusText: s.querySelector('[data-vts-status]')?.textContent ?? null,
+      message: s.querySelector('[data-vts-message]')?.textContent ?? null,
+      messageKind: s.querySelector('[data-vts-message]')?.dataset.vtsMessage ?? null,
+      approval: s.querySelector('[data-vts-message]')?.dataset.vtsApproval ?? null,
+      port: s.querySelector('[data-vts-field=port]')?.value ?? null,
+      connect: s.querySelector('[data-vts=connect]')?.textContent ?? null,
+      connectDisabled: s.querySelector('[data-vts=connect]')?.disabled ?? null,
+      cancel: [...s.querySelectorAll('button')].some((b) => /cancel/i.test(b.textContent ?? '')),
+      confirm: s.querySelector('[data-vts-confirm]')?.textContent ?? null,
+      removable: s.querySelector('[data-vts=remove]') !== null,
+    }; })()`,
+  );
 const configJson = async () => JSON.parse(await fs.readFile(path.join(configDir, 'config.json'), 'utf8'));
 const buttonsNow = async () => (await configJson()).profiles.default.layouts[XL].pages.main.buttons;
 
@@ -147,13 +178,45 @@ r.dragged = (await buttonsNow())['2'] ?? null;
 await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.hotkey"]'));
-await sleep(600);
+r.clickOpensSettings = await until(async () => (await stateOf(editor)).settingsOpen);
+await sleep(400);
 r.clickedKey1 = (await buttonsNow())['1'] ?? null;
-r.settingsOpened = (await stateOf(editor)).settingsOpen;
 
-// --- Set up: allowed in "VTS's window", the way Connect does it ---------------------
-await vts.requestAccess(fake.port);
-r.approved = await until(() => vts.cachedState().approval.state === 'approved');
+// --- Settings › Integrations › VTube Studio ------------------------------------------
+// The editor window opens Settings at the VTS section: the deep link a not-set-up action uses.
+await inPage(editor, 'editor', "window.deckhand.openSettings('vts').then(() => true)");
+await until(async () => (await section())?.state != null);
+r.opened = await section();
+r.deepLink = await inPage(
+  editor,
+  'settings',
+  `(() => { const s = document.querySelector('#settings-vts').getBoundingClientRect(); return { inView: s.top >= 0 && s.top < window.innerHeight, focused: document.activeElement?.dataset.vtsField ?? null }; })()`,
+);
+
+// Connect with nothing there and no broadcast (the check's own broadcast port): not running. Never 8001.
+await inPage(editor, 'settings', typePort(String(await freePort())));
+await inPage(editor, 'settings', clickIn('[data-vts=connect]'));
+r.notRunning = (await until(async () => (await section())?.approval === 'not-running', 15_000)) && (await section());
+r.notRunningSaved = (await credentials()).vts ?? null;
+
+// Connect to VTS: its window shows, and Settings says to answer it there — no Cancel.
+fake.approval = 'hold';
+await inPage(editor, 'settings', typePort(String(fake.port)));
+await inPage(editor, 'settings', clickIn('[data-vts=connect]'));
+r.waiting = (await until(async () => (await section())?.approval === 'waiting')) && (await section());
+// The editor window cannot connect or remove: Settings only.
+r.editorCannotConnect = await inPage(editor, 'editor', `window.deckhand.vtsConnect(${fake.port}).then((x) => x.ok === false)`);
+r.editorCannotRemove = await inPage(editor, 'editor', `window.deckhand.vtsRemove().then((x) => x.ok === false)`);
+r.tokenRequests = fake.tokenRequests.length;
+fake.answer('allow');
+r.approved = (await until(async () => (await section())?.approval === 'approved' && (await section())?.state === 'set-up')) && (await section());
+r.savedPort = (await credentials()).vts?.port ?? null;
+const token = (await credentials()).vts?.token ?? '';
+r.tokenSaved = token.length > 0;
+r.statusHasNoToken = !JSON.stringify(await inPage(editor, 'settings', 'window.deckhand.vtsStatus()')).includes(token);
+r.pageHasNoToken = !(await inPage(editor, 'settings', 'document.body.innerHTML')).includes(token);
+fake.approval = 'allow';
+
 r.setUp = (await until(async () => (await editorFace()).rowBlocked === null && (await editorFace()).keyUnset === false)) && (await editorFace());
 
 // --- The pickers: VTS's own lists, by ID, never typed ---------------------------------
@@ -204,6 +267,17 @@ await until(async () => (await picker('model'))?.unavailable !== null && (await 
 r.closedPicker = await picker('model');
 r.keptAfterClose = (await buttonsNow())['3']?.action?.hotkey ?? null;
 
+// Remove: asks first, saying what it costs; Keep keeps it. Works with VTS closed.
+await inPage(editor, 'settings', clickIn('[data-vts=remove]'));
+r.confirm = (await section()).confirm;
+await inPage(editor, 'settings', clickIn('[data-vts=keep]'));
+r.kept = { section: await section(), saved: (await credentials()).vts !== undefined };
+await inPage(editor, 'settings', clickIn('[data-vts=remove]'));
+await inPage(editor, 'settings', clickIn('[data-vts=confirm-remove]'));
+r.removed = (await until(async () => (await section())?.state === 'not-set-up')) && { section: await section(), saved: (await credentials()).vts ?? null };
+r.removedFace = (await until(async () => (await editorFace()).keyUnset === true)) && (await editorFace());
+r.keysKept = (await buttonsNow())['0']?.action?.type ?? null;
+
 editor.child.kill();
 await until(() => editor.exited !== null, 10_000);
 
@@ -211,27 +285,63 @@ check('not set up: the library lists Trigger hotkey under VTube Studio, marked, 
   assert.equal(r.notSetUp.group, true, 'a VTube Studio group');
   assert.match(r.notSetUp.rowName, /Trigger hotkey/);
   assert.equal(r.notSetUp.rowBlocked, 'true');
-  assert.match(r.notSetUp.rowTitle, /^VTube Studio is not set up\. .*deckhand vts connect/);
+  assert.match(r.notSetUp.rowTitle, /^VTube Studio is not set up\. Its keys do nothing until it is connected in Settings › Integrations\. Click to set it up\.$/);
   assert.equal(r.notSetUp.hotkeyBlocked, null);
-  assert.doesNotMatch(r.notSetUp.rowTitle, /Click to set it up/, 'no Settings section to click through to yet');
 });
 check('not set up: the key is drawn dimmed with the not-set-up badge, naming VTube Studio, not OBS', () => {
   assert.equal(r.notSetUp.keyUnset, true);
   assert.match(r.notSetUp.keyBadgeTitle, /^VTube Studio is not set up/);
   assert.match(r.notSetUp.keyLabel, /VTube Studio is not set up/);
 });
-check('not set up: the inspector says so — with no Settings button, since Settings has no VTube Studio section yet', () => {
-  assert.match(r.notSetUp.callout, /VTube Studio is not set up\..*deckhand vts connect/);
-  assert.equal(r.notSetUp.calloutButton, false);
+check('not set up: the inspector says so, with the way to Settings', () => {
+  assert.match(r.notSetUp.callout, /VTube Studio is not set up\..*Settings › Integrations.*Set up VTube Studio/);
+  assert.equal(r.notSetUp.calloutButton, true);
 });
-check('not set up: a drag places nothing, and a click neither places it nor opens Settings', () => {
+check('not set up: a drag places nothing, and a click opens Settings without retargeting the selected key', () => {
   assert.equal(r.dragStarted, true, String(r.dragStarted));
   assert.equal(r.dragged, null);
-  assert.equal(r.clickedKey1?.action, undefined);
-  assert.equal(r.settingsOpened, false);
+  assert.equal(r.clickOpensSettings, true);
+  assert.deepEqual(r.clickedKey1, { label: 'Plain' });
+});
+check('Settings: a VTube Studio section under INTEGRATIONS, not set up, port 8001, opened at it in view with the port focused', () => {
+  assert.equal(r.opened.state, 'not-set-up');
+  assert.equal(r.opened.status, 'not-set-up');
+  assert.match(r.opened.statusText, /^Not set up\./);
+  assert.equal(r.opened.port, '8001');
+  assert.equal(r.opened.connect, 'Connect');
+  assert.equal(r.opened.removable, false, 'nothing to remove');
+  assert.deepEqual(r.deepLink, { inView: true, focused: 'port' });
+});
+check('Connect with VTS not running: says so, as an error, and saves nothing', () => {
+  assert.ok(r.notRunning, 'never not-running');
+  assert.equal(r.notRunning.messageKind, 'error');
+  assert.match(r.notRunning.message, /not running/);
+  assert.equal(r.notRunningSaved, null);
+});
+check("Connect: while VTS's window waits, Settings says to answer it there; Connect is disabled and there is no Cancel", () => {
+  assert.ok(r.waiting, 'never waiting');
+  assert.match(r.waiting.message, /Allow Deckhand in VTube Studio's window/);
+  assert.equal(r.waiting.messageKind, 'warn');
+  assert.equal(r.waiting.connectDisabled, true);
+  assert.equal(r.waiting.cancel, false);
+  assert.equal(r.tokenRequests, 1);
+});
+check('the editor window cannot connect or remove: Settings only', () => {
+  assert.equal(r.editorCannotConnect, true);
+  assert.equal(r.editorCannotRemove, true);
+});
+check('allowed: set up, the port it was found on saved, the token saved and never shown or sent to the page', () => {
+  assert.ok(r.approved, 'never approved');
+  assert.match(r.approved.message, /^Allowed\./);
+  assert.equal(r.approved.messageKind, 'ok');
+  assert.equal(r.approved.connect, 'Connect again');
+  assert.equal(r.approved.removable, true);
+  assert.equal(r.savedPort, fake.port);
+  assert.equal(r.tokenSaved, true);
+  assert.equal(r.statusHasNoToken, true);
+  assert.equal(r.pageHasNoToken, true);
 });
 check('allowed: the key, its library row and the inspector come back by themselves', () => {
-  assert.equal(r.approved, true);
   assert.ok(r.setUp, 'not ungated');
   assert.equal(r.setUp.callout, null);
 });
@@ -257,6 +367,19 @@ check('VTS closed: "Start VTube Studio to choose", and the saved choice still sh
   assert.match(r.closedPicker.unavailable ?? '', /Start VTube Studio to choose/);
   assert.ok(r.closedPicker.selected.includes('m2'));
   assert.equal(r.keptAfterClose, 'hk-wave');
+});
+
+check('Remove: asks first, saying what it costs; Keep keeps it', () => {
+  assert.match(r.confirm ?? '', /Every VTube Studio key stops working/);
+  assert.equal(r.kept.saved, true);
+  assert.equal(r.kept.section.state, 'set-up');
+});
+check('removed: not set up, the token gone, the key back to its not-set-up face, and no key touched', () => {
+  assert.ok(r.removed, 'never not set up');
+  assert.equal(r.removed.saved, null);
+  assert.match(r.removed.section.message ?? '', /^Removed\./);
+  assert.equal(r.removedFace?.keyUnset, true);
+  assert.equal(r.keysKept, 'vts.hotkey');
 });
 
 stopWatching();

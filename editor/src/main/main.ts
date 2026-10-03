@@ -122,15 +122,23 @@ let storeError: string | null = null;
 
 /** The OBS status last sent to the settings window, so it is told only of a change. */
 let sentObs = '';
+let sentVts = '';
 
 const daemon = new DaemonClient({
   socketPath: socketPath(),
   onChange: (view) => {
     window?.webContents.send('daemon', view);
     const obs = JSON.stringify(view.obs ?? null);
-    if (obs === sentObs) return;
-    sentObs = obs;
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('obsStatus', view.obs ?? null);
+    const vts = JSON.stringify(view.vts ?? null);
+    const settings = settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null;
+    if (obs !== sentObs) {
+      sentObs = obs;
+      settings?.webContents.send('obsStatus', view.obs ?? null);
+    }
+    if (vts !== sentVts) {
+      sentVts = vts;
+      settings?.webContents.send('vtsStatus', view.vts ?? null);
+    }
   },
 });
 
@@ -426,6 +434,7 @@ function openSettings(section?: SettingsSection): void {
   });
   reportWindowState(created);
   sentObs = JSON.stringify(daemon.view().obs ?? null);
+  sentVts = JSON.stringify(daemon.view().vts ?? null);
   void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings', ...(section ? { section } : {}) } });
 }
 
@@ -704,7 +713,7 @@ function registerIpc(): void {
     if (fromSettingsWindow(event) && pendingImport?.id === id) pendingImport = null;
   });
   ipcMain.handle('openSettings', (event, section: unknown) => {
-    if (fromOurWindow(event)) openSettings(section === 'obs' ? 'obs' : undefined);
+    if (fromOurWindow(event)) openSettings(section === 'obs' || section === 'vts' ? section : undefined);
   });
   // --- OBS, in Settings › Integrations. Never a secret back: the daemon reports only whether a password is set. ---
   ipcMain.handle('obsStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().obs ?? null) : null));
@@ -729,6 +738,26 @@ function registerIpc(): void {
     if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
     try {
       return { ok: true, status: await daemon.obsRemove() };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+  // --- VTube Studio, in Settings › Integrations. Never the token back: the daemon reports only whether one is saved. ---
+  ipcMain.handle('vtsStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().vts ?? null) : null));
+  ipcMain.handle('vtsConnect', async (event, port: unknown) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    if (port !== undefined && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535)) return { ok: false, error: 'the port is a whole number from 1 to 65535' };
+    try {
+      const { started, ...status } = await daemon.vtsConnect(port as number | undefined);
+      return { ok: true, started, status };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+  ipcMain.handle('vtsRemove', async (event) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    try {
+      return { ok: true, status: await daemon.vtsRemove() };
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }

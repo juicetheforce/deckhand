@@ -222,7 +222,7 @@ async function readSecret(prompt: string): Promise<string> {
 
 function vtsStatusText(r: VtsStatus): string {
   return [
-    `connection: ${r.connection}${r.setUp ? '' : ' (VTube Studio is not set up: deckhand vts connect)'}`,
+    `connection: ${r.connection}${r.setUp ? '' : " (VTube Studio is not set up: Deckhand's Settings › Integrations, or deckhand vts connect)"}`,
     `model loaded: ${r.modelId ?? (r.connection === 'connected' ? 'none' : 'not known')}`,
     `port: ${r.port ?? 8001}`,
     ...(r.approval.state === 'none' ? [] : [`access: ${r.approval.state}: ${r.approval.message ?? ''}`]),

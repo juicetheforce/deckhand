@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ObsSettings } from './ObsSettings.js';
+import { VtsSettings } from './VtsSettings.js';
 
 /**
- * The settings window: DEVICES, BEHAVIOR, INTEGRATIONS (OBS; Twitch and
- * VTube Studio later), APPEARANCE, BACKUP (export and import of the whole
+ * The settings window: DEVICES, BEHAVIOR, INTEGRATIONS (OBS, VTube Studio;
+ * Twitch later), APPEARANCE, BACKUP (export and import of the whole
  * configuration) and ABOUT (the version), one card per setting, and a footer.
  * Every change is saved at once and reaches the editor behind it at once,
  * except an import, which waits for its review to be confirmed — so Done only
@@ -19,8 +20,9 @@ export function SettingsWindow() {
   const [decks, setDecks] = useState<DeckOption[]>([]);
   /** In config.json, not with the settings above; null while it is not open. */
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
-  /** Bumped each time the window is asked to show the OBS section: opened at it, or asked again while open. */
+  /** Bumped each time the window is asked to show a section: opened at it, or asked again while open. */
   const [obsFocus, setObsFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'obs' ? 1 : 0));
+  const [vtsFocus, setVtsFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'vts' ? 1 : 0));
 
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
@@ -35,6 +37,7 @@ export function SettingsWindow() {
     const stop = window.deckhand.onAppSettings(setSettings);
     const stopSection = window.deckhand.onSettingsSection((section) => {
       if (section === 'obs') setObsFocus((n) => n + 1);
+      if (section === 'vts') setVtsFocus((n) => n + 1);
     });
     return () => {
       window.removeEventListener('focus', refreshDecks);
@@ -112,6 +115,7 @@ export function SettingsWindow() {
 
       <span className="settings-heading">INTEGRATIONS</span>
       <ObsSettings focus={obsFocus} />
+      <VtsSettings focus={vtsFocus} />
 
       <span className="settings-heading">APPEARANCE</span>
       <div className="settings-row">

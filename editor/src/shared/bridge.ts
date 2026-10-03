@@ -91,7 +91,7 @@ export interface ObsForm {
 export type ObsSaveResult = { ok: true; status: ObsStatus; attempt: ObsAttempt } | { ok: false; error: string };
 
 /** Where to open the settings window: its top, or one section. */
-export type SettingsSection = 'obs';
+export type SettingsSection = 'obs' | 'vts';
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
@@ -332,6 +332,14 @@ export interface DeckhandBridge {
   obsSave(values: ObsForm): Promise<ObsSaveResult>;
   /** Remove OBS's saved connection; keys untouched (settings window only). */
   obsRemove(): Promise<{ ok: true; status: ObsStatus } | { ok: false; error: string }>;
+  /** VTube Studio's status, for the settings window; null with no daemon, or one without VTube Studio. */
+  vtsStatus(): Promise<VtsStatus | null>;
+  /** Called when VTube Studio's status changes, Connect's progress included (settings window). */
+  onVtsStatus(callback: (status: VtsStatus | null) => void): () => void;
+  /** Connect: ask VTube Studio for access, looking at `port` first; how it goes arrives by onVtsStatus (settings window only). */
+  vtsConnect(port?: number): Promise<{ ok: true; started: boolean; status: VtsStatus } | { ok: false; error: string }>;
+  /** Remove VTube Studio's saved token; keys untouched (settings window only). */
+  vtsRemove(): Promise<{ ok: true; status: VtsStatus } | { ok: false; error: string }>;
   /** Close the settings window: its Done button (settings window only). */
   closeSettings(): Promise<void>;
   onAppSettings(callback: (settings: AppSettings) => void): () => void;

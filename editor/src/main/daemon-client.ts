@@ -128,6 +128,21 @@ export class DaemonClient {
     return (await this.request('vts.list', kind === 'hotkeys' ? { kind, model } : { kind })) as VtsList;
   }
 
+  /** Settings' Connect: asks VTube Studio for access; replies at once, and how it goes arrives as "vts" events. */
+  async vtsConnect(port?: number): Promise<VtsStatus & { started: boolean }> {
+    const reply = (await this.request('vts.connect', port === undefined ? {} : { port })) as VtsStatus & { started: boolean };
+    const { started: _started, ...status } = reply;
+    this.update({ vts: status });
+    return reply;
+  }
+
+  /** Settings' Remove: the saved token goes; no key is touched. */
+  async vtsRemove(): Promise<VtsStatus> {
+    const status = (await this.request('vts.remove')) as VtsStatus;
+    this.update({ vts: status });
+    return status;
+  }
+
   /** What an OBS key's picker offers (obs.list): scenes, audio inputs, or one scene's sources. */
   async obsList(kind: 'scenes' | 'inputs' | 'sources', scene?: string): Promise<ObsList> {
     return (await this.request('obs.list', kind === 'sources' ? { kind, scene } : { kind })) as ObsList;
