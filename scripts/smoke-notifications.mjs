@@ -9,7 +9,8 @@
  * - a key's old notification already gone: the close fails quietly and the
  *   new one is still shown;
  * - keys are independent;
- * - every notification shown is logged, and a failure to show one too.
+ * - every notification shown is logged, and a failure to show one too;
+ * - each names Deckhand's desktop entry (the desktop-entry hint).
  *
  *   npm run build:ts && node scripts/smoke-notifications.mjs
  */
@@ -74,6 +75,9 @@ await notify(KEY_A, 'Deck: key 8', 'first failure');
 release();
 check('a key’s first notification is a new one (replaces nothing)', notes.calls.length === 1 && notes.calls[0].replacesId === 0);
 check('as Deckhand, with its icon', notes.calls[0].appName === 'Deckhand' && notes.calls[0].appIcon === 'io.github.juicetheforce.Deckhand');
+// scripts/install.sh names the desktop file from the editor's desktopName: the hint must be the same, or KDE files them under nothing.
+const desktopName = JSON.parse(await fs.readFile(path.join(REPO, 'editor/package.json'), 'utf8')).desktopName;
+check(`naming its desktop entry (the desktop-entry hint) — the installer's ${desktopName}, without ".desktop"`, notes.calls[0].hints['desktop-entry'] === desktopName.replace(/\.desktop$/, ''));
 check('and the journal says it was shown', logged.some((l) => l === `[notify] shown (${notes.calls[0].id}): Deck: key 8 — first failure`));
 
 const firstId = notes.calls[0].id;

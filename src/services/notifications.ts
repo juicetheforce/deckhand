@@ -36,6 +36,16 @@ interface NotificationsInterface {
 const APP_NAME = 'Deckhand';
 /** The desktop entry's icon (scripts/install.sh). */
 const APP_ICON = 'io.github.juicetheforce.Deckhand';
+/**
+ * The desktop entry that sends them — the installed
+ * io.github.juicetheforce.Deckhand.desktop (scripts/install.sh, from the
+ * editor's desktopName; scripts/smoke-notifications.mjs holds them equal),
+ * named without ".desktop" as the hint asks — so the desktop files them under Deckhand: its own entry in
+ * KDE's notification settings, and in its history, where someone finds a
+ * "this key needs fixing" message they missed while away. Without it, KDE
+ * kept nothing from Deckhand in its history (VTS session 1).
+ */
+const DESKTOP_ENTRY = 'io.github.juicetheforce.Deckhand';
 
 let bus: dbus.MessageBus | null = null;
 let notifications: NotificationsInterface | null = null;
@@ -69,7 +79,7 @@ export async function notify(slot: string, summary: string, body: string): Promi
       // Gone already (dismissed, or removed after timing out): a server may answer with an error. Nothing to close; show the new one anyway.
       await server.CloseNotification(previous).catch(() => undefined);
     }
-    const id = await server.Notify(APP_NAME, 0, APP_ICON, summary, body, [], {}, -1);
+    const id = await server.Notify(APP_NAME, 0, APP_ICON, summary, body, [], { 'desktop-entry': new dbus.Variant('s', DESKTOP_ENTRY) }, -1);
     shown.set(slot, id);
     console.log(`[notify] shown (${id}): ${summary} — ${body}`);
   } catch (err) {
