@@ -8,8 +8,15 @@ import * as dbus from 'dbus-next';
  *
  * Nothing is connected until the first notification, and nothing runs at
  * rest. Each key keeps one notification: a new failure of the same key
- * replaces it (replaces_id) rather than stacking another. A failure to notify
- * is logged and changes nothing else — the key is badged either way.
+ * **closes the old one and shows a new one**, rather than stacking another.
+ * Not replaces_id: Plasma does not pop up an update to a notification that
+ * has already timed out, so every later failure of a key was silent — for
+ * every integration, OBS's as much as VTube Studio's (VTS session 1,
+ * `[confirmed]` on KDE Plasma). Two calls on an event; nothing listens.
+ *
+ * Every notification shown is logged, so the journal tells "sent" from
+ * "never tried". A failure to notify is logged and changes nothing else —
+ * the key is badged either way.
  */
 
 interface NotificationsInterface {
@@ -23,6 +30,7 @@ interface NotificationsInterface {
     hints: Record<string, dbus.Variant>,
     expireTimeout: number,
   ): Promise<number>;
+  CloseNotification(id: number): Promise<void>;
 }
 
 const APP_NAME = 'Deckhand';
@@ -51,11 +59,19 @@ async function service(): Promise<NotificationsInterface> {
   return notifications;
 }
 
-/** Show (or replace) the notification for one key. Never throws. */
+/** Show the notification for one key, closing the one it showed before. Never throws. */
 export async function notify(slot: string, summary: string, body: string): Promise<void> {
   try {
-    const id = await (await service()).Notify(APP_NAME, shown.get(slot) ?? 0, APP_ICON, summary, body, [], {}, -1);
+    const server = await service();
+    const previous = shown.get(slot);
+    if (previous !== undefined) {
+      shown.delete(slot);
+      // Gone already (dismissed, or removed after timing out): a server may answer with an error. Nothing to close; show the new one anyway.
+      await server.CloseNotification(previous).catch(() => undefined);
+    }
+    const id = await server.Notify(APP_NAME, 0, APP_ICON, summary, body, [], {}, -1);
     shown.set(slot, id);
+    console.log(`[notify] shown (${id}): ${summary} — ${body}`);
   } catch (err) {
     notifications = null;
     console.error(`[notify] could not show a notification: ${(err as Error).message}`);

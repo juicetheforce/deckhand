@@ -174,8 +174,11 @@ failed press is badged on its key. A failure whose message tells the person
 what to do — hold Stream to stop it, start OBS, nothing is recording — is
 also sent as a desktop notification through `org.freedesktop.Notifications`
 on the session bus: the ordinary notification service, not a portal. Once
-per message, replacing that key's last notification rather than stacking;
-nothing is connected until the first one. Turned off with
+per message, one per key: a key's next notification closes its last one and
+shows a new one, rather than stacking — and rather than replacing it in
+place, which KDE Plasma does without showing anything once the old one has
+timed out, so a key's second failure went unseen. Every notification shown
+is logged. Nothing is connected until the first one. Turned off with
 `"notifications": false` in `config.json` (the editor's Settings), because the
 daemon is what sends them.
 
