@@ -132,8 +132,9 @@ export function VtsHotkeyForm({ at, button, disabled, run }: FormProps) {
     <section className="inspector-section">
       <h3 className="section-heading">Trigger hotkey</h3>
       <p className="muted small">
-        Fires one of a model’s hotkeys in VTube Studio — an expression, an animation, a background, whatever the hotkey does there. Hotkeys belong to a model:
-        while another model is loaded the key is drawn dashed, and a press does nothing but say why.
+        Fires one of a model’s hotkeys in VTube Studio exactly as it is set up there — an expression, an animation, a background, with its sounds, fade and
+        auto-off. For an expression simply on or off, with its state on the key, use Toggle expression. Hotkeys belong to a model: while another model is
+        loaded the key is drawn dashed, and a press does nothing but say why.
       </p>
       <h4 className="form-subheading">Model</h4>
       <IdPicker
@@ -211,7 +212,7 @@ export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
       <h3 className="section-heading">Toggle expression</h3>
       <p className="muted small">
         Turns one of a model’s expressions on or off in VTube Studio, and is lit while it is on. Its model has to be the one loaded: with another loaded, a press
-        does nothing but say why.
+        does nothing but say why. An expression hotkey’s own sounds, fade or auto-off come only with Trigger hotkey.
       </p>
       <p className="muted small" data-vts-gap="stable">
         On VTube Studio’s stable version, an expression changed without a hotkey — by another plugin, say — is not shown here until the next model load or

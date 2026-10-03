@@ -88,13 +88,13 @@ export const CATALOGUE: CatalogueGroup[] = [
       {
         type: 'vts.hotkey',
         name: 'Trigger hotkey',
-        description: "Fire one of a VTube Studio model's hotkeys",
+        description: 'Run a VTube Studio hotkey as set up there: sounds, fade, auto-off',
         aliases: ['expression', 'animation', 'vtuber', 'avatar', 'emote', 'prop', 'background'],
       },
       {
         type: 'vts.expression',
         name: 'Toggle expression',
-        description: 'Turn a VTube Studio expression on or off; lit while it is on',
+        description: 'Turn an expression on or off, its state shown on the key',
         aliases: ['vtuber', 'avatar', 'emote', 'face', 'mood', 'blush'],
       },
       { type: 'vts.model', name: 'Model', description: 'Load a model in VTube Studio; lit while it is loaded', aliases: ['vtuber', 'avatar', 'switch model', 'character', 'outfit'] },
