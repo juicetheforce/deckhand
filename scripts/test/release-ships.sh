@@ -166,6 +166,9 @@ mkdir -p "$T"
 # tree's path would fail on a link for no fault of the package. node_modules is
 # linked; module resolution follows real paths anyway.
 for part in dist assets helper package.json; do cp -a "$APP/$part" "$T/$part"; done
+# The installed editor's package.json too: the installer names the desktop entry
+# from its desktopName, and smoke-notifications checks the hint against it.
+mkdir -p "$T/editor" && cp -a "$APP/editor/package.json" "$T/editor/package.json"
 ln -s "$APP/node_modules" "$T/node_modules"
 cp -r "$REPO/scripts" "$T/scripts"
 export PATH="$APP/runtime:$PATH"   # the fakes' #!/usr/bin/env node finds the bundled one
