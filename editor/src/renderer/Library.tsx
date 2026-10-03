@@ -80,9 +80,8 @@ export function Library({
           <ul>
             {matches.map(({ group, entry }) => (
               <li key={entry.type}>
-                <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
                 {/* Matches come from every section, so each says where it lives. */}
-                <span className="library-result-group">{group.name}</span>
+                <Entry entry={entry} group={group.name} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
               </li>
             ))}
           </ul>
@@ -126,12 +125,15 @@ export function Library({
 
 function Entry({
   entry,
+  group,
   onPick,
   onDragStart,
   blocked,
   onSetUp,
 }: {
   entry: CatalogueEntry;
+  /** The section's name, shown above the entry's in search results. */
+  group?: string;
   onPick: (type: string) => void;
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
   /** Why it cannot be placed yet, or null. */
@@ -156,6 +158,8 @@ function Entry({
         <img className="library-icon" src={iconUrl(builtinRef(icon))} alt="" draggable={false} data-icon={icon} />
       )}
       <span className="library-text">
+        {/* A line of its own: beside the name, a long one ran under it. */}
+        {group !== undefined && <span className="library-result-group">{group}</span>}
         <span className="library-name">{entry.name}</span>
         <span className="library-description">{entry.description}</span>
       </span>

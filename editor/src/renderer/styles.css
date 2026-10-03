@@ -1906,14 +1906,7 @@ button:disabled {
   padding: 0;
 }
 
-.library-results li {
-  position: relative;
-}
-
 .library-result-group {
-  position: absolute;
-  top: 6px;
-  right: 8px;
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
