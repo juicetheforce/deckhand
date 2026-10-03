@@ -200,16 +200,23 @@ await until(() => vts.cachedState().modelId === 'm1');
 
 // --- The Model key's load ----------------------------------------------------------
 
+/**
+ * A service call's value, or the error it threw: a check compares it and fails
+ * by name, and the run goes on. A bare top-level await that throws ends the
+ * script, hiding every check after it — three breaks run together lost two
+ * that way (VTS session 2).
+ */
+const settle = (promise) => promise.then((value) => value, (err) => err);
 const MODEL_AKARI = { type: 'vts.model', model: 'm1', modelName: 'Akari' };
 const MODEL_HIYORI = { type: 'vts.model', model: 'm2', modelName: 'Hiyori' };
 const loadsSent = () => fake.requests.filter((r) => r.type === 'ModelLoadRequest').length;
 check('a Model key of the loaded model is lit', defaultIconFor(MODEL_AKARI, iconStateOf(MODEL_AKARI)) === 'vts-model-active');
 check('one of another model is not', defaultIconFor(MODEL_HIYORI, iconStateOf(MODEL_HIYORI)) === 'vts-model');
 const loadsBefore = loadsSent();
-check('loading the model already loaded sends nothing — VTS would reload it, dropping the avatar', (await vts.loadModel('m1', {})) === 'already' && loadsSent() === loadsBefore);
+check('loading the model already loaded sends nothing — VTS would reload it, dropping the avatar', (await settle(vts.loadModel('m1', {}))) === 'already' && loadsSent() === loadsBefore);
 fake.loadDelayMs = 600;
 const loadStarted = Date.now();
-const loadedM2 = await vts.loadModel('m2', {});
+const loadedM2 = await settle(vts.loadModel('m2', {}));
 const loadTook = Date.now() - loadStarted;
 check('a load resolves when VTS says the model has loaded, not on its answer', loadedM2 === 'loaded' && loadTook >= 550 && vts.cachedState().modelId === 'm2');
 check('and the Model keys follow: the new one lit, the old one not', defaultIconFor(MODEL_HIYORI, iconStateOf(MODEL_HIYORI)) === 'vts-model-active' && defaultIconFor(MODEL_AKARI, iconStateOf(MODEL_AKARI)) === 'vts-model');
@@ -222,12 +229,12 @@ await vts.loadModel('m-gone', { 152: 'gone, choose it again' }).catch((err) => (
 check('a model VTS does not have: what the key gives for it, as something to act on', missing?.message === 'gone, choose it again' && missing?.constructor?.name === 'ActionNeeded');
 fake.loadCompletes = false;
 const unconfirmedStarted = Date.now();
-const unconfirmed = await vts.loadModel('m1', {});
+const unconfirmed = await settle(vts.loadModel('m1', {}));
 check('a load VTS never says has finished is "unconfirmed", at a one-shot deadline', unconfirmed === 'unconfirmed' && Date.now() - unconfirmedStarted >= 7500);
 fake.loadCompletes = true;
 fake.loadDelayMs = 50;
 await sleep(2100);
-check('and the next load works', (await vts.loadModel('m1', {})) === 'loaded' && vts.cachedState().modelId === 'm1');
+check('and the next load works', (await settle(vts.loadModel('m1', {}))) === 'loaded' && vts.cachedState().modelId === 'm1');
 
 // --- Toggle expression: the stable branch ------------------------------------------
 
@@ -248,29 +255,29 @@ vts.setWanted(true, true);
 await sleep(100);
 check('shown again: not asked again', stateAsks() === 1);
 const asksBeforePress = stateAsks();
-check('a press turns it on', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'on' && fake.expressions.m1['EyesLove.exp3.json'] === true);
+check('a press turns it on', (await settle(vts.toggleExpression('m1', 'EyesLove.exp3.json', {}))) === 'on' && fake.expressions.m1['EyesLove.exp3.json'] === true);
 check('the state read from VTS first, not the cache', stateAsks() === asksBeforePress + 1 && fake.requests.at(-2).data.expressionFile === 'EyesLove.exp3.json');
 check('and drawn on at once — a direct activation fires no event to say so', lit(HEART_EXPR));
-check('pressed again: off', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'off' && fake.expressions.m1['EyesLove.exp3.json'] === false && drawnOff(HEART_EXPR));
+check('pressed again: off', (await settle(vts.toggleExpression('m1', 'EyesLove.exp3.json', {}))) === 'off' && fake.expressions.m1['EyesLove.exp3.json'] === false && drawnOff(HEART_EXPR));
 fake.setExpression('EyesCry.exp3.json', false);
 await sleep(200);
 check("turned off in VTS's own window: not seen on the stable branch — the stated gap", lit(CRY_EXPR));
-await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' });
+await settle(vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' }));
 check('until an expression hotkey: then the state is asked again, and both faces are right', await until(() => drawnOff(CRY_EXPR) && lit(HEART_EXPR)));
 fake.hotkeys.m1.push({ hotkeyID: 'hk-clear', name: 'Remove Expressions', type: 'RemoveAllExpressions', file: '' });
-await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-clear' });
+await settle(vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-clear' }));
 check('a remove-all-expressions hotkey: asked again, everything off', await until(() => drawnOff(HEART_EXPR) && drawnOff(CRY_EXPR)));
 const asksBeforeOther = stateAsks();
-await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-shake' });
+await settle(vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-shake' }));
 await sleep(200);
 check('an animation hotkey asks nothing', stateAsks() === asksBeforeOther);
 fake.hotkeys.m1.pop();
-await vts.toggleExpression('m1', 'EyesLove.exp3.json', {});
+await settle(vts.toggleExpression('m1', 'EyesLove.exp3.json', {}));
 fake.loadModel('m2');
 await until(() => vts.cachedState().modelId === 'm2');
 check('another model loaded: the key keeps its normal face', drawnOff(HEART_EXPR) && (await until(() => vts.cachedState().expressionsModel === 'm2')));
 const activationsBefore = activations();
-check('a press then sends nothing, and says its model is not loaded', (await vts.toggleExpression('m1', 'EyesLove.exp3.json', {})) === 'not-loaded' && activations() === activationsBefore);
+check('a press then sends nothing, and says its model is not loaded', (await settle(vts.toggleExpression('m1', 'EyesLove.exp3.json', {}))) === 'not-loaded' && activations() === activationsBefore);
 const otherPicker = await vts.list('expressions', 'm1');
 check('the picker for a model not loaded says to load it — never another model’s list', !otherPicker.ok && otherPicker.reason === 'not-loaded' && otherPicker.message === 'Load it in VTube Studio to see its expressions.');
 fake.loadModel('m1');
@@ -280,7 +287,7 @@ check('the picker lists the loaded model’s expressions by file, named without 
 let goneExpression = null;
 await vts.toggleExpression('m1', 'Old.exp3.json', { 601: 'gone, choose it again' }).catch((err) => (goneExpression = err));
 check('an expression deleted in VTS: what the key gives for it, as something to act on', goneExpression?.message === 'gone, choose it again' && goneExpression?.constructor?.name === 'ActionNeeded');
-await vts.toggleExpression('m1', 'EyesLove.exp3.json', {});
+await settle(vts.toggleExpression('m1', 'EyesLove.exp3.json', {}));
 vts.setWanted(true, false);
 check('no expression key shown any more: the state is forgotten', vts.cachedState().expressionsModel === null && Object.keys(vts.cachedState().expressions).length === 0);
 
@@ -295,7 +302,7 @@ check('beta: subscribed to ExpressionToggledEvent, Live2D items left out', beta.
 beta.setExpression('EyesLove.exp3.json', false);
 check("beta: turned off in VTS's own window, and seen", await until(() => drawnOff(HEART_EXPR)));
 const betaAsks = beta.requests.filter((r) => r.type === 'ExpressionStateRequest').length;
-await vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' });
+await settle(vts.request('HotkeyTriggerRequest', { hotkeyID: 'hk-heart' }));
 check('beta: an expression hotkey is followed by its event, nothing asked', (await until(() => lit(HEART_EXPR))) && beta.requests.filter((r) => r.type === 'ExpressionStateRequest').length === betaAsks);
 // Back to the stable fake and its token, for what follows.
 vts.setWanted(true, false);
