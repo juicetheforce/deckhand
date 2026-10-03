@@ -391,12 +391,20 @@ export async function list(kind: 'models' | 'hotkeys' | 'expressions', modelId?:
       if (kind === 'expressions') {
         const notLoaded = { ok: false, reason: 'not-loaded', message: 'Load it in VTube Studio to see its expressions.' } as const;
         if (state.modelId !== modelId) return notLoaded;
-        const answer = await connected.request('ExpressionStateRequest', { details: false });
+        // details: which hotkeys use each expression — the names people know them by (Ryan: "EyesLove (Heart Eyes)").
+        const answer = await connected.request('ExpressionStateRequest', { details: true });
         if (answer.modelLoaded !== true || answer.modelID !== modelId) return notLoaded;
         return {
           ok: true,
           items: records(answer.expressions)
-            .map((e) => ({ id: text(e.file), name: text(e.name) || text(e.file) }))
+            .map((e) => {
+              const base = text(e.name) || text(e.file);
+              // Several hotkeys: the first named one in VTS's order, the others noted.
+              const [first, ...others] = records(e.usedInHotkeys)
+                .map((h) => text(h.name))
+                .filter((n) => n !== '');
+              return { id: text(e.file), name: first ? `${base} (${first})` : base, ...(others.length > 0 ? { note: `also ${others.join(', ')}` } : {}) };
+            })
             .filter((e) => e.id !== ''),
         };
       }

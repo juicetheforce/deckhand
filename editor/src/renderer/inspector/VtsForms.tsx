@@ -73,6 +73,7 @@ function IdPicker({
             <button className={stored === item.id ? 'target target-selected' : 'target'} disabled={disabled} onClick={() => onChoose(item)} data-vts-id={item.id}>
               <span className="target-name">{item.name}</span>
               {item.type && <span className="target-note">{hotkeyKind(item.type)}</span>}
+              {item.note && <span className="target-note">{item.note}</span>}
             </button>
           </li>
         ))}

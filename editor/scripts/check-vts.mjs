@@ -277,7 +277,7 @@ await pick('expression', 'EyesLove.exp3.json');
 r.expressionSaved = await until(
   async () =>
     JSON.stringify((await buttonsNow())['5']?.action) ===
-    JSON.stringify({ type: 'vts.expression', model: 'm1', modelName: 'Akari', expression: 'EyesLove.exp3.json', expressionName: 'EyesLove' }),
+    JSON.stringify({ type: 'vts.expression', model: 'm1', modelName: 'Akari', expression: 'EyesLove.exp3.json', expressionName: 'EyesLove (Heart Eyes)' }),
 );
 r.expressionSavedAction = (await buttonsNow())['5']?.action ?? null;
 
@@ -403,9 +403,9 @@ check('Toggle expression: a model not loaded lists nothing, and says to load it'
   assert.deepEqual(r.expressionOtherModel.ids, []);
   assert.equal(r.expressionOtherModel.unavailable, 'Load it in VTube Studio to see its expressions.');
 });
-check('Toggle expression: the loaded model’s expressions, by file, named without the extension; a pick writes both by ID', () => {
+check('Toggle expression: the loaded model’s expressions, by file, named by their hotkey too; a pick writes both by ID', () => {
   assert.deepEqual(r.expressionPicker.ids, ['EyesCry.exp3.json', 'EyesLove.exp3.json']);
-  assert.deepEqual(r.expressionPicker.names, ['EyesCry', 'EyesLove']);
+  assert.deepEqual(r.expressionPicker.names, ['EyesCry', 'EyesLove (Heart Eyes)']);
   assert.equal(r.expressionSaved, true, JSON.stringify(r.expressionSavedAction));
 });
 check('a hotkey deleted in VTS: the saved one is kept, first, and marked', () => {

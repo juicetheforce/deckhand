@@ -184,5 +184,5 @@ export interface VtsStatus {
  * answer, not an error, as for OBS.
  */
 export type VtsList =
-  | { ok: true; items: Array<{ id: string; name: string; type?: string; file?: string }> }
+  | { ok: true; items: Array<{ id: string; name: string; type?: string; file?: string; note?: string }> }
   | { ok: false; reason: 'not-set-up' | 'unavailable' | 'refused' | 'not-found' | 'not-loaded' | 'other'; message: string };

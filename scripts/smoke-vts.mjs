@@ -283,7 +283,12 @@ check('the picker for a model not loaded says to load it — never another model
 fake.loadModel('m1');
 check('its model back: asked again — and still on, as VTS keeps a model’s expressions across a switch', await until(() => vts.cachedState().expressionsModel === 'm1' && lit(HEART_EXPR)));
 const picker = await vts.list('expressions', 'm1');
-check('the picker lists the loaded model’s expressions by file, named without the extension', picker.ok && picker.items.map((e) => `${e.id}:${e.name}`).join() === 'EyesCry.exp3.json:EyesCry,EyesLove.exp3.json:EyesLove');
+check('the picker lists the loaded model’s expressions by file, named by their hotkey too; one with none by file alone', picker.ok && picker.items.map((e) => `${e.id}:${e.name}`).join() === 'EyesCry.exp3.json:EyesCry,EyesLove.exp3.json:EyesLove (Heart Eyes)');
+fake.hotkeys.m1.push({ hotkeyID: 'hk-heart-2', name: 'Love', type: 'ToggleExpression', file: 'EyesLove.exp3.json' }, { hotkeyID: 'hk-heart-3', name: '', type: 'ToggleExpression', file: 'EyesLove.exp3.json' });
+const several = await vts.list('expressions', 'm1');
+const heart = several.ok ? several.items.find((e) => e.id === 'EyesLove.exp3.json') : null;
+check('an expression with several hotkeys: the first named one, the other named ones noted', heart?.name === 'EyesLove (Heart Eyes)' && heart?.note === 'also Love');
+fake.hotkeys.m1.splice(-2);
 let goneExpression = null;
 await vts.toggleExpression('m1', 'Old.exp3.json', { 601: 'gone, choose it again' }).catch((err) => (goneExpression = err));
 check('an expression deleted in VTS: what the key gives for it, as something to act on', goneExpression?.message === 'gone, choose it again' && goneExpression?.constructor?.name === 'ActionNeeded');

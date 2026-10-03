@@ -167,7 +167,7 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
       deactivateWhenKeyIsLetGo: false,
       autoDeactivateAfterSeconds: false,
       secondsRemaining: 0,
-      usedInHotkeys: [],
+      usedInHotkeys: (vts.hotkeys[model] ?? []).filter((h) => h.type === 'ToggleExpression' && h.file === file).map((h) => ({ name: h.name, id: h.hotkeyID })),
       parameters: [],
     }));
 
