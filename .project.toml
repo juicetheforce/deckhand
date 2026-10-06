@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Choose the next milestone: Twitch is the integration left in scope, not yet planned; OBS and VTube Studio second waves wait for requests."
+next = "Twitch is planned (docs, not approved): answer the plan's ten open calls, register the Twitch app, then session 1 — the probe against real Twitch."
 category = "Gaming"
 paused = false
 focus = true
