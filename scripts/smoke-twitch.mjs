@@ -9,11 +9,44 @@
  * link**, so one refresh at a time; a refused refresh keeps the link and
  * the hourly check recovers it; polling never sooner than Twitch's interval.
  *
+ * Two halves, as smoke-vts.mjs has: services/twitch.ts in this process; then
+ * the real `dist/index.js` in a child with a fake deck — a saved link
+ * validated at start, `deckhand twitch link` and its Ctrl+C, the Chat
+ * message key pressed on the deck, and what is marked and notified. It runs
+ * itself on a private D-Bus session, for the fake notification service.
+ *
  *   npm run build:ts && node scripts/smoke-twitch.mjs
  */
+import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+if (!process.env.DECKHAND_SMOKE_PRIVATE_BUS) {
+  const busConfig = path.join(os.tmpdir(), `deckhand-smoke-twitch-bus-${process.pid}.conf`);
+  await fs.writeFile(
+    busConfig,
+    `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=${os.tmpdir()}</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+`,
+  );
+  const rerun = spawnSync('dbus-run-session', [`--config-file=${busConfig}`, '--', process.execPath, ...process.argv.slice(1)], {
+    stdio: 'inherit',
+    env: { ...process.env, DECKHAND_SMOKE_PRIVATE_BUS: '1' },
+  });
+  await fs.rm(busConfig, { force: true });
+  process.exit(rerun.status ?? 1);
+}
 
 // The state directory is read when dist/backups.js is first imported, so it is set before any import of dist/.
 const TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-'));
@@ -21,7 +54,8 @@ process.env.TMPDIR = TMP;
 process.env.DECKHAND_STATE_DIR = path.join(TMP, 'state');
 process.env.DECKHAND_INPUT_BIN = path.join(path.dirname(new URL(import.meta.url).pathname), 'test/fake-input-helper.mjs');
 
-const { REPO, check, failureCount, sleep } = await import('./test/control-harness.mjs');
+const { REPO, check, failureCount, sleep, connect } = await import('./test/control-harness.mjs');
+const { startFakeNotifications } = await import('./test/fake-notifications.mjs');
 const { startFakeTwitch } = await import('./test/fake-twitch.mjs');
 const twitch = await import(path.join(REPO, 'dist/services/twitch.js'));
 const credentials = await import(path.join(REPO, 'dist/credentials.js'));
@@ -197,6 +231,174 @@ check('after Remove, a press is NotSetUp again', (await rejection(say('gone'))) 
 check('no poll in this run was sooner than Twitch asked: never answered slow_down', fake.slowDowns === 0);
 
 twitch.stop();
+
+// --- The daemon -------------------------------------------------------------------
+
+const CONFIG_DIR = path.join(TMP, 'config2');
+const STATE2 = path.join(TMP, 'state2');
+const SOCKET = path.join(TMP, 'd.sock');
+const DECKS_FILE = path.join(TMP, 'decks.json');
+const PRESS_FILE = path.join(TMP, 'press.json');
+const DECK_SERIAL = 'FAKE-XL-0001';
+await fs.mkdir(CONFIG_DIR, { recursive: true });
+await fs.mkdir(STATE2, { recursive: true });
+const LONG = 'x'.repeat(501);
+await fs.writeFile(
+  path.join(CONFIG_DIR, 'config.json'),
+  JSON.stringify({
+    decks: { [DECK_SERIAL]: { name: 'Deck' } },
+    startProfile: 'default',
+    profiles: {
+      default: {
+        name: 'Default',
+        layouts: {
+          [DECK_SERIAL]: {
+            startPage: 'main',
+            pages: {
+              main: {
+                name: 'Main',
+                buttons: {
+                  0: { label: 'Hello', action: { type: 'twitch.chat', message: 'hello chat' } },
+                  1: { label: 'Long', action: { type: 'twitch.chat', message: LONG } },
+                  2: { label: 'Empty', action: { type: 'twitch.chat', message: '' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }),
+);
+await fs.writeFile(DECKS_FILE, JSON.stringify([{ model: 'xl', path: '/fake/xl-0', serialNumber: DECK_SERIAL, productName: 'Fake XL' }]));
+await fs.writeFile(PRESS_FILE, '{}');
+let pressId = 0;
+const press = async (index) => {
+  await fs.writeFile(PRESS_FILE, JSON.stringify({ id: ++pressId, serial: DECK_SERIAL, index, holdMs: 30 }));
+  await sleep(400);
+};
+const daemonEnv = {
+  ...process.env,
+  DECKHAND_CONFIG_DIR: CONFIG_DIR,
+  DECKHAND_STATE_DIR: STATE2,
+  DECKHAND_SOCKET: SOCKET,
+  FAKE_INPUT_LOG: path.join(TMP, 'input.log'),
+  FAKE_DECKS_FILE: DECKS_FILE,
+  FAKE_DECKS_LOG: path.join(TMP, 'opens.log'),
+  FAKE_DECKS_PRESS: PRESS_FILE,
+};
+/** `deckhand <args>` against this daemon: its output and exit code. */
+const cli = (args, { onStderr } = {}) => {
+  const child = spawn(process.execPath, [path.join(REPO, 'dist/cli.js'), ...args], { env: daemonEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = { stdout: '', stderr: '', child };
+  child.stdout.setEncoding('utf8').on('data', (c) => (out.stdout += c));
+  child.stderr.setEncoding('utf8').on('data', (c) => {
+    out.stderr += c;
+    onStderr?.(out.stderr);
+  });
+  out.done = new Promise((resolve) => child.on('exit', (code, signal) => resolve(code ?? signal)));
+  return out;
+};
+
+// A link saved before the daemon starts: Twitch's rule is to validate it at start.
+fake.requests.length = 0;
+const code0 = await (await fetch(`${fake.url}/oauth2/device`, { method: 'POST', body: new URLSearchParams({ client_id: fake.clientId, scopes: 'user:write:chat' }) })).json();
+fake.approve();
+await sleep(1100);
+const tokens0 = await (await fetch(`${fake.url}/oauth2/token`, { method: 'POST', body: new URLSearchParams({ client_id: fake.clientId, device_code: code0.device_code, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }) })).json();
+await fs.writeFile(
+  path.join(STATE2, 'credentials.json'),
+  JSON.stringify({ twitch: { clientId: fake.clientId, userId: '151766307', login: 'fakestreamer', scopes: tokens0.scope, refreshToken: tokens0.refresh_token, accessToken: tokens0.access_token, expiresAt: Date.now() + 3 * 3600_000 } }),
+  { mode: 0o600 },
+);
+fake.requests.length = 0;
+
+const notes = await startFakeNotifications();
+const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], { env: daemonEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+const output = [];
+child.stdout.setEncoding('utf8').on('data', (c) => output.push(c));
+child.stderr.setEncoding('utf8').on('data', (c) => output.push(c));
+const exited = new Promise((resolve) => child.on('exit', (code) => resolve(code)));
+const ready = await until(async () => {
+  if (!(await fs.stat(SOCKET).catch(() => null))) return false;
+  try {
+    const c = await connect(SOCKET);
+    const s = await c.request('status', {});
+    c.socket.end();
+    return s.ok && s.result.decks.some((d) => d.serial === DECK_SERIAL);
+  } catch {
+    return false;
+  }
+}, 10_000);
+check('daemon: up on the fake deck', ready);
+check('daemon: a saved link is validated at start, and nothing else is asked', await until(() => count('/oauth2/validate') === 1) && fake.requests.length === 1);
+const ctl = await connect(SOCKET);
+const failedOn = async (key) => (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.find((f) => f.key === key)?.error ?? null;
+
+const status0 = cli(['twitch']);
+await status0.done;
+check('cli: `deckhand twitch` says linked, as whom, and what it allows', /link: linked/.test(status0.stdout) && /account: fakestreamer/.test(status0.stdout) && /user:write:chat/.test(status0.stdout));
+
+await press(0);
+check('daemon: the Chat message key sends its message, as the linked account', await until(() => fake.chat.at(-1)?.message === 'hello chat'));
+check('…and leaves no mark, and notifies nothing', (await failedOn(0)) === null && notes.calls.length === 0);
+
+await press(1);
+check('daemon: a message over 500 characters is marked and notified, and nothing is sent', await until(async () => /up to 500 characters/.test((await failedOn(1)) ?? '')) && notes.calls.length === 1 && !fake.chat.some((c) => c.message === LONG));
+await press(2);
+check('daemon: an empty message is marked, not notified', await until(async () => /no message/.test((await failedOn(2)) ?? '')) && notes.calls.length === 1);
+
+fake.dropChat = { code: 'msg_duplicate', message: 'Your message is identical to the one you sent within the last 30 seconds.' };
+await press(0);
+check("daemon: a message Twitch did not send is marked with Twitch's reason", await until(async () => /identical/.test((await failedOn(0)) ?? '')));
+check('…not notified (nothing for the person to do but wait)', notes.calls.length === 1);
+fake.dropChat = null;
+await press(0);
+check('daemon: the next press that sends clears the mark', await until(async () => (await failedOn(0)) === null));
+
+fake.refuseRefresh = true;
+fake.expireAccess();
+await press(0);
+check('daemon: a refused link: marked and notified, saying to link again', await until(async () => /no longer accepts/.test((await failedOn(0)) ?? '')) && (await until(() => notes.calls.some((n) => /no longer accepts/.test(n.body)))));
+check("…and still set up: the key's face is not the not-set-up one", (await ctl.request('twitch.status', {})).result.link === 'refused');
+fake.refuseRefresh = false;
+
+const removed = cli(['twitch', 'remove']);
+await removed.done;
+check('cli: `deckhand twitch remove`: not linked, and the link ended at Twitch', /not linked/.test(removed.stdout) && fake.requests.some((q) => q.path === '/oauth2/revoke'));
+const notesBefore = notes.calls.length;
+const sentBefore = fake.requests.length;
+await press(0);
+await press(0);
+check('daemon: a press while not linked is notified once, never marked, and sends nothing', await until(() => notes.calls.length === notesBefore + 1) && /Twitch is not linked/.test(notes.calls.at(-1).body) && fake.requests.length === sentBefore);
+
+// `deckhand twitch link`, approved.
+const linking1 = cli(['twitch', 'link'], {});
+check('cli: `deckhand twitch link` prints the code to approve', await until(() => /twitch\.tv\/activate/.test(linking1.stderr) && /\n    [A-Z0-9]{8}\n/.test(linking1.stderr)));
+fake.approve();
+check('cli: approved — it says so and exits 0', (await linking1.done) === 0 && /Linked as fakestreamer/.test(linking1.stderr));
+await press(0);
+check('daemon: linked again, the key sends', await until(() => fake.chat.filter((c) => c.message === 'hello chat').length >= 3));
+
+// `deckhand twitch link`, stopped with Ctrl+C: the daemon stops asking.
+const linking2 = cli(['twitch', 'link']);
+await until(() => /Waiting for you/.test(linking2.stderr));
+linking2.child.kill('SIGINT');
+await linking2.done;
+check('cli: Ctrl+C on a link: the daemon cancels it', await until(async () => (await ctl.request('twitch.status', {})).result.linking.state === 'cancelled'));
+const pollsThen = count('/oauth2/token', 'urn:ietf:params:oauth:grant-type:device_code');
+await sleep(1500);
+check('…and stops polling Twitch', count('/oauth2/token', 'urn:ietf:params:oauth:grant-type:device_code') === pollsThen);
+check('…and the link it had is untouched', (await ctl.request('twitch.status', {})).result.link === 'linked');
+check('daemon: no poll was sooner than Twitch asked', fake.slowDowns === 0);
+
+ctl.socket.end();
+child.kill('SIGTERM');
+const stopped = await Promise.race([exited, sleep(5000).then(() => 'timeout')]);
+check('daemon: stops cleanly, the hourly check with it', stopped === 0 || stopped === null);
+await notes.stop();
+if (failureCount() > 0) console.log(output.join('').split('\n').slice(-40).join('\n'));
+
 await fake.stop();
 await fs.rm(TMP, { recursive: true, force: true });
 const failures = failureCount();

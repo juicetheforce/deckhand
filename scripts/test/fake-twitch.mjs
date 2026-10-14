@@ -14,9 +14,8 @@
  *   - revoking a refresh token ends the link; revoking an access token ends
  *     only that token;
  *   - a Cancel on Twitch's page is never seen: the code stays pending;
- *   - offline, a marker and a clip are refused with Twitch's own strings.
- *
- * What expiry answers is a guess (`expired_token`) until measured.
+ *   - offline, a marker and a clip are refused with Twitch's own strings;
+ *   - an expired code: 400 "invalid device code".
  *
  *   const twitch = await startFakeTwitch({ interval: 1 });
  *   twitch.url; twitch.requests;            // every request: { method, path, body }
@@ -122,7 +121,7 @@ export async function startFakeTwitch({ interval = 1, expiresIn = 14000, clientI
           code.interval += 5;
           return reply(400, { status: 400, message: 'slow_down' });
         }
-        if (code.state === 'expired') return reply(400, { status: 400, message: 'expired_token' });
+        if (code.state === 'expired') return reply(400, { status: 400, message: 'invalid device code' });
         if (code.state === 'pending') return reply(400, { status: 400, message: 'authorization_pending' });
         code.state = 'used';
         return reply(200, newLink(code.scopes));

@@ -297,7 +297,8 @@ async function link(mine: { cancelled: boolean }, clientId: string, sleep: (ms: 
       continue;
     }
     if (poll.kind === 'ended') {
-      const expired = /expire/i.test(poll.message);
+      // An expired code is answered "invalid device code" (measured, 1–2 minutes after its 1800 s).
+      const expired = /expire|invalid device code/i.test(poll.message);
       update({ linking: { state: expired ? 'expired' : 'failed', message: expired ? 'The code expired before it was approved. Link again for a new one.' : `Twitch said: ${poll.message}` } });
       return;
     }

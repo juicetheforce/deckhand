@@ -6,6 +6,7 @@ import * as audio from './audio.js';
 import * as media from './media.js';
 import * as obs from './obs.js';
 import * as system from './system.js';
+import * as twitch from './twitch.js';
 import * as vts from './vts.js';
 
 /**
@@ -48,6 +49,7 @@ export const registry: Record<string, ActionHandler> = {
   'vts.hotkey': vts.hotkey,
   'vts.model': vts.model,
   'vts.expression': vts.expression,
+  'twitch.chat': twitch.chat,
 };
 
 /**

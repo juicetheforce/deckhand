@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult, VtsList, VtsStatus } from './control/protocol.js';
+import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult, TwitchStatus, VtsList, VtsStatus } from './control/protocol.js';
 import { socketPath } from './control/server.js';
 
 /**
@@ -32,6 +32,10 @@ const USAGE = `usage: deckhand <command> [--json]
                                         answer in its window (port: if not 8001)
   vts hotkeys                         every model's hotkeys, each as a vts.hotkey action
   vts remove                          forget VTube Studio's access
+  twitch                              Twitch: linked or not, as whom, what it allows
+  twitch link                         link a Twitch account: prints a code to approve at
+                                        twitch.tv/activate, and waits (Ctrl+C cancels)
+  twitch remove                       forget the Twitch link, and end it at Twitch
   watch                               print state, config and audio events until Ctrl+C
   raw '<request>'                     send one request as JSON and print the reply
 
@@ -266,6 +270,57 @@ async function vtsConnect(client: Client, json: boolean, port: number | undefine
   if (status.approval.state !== 'approved') throw new CliExit(1, '');
 }
 
+function twitchStatusText(r: TwitchStatus): string {
+  const link = r.link === 'not-set-up' ? "not linked (Deckhand's Settings › Integrations, or deckhand twitch link)" : r.link === 'refused' ? 'refused: Twitch no longer accepts the link — link again' : 'linked';
+  return [
+    `link: ${link}`,
+    ...(r.login ? [`account: ${r.login}`] : []),
+    ...(r.scopes.length > 0 ? [`allows: ${r.scopes.join(', ')}`] : []),
+    ...(r.linking.state === 'none' ? [] : [`linking: ${r.linking.state}: ${r.linking.message ?? ''}`]),
+  ].join('\n');
+}
+
+/** States of a link that are its outcome: the command ends on one. */
+const TWITCH_OUTCOMES = new Set(['approved', 'expired', 'cancelled', 'failed', 'none']);
+
+/**
+ * Link a Twitch account and follow the "twitch" events until it is approved
+ * or ends, printing the code to approve. Exit 0 if linked, 1 otherwise.
+ * **Ctrl+C cancels the link**: the daemon stops asking Twitch when the
+ * connection that started it closes.
+ */
+async function twitchLink(client: Client, json: boolean): Promise<void> {
+  let last = '';
+  let underway = false;
+  let resolveOutcome!: (status: TwitchStatus) => void;
+  const ended = new Promise<TwitchStatus>((resolve) => (resolveOutcome = resolve));
+  const follow = (status: TwitchStatus) => {
+    const { linking } = status;
+    const step = `${linking.state}: ${linking.message ?? ''}`;
+    if (step !== last) {
+      last = step;
+      if (!json && linking.state === 'waiting') {
+        console.error(`\nOpen ${linking.verificationUri}\nor go to twitch.tv/activate and enter the code:\n\n    ${linking.userCode}\n\nWaiting for you to approve Deckhand there (Ctrl+C cancels)…`);
+      } else if (!json && linking.message) {
+        console.error(linking.message);
+      }
+    }
+    if (linking.state === 'starting' || linking.state === 'waiting') underway = true;
+    else if (underway && TWITCH_OUTCOMES.has(linking.state)) resolveOutcome(status);
+  };
+  client.onEvent = (message) => {
+    if (message.event === 'twitch') follow(message.data as TwitchStatus);
+  };
+  resultOf<{ events: string[] }>(await client.request('subscribe', { events: ['twitch'] }));
+  const reply = resultOf<TwitchStatus & { started: boolean }>(await client.request('twitch.link'));
+  if (!reply.started) throw new CliExit(1, 'A Twitch link is already in progress (Settings, or another deckhand twitch link).');
+  underway = true;
+  follow(reply);
+  const status = await ended;
+  if (json) console.log(JSON.stringify(status, null, 2));
+  if (status.linking.state !== 'approved') throw new CliExit(1, '');
+}
+
 function print(json: boolean, value: unknown, text: () => string): void {
   console.log(json ? JSON.stringify(value, null, 2) : text());
 }
@@ -277,7 +332,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'twitch', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -436,6 +491,18 @@ async function main(argv: string[]): Promise<void> {
           );
         } else {
           throw new CliExit(2, `unknown vts command "${sub}"\n\n${USAGE}`);
+        }
+        break;
+      }
+      case 'twitch': {
+        const sub = args[1] ?? 'status';
+        if (sub === 'status' || sub === 'remove') {
+          const r = resultOf<TwitchStatus>(await client.request(sub === 'status' ? 'twitch.status' : 'twitch.remove'));
+          print(json, r, () => twitchStatusText(r));
+        } else if (sub === 'link') {
+          await twitchLink(client, json);
+        } else {
+          throw new CliExit(2, `unknown twitch command "${sub}"\n\n${USAGE}`);
         }
         break;
       }

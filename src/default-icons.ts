@@ -236,6 +236,9 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     // Another model loaded: the same face, off — rare, and not worth an icon of its own (scope §7).
     case 'vts.expression':
       return state.active ? 'vts-expression-on' : 'vts-expression';
+    // Provisional, until Twitch's own icons are drawn (Twitch session 2).
+    case 'twitch.chat':
+      return 'text-macro';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.
