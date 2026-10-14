@@ -14,6 +14,7 @@ import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as obsService from './services/obs.js';
+import * as twitchService from './services/twitch.js';
 import * as vtsService from './services/vts.js';
 import { KeyFailures } from './key-failures.js';
 import type { ActionDef, Config } from './types.js';
@@ -379,6 +380,7 @@ async function reload(): Promise<void> {
     // new config. Backups queue among themselves and never throw.
     void backups.afterGoodReload(configText, text);
     config = next;
+    twitchService.setClientId(next.twitch?.clientId);
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
@@ -448,6 +450,7 @@ async function main(): Promise<void> {
 
   try {
     ({ config, text: configText } = await loadConfig());
+    twitchService.setClientId(config.twitch?.clientId);
   } catch (err) {
     console.error(`[main] cannot load config: ${(err as Error).message}`);
     process.exit(1);
@@ -480,6 +483,14 @@ async function main(): Promise<void> {
     sessions.forEach((s) => s.invalidateByType(['vts.hotkey', 'vts.model', 'vts.expression']));
     events?.vts();
   });
+  const stopTwitch = twitchService.subscribe(() => {
+    if (twitchService.cachedState().link !== 'not-set-up') notSetUpTold.clear();
+    sessions.forEach((s) => s.invalidateByType(['twitch.chat']));
+    events?.twitch();
+  });
+  // A saved link is validated now and hourly after (Twitch's rule): the one
+  // recurring timer Twitch has, and only while it is linked (ARCHITECTURE).
+  void twitchService.start();
 
   const stopHotplug = watchHotplug((action, devpath) => {
     console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);
@@ -530,6 +541,8 @@ async function main(): Promise<void> {
       obsService.setWanted(false);
       stopVts();
       vtsService.setWanted(false);
+      stopTwitch();
+      twitchService.stop();
       void shutdown(signal);
     });
   }

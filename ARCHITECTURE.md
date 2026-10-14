@@ -112,14 +112,20 @@ of static hotkeys costs nothing at rest: no timers, no subprocesses, no USB
 traffic. A live key (clock, now-playing, mic state) costs something only
 while it is visible. Identical images are never rewritten to USB. "No timers
 at rest" is a structural rule, not "no measurable cost", which would weaken as
-hardware gets faster. Two recurring timers are accepted exceptions:
+hardware gets faster. Three recurring timers are accepted exceptions:
 
 - a 60-second device scan (`SAFETY_SCAN_INTERVAL_MS`, `src/index.ts`), as
   insurance against a missed udev event;
 - a 500 ms render tick per deck (`TICK_MS`, `src/deck.ts`), which has no
-  measurable cost.
+  measurable cost;
+- **an hourly Twitch check, only while a Twitch account is linked**
+  (`CHECK_EVERY_MS`, `src/services/twitch.ts`). Twitch requires every app
+  that keeps a session to validate its token at start and hourly, so the
+  integration cannot work without it: a requirement, not a feature's
+  convenience. It also refreshes the access token before it lapses, which
+  keeps the link alive. It stops when the link is removed.
 
-Everything else is started by an event. Those two are the only `setInterval`
+Everything else is started by an event. Those three are the only `setInterval`
 calls in `src/`; check with grep before adding one, and a new recurring timer
 needs a reason good enough to join this list. Media players are discovered
 from D-Bus's `NameOwnerChanged`, not by rescanning. One `setTimeout` a grep
@@ -129,7 +135,11 @@ will find is not a recurring timer: after the session bus is lost,
 key**, or a press is waiting on it; if OBS is not running, the next try rides
 the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 `src/services/obs-client.ts` are one-shot deadlines for a handshake or a
-request, not recurring timers. **VTube Studio is connected the same way** —
+request, not recurring timers. **While a Twitch account is being
+linked**, the daemon asks Twitch every few seconds whether the person has
+approved — the only way to learn it — until they do, the code expires, they
+cancel, or the client that started it closes; never at rest. **VTube Studio
+is connected the same way** —
 only while a shown page has a VTS key, retries riding the 60-second scan.
 VTS also announces itself over UDP every few seconds; **that broadcast is
 listened to only inside Settings' Connect**, for a few seconds when the
@@ -248,6 +258,7 @@ is here so the test is not "fixed" instead.
 | `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page. **The release decides a hold's mark when the press armed one** (`execute` resolved `'armed'`): that press succeeding does not clear it (or every short press would flicker the badge and notify again), and a release with nothing to do leaves the press's own failure in place. A press that started the stream is judged by itself. **A start is shown, and succeeds, only once OBS says STARTED**: OBS sends STARTING and then nothing for a start that fails at once, so Stream and Record wait for STARTED or STOPPED (one-shot, `START_CONFIRM_MS`), mark the key otherwise, and correct the cached state |
 | `src/action-error.ts`, `DeckSession.settle()`, `src/services/notifications.ts` | **only a failure whose message tells the person what to do (`ActionNeeded`) is notified**, and only when the key's mark is newly set or its message changes — never per press; `"notifications": false` is read at the moment of the failure, so a reload counts. **A press of a key whose integration is not set up (`NotSetUp`) is never marked** — its face says so, and a mark would outlast the setup — and is notified once daemon-wide until the setup changes |
 | `src/services/vts.ts`, any VTS `describe()` / `iconState()` | **connected only while a shown page has a VTS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; **only `requestAccess` (Settings' Connect) ever asks VTS for a token**; a revoked token is refused and never retried until Connect; **not set up — no saved token — never connects at all**; the broadcast is listened to only inside Connect, never at rest; key faces read the state cache, fed by VTS's events, never a request in a render. **Expression state is the loaded model's only, asked when an expression key comes into view, on a model load and after an expression hotkey — never polled** — and an answer is kept only for the model it names: `ExpressionStateRequest` answers for whichever model is loaded, whatever model is asked, so the picker and the cache check. **A Model key never asks for the model already loaded**: VTS reloads it, and the avatar drops out |
+| `src/services/twitch.ts`, `src/credentials.ts`'s Twitch section | **a refresh token is single-use, and Twitch ends the whole link when a replaced one is sent** (measured): one refresh at a time, shared by the hourly check and every press, and the new pair saved — in one write — before anything uses it. **A refused refresh keeps the link**: Twitch's own faults look the same as a dead link, so the keys are marked, the tokens kept, and the hourly check keeps trying; only Remove or a new link clears it. The link keeps the client ID it was made with. The hourly check runs only while linked, and polling only while linking |
 | `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |

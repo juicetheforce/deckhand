@@ -178,6 +178,49 @@ export interface VtsStatus {
 }
 
 /**
+ * Whether Twitch is linked. `refused`: Twitch refused the last refresh —
+ * revoked, lapsed, or a fault on Twitch's side, which look the same. The
+ * link is kept and the hourly check keeps trying it (scope §7, "a refused
+ * refresh keeps the link"); Remove or a new link clears it.
+ */
+export type TwitchLink = 'not-set-up' | 'linked' | 'refused';
+
+/**
+ * Where linking is. It happens in the background; the "twitch" event says
+ * how it goes. `starting`: asking Twitch for a code. `waiting`: the code is
+ * shown, for the person to approve at twitch.tv/activate. Then one outcome,
+ * kept until the next link: `approved`, `expired` (30 minutes passed),
+ * `cancelled` (Deckhand's Cancel, or the client that asked went away),
+ * `failed`. A Cancel on Twitch's own page never reaches Deckhand: the code
+ * stays waiting until it expires (Twitch session 1, measured). `none`:
+ * never asked since the daemon started, or removed.
+ */
+export type TwitchLinkingState = 'none' | 'starting' | 'waiting' | 'approved' | 'expired' | 'cancelled' | 'failed';
+
+export interface TwitchLinking {
+  state: TwitchLinkingState;
+  /** What to tell the person, for every state but `none`. */
+  message?: string;
+  /** While waiting: the code to type at twitch.tv/activate, and the page with it filled in. Not secret: the person types it. */
+  userCode?: string;
+  verificationUri?: string;
+  /** While waiting: when the code expires, in ms since the epoch. */
+  expiresAt?: number;
+}
+
+/** The "twitch.status" result, and what the "twitch" event carries. Never a token: only whether Twitch is linked, and as whom. */
+export interface TwitchStatus {
+  link: TwitchLink;
+  /** A link is saved: Twitch keys can do something. */
+  setUp: boolean;
+  /** The linked account's login; null when not linked. */
+  login: string | null;
+  /** What the link allows, as Twitch granted it. */
+  scopes: string[];
+  linking: TwitchLinking;
+}
+
+/**
  * The "vts.list" result: what a VTube Studio key's picker offers — models,
  * one model's hotkeys, or the loaded model's expressions (`not-loaded` for
  * another) — by ID (an expression's is its file), with the name to show. Not reachable is an

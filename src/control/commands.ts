@@ -5,6 +5,7 @@ import { ProfileNotFoundError, type Profiles } from '../profiles.js';
 import { obsCredentials, removeObsCredentials, removeVtsCredentials, setObsCredentials, vtsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
 import * as obsService from '../services/obs.js';
+import * as twitchService from '../services/twitch.js';
 import * as vtsService from '../services/vts.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
@@ -85,6 +86,8 @@ export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
         if (status) server.notify('vts', () => status);
       });
     },
+    // From memory, not the credentials file: nothing to keep in order.
+    twitch: () => server.notify('twitch', () => twitchService.status()),
   };
 }
 
@@ -388,6 +391,44 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       await removeVtsCredentials();
       vtsService.removeAccess();
       return vtsStatus();
+    },
+
+    /**
+     * Twitch: whether it is linked, as whom, what the link allows, and where
+     * linking is — never a token (credentials.ts).
+     */
+    async 'twitch.status'() {
+      return twitchService.status();
+    },
+
+    /**
+     * Settings' Link, or `deckhand twitch link`: ask Twitch for a code.
+     * Replies at once — `started` false when a link is already in progress;
+     * the code to show, and how it goes, come as "twitch" events. Polling
+     * Twitch runs only while linking (scope §7, call 4), so **it is
+     * cancelled when this connection closes**: an editor that quits or a CLI
+     * that is stopped leaves nothing asking.
+     */
+    async 'twitch.link'(_args, connection) {
+      const cancel = twitchService.startLinking();
+      if (cancel) connection.onClose(cancel);
+      return { started: cancel !== null, ...twitchService.status() };
+    },
+
+    /** Settings' Cancel: stop linking. The code just expires at Twitch; nothing is left behind there. */
+    async 'twitch.cancel'() {
+      twitchService.cancelLinking();
+      return twitchService.status();
+    },
+
+    /**
+     * Remove Twitch's link: forget it, and end it at Twitch (best effort).
+     * No key is touched — Twitch keys stay, show that Twitch is not linked,
+     * and work again once it is.
+     */
+    async 'twitch.remove'() {
+      await twitchService.remove();
+      return twitchService.status();
     },
 
     // Both read the audio cache, which pactl subscribe keeps current: a request
