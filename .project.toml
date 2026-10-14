@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Twitch is planned (docs, not approved): answer the plan's ten open calls, register the Twitch app, then session 1 — the probe against real Twitch."
+next = "Twitch session 1 built and installed on the laptop: Ryan links his account (deckhand twitch link) and presses a Chat message key; then session 2 (Marker, Clip, Stream info, Settings, icons, the live test)."
 category = "Gaming"
 paused = false
 focus = true
@@ -14,4 +14,5 @@ v0.5.1 (2026-10-02): Settings › About shows the installed version and links th
 Streaming in scope since 2026-10-01: OBS built in (a client of obs-websocket, not a plugin), then Twitch as actions only; virtual decks recorded for later.
 OBS is "set up" when a connection is saved (not when it has a password or has connected once); its pickers come only from OBS, never typed.
 v0.6.0 (2026-10-03): VTube Studio keys (Trigger hotkey, Toggle expression, Model), built around the model in use; and a fix for page tabs clicked quickly losing a click. Confirmed on the laptop; VTube Studio milestone closed.
+Twitch (2026-10-14): one public client ID for every user (no secret), owned by a dedicated account; an hourly validate-and-refresh timer while linked is an accepted exception to "no timers at rest", because Twitch requires it.
 """
