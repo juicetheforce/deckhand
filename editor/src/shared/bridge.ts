@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -75,6 +75,12 @@ export interface DaemonView {
    * without VTube Studio.
    */
   vts?: VtsStatus | null;
+  /**
+   * Twitch: whether it is linked, as whom (twitch.status, kept current by the
+   * "twitch" event). Never a token. Gates the library's Twitch actions and
+   * the not-set-up faces. Absent or null from a daemon without Twitch.
+   */
+  twitch?: TwitchStatus | null;
 }
 
 /**

@@ -45,6 +45,10 @@ import {
   latchedKeysOn,
   faceIcon,
   appIconsOf,
+  integrationOf,
+  notSetUp,
+  notSetUpText,
+  settingsSectionOf,
   type Selection,
 } from '../src/renderer/model.js';
 
@@ -117,7 +121,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'vts.expression', 'vts.hotkey', 'vts.model']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'twitch.chat', 'vts.expression', 'vts.hotkey', 'vts.model']);
 });
 
 console.log('the navigation guard');
@@ -984,6 +988,25 @@ await check("an app key's face: the app's icon from the daemon's list, never ove
   assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, false, apps), 'builtin:app-launch', 'an app not listed: the built-in');
   assert.equal(faceIcon({ action: gimp }), 'builtin:app-launch', 'no list yet: the built-in');
   assert.equal(faceIcon({ action: { type: 'app' } }, false, apps), 'builtin:app-launch-unset', 'no app chosen: the dimmed face');
+});
+
+await check('Twitch: its keys need a linked account, gated only when the daemon says it is not linked', () => {
+  assert.equal(integrationOf('twitch.chat'), 'twitch');
+  const linked = (setUp: boolean) => ({ twitch: { link: setUp ? 'linked' : 'not-set-up', setUp, login: null, scopes: [], linking: { state: 'none' } } }) as unknown as DaemonView;
+  assert.equal(notSetUp(linked(false), 'twitch.chat'), true);
+  assert.equal(notSetUp(linked(true), 'twitch.chat'), false);
+  // Not knowing — no daemon, or one from before Twitch — blocks nothing.
+  assert.equal(notSetUp({} as DaemonView, 'twitch.chat'), false);
+  assert.match(notSetUpText(linked(false), 'twitch.chat') ?? '', /^Twitch is not set up\. Its keys do nothing until a Twitch account is linked\.$/);
+  // No Settings section for Twitch yet: no button may offer one.
+  assert.equal(settingsSectionOf('twitch.chat'), null);
+  assert.equal(settingsSectionOf('vts.model'), 'vts');
+});
+
+await check('Twitch: a Chat message key is incomplete until it has a message', () => {
+  assert.equal(actionIncomplete({ type: 'twitch.chat' } as ActionDef), true);
+  assert.equal(actionIncomplete({ type: 'twitch.chat', message: '   ' } as ActionDef), true);
+  assert.equal(actionIncomplete({ type: 'twitch.chat', message: 'hi' } as ActionDef), false);
 });
 
 await check('failed keys: only those on the page being edited, from the deck being edited, with their errors', () => {

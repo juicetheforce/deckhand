@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -91,7 +91,7 @@ export class DaemonClient {
     const socket = this.socket;
     this.socket = null; // before destroy(), so its 'close' is ignored as a stale socket's
     socket?.destroy();
-    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null, vts: null });
+    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null });
   }
 
   view(): DaemonView {
@@ -219,7 +219,7 @@ export class DaemonClient {
   private connect(): void {
     if (this.stopped) return;
     if (this.socketPath === null) {
-      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null, vts: null });
+      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null });
       return; // nothing to retry: the path will not appear
     }
     const socket = net.connect(this.socketPath);
@@ -243,10 +243,10 @@ export class DaemonClient {
 
   private async handshake(socket: net.Socket): Promise<void> {
     try {
-      // A subscribe replaces the set, and a daemon from before VTube Studio refuses one naming an event it does not know — whole: then without it.
-      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts'] }).catch(() =>
-        this.request('subscribe', { events: ['state', 'config', 'audio', 'obs'] }),
-      );
+      // A subscribe replaces the set, and a daemon refuses one naming an event it does not know — whole: then without the newest, in turn.
+      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts', 'twitch'] })
+        .catch(() => this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts'] }))
+        .catch(() => this.request('subscribe', { events: ['state', 'config', 'audio', 'obs'] }));
       const status = (await this.request('status')) as StatusResult;
       const decks = (await this.request('decks')) as DecksResult;
       const audio = await this.readAudio();
@@ -254,9 +254,11 @@ export class DaemonClient {
       const obs = ((await this.request('obs.status').catch(() => null)) as ObsStatus | null) ?? null;
       // Likewise a daemon from before VTube Studio: no gating.
       const vts = ((await this.request('vts.status').catch(() => null)) as VtsStatus | null) ?? null;
+      // And from before Twitch.
+      const twitch = ((await this.request('twitch.status').catch(() => null)) as TwitchStatus | null) ?? null;
       if (socket !== this.socket) return;
       this.retryMs = this.retryInitialMs;
-      this.update({ connected: true, problem: null, status, decks, audio, obs, vts });
+      this.update({ connected: true, problem: null, status, decks, audio, obs, vts, twitch });
       // After, not during: listing the apps reads every desktop entry and
       // icon theme (about half a second on the Fedora laptop), and nothing
       // else waits for it.
@@ -285,6 +287,7 @@ export class DaemonClient {
       apps: null,
       obs: null,
       vts: null,
+      twitch: null,
     });
     this.lastError = null;
     if (this.stopped) return;
@@ -361,6 +364,8 @@ export class DaemonClient {
       this.update({ obs: data as ObsStatus });
     } else if (name === 'vts') {
       this.update({ vts: data as VtsStatus });
+    } else if (name === 'twitch') {
+      this.update({ twitch: data as TwitchStatus });
     }
   }
 

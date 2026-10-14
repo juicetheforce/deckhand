@@ -9,7 +9,7 @@ import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import { defaultIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
-import type { DaemonView } from '../shared/bridge.js';
+import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { builtinRef, pairIconFields } from '../shared/icons.js';
 import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
@@ -24,23 +24,25 @@ export type DeckGeometryWithSerial = DecksResult[number];
  * a page stays failed while the deck is elsewhere.
  */
 /** The services whose keys need setting up before they can do anything. */
-export type Integration = 'obs' | 'vts';
+export type Integration = 'obs' | 'vts' | 'twitch';
 
 /**
  * The integration an action needs set up before it can do anything: OBS's
- * actions need OBS, VTube Studio's need VTube Studio. Null for every other
- * action.
+ * actions need OBS, VTube Studio's need VTube Studio, Twitch's a linked
+ * account. Null for every other action.
  */
 export function integrationOf(type: string | undefined): Integration | null {
   if (type?.startsWith('obs.')) return 'obs';
   if (type?.startsWith('vts.')) return 'vts';
+  if (type?.startsWith('twitch.')) return 'twitch';
   return null;
 }
 
 /**
  * Whether this action's integration is known not to be set up — the daemon
- * says so (obs.status's, vts.status's setUp). Not knowing (no daemon, or one
- * without it) is not "not set up": nothing is blocked on a guess. Gates the
+ * says so (obs.status's, vts.status's, twitch.status's setUp). Not knowing
+ * (no daemon, or one without it) is not "not set up": nothing is blocked on
+ * a guess. Gates the
  * library's actions, and draws a key's not-set-up face in the grid and
  * inspector.
  */
@@ -48,6 +50,7 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
   const integration = integrationOf(type);
   if (integration === 'obs') return daemon.obs?.setUp === false;
   if (integration === 'vts') return daemon.vts?.setUp === false;
+  if (integration === 'twitch') return daemon.twitch?.setUp === false;
   return false;
 }
 
@@ -55,6 +58,7 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
 export const INTEGRATIONS: Record<Integration, { name: string; notSetUp: string }> = {
   obs: { name: 'OBS', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
   vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
+  twitch: { name: 'Twitch', notSetUp: 'Its keys do nothing until a Twitch account is linked.' },
 };
 
 /** What a not-set-up action says, whole: "OBS is not set up. Its keys do nothing until…". Null for a set-up one. */
@@ -64,9 +68,15 @@ export function notSetUpText(daemon: DaemonView, type: string | undefined): stri
   return `${INTEGRATIONS[integration].name} is not set up. ${INTEGRATIONS[integration].notSetUp}`;
 }
 
-/** The Settings section where an action's integration is set up: each has its own. Null for an action of none. */
-export function settingsSectionOf(type: string | undefined): Integration | null {
-  return integrationOf(type);
+/**
+ * The Settings section where an action's integration is set up. Null for an
+ * action of none — and for Twitch until its section is built (Twitch session
+ * 2): linked meanwhile by `deckhand twitch link`, so no button offers a
+ * Settings section that is not there.
+ */
+export function settingsSectionOf(type: string | undefined): SettingsSection | null {
+  const integration = integrationOf(type);
+  return integration === 'twitch' ? null : integration;
 }
 
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
@@ -663,6 +673,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
   'vts.model': ['model', 'modelName'],
   'vts.expression': ['model', 'expression', 'modelName', 'expressionName'],
+  // Written in the form (inspector/TwitchForms.tsx).
+  'twitch.chat': ['message'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -772,6 +784,8 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.model);
     case 'vts.expression':
       return !nonEmpty(action.model) || !nonEmpty(action.expression);
+    case 'twitch.chat':
+      return !nonEmpty(action.message);
     default:
       return false;
   }

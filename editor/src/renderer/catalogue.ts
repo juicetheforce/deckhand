@@ -101,6 +101,12 @@ export const CATALOGUE: CatalogueGroup[] = [
     ],
   },
   {
+    name: 'Twitch',
+    entries: [
+      { type: 'twitch.chat', name: 'Chat message', description: "Send a message to your channel's chat, as you", aliases: ['say', 'announce', 'command', 'bot', 'stream'] },
+    ],
+  },
+  {
     name: 'System',
     entries: [
       { type: 'app', name: 'Open app', description: 'Start an installed application', aliases: ['launch', 'program', 'desktop', 'run'] },

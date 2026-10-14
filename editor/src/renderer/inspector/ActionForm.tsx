@@ -13,6 +13,7 @@ import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
 import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
+import { TwitchChatForm } from './TwitchForms.js';
 import { VtsExpressionForm, VtsHotkeyForm, VtsModelForm } from './VtsForms.js';
 
 /** What every form may need; each takes the parts it uses. */
@@ -102,6 +103,8 @@ export function ActionForm(p: ActionFormProps) {
       return <VtsModelForm {...common} />;
     case 'vts.expression':
       return <VtsExpressionForm {...common} />;
+    case 'twitch.chat':
+      return <TwitchChatForm {...common} />;
     default:
       return null;
   }
