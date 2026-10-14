@@ -90,6 +90,14 @@ export interface Config {
    * editor's Settings.
    */
   notifications?: boolean;
+  /**
+   * Twitch. `clientId`: link with this developer app's client ID instead of
+   * Deckhand's own — the escape hatch if Deckhand's is ever revoked (scope
+   * §7, call 2): register a *public* app at dev.twitch.tv, set its ID here,
+   * and link again. Not secret. Changes the next link only; a saved link
+   * keeps the ID it was made with. No Settings UI (REFERENCE).
+   */
+  twitch?: { clientId?: string };
 }
 
 /** What a button should look like right now, after dynamic state is applied. */

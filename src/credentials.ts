@@ -3,8 +3,8 @@ import path from 'node:path';
 import { STATE_DIR } from './backups.js';
 
 /**
- * Secrets for the services Deckhand is a client of — OBS's password and
- * VTube Studio's token, one section each — in one owner-only file in the
+ * Secrets for the services Deckhand is a client of — OBS's password, VTube
+ * Studio's token and Twitch's tokens, one section each — in one owner-only file in the
  * state directory (scope §3, "Secrets"):
  *
  *   $XDG_STATE_HOME/deckhand/credentials.json   mode 0600
@@ -37,9 +37,29 @@ export interface VtsCredentials {
   token?: string;
 }
 
+/**
+ * Twitch's link: the account, what it allowed, and the tokens Twitch gave —
+ * with the client ID they were given to, since a token refreshes only with
+ * that one (config.json's twitch.clientId changes the next link, never this
+ * one). The refresh token is single-use: every refresh replaces it, and
+ * **sending a replaced one makes Twitch end the whole link** (Twitch session
+ * 1, measured) — so each new pair is written here before anything uses it.
+ */
+export interface TwitchCredentials {
+  clientId: string;
+  userId: string;
+  login: string;
+  scopes: string[];
+  refreshToken: string;
+  accessToken?: string;
+  /** When the access token lapses, in ms since the epoch; from Twitch's expires_in, which varies (3.7–4.3 h measured). */
+  expiresAt?: number;
+}
+
 interface CredentialsFile {
   obs?: ObsCredentials;
   vts?: VtsCredentials;
+  twitch?: TwitchCredentials;
 }
 
 type Section = keyof CredentialsFile;
@@ -139,6 +159,35 @@ export async function setVtsCredentials(saved: { port: number; token: string }):
 /** Remove VTube Studio's saved connection: VTS is no longer set up. Nothing else in the file is touched. */
 export async function removeVtsCredentials(): Promise<void> {
   await removeSection('vts');
+}
+
+/**
+ * Twitch's saved link, or null when **Twitch is not set up**: no refresh
+ * token, user or client ID. Set up means linked — not "has an access token",
+ * which lapses every few hours, and not "the last request worked". A link
+ * Twitch refuses still counts as set up, and is kept (scope §7, "a refused
+ * refresh keeps the link"). A file that cannot be read or parsed throws.
+ */
+export async function twitchCredentials(): Promise<TwitchCredentials | null> {
+  const twitch = await readSection('twitch');
+  const clientId = stringField(twitch?.clientId);
+  const userId = stringField(twitch?.userId);
+  const refreshToken = stringField(twitch?.refreshToken);
+  if (!twitch || !clientId || !userId || !refreshToken) return null;
+  const scopes = Array.isArray(twitch.scopes) ? twitch.scopes.filter((v): v is string => typeof v === 'string') : [];
+  const expiresAt = typeof twitch.expiresAt === 'number' && Number.isFinite(twitch.expiresAt) ? twitch.expiresAt : undefined;
+  return { clientId, userId, login: stringField(twitch.login) ?? '', scopes, refreshToken, accessToken: stringField(twitch.accessToken), expiresAt };
+}
+
+/** Save Twitch's link whole — a new link, or a refresh's new pair: the entry is replaced, not merged. Written as OBS's are. */
+export async function setTwitchCredentials(link: TwitchCredentials): Promise<void> {
+  // One write: a crash between two would lose the link, and its tokens with it.
+  await writeFile({ ...(await readFile()), twitch: { ...link } });
+}
+
+/** Remove Twitch's saved link: Twitch is no longer set up. Nothing else in the file is touched. */
+export async function removeTwitchCredentials(): Promise<void> {
+  await removeSection('twitch');
 }
 
 async function writeFile(next: CredentialsFile): Promise<void> {

@@ -105,6 +105,14 @@ export function validateConfig(config: unknown): Config {
     throw new Error('"notifications" must be true or false');
   }
 
+  if (config.twitch !== undefined) {
+    if (!isObject(config.twitch)) throw new Error('"twitch" must be an object');
+    const clientId = config.twitch.clientId;
+    if (clientId !== undefined && (typeof clientId !== 'string' || !/^[a-z0-9]{1,64}$/.test(clientId))) {
+      throw new Error('"twitch.clientId" must be a Twitch client ID: lowercase letters and digits');
+    }
+  }
+
   if (config.startProfile !== undefined) {
     const valid = config as unknown as Config;
     if (typeof config.startProfile !== 'string' || resolveProfile(valid, config.startProfile) === null) {
