@@ -28,6 +28,9 @@ export interface KeyPosition {
   column: number;
   /** 'lcd' keys have a screen; 'rgb' and 'none' do not. */
   feedback: string;
+  /** An 'lcd' key's screen in pixels, as the library gives it — not always square (a Studio's are 144×112). */
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -54,8 +57,10 @@ export interface DeckGeometry {
   /** e.g. "Stream Deck XL". */
   productName: string;
   keyCount: number;
-  /** Width in pixels of the keys' screens, or null if no key has one. */
+  /** Width in pixels of the keys' screens, or null if no key has one. Each key's own size is in `keys`. */
   iconSize: number | null;
+  /** Height in pixels of the keys' screens, or null: differs from iconSize where they are not square. */
+  iconHeight?: number | null;
   /** Rows and columns covering every control, spans included. */
   rows: number;
   columns: number;
@@ -71,6 +76,7 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
   let rows = 0;
   let columns = 0;
   let iconSize: number | null = null;
+  let iconHeight: number | null = null;
 
   for (const control of controls) {
     const row = control.row ?? 0;
@@ -80,8 +86,12 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
 
     if (control.type === 'button' && typeof control.index === 'number') {
       const feedback = control.feedbackType ?? 'none';
-      keys.push({ index: control.index, row, column, feedback });
-      if (iconSize === null && feedback === 'lcd' && control.pixelSize) iconSize = control.pixelSize.width;
+      const screen = feedback === 'lcd' && control.pixelSize && control.pixelSize.width > 0 && control.pixelSize.height > 0 ? control.pixelSize : null;
+      keys.push(screen ? { index: control.index, row, column, feedback, width: screen.width, height: screen.height } : { index: control.index, row, column, feedback });
+      if (iconSize === null && screen) {
+        iconSize = screen.width;
+        iconHeight = screen.height;
+      }
       continue;
     }
 
@@ -98,6 +108,7 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
     productName: productNameFor(String(source.MODEL ?? ''), source.PRODUCT_NAME),
     keyCount: keys.length > 0 ? keys[keys.length - 1].index + 1 : 0,
     iconSize,
+    iconHeight,
     rows,
     columns,
     keys,

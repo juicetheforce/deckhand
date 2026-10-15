@@ -7,7 +7,7 @@ import type { KeyFailures } from './key-failures.js';
 import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
-import { renderButton } from './render.js';
+import { fillScreen, renderButton } from './render.js';
 import type {
   ActionContext,
   ActionDef,
@@ -20,34 +20,20 @@ import type {
 } from './types.js';
 
 /**
- * The minimal surface needed from the streamdeck library. Deliberately narrow:
- * v7 describes geometry through CONTROLS, older versions through NUM_KEYS /
- * ICON_SIZE, and both are handled so a library bump can't brick the daemon.
+ * The minimal surface needed from the streamdeck library. Deliberately narrow.
+ * What a deck has — its keys, which have screens, and each screen's size —
+ * comes from CONTROLS alone, through geometryOf(): no model is known here.
  */
 interface RawDeck {
   MODEL?: string;
   PRODUCT_NAME?: string;
   CONTROLS?: ReadonlyArray<RawControl>;
-  NUM_KEYS?: number;
-  ICON_SIZE?: number;
   on(event: string, cb: (...args: unknown[]) => void): void;
   fillKeyBuffer(index: number, buffer: Buffer, options: { format: string }): Promise<void>;
   clearPanel(): Promise<void>;
   setBrightness(percent: number): Promise<void>;
   close(): Promise<void>;
 }
-
-/** Known geometry, used only if the library doesn't report it. */
-const MODEL_FALLBACK: Record<string, { keys: number; icon: number }> = {
-  original: { keys: 15, icon: 72 },
-  originalv2: { keys: 15, icon: 72 },
-  originalmk2: { keys: 15, icon: 72 },
-  mini: { keys: 6, icon: 80 },
-  xl: { keys: 32, icon: 96 },
-  plus: { keys: 8, icon: 120 },
-  pedal: { keys: 3, icon: 0 },
-  neo: { keys: 8, icon: 96 },
-};
 
 const TICK_MS = 500;
 
@@ -83,7 +69,8 @@ export class DeckSession implements DeckHandle {
   readonly serial: string;
   readonly model: string;
   readonly keyCount: number;
-  readonly iconSize: number;
+  /** The first screen's width, for logs; null on a deck with no screens. Each key's own size is in `screens`. */
+  readonly iconSize: number | null;
   /** Controls and their positions, as the control socket reports them. */
   readonly geometry: DeckGeometry;
 
@@ -100,6 +87,12 @@ export class DeckSession implements DeckHandle {
   private page: string;
   /** Page IDs, for "back". */
   private history: string[] = [];
+  /**
+   * The keys that have a screen, and its size: the only keys ever drawn.
+   * A key without one (a Neo's touch keys, every Pedal key) is pressed but
+   * never written to — the library refuses an image for it.
+   */
+  private screens: Map<number, { width: number; height: number }>;
   private lastSent: Array<Buffer | null>;
   private lastRenderAt: number[];
   private ticker: NodeJS.Timeout | null = null;
@@ -137,26 +130,16 @@ export class DeckSession implements DeckHandle {
     this.failures = options.failures;
     this.profileOf = options.profileOf;
 
-    const modelKey = String(raw.MODEL ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const fallback = MODEL_FALLBACK[modelKey] ?? { keys: 15, icon: 72 };
-
     // Through the same correction the geometry uses, so the logs and the
     // `decks` command cannot disagree about what a deck is called.
     this.model = productNameFor(raw.MODEL ? String(raw.MODEL) : '', raw.PRODUCT_NAME);
     this.geometry = geometryOf(raw);
 
-    const buttons = (raw.CONTROLS ?? []).filter(
-      (c) => c.type === 'button' && typeof c.index === 'number',
+    this.keyCount = this.geometry.keyCount;
+    this.iconSize = this.geometry.iconSize;
+    this.screens = new Map(
+      this.geometry.keys.flatMap((key) => (key.width && key.height ? [[key.index, { width: key.width, height: key.height }] as const] : [])),
     );
-
-    if (buttons.length > 0) {
-      this.keyCount = Math.max(...buttons.map((c) => c.index as number)) + 1;
-      const sized = buttons.find((c) => c.pixelSize && c.pixelSize.width > 0);
-      this.iconSize = sized?.pixelSize?.width ?? fallback.icon;
-    } else {
-      this.keyCount = typeof raw.NUM_KEYS === 'number' ? raw.NUM_KEYS : fallback.keys;
-      this.iconSize = typeof raw.ICON_SIZE === 'number' ? raw.ICON_SIZE : fallback.icon;
-    }
 
     this.lastSent = new Array(this.keyCount).fill(null);
     this.lastRenderAt = new Array(this.keyCount).fill(0);
@@ -487,6 +470,11 @@ export class DeckSession implements DeckHandle {
    */
   private async drawKey(index: number, force: boolean, strictIcon: boolean): Promise<void> {
     if (this.closed) return;
+    const screen = this.screens.get(index);
+    if (!screen) return;
+    // Drawn square at the shorter side, then filled out to the screen in the
+    // key's background: the same face as on a square key, never stretched.
+    const side = Math.min(screen.width, screen.height);
     const button = this.buttonAt(index);
     const display = this.baseDisplay(button);
 
@@ -501,13 +489,14 @@ export class DeckSession implements DeckHandle {
     // default; and a key with no action gets none — it stays blank. An
     // action's own file (an app's icon) comes before its built-in.
     if (button?.action && button.icon === undefined && display.icon === undefined) {
-      const file = await defaultIconFileOf(button.action, this.iconSize);
+      const file = await defaultIconFileOf(button.action, side);
       const name = file ? null : defaultIconFor(button.action, iconStateOf(button.action, this.context(index)));
       if (file) display.icon = file;
       else if (name) display.icon = builtinIconRef(name);
     }
 
-    const buffer = await renderButton(display, this.iconSize, strictIcon);
+    const square = await renderButton(display, side, strictIcon);
+    const buffer = await fillScreen(square, side, screen.width, screen.height, display.background);
 
     this.lastRenderAt[index] = Date.now();
 
@@ -525,7 +514,7 @@ export class DeckSession implements DeckHandle {
   }
 
   private async renderPage(force = false): Promise<void> {
-    for (let i = 0; i < this.keyCount; i++) {
+    for (const i of this.screens.keys()) {
       await this.renderButtonAt(i, force);
     }
   }
@@ -542,7 +531,7 @@ export class DeckSession implements DeckHandle {
     try {
       const now = Date.now();
 
-      for (let i = 0; i < this.keyCount; i++) {
+      for (const i of this.screens.keys()) {
         const button = this.buttonAt(i);
         if (!isDynamic(button?.action)) continue;
         const interval = button?.refreshMs ?? this.defaults.refreshMs;
@@ -556,7 +545,7 @@ export class DeckSession implements DeckHandle {
   }
 
   invalidateByType(types: string[]): void {
-    for (let i = 0; i < this.keyCount; i++) {
+    for (const i of this.screens.keys()) {
       const type = this.buttonAt(i)?.action?.type;
       if (type && types.includes(type)) this.lastRenderAt[i] = 0;
     }

@@ -37,6 +37,12 @@ let profiles: Profiles | null = null;
 let shuttingDown = false;
 /** Reported by the control socket's "status" and "config" event. */
 let lastReload: ReloadResult = { ok: true, at: new Date().toISOString() };
+/** " @ 96px", " @ 144×112px", or ", no screens": for the attach line. */
+function screenSize(geometry: DeckGeometry): string {
+  if (geometry.iconSize === null) return ', no screens';
+  return geometry.iconHeight !== null && geometry.iconHeight !== geometry.iconSize ? ` @ ${geometry.iconSize}×${geometry.iconHeight}px` : ` @ ${geometry.iconSize}px`;
+}
+
 /**
  * Connected decks with no layout in any profile, and their geometry. attach()
  * opens such a deck, finds nothing to show, and closes it again — reading its
@@ -291,7 +297,7 @@ async function attach(devicePath: string): Promise<void> {
   notifyState();
   console.log(
     `[main] attached ${hardware.name ?? session.model} (${serial}) — ` +
-      `${session.keyCount} keys @ ${session.iconSize}px, profile "${profileId}"`,
+      `${session.keyCount} keys${screenSize(session.geometry)}, profile "${profileId}"`,
   );
 }
 

@@ -125,7 +125,8 @@ export interface DeckHandle {
   serial: string;
   model: string;
   keyCount: number;
-  iconSize: number;
+  /** The first screen's width; null on a deck with no screens. */
+  iconSize: number | null;
   /** Switch to a page on this deck, by ID or name. */
   goToPage(page: string): Promise<void>;
   /** Whether this deck's layout has a page with this ID or name. */

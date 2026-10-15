@@ -119,6 +119,36 @@ async function builtinLayer(name: BuiltinIcon, size: number): Promise<Buffer | n
   }
 }
 
+/** A square face filled out to a screen that is not square, by the face itself: the same face gives the same Buffer. */
+const filled = new WeakMap<Buffer, Map<string, Buffer>>();
+
+/**
+ * A face rendered `side` × `side`, filled out to a key's screen of `width` ×
+ * `height` in the key's background, centred — for screens that are not
+ * square (a Stream Deck Studio's are 144×112). A square screen gets the face
+ * back unchanged. Cached by the face's own Buffer, so an unchanged face is
+ * the same Buffer and the deck skips the write, as renderButton's cache does.
+ */
+export async function fillScreen(face: Buffer, side: number, width: number, height: number, background: string): Promise<Buffer> {
+  if (width === side && height === side) return face;
+  const key = `${width}x${height}|${background}`;
+  const known = filled.get(face)?.get(key);
+  if (known) return known;
+  const left = Math.floor((width - side) / 2);
+  const top = Math.floor((height - side) / 2);
+  const out = await sharp(face, { raw: { width: side, height: side, channels: 4 } })
+    .extend({ left, right: width - side - left, top, bottom: height - side - top, background })
+    .raw()
+    .toBuffer();
+  let sizes = filled.get(face);
+  if (!sizes) {
+    sizes = new Map();
+    filled.set(face, sizes);
+  }
+  sizes.set(key, out);
+  return out;
+}
+
 /**
  * Render a button to a raw RGBA buffer of `size` x `size`.
  *

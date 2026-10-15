@@ -95,7 +95,7 @@ new serial by hand (see the README).
 
 **The daemon owns all device knowledge, and hardcodes none of it.** Key count,
 icon size and layout come from the Stream Deck library's control descriptions
-at runtime. There is no per-model table and no guessed default. The editor
+at runtime. There is no per-model table and no guessed default. Only a key the library says has a screen is drawn, at that screen's own size — not every model's keys are square (a Studio's are 144×112), and some keys have none (a Neo's touch keys, every Pedal key); `smoke-models` drives every model the installed library knows through the library's own checks. The editor
 learns each deck's geometry from the daemon, so a model it has never heard of
 draws correctly.
 

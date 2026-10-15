@@ -379,7 +379,7 @@ async function main(argv: string[]): Promise<void> {
                 .map(
                   (d) =>
                     `${d.serial}  ${d.productName} (${d.model}) — ${d.keyCount} keys, ${d.rows}×${d.columns}` +
-                    `${d.iconSize ? `, ${d.iconSize} px` : ', no screens'}` +
+                    `${d.iconSize ? `, ${d.iconSize}${d.iconHeight && d.iconHeight !== d.iconSize ? `×${d.iconHeight}` : ''} px` : ', no screens'}` +
                     `${d.unsupported.length ? `, ${d.unsupported.length} unsupported control(s)` : ''}`,
                 )
                 .join('\n'),
