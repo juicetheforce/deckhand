@@ -817,7 +817,7 @@ function registerIpc(): void {
     }),
   );
   ipcMain.handle('twitchCancel', (event) => twitchCall(event, async () => ({ status: await daemon.twitchCancel() })));
-  ipcMain.handle('twitchRemove', (event) => twitchCall(event, async () => ({ status: await daemon.twitchRemove() })));
+  ipcMain.handle('twitchRemove', (event) => twitchCall(event, () => daemon.twitchRemove()));
   ipcMain.handle('twitchOpenActivate', (event) => {
     if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
     // The daemon's URL, never the page's, and only Twitch's activate page.

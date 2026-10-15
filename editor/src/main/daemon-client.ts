@@ -143,11 +143,11 @@ export class DaemonClient {
     return status;
   }
 
-  /** Settings' Remove: forget the link, and end it at Twitch. */
-  async twitchRemove(): Promise<TwitchStatus> {
-    const status = (await this.request('twitch.remove')) as TwitchStatus;
+  /** Settings' Remove: forget the link, and end it at Twitch. `revoked`: Twitch confirmed ending it (null: nothing was linked). */
+  async twitchRemove(): Promise<{ status: TwitchStatus; revoked: boolean | null }> {
+    const { revoked, ...status } = (await this.request('twitch.remove')) as TwitchStatus & { revoked?: boolean | null };
     this.update({ twitch: status });
-    return status;
+    return { status, revoked: revoked ?? null };
   }
 
   /** Twitch's categories matching a search (twitch.categories), for the Stream info picker. */

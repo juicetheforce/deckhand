@@ -239,8 +239,23 @@ await inPage(editor, 'settings', clickIn('#settings-notifications'));
 r.notificationsOffSaved = await until(async () => (await configJson()).notifications === false);
 r.notificationsNotInPrefs = !('notifications' in (await prefs()));
 
-// Reset to defaults: all three back, the accent gone from the editor, notifications on again.
+// Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
+r.resetButton = await inPage(
+  editor,
+  'settings',
+  "(() => { const b = document.querySelector('[data-settings=reset]'); return { text: b.textContent, tag: b.tagName, quiet: b.classList.contains('sp-button-quiet') }; })()",
+);
+const prefsBeforeReset = JSON.stringify(await prefs());
 await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
+r.resetAsks = await inPage(editor, 'settings', "document.querySelector('[data-settings-confirm=reset]')?.textContent ?? null");
+await sleep(600);
+r.oneClickChangesNothing = JSON.stringify(await prefs()) === prefsBeforeReset && (await configJson()).notifications === false;
+await inPage(editor, 'settings', clickIn('[data-settings=keep-settings]'));
+await sleep(600);
+r.keepKeeps = JSON.stringify(await prefs()) === prefsBeforeReset && (await inPage(editor, 'settings', "document.querySelector('[data-settings-confirm=reset]') === null"));
+// Reset, confirmed: all three back, the accent gone from the editor, notifications on again.
+await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
+await inPage(editor, 'settings', clickIn('[data-settings=confirm-reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
 r.reset = await until(async () => {
   const p = await prefs();
@@ -304,6 +319,12 @@ check('Notifications starts ticked; unticking writes "notifications": false to c
   assert.deepEqual(r.notificationsShown, [true, false]);
   assert.equal(r.notificationsOffSaved, true);
   assert.equal(r.notificationsNotInPrefs, true);
+});
+check('Reset to defaults is a button, without an ellipsis, and asks first: one click changes nothing, Keep keeps', () => {
+  assert.deepEqual(r.resetButton, { text: 'Reset to defaults', tag: 'BUTTON', quiet: false });
+  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, notifications and accent color to their defaults\?ResetKeep$/);
+  assert.equal(r.oneClickChangesNothing, true);
+  assert.equal(r.keepKeeps, true);
 });
 check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
 check('each change is saved at once; the accent reaches the editor behind it live, and the settings window too', () => {

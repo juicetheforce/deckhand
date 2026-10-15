@@ -59,6 +59,8 @@ export function SettingsWindow() {
   /** Bumped each time the window is asked to show an integration: opened at it, or asked again while open. */
   const [focus, setFocus] = useState(() => (isSection(opening) ? 1 : 0));
   const dots = useIntegrationDots();
+  /** Reset to defaults asks first (Ryan, 2026-10-14): the footer turns into the question. */
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
@@ -180,22 +182,35 @@ export function SettingsWindow() {
         </div>
       </div>
 
-      <div className="settings-footer">
-        <span className="settings-note">{SAVES_AUTOMATICALLY.has(page) ? 'Changes save automatically' : ''}</span>
-        <button
-          className="sp-button sp-button-quiet"
-          onClick={() => {
-            void window.deckhand.resetAppSettings().then(setSettings);
-            if (notifications === false) changeNotifications(true);
-          }}
-          data-settings="reset"
-        >
-          Reset to defaults…
-        </button>
-        <button className="sp-button sp-button-primary" onClick={() => void window.deckhand.closeSettings()} data-settings="done">
-          Done
-        </button>
-      </div>
+      {confirmingReset ? (
+        <div className="settings-footer settings-footer-confirm" data-settings-confirm="reset">
+          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, notifications and accent color to their defaults?</span>
+          <button
+            className="sp-button sp-button-danger-solid"
+            onClick={() => {
+              setConfirmingReset(false);
+              void window.deckhand.resetAppSettings().then(setSettings);
+              if (notifications === false) changeNotifications(true);
+            }}
+            data-settings="confirm-reset"
+          >
+            Reset
+          </button>
+          <button className="sp-button" onClick={() => setConfirmingReset(false)} data-settings="keep-settings">
+            Keep
+          </button>
+        </div>
+      ) : (
+        <div className="settings-footer">
+          <span className="settings-note">{SAVES_AUTOMATICALLY.has(page) ? 'Changes save automatically' : ''}</span>
+          <button className="sp-button" onClick={() => setConfirmingReset(true)} data-settings="reset">
+            Reset to defaults
+          </button>
+          <button className="sp-button sp-button-primary" onClick={() => void window.deckhand.closeSettings()} data-settings="done">
+            Done
+          </button>
+        </div>
+      )}
     </main>
   );
 }

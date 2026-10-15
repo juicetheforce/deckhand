@@ -435,11 +435,12 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
     /**
      * Remove Twitch's link: forget it, and end it at Twitch (best effort).
      * No key is touched — Twitch keys stay, show that Twitch is not linked,
-     * and work again once it is.
+     * and work again once it is. `revoked`: Twitch confirmed ending it;
+     * false when it did not answer; null when nothing was linked.
      */
     async 'twitch.remove'() {
-      await twitchService.remove();
-      return twitchService.status();
+      const revoked = await twitchService.remove();
+      return { ...twitchService.status(), revoked };
     },
 
     // Both read the audio cache, which pactl subscribe keeps current: a request

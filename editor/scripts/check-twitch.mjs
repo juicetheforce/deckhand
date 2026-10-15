@@ -323,6 +323,7 @@ check('Remove asks first, saying what it costs; Keep keeps the link', () => {
 });
 check('Remove: not linked, nothing saved, the link ended at Twitch by its refresh token; the keys stay, dimmed', () => {
   assert.equal(r.removed.section.state, 'not-set-up');
+  assert.match(r.removed.section.message ?? '', /^Removed, and ended at Twitch\./, 'says ended at Twitch only because Twitch confirmed it');
   assert.equal(r.removed.saved, null);
   assert.equal(r.revoked, true);
   assert.equal(r.removedFace.keyUnset, true);

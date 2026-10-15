@@ -360,8 +360,8 @@ export interface DeckhandBridge {
   twitchLink(): Promise<{ ok: true; started: boolean; status: TwitchStatus } | { ok: false; error: string }>;
   /** Cancel linking (settings window only). */
   twitchCancel(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
-  /** Remove the link, and end it at Twitch (settings window only). */
-  twitchRemove(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
+  /** Remove the link, and end it at Twitch (settings window only). `revoked`: Twitch confirmed ending it. */
+  twitchRemove(): Promise<{ ok: true; status: TwitchStatus; revoked: boolean | null } | { ok: false; error: string }>;
   /** Open the kept backups' folder in the file manager (settings window only). */
   openKeptFolder(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Show one kept backup, by its file name, in the file manager (settings window only). */

@@ -69,9 +69,17 @@ export function TwitchSettings({ focus }: { focus: number }) {
   };
   const remove = async () => {
     setConfirmingRemove(false);
-    if (await call(() => window.deckhand.twitchRemove(), 'Not removed')) {
-      setMessage({ kind: 'ok', text: 'Removed, and ended at Twitch. Twitch keys stay where they are, and work again once an account is linked.' });
-    }
+    const result = await call(() => window.deckhand.twitchRemove(), 'Not removed');
+    if (!result?.ok) return;
+    // Only "ended at Twitch" when Twitch said so: otherwise it is still listed there until it lapses.
+    setMessage(
+      result.revoked === false
+        ? {
+            kind: 'warn',
+            text: 'Removed here, but Twitch did not confirm ending the link: end it at twitch.tv/settings/connections, where it is listed as DeckHandApp. Twitch keys stay where they are.',
+          }
+        : { kind: 'ok', text: 'Removed, and ended at Twitch. Twitch keys stay where they are, and work again once an account is linked.' },
+    );
   };
   const openActivate = async () => {
     const result = await window.deckhand.twitchOpenActivate();

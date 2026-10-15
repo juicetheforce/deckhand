@@ -1505,6 +1505,28 @@ remove_udev_rule() {
   fi
 }
 
+# A linked Twitch account's link is ended at Twitch before anything is removed
+# (Ryan, 2026-10-14), not only forgotten: the tokens go with the state
+# directory below, and a link nothing uses would otherwise stay listed on
+# Twitch until it lapses. Through the running daemon, which holds the tokens
+# and asks Twitch — so before the service stops. Best effort: an uninstall
+# never fails for it, and says so when Twitch did not confirm.
+end_twitch_link() {
+  local credentials="$STATE_DIR/credentials.json"
+  [ -f "$credentials" ] && grep -q '"twitch"' "$credentials" || return 0
+  local node="$APP_DIR/runtime/node" cli="$APP_DIR/dist/cli.js" reply=""
+  if [ -x "$node" ] && [ -f "$cli" ]; then
+    reply="$("$node" "$cli" twitch remove --json 2>/dev/null || true)"
+  fi
+  if grep -q '"revoked": true' <<<"$reply"; then
+    say "Ended the Twitch link at Twitch"
+  else
+    warn "Twitch did not confirm ending its link (no answer, or Deckhand's service is not running)."
+    warn "The tokens are deleted with Deckhand's state; end the link at twitch.tv/settings/connections, where it is listed as DeckHandApp."
+  fi
+  return 0
+}
+
 cmd_uninstall() {
   local purge=no
   for arg in "$@"; do
@@ -1516,6 +1538,8 @@ cmd_uninstall() {
 
   [ "$(id -u)" -ne 0 ] || die "run this as your normal user, not root."
   resolve_locations
+
+  end_twitch_link
 
   say "Stopping and disabling the service"
   systemctl --user disable --now deckhand >/dev/null 2>&1 || true

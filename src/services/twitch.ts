@@ -367,18 +367,23 @@ export function cancelLinking(): void {
 /**
  * Remove: forget the link, and end it at Twitch — revoking the refresh token
  * ends the whole link (measured). Best effort: the saved link is gone either
- * way. A link in progress is cancelled. No key is touched.
+ * way. A link in progress is cancelled. No key is touched. Resolves whether
+ * Twitch confirmed ending it — null when nothing was linked — so Settings
+ * and the uninstaller say only what happened.
  */
-export async function remove(): Promise<void> {
+export async function remove(): Promise<boolean | null> {
   cancelLinking();
   generation++;
   stopChecking();
   const saved = await twitchCredentials().catch(() => null);
   await removeTwitchCredentials();
   update({ link: 'not-set-up', login: null, scopes: [], linking: { state: 'none' } });
-  if (saved) {
-    await client.revoke(saved.clientId, saved.refreshToken).catch((err: Error) => {
+  if (!saved) return null;
+  return client.revoke(saved.clientId, saved.refreshToken).then(
+    () => true,
+    (err: Error) => {
       console.error(`[twitch] the link is forgotten, but Twitch did not confirm ending it: ${err.message}. It can be ended at twitch.tv/settings/connections`);
-    });
-  }
+      return false;
+    },
+  );
 }

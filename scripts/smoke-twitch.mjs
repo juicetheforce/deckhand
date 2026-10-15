@@ -235,12 +235,23 @@ check("…but the next link is made with it", await until(() => linking() === 'f
 twitch.setClientId(undefined);
 
 const revokesBefore = count('/oauth2/revoke');
-await twitch.remove();
+const revoked = await twitch.remove();
+check('Remove says Twitch confirmed ending the link', revoked === true);
 check('Remove: not set up, nothing saved', twitch.status().setUp === false && (await credentials.twitchCredentials()) === null);
 check('…and the link is ended at Twitch, by its refresh token', count('/oauth2/revoke') === revokesBefore + 1 && fake.requests.at(-1).body.token === newLink.refreshToken && fake.linksAlive() === 1);
 const notLinkedList = await twitch.searchCategories('fort');
 check('category search while not linked: an answer saying to link, and nothing sent', notLinkedList.ok === false && notLinkedList.reason === 'not-set-up' && fake.searches.length === 2);
 check('after Remove, a press is NotSetUp again', (await rejection(say('gone'))) instanceof NotSetUp);
+check('Remove with nothing linked: null — nothing to end', (await twitch.remove()) === null);
+// Twitch not answering: the link is still forgotten here, and Remove says Twitch did not confirm.
+twitch.startLinking();
+await until(() => linking() === 'waiting');
+fake.approve();
+await until(() => twitch.status().link === 'linked');
+fake.down = true;
+const unconfirmed = await twitch.remove();
+check('Remove with Twitch down: forgotten here, and says Twitch did not confirm ending it', unconfirmed === false && twitch.status().setUp === false && (await credentials.twitchCredentials()) === null);
+fake.down = false;
 
 check('no poll in this run was sooner than Twitch asked: never answered slow_down', fake.slowDowns === 0);
 
@@ -383,9 +394,9 @@ check('daemon: a refused link: marked and notified, saying to link again', await
 check("…and still set up: the key's face is not the not-set-up one", (await ctl.request('twitch.status', {})).result.link === 'refused');
 fake.refuseRefresh = false;
 
-const removed = cli(['twitch', 'remove']);
+const removed = cli(['twitch', 'remove', '--json']);
 await removed.done;
-check('cli: `deckhand twitch remove`: not linked, and the link ended at Twitch', /not linked/.test(removed.stdout) && fake.requests.some((q) => q.path === '/oauth2/revoke'));
+check('cli: `deckhand twitch remove`: not linked, and the link ended at Twitch — `revoked` true in its reply', /"link": "not-set-up"/.test(removed.stdout) && /"revoked": true/.test(removed.stdout) && fake.requests.some((q) => q.path === '/oauth2/revoke'));
 const notesBefore = notes.calls.length;
 const sentBefore = fake.requests.length;
 await press(0);
