@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -126,6 +126,11 @@ export class DaemonClient {
   /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys or (loaded only) expressions. */
   async vtsList(kind: 'models' | 'hotkeys' | 'expressions', model?: string): Promise<VtsList> {
     return (await this.request('vts.list', kind === 'models' ? { kind } : { kind, model })) as VtsList;
+  }
+
+  /** Twitch's categories matching a search (twitch.categories), for the Stream info picker. */
+  async twitchCategories(query: string): Promise<TwitchList> {
+    return (await this.request('twitch.categories', { query })) as TwitchList;
   }
 
   /** Settings' Connect: asks VTube Studio for access; replies at once, and how it goes arrives as "vts" events. */

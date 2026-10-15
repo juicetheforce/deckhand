@@ -7,7 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
@@ -212,6 +212,12 @@ export interface DeckhandBridge {
    * answer — the picker says "Start VTube Studio to choose".
    */
   vtsList(kind: 'models' | 'hotkeys' | 'expressions', model?: string): Promise<VtsList>;
+  /**
+   * Twitch's categories matching a search, for the Stream info key's picker
+   * (editor window only), asked through the daemon — which holds the token.
+   * Not linked or not reachable is an answer, not an error.
+   */
+  twitchCategories(query: string): Promise<TwitchList>;
   /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
   refreshApps(): Promise<void>;
 

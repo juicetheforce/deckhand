@@ -675,6 +675,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'vts.expression': ['model', 'expression', 'modelName', 'expressionName'],
   // Written in the form (inspector/TwitchForms.tsx).
   'twitch.chat': ['message'],
+  'twitch.marker': ['description'],
+  'twitch.clip': ['title', 'duration'],
+  // The category picked from Twitch's search, by ID; its name kept to show.
+  'twitch.streamInfo': ['title', 'category', 'categoryName'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -786,6 +790,9 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
       return !nonEmpty(action.model) || !nonEmpty(action.expression);
     case 'twitch.chat':
       return !nonEmpty(action.message);
+    // Marker and Clip need nothing set.
+    case 'twitch.streamInfo':
+      return !nonEmpty(action.title) && !nonEmpty(action.category);
     default:
       return false;
   }

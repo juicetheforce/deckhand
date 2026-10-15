@@ -121,7 +121,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'twitch.chat', 'vts.expression', 'vts.hotkey', 'vts.model']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'twitch.chat', 'twitch.clip', 'twitch.marker', 'twitch.streamInfo', 'vts.expression', 'vts.hotkey', 'vts.model']);
 });
 
 console.log('the navigation guard');
@@ -1001,6 +1001,14 @@ await check('Twitch: its keys need a linked account, gated only when the daemon 
   // No Settings section for Twitch yet: no button may offer one.
   assert.equal(settingsSectionOf('twitch.chat'), null);
   assert.equal(settingsSectionOf('vts.model'), 'vts');
+});
+
+await check('Twitch: Marker and Clip need nothing set; Stream info needs a title or a category', () => {
+  assert.equal(actionIncomplete({ type: 'twitch.marker' } as ActionDef), false);
+  assert.equal(actionIncomplete({ type: 'twitch.clip' } as ActionDef), false);
+  assert.equal(actionIncomplete({ type: 'twitch.streamInfo' } as ActionDef), true);
+  assert.equal(actionIncomplete({ type: 'twitch.streamInfo', title: 'Ranked' } as ActionDef), false);
+  assert.equal(actionIncomplete({ type: 'twitch.streamInfo', category: '33214', categoryName: 'Fortnite' } as ActionDef), false);
 });
 
 await check('Twitch: a Chat message key is incomplete until it has a message', () => {

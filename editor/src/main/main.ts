@@ -10,7 +10,7 @@ import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
-import type { ObsList, VtsList } from '../../../src/control/protocol.js';
+import type { ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
@@ -835,6 +835,15 @@ function registerIpc(): void {
       return await daemon.obsList(kind, kind === 'sources' ? (scene as string) : undefined);
     } catch (err) {
       // No daemon, or one from before OBS: the picker says why.
+      return { ok: false, reason: 'other', message: (err as Error).message };
+    }
+  });
+  ipcMain.handle('twitchCategories', async (event, query: unknown): Promise<TwitchList> => {
+    if (!fromOurWindow(event) || typeof query !== 'string' || query.trim() === '' || query.length > 100) return { ok: false, reason: 'other', message: 'not allowed' };
+    try {
+      return await daemon.twitchCategories(query);
+    } catch (err) {
+      // No daemon, or one from before Twitch: the picker says why.
       return { ok: false, reason: 'other', message: (err as Error).message };
     }
   });

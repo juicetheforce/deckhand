@@ -29,6 +29,7 @@ const bridge: DeckhandBridge = {
   refreshApps: () => ipcRenderer.invoke('refreshApps'),
   obsList: (kind, scene) => ipcRenderer.invoke('obsList', kind, scene),
   vtsList: (kind, model) => ipcRenderer.invoke('vtsList', kind, model),
+  twitchCategories: (query) => ipcRenderer.invoke('twitchCategories', query),
   collapsedLibrary: () => ipcRenderer.invoke('collapsedLibrary'),
   setCollapsedLibrary: (groups) => ipcRenderer.invoke('setCollapsedLibrary', groups),
   shownDecks: () => ipcRenderer.invoke('shownDecks'),

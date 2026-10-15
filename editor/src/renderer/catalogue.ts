@@ -103,7 +103,10 @@ export const CATALOGUE: CatalogueGroup[] = [
   {
     name: 'Twitch',
     entries: [
+      { type: 'twitch.marker', name: 'Stream marker', description: 'Mark this moment of a live stream, to find it in the VOD', aliases: ['highlight', 'bookmark', 'timestamp'] },
+      { type: 'twitch.clip', name: 'Clip', description: 'Clip the last seconds of a live stream', aliases: ['highlight', 'replay', 'capture', 'moment'] },
       { type: 'twitch.chat', name: 'Chat message', description: "Send a message to your channel's chat, as you", aliases: ['say', 'announce', 'command', 'bot', 'stream'] },
+      { type: 'twitch.streamInfo', name: 'Stream info', description: "Set your channel's title and category", aliases: ['game', 'switch game', 'go live'] },
     ],
   },
   {
