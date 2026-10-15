@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Release v0.7.0 (Twitch) once Ryan confirms a link still alive a day after install: tag, build, ship test, publish; the public docs are committed and wait for it."
+next = "v0.7.0 published (Twitch, new settings window). Ryan reports step 5: the Twitch link still alive and sending a day after install."
 category = "Gaming"
 paused = false
 focus = true
@@ -16,4 +16,5 @@ OBS is "set up" when a connection is saved (not when it has a password or has co
 v0.6.0 (2026-10-03): VTube Studio keys (Trigger hotkey, Toggle expression, Model), built around the model in use; and a fix for page tabs clicked quickly losing a click. Confirmed on the laptop; VTube Studio milestone closed.
 Twitch (2026-10-14): one public client ID for every user (no secret), owned by a dedicated account; an hourly validate-and-refresh timer while linked is an accepted exception to "no timers at rest", because Twitch requires it.
 Twitch sessions 1 and 2 confirmed live on real Twitch (2026-10-14): Marker, Clip, Chat message, Stream info, Settings.
+v0.7.0 (2026-10-14): Twitch and a reworked settings window (sidebar of pages, status dots); published before the day-later link check, at Ryan's word.
 """
