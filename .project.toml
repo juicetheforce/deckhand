@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "v0.7.0 published (Twitch, new settings window). Ryan reports step 5: the Twitch link still alive and sending a day after install."
+next = "v0.7.1 held until Ryan reports step 5 (Twitch link alive a day after install) and the coming code audit is done; then one ship test and one release. Its docs wait on the branch release/v0.7.1-docs."
 category = "Gaming"
 paused = false
 focus = true
