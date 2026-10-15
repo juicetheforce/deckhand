@@ -3,8 +3,12 @@
 # Builds a Deckhand release: the prebuilt package end users install with one
 # line, its SHA256SUMS, and the install.sh that downloads and checks them.
 #
-#   scripts/release.sh build <vX.Y.Z>     builds into release/<vX.Y.Z>/
-#   scripts/release.sh publish <vX.Y.Z>   uploads that build as the GitHub release
+#   scripts/release.sh build <vX.Y.Z>                 builds into release/<vX.Y.Z>/
+#   scripts/release.sh publish <vX.Y.Z> [notes.md]    uploads that build as the GitHub release
+#   scripts/release.sh notes [notes.md]               prints the notes publish would use
+#
+# A release's notes are the file given (what is new), then always the line
+# that installs or updates Deckhand — so no release goes out without it.
 #
 # Written to run the same way on a maintainer's machine or in CI: everything
 # it needs is fetched and checked here, and nothing is read from the machine's
@@ -47,8 +51,11 @@ usage() {
   cat >&2 <<'USAGE'
 Builds and publishes a Deckhand release.
 
-  scripts/release.sh build <vX.Y.Z>     builds into release/<vX.Y.Z>/
-  scripts/release.sh publish <vX.Y.Z>   uploads that build as the GitHub release
+  scripts/release.sh build <vX.Y.Z>                 builds into release/<vX.Y.Z>/
+  scripts/release.sh publish <vX.Y.Z> [notes.md]    uploads that build as the GitHub release
+  scripts/release.sh notes [notes.md]               prints the notes publish would use
+
+The notes are notes.md (what is new), then always the install-or-update line.
 USAGE
   exit 2
 }
@@ -245,9 +252,33 @@ cmd_build() {
   say "Next: install it and test what ships (scripts/test/release-ships.sh $VERSION), then: scripts/release.sh publish $VERSION"
 }
 
+# The line every release's notes end with: how to install or update. Settings ›
+# About's "Update available" links to a release's page, so the page must say
+# how to update.
+INSTALL_LINE='Install or update: `curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash`. SHA256SUMS lets the installer check the download is complete and uncorrupted; it does not prove who made it.'
+
+# A release's notes: the file given, if any, then always INSTALL_LINE. A file
+# that already carries the line is left as it is, so it is never there twice.
+release_notes() {
+  local file="${1:-}"
+  if [ -n "$file" ]; then
+    [ -f "$file" ] || die "no notes file at $file"
+    cat "$file"
+    grep -qF 'releases/latest/download/install.sh | bash' "$file" && return 0
+    printf '\n\n'
+  fi
+  printf '%s\n' "$INSTALL_LINE"
+}
+
+cmd_notes() {
+  [ $# -le 1 ] || usage
+  release_notes "${1:-}"
+}
+
 cmd_publish() {
-  [ $# -eq 1 ] || usage
+  [ $# -ge 1 ] && [ $# -le 2 ] || usage
   VERSION="$1"
+  local notes_file="${2:-}"
   check_version "$VERSION"
   check_tagged_checkout "$VERSION"
   local out="$OUT_ROOT/$VERSION" asset="deckhand-$VERSION-linux-x64.tar.xz"
@@ -255,8 +286,10 @@ cmd_publish() {
   (cd "$out" && sha256sum -c --quiet SHA256SUMS) || die "the build in $out does not match its own SHA256SUMS."
   command -v gh >/dev/null 2>&1 || die "gh is needed to publish."
   git -C "$REPO_DIR" ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null || die "$VERSION is not pushed to origin: git push origin $VERSION"
+  local notes="$out/NOTES.md"
+  release_notes "$notes_file" > "$notes"
   gh release create "$VERSION" --verify-tag --title "Deckhand $VERSION" \
-    --notes "Install or update: \`curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash\`. SHA256SUMS lets the installer check the download is complete and uncorrupted; it does not prove who made it." \
+    --notes-file "$notes" \
     "$out/$asset" "$out/install.sh" "$out/SHA256SUMS"
 }
 
@@ -268,6 +301,7 @@ main() {
   case "$command" in
     build)   cmd_build "$@" ;;
     publish) cmd_publish "$@" ;;
+    notes)   cmd_notes "$@" ;;
     *)       usage ;;
   esac
 }
