@@ -47,10 +47,11 @@ on its keys, so it stores nothing it reads from Twitch.
 link from your computer and ends it at Twitch. You can also end it at
 twitch.tv/settings/connections, where Twitch lists it as "DeckHandApp";
 Deckhand then stops using it, and Remove deletes what is left.
-Uninstalling Deckhand with `deckhand-uninstall` deletes that file with the
-rest of Deckhand's state, but does not tell Twitch: press **Remove** first,
-or end it at twitch.tv/settings/connections. A link nothing uses any more
-lapses after 30 days anyway.
+Uninstalling Deckhand with `deckhand-uninstall` ends the link at Twitch
+first, then deletes that file with the rest of Deckhand's state. If Twitch
+does not confirm — no internet, say, or Deckhand's service not running — the
+uninstaller says so: end it at twitch.tv/settings/connections. A link nothing
+uses any more lapses after 30 days anyway.
 
 ## Questions
 

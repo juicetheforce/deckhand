@@ -675,7 +675,7 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | `twitch.link` | | asks Twitch for a code and replies at once; the code to approve, and how it goes, arrive as `twitch` events. Cancelled if this connection closes |
 | `twitch.cancel` | | stops linking |
 | `twitch.categories` | `query` | Twitch's categories matching a search, by ID and name |
-| `twitch.remove` | | forgets the link and ends it at Twitch. Keys are untouched |
+| `twitch.remove` | | forgets the link and ends it at Twitch; `revoked` says whether Twitch confirmed it (null: nothing was linked). Keys are untouched |
 | `subscribe` | `events`: any of `state`, `config`, `audio`, `obs`, `vts`, `twitch` | replaces this connection's subscriptions |
 | `preview.set`, `preview.clear` | | the editor's unsaved previews on a deck; cleared when its connection closes |
 
