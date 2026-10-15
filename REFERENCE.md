@@ -211,8 +211,8 @@ it, and it is plain JSON you can edit by hand ([Configuration](#configuration)).
 Save it and the decks update, with no restart. A file that doesn't validate is
 refused, and the decks keep the last good one. Every accepted change keeps the
 one it replaced in `~/.local/state/deckhand/backups/` — the newest 20, at most
-one every five minutes. The editor's settings export the whole configuration,
-icons included, and import it on another machine.
+one every five minutes. The editor's **Settings › Backups** exports the whole
+configuration, icons included, and imports it on another machine.
 
 **Replacing a deck.** Layouts are keyed by the deck's serial number, so a new
 deck — even the same model — starts blank, and the old deck's layouts stay in
@@ -394,7 +394,7 @@ OBS, nothing is recording, connect VTube Studio again, go live on Twitch first),
 desktop's notification service. Once per message: pressing the same key
 again with the same failure doesn't notify again, and a new message replaces
 that key's last notification. Turn them off in the editor's
-**Settings › Notifications**, or with `"notifications": false` in the config.
+**Settings › General**, or with `"notifications": false` in the config.
 
 ## OBS Studio
 
@@ -784,7 +784,7 @@ The checks:
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
   `check:tray`, `check:settings`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
-  `check:obs` — real
+  `check:obs`, `check:vts`, `check:twitch` — real
   Electron against a test harness for the control socket.
 - **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
   through `scripts/hooks/pre-commit`, once a clone has run `git config

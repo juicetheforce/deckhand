@@ -173,7 +173,7 @@ Choosing an icon from a folder of your own:
 
 ![The icon picker, open on a bookmarked folder](assets/screenshots/icon-picker.png)
 
-Settings, with notifications and the OBS connection:
+Settings, with each integration's status in the sidebar:
 
 ![The settings window](assets/screenshots/settings.png)
 
