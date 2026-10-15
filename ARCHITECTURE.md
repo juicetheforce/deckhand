@@ -150,7 +150,7 @@ the model has loaded, a one-shot deadline like OBS's.
 
 **Secrets live in one owner-only file, never in the config.** Credentials for
 the services Deckhand is a client of — OBS's WebSocket password, VTube
-Studio's token — are kept in
+Studio's token, Twitch's tokens — are kept in
 `~/.local/state/deckhand/credentials.json`, mode 0600, outside the config
 directory people sync, and outside everything that copies the config: an
 export bundles `config.json` and its icons, and the rolling backups copy
@@ -160,7 +160,40 @@ can be locked when the daemon starts at login, and does not separate one
 user's programs from each other — Deckhand's udev rule already lets any of
 them type keystrokes. OBS's WebSocket server listens on every network
 interface with its password as the only protection, so that password should
-be a strong one.
+be a strong one. Twitch's tokens are the first credential for a service on
+the internet: anything that can read the file can act as the linked
+account on Twitch, within what the link allows, from anywhere, until the
+link is removed.
+
+**Twitch is actions only.** A Twitch key's press is one request to
+Twitch's API as the linked account, on its own channel; no face shows
+anything live from Twitch, and nothing is connected. Stream state comes
+from OBS.
+
+**Twitch is linked by device code, with one public client ID for
+everyone.** Deckhand is registered with Twitch as a *public* client, so it
+needs no secret — which an open-source app cannot keep — and nobody has to
+register a developer app of their own. The person approves Deckhand at
+twitch.tv/activate with the code Settings shows; the daemon asks Twitch
+whether they have, at the interval Twitch gives, until they do, the code
+expires, or they cancel. Twitch lists the app as "DeckHandApp". The client
+ID is the project's, owned by an account that exists only to own it; if it
+were ever revoked, every link would stop at once, so `config.json`'s
+`twitch.clientId` lets someone link with their own public app without
+waiting for a release. A saved link keeps the client ID it was made with.
+
+**A Twitch refresh token is used once, and never twice.** Twitch replaces
+the refresh token on every refresh, and **ends the whole link if a
+replaced one is ever sent** (measured). So one refresh runs at a time,
+shared by the hourly check and every press, and the new pair is written —
+in one write — before anything uses it. Public clients' refresh tokens
+lapse 30 days after they were issued; the hourly check refreshes ahead of
+the access token's expiry, so a link stays alive while Deckhand runs, and
+lapses only after 30 days without it. **A refused refresh keeps the link**:
+a fault on Twitch's side has looked exactly like a dead link, so the keys
+are marked and the person told, but the tokens are kept and the hourly
+check keeps trying; only Remove or a new link clears them. Remove revokes
+the refresh token, which ends the link at Twitch too.
 
 **VTube Studio is asked for access only when you click Connect.** VTS gives
 a plugin a token when the person allows it in a window inside VTS; Deckhand
