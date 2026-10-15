@@ -39,9 +39,12 @@ It's one person's project, used every day.
 
 - **Decks are known by serial number**, not by USB port. Move a deck to
   another port and its layouts go with it.
-- **Any Stream Deck with screen keys should work.** The key count, layout and
-  icon size come from the device, not from a list in Deckhand. I use an XL
-  and an Original V2 side by side; other models haven't been tried.
+- **Any Stream Deck should work.** The key count, layout and each key's
+  screen size come from the device, not from a list in Deckhand, and keys
+  without a screen (a Pedal's, a Neo's two touch keys) work as plain buttons.
+  I use an XL and an Original V2 side by side; every other model is checked
+  only against the Stream Deck library's own description of it, never on the
+  device.
 - **Several decks in one editor.** With more than one plugged in, show them
   side by side and arrange them to match your desk. Drag a key onto another
   deck to copy it there.
@@ -67,8 +70,9 @@ key turns red.
   after Deckhand and the keys catch up within a minute, or at once when you
   press one.
 - **When the fix is yours to make**, such as starting OBS, or holding Stream
-  to stop it, a desktop notification says so, once. They can be turned off
-  in Settings.
+  to stop it, a desktop notification says so, each time you press the key;
+  pressing it again within a few seconds counts on the same notification
+  instead of adding another. They can be turned off in Settings.
 
 ![A page of OBS keys on two decks](assets/screenshots/obs.png)
 
@@ -200,7 +204,8 @@ from the same GitHub release as the download, so they don't prove who made it.
 decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then
 open **Deckhand** from your application menu.
 
-To update, run the same line again. To remove it: `deckhand-uninstall`.
+To update, run the same line again; the editor's **Settings › About** says
+when a newer release is out. To remove it: `deckhand-uninstall`.
 
 I use it every day on Fedora 44 (KDE Plasma), and it has run on Ubuntu 26.04
 (GNOME). Each release is checked to load on AlmaLinux 8, Debian 11 and 12,

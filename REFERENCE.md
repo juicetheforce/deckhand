@@ -137,7 +137,9 @@ libstdc++, or if a shipped package carries no licence.
 `bash scripts/test/release-ships.sh <vX.Y.Z>` then tests what ships: it loads
 the package in containers of the distributions above, pipes its installer,
 installs it on the machine, and runs the tests against that install.
-`scripts/release.sh publish <vX.Y.Z>` uploads it with `gh`.
+`scripts/release.sh publish <vX.Y.Z> notes.md` uploads it with `gh`, with
+`notes.md` (what is new) as its notes, always followed by the install-or-update
+line; `scripts/release.sh notes notes.md` prints them first.
 
 ## Updating and uninstalling
 
@@ -204,7 +206,10 @@ deck, in the editor, or from a script: `deckhand profile <name>`.
 **Icons** are image files wherever you keep them (PNG, JPEG, WebP, GIF, SVG).
 Nothing is copied or imported: the config holds the path, and editing the
 file updates the key. A key with an action and no icon draws that action's
-built-in icon.
+built-in icon. An icon file must be a regular file of at most 10 MB, and
+nothing in `~/.local/state/deckhand/` is ever read as one — that is where
+the OBS password and the Twitch link are kept, so they can't reach an
+export.
 
 **Your configuration** is `~/.config/deckhand/config.json`. The editor writes
 it, and it is plain JSON you can edit by hand ([Configuration](#configuration)).
@@ -391,10 +396,11 @@ program could fail.
 
 When the failure's message says what to do (hold Stream to stop it, start
 OBS, nothing is recording, connect VTube Studio again, go live on Twitch first), a desktop notification says it too, through your
-desktop's notification service. Once per message: pressing the same key
-again with the same failure doesn't notify again, and a new message replaces
-that key's last notification. Turn them off in the editor's
-**Settings › General**, or with `"notifications": false` in the config.
+desktop's notification service, on every press that fails. Each key keeps
+one notification: pressing it again within 10 seconds counts on it ("failed
+3 times") instead of adding another, and clearing the key's badge starts the
+count again. Turn them off in the editor's **Settings › General**, or with
+`"notifications": false` in the config.
 
 ## OBS Studio
 
@@ -432,11 +438,13 @@ OBS keys without the password: they show that OBS isn't set up until it is.
 it, or a press is waiting on OBS. Once connected, the keys follow OBS's own
 events, so a change made in OBS's window shows on the deck. If OBS isn't
 running, the next try is within a minute, or straight away when an OBS key is
-pressed. A password OBS refused is not retried until it is changed.
+pressed. A password OBS refused is not retried until it is changed — not
+even by pressing a key, which says to set it in Settings.
 
 **Not set up.** With no saved connection, OBS keys are drawn dimmed with a
 grey plug badge, and the editor's OBS actions can't be placed: hovering says
-why, and clicking opens Settings at OBS. Pressing such a key notifies once.
+why, and clicking opens Settings at OBS. Pressing such a key says so in a
+notification, as any failed press does.
 **Remove** in Settings disconnects and deletes the saved connection; it
 removes no keys, which come back as soon as OBS is set up again.
 
@@ -694,8 +702,11 @@ waits on a client: one that stops reading is disconnected.
 **Which version is installed.** The editor's **Settings › About** shows it:
 a release's tag, or `git describe` for a developer install. It can be
 selected and copied into an issue. **Releases on GitHub** there opens the
-releases page, where every release and its installer are listed; Deckhand
-itself never checks for updates. To update, run the install line again.
+releases page, where every release and its installer are listed. Each time
+the editor opens it asks GitHub whether a newer release is out, and if so
+About says **Update available**, linking to that release's page, with a dot
+on About in the sidebar; **Check for updates** there turns this off. Nothing
+is downloaded or installed: to update, run the install line again.
 
 **Deck not found.** `deckhand decks` lists what the daemon can see. If a deck
 is missing, run the install line again with `bash -s -- install --reinstall`
@@ -799,8 +810,9 @@ The checks:
   piped into bash, as `curl … | bash` runs it, at a terminal and without one),
   `release-install.test.sh` (a release's download, checksum and unpack, every
   way it can be wrong), `release-glibc.test.sh` (the release build's glibc
-  check) and `udev-trigger.test.sh` (re-applying the rule, with uinput loaded
-  and not). `scripts/install.sh check` runs the preflight for real and changes
+  check), `release-notes.test.sh` (a release's notes always end with the
+  install-or-update line) and `udev-trigger.test.sh` (re-applying the rule,
+  with uinput loaded and not). `scripts/install.sh check` runs the preflight for real and changes
   nothing.
 - A built release: `scripts/test/release-ships.sh <version>` loads it in
   containers of the target distributions, pipes its installer, **installs it
@@ -931,4 +943,7 @@ names in `src/keymap.ts`, so the C helper never has to change.
 add it to the registry in `src/actions/index.ts`, and give it a form in the
 editor. `describe` is what makes a key refresh while it is visible — the
 clock, now-playing and the active-output highlight all use it — and identical
-output is never written to the device.
+output is never written to the device. A face that changes only when
+something announces it (its service's state, the key's own) sets
+`redraw: 'events'` and is redrawn only then, never on the clock; its service
+must invalidate its type in `src/index.ts` when it changes.
