@@ -3,7 +3,7 @@
 // installed daemon. Never touches the real config: it is copied.
 //
 // Usage (from editor/, after npm run build):
-//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--show <serial>[,<serial>...]] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device|show] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused] [--kept <n>]
+//   node scripts/screenshot.mjs --out shot.png [--config path/to/config.json] [--select <key index>[,<index>...]] [--deck <serial>] [--show <serial>[,<serial>...]] [--disconnected <serial>] [--tab icon] [--open newprofile|delete|keymenu|keymenu-page|keymenu-device|show] [--page <page name>] [--search <text>] [--collapse] [--bookmark <folder> ...] [--fake-audio] [--settings] [--accent <name>] [--unfocused] [--kept <n>] [--fail <key index>:<message>]
 //
 // --fake-audio lists scripts/test/fake-pactl.mjs's made-up devices, for the
 // audio device forms; without it the daemon has no audio state to list.
@@ -91,6 +91,8 @@ const { values } = parseArgs({
     unfocused: { type: 'boolean' },
     // Seed this many kept configurations, for --settings.
     kept: { type: 'string' },
+    // Mark a key failed, as a failed press on the deck does: "<key index>:<message>", on --deck (or the first deck), its start page.
+    fail: { type: 'string' },
   },
 });
 if (!values.out) {
@@ -126,6 +128,18 @@ for (const serial of serials) {
   );
   const fake = highest >= 15 ? new FakeDeck() : new FakeDeck({ columns: 5, rows: 3, pixels: 72, model: 'original-v2', productName: 'Stream Deck' });
   await daemon.attach(serial, fake);
+}
+
+if (values.fail !== undefined) {
+  const at = values.fail.indexOf(':');
+  const key = Number(values.fail.slice(0, at));
+  const serial = values.deck ?? [...serials][0];
+  const ids = Object.keys(config.profiles);
+  const profile = ids.find((id) => id === config.startProfile || config.profiles[id].name === config.startProfile) ?? ids[0];
+  const layout = config.profiles[profile].layouts[serial];
+  const button = layout.pages[layout.startPage].buttons[String(key)];
+  daemon.failures.mark(serial, { profile, page: layout.startPage, key, error: values.fail.slice(at + 1) }, button);
+  daemon.events.state();
 }
 
 if (values.select !== undefined) process.env.DECKHAND_EDITOR_SELECT_KEY = values.select;

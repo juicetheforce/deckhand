@@ -211,22 +211,30 @@ function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pag
     <aside className="inspector glass" aria-label="Inspector">
       <h2 className="inspector-title">Key {at.index + 1}</h2>
       {notSetUp && integration && (
-        <p className="key-unset-callout" role="status" data-not-set-up={integration}>
-          <strong>{INTEGRATIONS[integration].name} is not set up.</strong> {INTEGRATIONS[integration].notSetUp}
+        <div className="key-callout key-unset-callout" role="status" data-not-set-up={integration}>
+          <p className="key-callout-text">
+            <strong className="key-callout-title">{INTEGRATIONS[integration].name} is not set up.</strong> {INTEGRATIONS[integration].notSetUp}
+          </p>
           {settingsSectionOf(button?.action?.type) && (
-            <button className="link-button key-failure-clear" onClick={() => void window.deckhand.openSettings(settingsSectionOf(button?.action?.type) ?? 'obs')}>
-              Set up {INTEGRATIONS[integration].name}
-            </button>
+            <div className="key-callout-actions">
+              <button className="key-failure-clear" onClick={() => void window.deckhand.openSettings(settingsSectionOf(button?.action?.type) ?? 'obs')}>
+                Set up {INTEGRATIONS[integration].name}
+              </button>
+            </div>
           )}
-        </p>
+        </div>
       )}
       {failure !== undefined && !notSetUp && (
-        <p className="key-failure" role="status">
-          <strong>Its last press failed.</strong> {failure}
-          <button className="link-button key-failure-clear" title="Clear the badge on this key, here and on the deck" onClick={() => void window.deckhand.clearFailure(at)}>
-            Clear
-          </button>
-        </p>
+        <div className="key-callout key-failure" role="status">
+          <p className="key-callout-text">
+            <strong className="key-callout-title">Its last press failed.</strong> {failure}
+          </p>
+          <div className="key-callout-actions">
+            <button className="key-failure-clear" title="Clear the badge on this key, here and on the deck" onClick={() => void window.deckhand.clearFailure(at)}>
+              Clear
+            </button>
+          </div>
+        </div>
       )}
       <div className="inspector-tabs" role="tablist">
         <button role="tab" className={`inspector-tab ${tab === 'key' ? 'inspector-tab-selected' : ''}`} aria-selected={tab === 'key'} onClick={() => onTab('key')}>
