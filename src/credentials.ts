@@ -17,6 +17,12 @@ import { STATE_DIR } from './backups.js';
  * Read afresh on every use, so a change needs no watcher and no reload. Only
  * the daemon writes it, by temp file and rename; nothing it holds is ever sent
  * back over the control socket — only whether a value is set.
+ *
+ * **Every change is a read, a change and a write of the whole file, one at a
+ * time** (exclusively, below). Two at once — a Twitch refresh while Settings
+ * saves OBS's password — would otherwise each write the file as it was before
+ * the other: one change lost, and a lost refresh token ends the Twitch link.
+ * Each write has a temp file of its own, so two can never write into one.
  */
 
 export const CREDENTIALS_PATH = path.join(STATE_DIR, 'credentials.json');
@@ -64,6 +70,16 @@ interface CredentialsFile {
 
 type Section = keyof CredentialsFile;
 
+/** The changes waiting their turn: each starts once the one before it has finished, whether it worked or not. */
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Run one read-change-write of the file after every change asked for before it. */
+function exclusively<T>(change: () => Promise<T>): Promise<T> {
+  const run = queue.then(change, change);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
 /** One service's entry as stored, or null when there is none (or it is not an object). */
 async function readSection(name: Section): Promise<Record<string, unknown> | null> {
   const entry = (await readFile())[name];
@@ -71,23 +87,27 @@ async function readSection(name: Section): Promise<Record<string, unknown> | nul
 }
 
 /** Change one service's entry: each field given replaces the stored one; null or "" removes it. Creates the entry if need be. */
-async function changeSection(name: Section, change: Record<string, unknown>): Promise<void> {
-  const file = await readFile();
-  const entry: Record<string, unknown> = { ...((file[name] as Record<string, unknown> | undefined) ?? {}) };
-  for (const [key, value] of Object.entries(change)) {
-    if (value === null || value === '') delete entry[key];
-    else entry[key] = value;
-  }
-  await writeFile({ ...file, [name]: entry });
+function changeSection(name: Section, change: Record<string, unknown>): Promise<void> {
+  return exclusively(async () => {
+    const file = await readFile();
+    const entry: Record<string, unknown> = { ...((file[name] as Record<string, unknown> | undefined) ?? {}) };
+    for (const [key, value] of Object.entries(change)) {
+      if (value === null || value === '') delete entry[key];
+      else entry[key] = value;
+    }
+    await writeFile({ ...file, [name]: entry });
+  });
 }
 
 /** Remove one service's entry entirely. Nothing else in the file is touched. */
-async function removeSection(name: Section): Promise<void> {
-  const file = await readFile();
-  if (!(name in file)) return;
-  const next = { ...file };
-  delete next[name];
-  await writeFile(next);
+function removeSection(name: Section): Promise<void> {
+  return exclusively(async () => {
+    const file = await readFile();
+    if (!(name in file)) return;
+    const next = { ...file };
+    delete next[name];
+    await writeFile(next);
+  });
 }
 
 const stringField = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined);
@@ -180,9 +200,9 @@ export async function twitchCredentials(): Promise<TwitchCredentials | null> {
 }
 
 /** Save Twitch's link whole — a new link, or a refresh's new pair: the entry is replaced, not merged. Written as OBS's are. */
-export async function setTwitchCredentials(link: TwitchCredentials): Promise<void> {
+export function setTwitchCredentials(link: TwitchCredentials): Promise<void> {
   // One write: a crash between two would lose the link, and its tokens with it.
-  await writeFile({ ...(await readFile()), twitch: { ...link } });
+  return exclusively(async () => writeFile({ ...(await readFile()), twitch: { ...link } }));
 }
 
 /** Remove Twitch's saved link: Twitch is no longer set up. Nothing else in the file is touched. */
@@ -190,16 +210,28 @@ export async function removeTwitchCredentials(): Promise<void> {
   await removeSection('twitch');
 }
 
+/** Numbers each write's temp file, so no two writes ever share one. */
+let writes = 0;
+
+/** Only through exclusively(): the whole file, by a temp file of this write's own, flushed to disk, then renamed over it. */
 async function writeFile(next: CredentialsFile): Promise<void> {
   // Created owner-only if it is not there yet; an existing state directory is
   // left as it is — it holds the backups and the editor's state too, and the
   // file's own 0600 is what keeps the secret.
   await fs.mkdir(STATE_DIR, { recursive: true, mode: 0o700 });
-  const temp = `${CREDENTIALS_PATH}.${process.pid}.tmp`;
+  const temp = `${CREDENTIALS_PATH}.${process.pid}.${++writes}.tmp`;
   try {
-    await fs.writeFile(temp, JSON.stringify(next, null, 2) + '\n', { mode: 0o600, flag: 'w' });
-    // writeFile's mode applies only when it creates the file; a leftover temp file keeps its own.
-    await fs.chmod(temp, 0o600);
+    // 'wx': created now, 0600 from its first byte, and never a file already
+    // there (a leftover, or a link someone put in its place).
+    const handle = await fs.open(temp, 'wx', 0o600);
+    try {
+      await handle.writeFile(JSON.stringify(next, null, 2) + '\n');
+      // On disk before the rename: after a power cut the file is the old one
+      // or the new one, never an empty one — a refresh's new token included.
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await fs.rename(temp, CREDENTIALS_PATH);
   } catch (err) {
     await fs.rm(temp, { force: true });
