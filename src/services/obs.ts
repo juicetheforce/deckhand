@@ -16,8 +16,11 @@ import { OBS_EVENTS, ObsClient, ObsError, RESOURCE_NOT_FOUND } from './obs-clien
  * daemon's 60-second safety scan (retry), the same tick that retries a lost
  * session bus, or a press, or an OBS key coming into view when none was.
  *
- * A refused password is never retried by the scan: retrying cannot fix it.
- * Changing the credentials (credentialsChanged) clears it.
+ * **A refused password is never retried until the credentials change** —
+ * not by the scan, a key coming into view, or a press: retrying cannot fix
+ * it. A press is refused at once with the same words, which say where to set
+ * it (Settings), as a refused VTube Studio token is. Changing the credentials
+ * (credentialsChanged — Settings' Save or Remove) clears it.
  *
  * **Not set up** — no saved connection (credentials.ts) — nothing connects at
  * all: OBS keys draw their not-set-up face and a press says where to set it
@@ -397,8 +400,13 @@ function describeFailure(err: unknown): string {
   return err.message;
 }
 
+/** Why OBS last refused the connection — no password, or the wrong one — while it stays refused. */
+let refusal: ObsError | null = null;
+
 function ensureConnected(): Promise<ObsClient> {
   if (client?.isOpen) return Promise.resolve(client);
+  // Refused: never tried again until the credentials change (credentialsChanged).
+  if (state.connection === 'auth-failed' && refusal) return Promise.reject(refusal);
   if (connecting) return connecting;
   connecting = connect().finally(() => {
     connecting = null;
@@ -437,6 +445,7 @@ async function connect(): Promise<ObsClient> {
     });
   } catch (err) {
     const auth = err instanceof ObsError && err.kind === 'auth';
+    refusal = auth ? (err as ObsError) : null;
     update({ connection: auth ? 'auth-failed' : 'unavailable', ...NOTHING_KNOWN });
     if (auth) console.error(`[obs] ${(err as Error).message}`);
     throw err;

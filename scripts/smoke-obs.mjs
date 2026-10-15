@@ -384,7 +384,7 @@ obs.retry();
 check('the 60-second scan\'s retry reconnects', await until(() => obs.cachedState().connection === 'connected' && fake2.identified === 1));
 void connectionsBefore;
 
-// A wrong password: refused, and the scan never retries it.
+// A wrong password: refused, and nothing retries it — not the scan, not a press — until the credentials change.
 await credentials.setObsCredentials({ password: 'wrong' });
 obs.credentialsChanged();
 check('a wrong password is refused', await until(() => obs.cachedState().connection === 'auth-failed'));
@@ -395,6 +395,10 @@ await sleep(300);
 check('the scan never retries a refused password', fake2.connections === attempts);
 await tap(0);
 check('a press with it fails, and says so', await until(() => /refused the password/.test(failedKey(0) ?? '')));
+check('and says where to fix it: Settings', /Settings › Integrations › OBS/.test(failedKey(0) ?? ''));
+await tap(0);
+await sleep(300);
+check('a press never tries a refused password again (as VTube Studio): no connection attempt from two presses', fake2.connections === attempts);
 await sleep(300);
 check('and letting go of the key does not clear that mark', /refused the password/.test(failedKey(0) ?? ''));
 await credentials.setObsCredentials({ password: PASSWORD });
