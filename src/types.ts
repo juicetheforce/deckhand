@@ -172,9 +172,20 @@ export interface ActionHandler {
   execute?(ctx: ActionContext, params: ActionDef): Promise<void | 'armed'>;
   /**
    * Optional. Return live display overrides (track title, current sink, etc).
-   * Presence of this method is what makes a button refresh on a timer.
+   * Presence of this method is what makes a button refresh on a timer —
+   * unless `redraw` is 'events'.
    */
   describe?(ctx: ActionContext, params: ActionDef): Promise<DisplayPatch | null>;
+  /**
+   * Optional. 'events': the face changes only when something says so — its
+   * service's state (index.ts's invalidateByType, from the service's
+   * subscribe) or the key's own (a press, its failure mark, a preview, a page
+   * shown) — so it is redrawn then, and never on refreshMs. OBS, VTube Studio
+   * and Twitch keys: their faces read a state cache only their events change.
+   * Without it, a key with describe() is redrawn every refreshMs while it is
+   * shown, which a clock needs.
+   */
+  redraw?: 'events';
   /**
    * Optional. The state a default icon pair shows (src/default-icons.ts):
    * mute for audio.micMute and audio.mute, play state for media.control. Must

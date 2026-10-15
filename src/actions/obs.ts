@@ -91,6 +91,7 @@ const running = (phase: string) => phase === 'live' || phase === 'stopping' || p
  * control socket, which has no hold, it only starts.
  */
 export const stream: ActionHandler = {
+  redraw: 'events',
   async execute(ctx, _params: ActionDef) {
     armed.delete(keyOf(ctx));
     const status = await obs.request('GetStreamStatus');
@@ -125,6 +126,7 @@ export const stream: ActionHandler = {
  *   { "type": "obs.record" }
  */
 export const record: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, _params: ActionDef) {
     const status = await obs.request('GetRecordStatus');
     if (status.outputActive === true) {
@@ -157,6 +159,7 @@ export const PAUSE_CONFIRM_MS = 1000;
  * that worked.
  */
 export const recordPause: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, _params: ActionDef) {
     const status = await obs.request('GetRecordStatus');
     if (status.outputActive !== true) throw new ActionNeeded('Nothing is recording: Pause recording pauses what Record records');
@@ -194,6 +197,7 @@ const named = (value: unknown) => (typeof value === 'string' && value !== '' ? v
  * studio-mode user asks.
  */
 export const scene: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const sceneName = named(params.scene);
     if (!sceneName) throw new Error('no scene chosen');
@@ -214,6 +218,7 @@ export const scene: ActionHandler = {
  * muted from OBS's InputMuteStateChanged.
  */
 export const mute: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const inputName = named(params.input);
     if (!inputName) throw new Error('no input chosen');
@@ -235,6 +240,7 @@ export const mute: ActionHandler = {
  * the first. Shows hidden from OBS's SceneItemEnableStateChanged.
  */
 export const source: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const sceneName = named(params.scene);
     const sourceName = named(params.source);

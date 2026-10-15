@@ -38,6 +38,7 @@ function explain(err: unknown): unknown {
  * Twitch's reason.
  */
 export const chat: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const message = typeof params.message === 'string' ? params.message : '';
     if (message.trim() === '') throw new Error('no message written');
@@ -76,6 +77,7 @@ const text = (value: unknown) => (typeof value === 'string' ? value : '');
  * (BROADCASTER_NOT_LIVE, measured offline in Twitch session 1).
  */
 export const marker: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const description = text(params.description).trim();
     if ([...description].length > MAX_DESCRIPTION) throw new ActionNeeded(`Twitch takes marker descriptions of up to ${MAX_DESCRIPTION} characters: shorten this one in the editor`);
@@ -108,6 +110,7 @@ export const marker: ActionHandler = {
  * one that works (scope §7, call 8).
  */
 export const clip: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const title = text(params.title).trim();
     const duration = typeof params.duration === 'number' ? params.duration : undefined;
@@ -138,6 +141,7 @@ export const clip: ActionHandler = {
  * search, never typed; the name is kept only to show.
  */
 export const streamInfo: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const title = text(params.title).trim();
     const category = text(params.category).trim();

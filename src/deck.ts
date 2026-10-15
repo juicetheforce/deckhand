@@ -95,6 +95,8 @@ export class DeckSession implements DeckHandle {
   private screens: Map<number, { width: number; height: number }>;
   private lastSent: Array<Buffer | null>;
   private lastRenderAt: number[];
+  /** Keys told their face may have changed (invalidateByType), drawn on the next tick whatever their kind. */
+  private stale: boolean[];
   private ticker: NodeJS.Timeout | null = null;
   /** True while tick() is running, so a slow render can't start a second pass. */
   private ticking = false;
@@ -143,6 +145,7 @@ export class DeckSession implements DeckHandle {
 
     this.lastSent = new Array(this.keyCount).fill(null);
     this.lastRenderAt = new Array(this.keyCount).fill(0);
+    this.stale = new Array(this.keyCount).fill(false);
     this.page = startPageOf(this.layout);
     this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
   }
@@ -472,6 +475,8 @@ export class DeckSession implements DeckHandle {
     if (this.closed) return;
     const screen = this.screens.get(index);
     if (!screen) return;
+    // Drawn now, from the state as it is now: anything that changes it after this marks it again.
+    this.stale[index] = false;
     // Drawn square at the shorter side, then filled out to the screen in the
     // key's background: the same face as on a square key, never stretched.
     const side = Math.min(screen.width, screen.height);
@@ -532,6 +537,14 @@ export class DeckSession implements DeckHandle {
       const now = Date.now();
 
       for (const i of this.screens.keys()) {
+        // Told it changed: drawn once, whatever kind of key it is.
+        if (this.stale[i]) {
+          await this.renderButtonAt(i);
+          continue;
+        }
+        // On a clock only: a key whose face depends on the time (a clock), or
+        // on state nothing announces. Keys redrawn on events (OBS, VTube
+        // Studio, Twitch) are not dynamic, and cost nothing here at rest.
         const button = this.buttonAt(i);
         if (!isDynamic(button?.action)) continue;
         const interval = button?.refreshMs ?? this.defaults.refreshMs;
@@ -547,7 +560,7 @@ export class DeckSession implements DeckHandle {
   invalidateByType(types: string[]): void {
     for (const i of this.screens.keys()) {
       const type = this.buttonAt(i)?.action?.type;
-      if (type && types.includes(type)) this.lastRenderAt[i] = 0;
+      if (type && types.includes(type)) this.stale[i] = true;
     }
   }
 

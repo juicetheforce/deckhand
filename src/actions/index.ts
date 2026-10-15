@@ -93,10 +93,11 @@ export function isKnownAction(type: string): boolean {
   return Object.prototype.hasOwnProperty.call(registry, type);
 }
 
-/** Whether a button using this action should refresh on a timer. */
+/** Whether a button using this action should refresh on a timer: it has a live face that is not redrawn only on events (ActionHandler.redraw). */
 export function isDynamic(action: ActionDef | undefined): boolean {
   if (!action) return false;
-  return typeof registry[action.type]?.describe === 'function';
+  const handler = registry[action.type];
+  return typeof handler?.describe === 'function' && handler.redraw !== 'events';
 }
 
 /**

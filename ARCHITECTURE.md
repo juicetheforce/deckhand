@@ -110,7 +110,7 @@ or keep in dotfiles.
 **Cost scales with what is on screen, not with what is in the config.** A page
 of static hotkeys costs nothing at rest: no timers, no subprocesses, no USB
 traffic. A live key (clock, now-playing, mic state) costs something only
-while it is visible. Identical images are never rewritten to USB. "No timers
+while it is visible. Identical images are never rewritten to USB. **A key whose face changes only on events is redrawn only then** (`redraw: 'events'` on its action): OBS, VTube Studio and Twitch keys are drawn when shown and again when their service announces a change or the key's own state does, never on the 500 ms tick's clock — before, each was redrawn every second for nothing. The tick's clock is for faces that depend on time, like a clock. "No timers
 at rest" is a structural rule, not "no measurable cost", which would weaken as
 hardware gets faster. Three recurring timers are accepted exceptions:
 

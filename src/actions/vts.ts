@@ -33,6 +33,7 @@ const CHOOSE_AGAIN = 'deleted in VTube Studio? Choose it again in the editor';
  * so a press needs nothing more to confirm it.
  */
 export const hotkey: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const model = named(params.model);
     const hotkeyID = named(params.hotkey);
@@ -78,6 +79,7 @@ export const hotkey: ActionHandler = {
  * inside that is marked, not notified.
  */
 export const model: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const modelID = named(params.model);
     if (!modelID) throw new Error('no model chosen');
@@ -113,6 +115,7 @@ export const model: ActionHandler = {
  * key keeps its normal face**, and a press is marked, saying so.
  */
 export const expression: ActionHandler = {
+  redraw: 'events',
   async execute(_ctx, params: ActionDef) {
     const model = named(params.model);
     const file = named(params.expression);
