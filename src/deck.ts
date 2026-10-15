@@ -58,6 +58,8 @@ export interface DeckSessionOptions {
   failures: KeyFailures;
   /** The profile this deck is showing, which the failed keys are keyed by. */
   profileOf: () => string;
+  /** A key's failure mark was cleared (a press that worked, the editor's Clear): its next failure notifies as a first one. */
+  onFailureCleared?: (slot: string) => void;
 }
 
 /** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
@@ -81,6 +83,7 @@ export class DeckSession implements DeckHandle {
   private switchProfile: (profile: string) => Promise<void>;
   private onStateChange: () => void;
   private onActionNeeded: NonNullable<DeckSessionOptions['onActionNeeded']>;
+  private onFailureCleared: NonNullable<DeckSessionOptions['onFailureCleared']>;
   private failures: KeyFailures;
   private profileOf: () => string;
   /** ID of the page shown. */
@@ -129,6 +132,7 @@ export class DeckSession implements DeckHandle {
     this.switchProfile = options.switchProfile;
     this.onStateChange = options.onStateChange ?? (() => undefined);
     this.onActionNeeded = options.onActionNeeded ?? (() => undefined);
+    this.onFailureCleared = options.onFailureCleared ?? (() => undefined);
     this.failures = options.failures;
     this.profileOf = options.profileOf;
 
@@ -387,19 +391,21 @@ export class DeckSession implements DeckHandle {
     const button = this.currentButtons()[String(index)];
     const failure = await run(this.context(index));
     if (!judged()) return;
+    const slot = this.slotOf(profile, page, index);
     if (failure?.notSetUp) {
       // Not this key's failure: its face says the integration is not set up,
-      // and a mark would outlast the setup. Told once, daemon-wide (index.ts).
-      this.onActionNeeded({ slot: 'not-set-up', key: index, label: button?.label, message: failure.message, notSetUp: true });
+      // and a mark would outlast the setup. Notified as any failed press is.
+      this.onActionNeeded({ slot, key: index, label: button?.label, message: failure.message, notSetUp: true });
       return;
     }
-    const changed =
-      failure === null
-        ? clearOnSuccess() && this.failures.clear(this.serial, profile, page, index)
-        : this.failures.mark(this.serial, { profile, page, key: index, error: failure.message }, button);
+    const cleared = failure === null && clearOnSuccess() && this.failures.clear(this.serial, profile, page, index);
+    const changed = cleared || (failure !== null && this.failures.mark(this.serial, { profile, page, key: index, error: failure.message }, button));
     if (changed) this.onStateChange();
-    if (changed && failure?.actionNeeded) {
-      this.onActionNeeded({ slot: `${this.serial}:${profile}:${page}:${index}`, key: index, label: button?.label, message: failure.message });
+    if (cleared) this.onFailureCleared(slot);
+    // Every failed press whose message says what to do, not only a new mark:
+    // a repeat is counted on the key's one notification (services/notifications.ts).
+    if (failure?.actionNeeded) {
+      this.onActionNeeded({ slot, key: index, label: button?.label, message: failure.message });
     }
     // Most actions change something visible; a cheap targeted repaint beats
     // waiting up to a full tick for the button to catch up.
@@ -415,8 +421,14 @@ export class DeckSession implements DeckHandle {
     const changed = this.failures.clear(this.serial, profile, page, key);
     if (!changed) return false;
     this.onStateChange();
+    this.onFailureCleared(this.slotOf(profile, page, key));
     if (page === this.page && profile === this.profileOf()) void this.renderButtonAt(key, true);
     return true;
+  }
+
+  /** A key's notification slot: one per key, on its page and profile. */
+  private slotOf(profile: string, page: string, key: number): string {
+    return `${this.serial}:${profile}:${page}:${key}`;
   }
 
   /** This deck's failed keys, on every page and profile, for the control socket's status. */

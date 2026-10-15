@@ -4,13 +4,17 @@
  * src/services/notifications.ts. Answers with ids from 1 up, and keeps an id
  * when Notify asks to replace it, as a real server does. CloseNotification
  * closes one that is showing; one that is not answers with an error, as the
- * spec's server does.
+ * spec's server does. NotificationClosed is sent when one is closed, dismissed
+ * or expires — Plasma sends it, reason 1, when a popup times out and the
+ * notification stays in its history (measured on Plasma 6.7.5), which
+ * expire() stands in for.
  *
  *   const notes = await startFakeNotifications();
  *   notes.calls   // [{ appName, replacesId, appIcon, summary, body, hints, id }]
  *   notes.closed  // ids closed, in order
  *   notes.open    // ids showing now
  *   notes.order   // every call in order: 'notify 1', 'close 1', 'notify 2'…
+ *   notes.expire(id)   // its popup timed out: NotificationClosed(id, 1), still closable
  *   await notes.stop();
  */
 import dbus from 'dbus-next';
@@ -38,12 +42,20 @@ class Notifications extends Interface {
     this.order.push(`close ${id}`);
     if (!this.open.delete(id)) throw new dbus.DBusError('org.freedesktop.DBus.Error.Failed', `no notification ${id}`);
     this.closed.push(id);
+    this.NotificationClosed(id, 3);
+  }
+  /** The signal: calling it sends it. Reasons per the spec: 1 expired, 2 dismissed, 3 closed by a call. */
+  NotificationClosed(id, reason) {
+    return [id, reason];
   }
 }
 Notifications.configureMembers({
   methods: {
     Notify: { inSignature: 'susssasa{sv}i', outSignature: 'u' },
     CloseNotification: { inSignature: 'u', outSignature: '' },
+  },
+  signals: {
+    NotificationClosed: { signature: 'uu' },
   },
 });
 
@@ -54,7 +66,8 @@ export async function startFakeNotifications() {
   const closed = [];
   const open = new Set();
   const order = [];
-  bus.export('/org/freedesktop/Notifications', new Notifications(calls, closed, open, order));
+  const server = new Notifications(calls, closed, open, order);
+  bus.export('/org/freedesktop/Notifications', server);
   await bus.requestName('org.freedesktop.Notifications', 0);
   return {
     calls,
@@ -68,6 +81,11 @@ export async function startFakeNotifications() {
     /** As if the person dismissed it, or it timed out and was removed: closing it now fails. */
     dismiss(id) {
       open.delete(id);
+      server.NotificationClosed(id, 2);
+    },
+    /** As Plasma does when a popup times out: NotificationClosed, reason 1 — and it stays in the history, so closing it still works. */
+    expire(id) {
+      server.NotificationClosed(id, 1);
     },
     async stop() {
       bus.disconnect();

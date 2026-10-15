@@ -593,7 +593,7 @@ check(
 const shown = await ctl.request('obs.status', {});
 check('daemon: obs.status says connected', shown.ok && shown.result.connection === 'connected');
 
-// Notifications: only for a failure that says what to do, once per message.
+// Notifications: only for a failure that says what to do — every press, a repeat counted on the key's one notification.
 fake3.setStream(true);
 await pressInChild(0, 50);
 check('daemon: a short press while live is notified, naming the deck and key', await until(() => notes.calls.length === 1));
@@ -603,15 +603,25 @@ check(
   note.appName === 'Deckhand' && note.summary === 'Deck: Go live' && /Hold for 1 second/.test(note.body ?? '') && note.appIcon === 'io.github.juicetheforce.Deckhand',
 );
 await pressInChild(0, 50);
-await sleep(300);
-check('daemon: the same failure again is not notified again', notes.calls.length === 1);
+check(
+  'daemon: the same failure again, within 10 s: the same notification updated in place, with a count',
+  await until(() => notes.calls.length === 2 && notes.calls[1].replacesId === notes.calls[0].id && /\(failed 2 times\)$/.test(notes.calls[1].summary)),
+);
+// Ryan's case (2026-10-15): a key's error cleared in the editor, then pressed again — it fails again, and must say so.
+const cleared = await ctl.request('failure.clear', { serial: DECK_SERIAL, profile: 'default', page: 'live', key: 0 });
+check('daemon: the key\'s error cleared (the editor\'s Clear)', cleared.ok && cleared.result.cleared === true);
+await pressInChild(0, 50);
+check(
+  'daemon: pressed again after Clear, within 10 s: notified as a first failure — a new notification, no count, the old one closed',
+  await until(() => notes.calls.length === 3 && notes.calls[2].replacesId === 0 && notes.calls[2].summary === 'Deck: Go live' && notes.closed.includes(notes.calls[0].id)),
+);
 await pressInChild(2);
 const failedNowhere = await until(async () => {
   const st = await ctl.request('status', {});
   return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 2);
 });
 await sleep(300);
-check('daemon: a failure that says nothing to do is badged, not notified', failedNowhere && notes.calls.length === 1);
+check('daemon: a failure that says nothing to do is badged, not notified', failedNowhere && notes.calls.length === 3);
 await pressInChild(0, 1200);
 check('daemon: a hold stops the stream', await until(() => !fake3.streaming));
 
@@ -627,7 +637,7 @@ const pauseFailed = await until(async () => {
   return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 3 && /Nothing is recording/.test(f.error));
 });
 await sleep(300);
-check('daemon: with notifications off, a failure that says what to do is badged only', pauseFailed && notes.calls.length === 1);
+check('daemon: with notifications off, a failure that says what to do is badged only', pauseFailed && notes.calls.length === 3);
 const wrong = structuredClone(DAEMON_CONFIG);
 wrong.notifications = 'no';
 await writeConfig(wrong);
@@ -638,7 +648,7 @@ check('daemon: "notifications" that is not true or false is refused', await unti
 await writeConfig(DAEMON_CONFIG);
 await until(async () => (await ctl.request('status', {})).result.config.lastReload.ok === true);
 
-// Remove: the keys stay, show not set up, and a press is told once — never marked.
+// Remove: the keys stay, show not set up, and every press says so — never marked.
 await ctl.request('subscribe', { events: ['obs'] });
 const obsEvents = () => ctl.events.filter((e) => e.event === 'obs').map((e) => e.data);
 const removed = await ctl.request('obs.remove', {});
@@ -649,10 +659,14 @@ check('daemon: no key is removed', config.profiles.default.layouts[DECK_SERIAL].
 const notesBefore = notes.calls.length;
 await pressInChild(0);
 check('daemon: a not-set-up press is notified, saying where to set it up', await until(() => notes.calls.length === notesBefore + 1 && /Settings › Integrations/.test(notes.calls.at(-1)?.body ?? '')));
+const firstNotSetUp = notes.calls.at(-1)?.id;
 await pressInChild(3);
+check('daemon: another key not set up: its own notification', await until(() => notes.calls.length === notesBefore + 2 && notes.calls.at(-1).replacesId === 0 && /not set up/.test(notes.calls.at(-1).body)));
 await pressInChild(0);
-await sleep(300);
-check('daemon: once, whichever key — not per press', notes.calls.length === notesBefore + 1);
+check(
+  'daemon: the first key again, within 10 s: its notification updated with a count — every not-set-up press is told',
+  await until(() => notes.calls.length === notesBefore + 3 && notes.calls.at(-1).replacesId === firstNotSetUp && /\(failed 2 times\)$/.test(notes.calls.at(-1).summary)),
+);
 const unmarked = (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed ?? [];
 check('daemon: and never marks the key', !unmarked.some((f) => /not set up/.test(f.error)));
 const setUpAgain = await ctl.request('obs.credentials', { port: fake3.port, password: PASSWORD });
@@ -660,7 +674,7 @@ check('daemon: set up again, the keys connect by themselves', setUpAgain.result?
 check('daemon: an obs event says set up and connected', await until(() => obsEvents().some((d) => d.setUp === true && d.connection === 'connected')));
 await ctl.request('obs.remove', {});
 await pressInChild(0);
-check('daemon: removed again, the next not-set-up press is told again', await until(() => notes.calls.length === notesBefore + 2));
+check('daemon: removed again, the next not-set-up press is told too', await until(() => notes.calls.length === notesBefore + 4 && /not set up/.test(notes.calls.at(-1).body)));
 await ctl.request('obs.credentials', { port: fake3.port, password: PASSWORD });
 await until(() => fake3.open === 1);
 

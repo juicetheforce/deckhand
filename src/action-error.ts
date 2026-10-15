@@ -11,7 +11,8 @@ export class ActionNeeded extends Error {}
  * A press of a key for an integration that is not set up (OBS with no saved
  * connection). Not a failure of the key: its face already says so (drawn
  * dimmed, with the not-set-up badge), so it is never marked — a mark would
- * outlast the setup, and only a press that works clears one. Notified once,
- * daemon-wide, until the setup changes.
+ * outlast the setup, and only a press that works clears one. Notified as
+ * any failed press is: every press, a repeat counted on the key's one
+ * notification (services/notifications.ts).
  */
 export class NotSetUp extends ActionNeeded {}

@@ -401,7 +401,11 @@ const notesBefore = notes.calls.length;
 const sentBefore = fake.requests.length;
 await press(0);
 await press(0);
-check('daemon: a press while not linked is notified once, never marked, and sends nothing', await until(() => notes.calls.length === notesBefore + 1) && /Twitch is not linked/.test(notes.calls.at(-1).body) && fake.requests.length === sentBefore);
+check(
+  // The key failed seconds ago (the refused link, above), so both presses count on its one notification: the rule is per key, whatever the message.
+  'daemon: two presses while not linked: each notified — counted on the key\'s one notification — never marked, and nothing sent',
+  (await until(() => notes.calls.length === notesBefore + 2)) && /Twitch is not linked/.test(notes.calls.at(-1).body) && notes.calls.at(-1).replacesId === notes.calls.at(-2).id && /\(failed \d+ times\)$/.test(notes.calls.at(-1).summary) && fake.requests.length === sentBefore,
+);
 
 // `deckhand twitch link`, approved.
 const linking1 = cli(['twitch', 'link'], {});

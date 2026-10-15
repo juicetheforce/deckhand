@@ -512,8 +512,7 @@ check('daemon: a VTS key shown, not set up: no connection to VTS at all', fake2.
 await pressInChild(0);
 check('daemon: a not-set-up press is notified, saying where to set it up', await until(() => notes.calls.length === 1 && /VTube Studio is not set up/.test(notes.calls[0]?.body ?? '')));
 await pressInChild(2);
-await sleep(300);
-check('daemon: once, whichever key — and never a mark', notes.calls.length === 1 && (await failedOn(0)) === null && fake2.connections === 0);
+check('daemon: another key: its own notification — and never a mark', (await until(() => notes.calls.length === 2 && notes.calls[1].replacesId === 0)) && (await failedOn(0)) === null && fake2.connections === 0);
 
 await ctl.request('subscribe', { events: ['vts'] });
 const vtsEvents = () => ctl.events.filter((e) => e.event === 'vts').map((e) => e.data);
