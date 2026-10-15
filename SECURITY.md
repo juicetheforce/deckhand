@@ -29,15 +29,19 @@ usually within a few days. Only the latest release is supported.
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
   anything that writes outside the places it shows you before importing.
-- **The secrets** Deckhand keeps, the OBS password and VTube Studio's token:
-  anything that puts one anywhere but its own file, or lets another user
-  read it.
+- **The secrets** Deckhand keeps, the OBS password, VTube Studio's token and
+  Twitch's tokens: anything that puts one anywhere but its own file, or lets
+  another user read it.
+- **Twitch**: anything that sends a Twitch token anywhere but `id.twitch.tv`
+  and `api.twitch.tv`, or makes Deckhand act on Twitch without a key press,
+  beyond the hourly check Twitch requires and linking you started.
 
 ## Secrets
 
-Deckhand keeps two secrets: the password for OBS's WebSocket server, and the
-token VTube Studio gives Deckhand when you allow it. Both are kept the same
-way.
+Deckhand keeps three kinds of secret: the password for OBS's WebSocket
+server, the token VTube Studio gives Deckhand when you allow it, and the
+tokens Twitch gives Deckhand when you link your account. All are kept the
+same way.
 
 - They live in `~/.local/state/deckhand/credentials.json` (under
   `$XDG_STATE_HOME` if set), mode `0600`, written by temporary file and
@@ -51,8 +55,9 @@ way.
   over the control socket (mode `0600`), or from `deckhand obs password`,
   which reads it from the terminal or stdin, never from an argument, which
   every process could see. VTube Studio's token comes from VTube Studio
-  itself, when you allow Deckhand in its window. **The socket never returns
-  either**, only whether one is set.
+  itself, when you allow Deckhand in its window, and Twitch's from Twitch,
+  when you approve Deckhand at twitch.tv/activate. **The socket never
+  returns any of them**, only whether one is set.
 - They are not encrypted at rest, and not kept in the desktop keyring: the
   keyring would not separate them from your other programs either, and the
   udev rule above already trusts them. Full-disk encryption is what protects
@@ -69,6 +74,24 @@ asks you before giving a plugin one, and anything that can reach its port
 can make that window appear, so allow only a request you made, from
 Deckhand's **Connect**. Removing a plugin in VTube Studio's plugin list
 revokes its token.
+
+## Twitch
+
+Twitch's tokens are different from the other two: they are for a service on
+the internet, not one on your computer or network, and **a stolen one works
+from anywhere**. Anything that can read the credentials file can act as you
+on Twitch, within what the link allows (your title, category and markers;
+clips; chat messages), until the link is ended. End it with **Remove** in
+Deckhand's Settings, which revokes it at Twitch, or at
+twitch.tv/settings/connections, where Twitch lists it as "DeckHandApp".
+Changing your Twitch password ends it too.
+
+Deckhand talks to Twitch only at `id.twitch.tv` and `api.twitch.tv`, over
+HTTPS: when a key is pressed, once an hour while an account is linked
+(Twitch requires apps to check their link that often), and every few
+seconds while a linking code waits to be approved. It is a public client:
+no secret ships with it, and none is needed. Who it sends what to is in
+[PRIVACY.md](PRIVACY.md).
 
 Out of scope: that a user's own processes can use `/dev/uinput` once the rule
 is installed (that is what it is for), and anything that needs root already.

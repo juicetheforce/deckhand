@@ -243,6 +243,9 @@ deckhand vts                        # VTube Studio: connected or not, set up or 
 deckhand vts connect                # ask VTube Studio for access, and wait for the answer in its window (a port after it, if not 8001)
 deckhand vts hotkeys                # every model's hotkeys, each as a vts.hotkey action to paste into the config
 deckhand vts remove                 # forget VTube Studio's access
+deckhand twitch                     # Twitch: linked or not, as whom, what the link allows
+deckhand twitch link                # link a Twitch account: prints a code to approve at twitch.tv/activate, and waits (Ctrl+C cancels)
+deckhand twitch remove              # forget the Twitch link, and end it at Twitch
 deckhand watch                      # print changes as they happen, until Ctrl+C
 deckhand raw '<request>'            # send one request as JSON and print the reply
 ```
@@ -289,7 +292,8 @@ scripts. `config.example.json` shows a complete file — its serials and audio
   },
 
   "startProfile": "Gaming",                    // profile ID or name, optional
-  "notifications": false                       // desktop notifications for failed keys; on unless false
+  "notifications": false,                      // desktop notifications for failed keys; on unless false
+  "twitch": { "clientId": "<client ID>" }      // optional: link Twitch with your own app (see Twitch)
 }
 ```
 
@@ -350,6 +354,10 @@ can't be drawn shows a dashed "missing" icon.
 | `vts.hotkey` | `model`, `hotkey` (IDs) — runs one of a model's hotkeys in VTube Studio, as set up there. Dashed while another model is loaded |
 | `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on |
 | `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded |
+| `twitch.marker` | optional `description` (up to 140 characters) — adds a stream marker to your live stream |
+| `twitch.clip` | optional `title`, `duration` (5–60 seconds; Twitch's default is 30) — clips your live stream |
+| `twitch.chat` | `message` (up to 500 characters) — sends it to your own channel's chat, as you |
+| `twitch.streamInfo` | `title` (up to 140 characters) and/or `category` (Twitch's ID, with `categoryName` to show) — sets your channel's title and category; one left out stays as it is |
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -382,7 +390,7 @@ editor, which says why its last press failed, and press **Clear**. A
 program could fail.
 
 When the failure's message says what to do (hold Stream to stop it, start
-OBS, nothing is recording, connect VTube Studio again), a desktop notification says it too, through your
+OBS, nothing is recording, connect VTube Studio again, go live on Twitch first), a desktop notification says it too, through your
 desktop's notification service. Once per message: pressing the same key
 again with the same failure doesn't notify again, and a new message replaces
 that key's last notification. Turn them off in the editor's
@@ -547,6 +555,86 @@ would reload it and the avatar would drop out of the stream.
   file renamed, marks the keys that use it, saying to choose it again in the
   editor.
 
+## Twitch
+
+Deckhand links your Twitch account and acts as it, on your own channel,
+only when a key is pressed. No key shows anything live from Twitch;
+whether you're streaming comes from OBS.
+
+**Linking.** In the editor, **Settings › Integrations › Twitch**: **Link
+Twitch account**. Settings shows a code. Press **Open twitch.tv/activate**,
+or go to twitch.tv/activate in any browser, your phone's included, and
+enter it. Twitch asks whether to allow "DeckHandApp" the three permissions
+below; approve, and Settings says "Linked as …". The code lasts 30 minutes.
+**Cancel** stops waiting. Cancelling on Twitch's page doesn't reach
+Deckhand, so cancel in Settings too, or let the code expire.
+`deckhand twitch link` does the same from a terminal, and Ctrl+C cancels
+it. No developer account or app registration is needed: Deckhand is
+registered with Twitch once, for everyone.
+
+**What the link allows.** Only what the keys need:
+
+| Twitch permission | Lets Deckhand |
+| --- | --- |
+| `channel:manage:broadcast` | set your stream's title and category, and add stream markers |
+| `clips:edit` | make clips of your stream |
+| `user:write:chat` | send chat messages as you |
+
+A later key that needs another permission will need you to link again.
+
+**Staying linked.** Twitch requires an app like Deckhand to check its link
+once an hour; Deckhand does, while an account is linked, and renews the
+link before it runs out. If Deckhand doesn't run for 30 days, Twitch ends
+the link, and you link again. If you disconnect it at
+twitch.tv/settings/connections, or change your password, the keys are
+marked and a notification says to link again. Deckhand keeps the link and
+keeps trying it hourly, because a problem on Twitch's side looks the same,
+and a link that was fine comes back by itself.
+
+**Remove** in Settings forgets the link and ends it at Twitch. The keys
+stay where they are, dimmed, and work again once an account is linked.
+
+**Where it's kept.** The tokens are in the same file as the OBS password,
+`~/.local/state/deckhand/credentials.json`, readable only by you, and never
+in `config.json`, an export or a backup. Anyone who can read that file can
+act as you on Twitch, within the permissions above, from anywhere, until
+you remove the link ([SECURITY.md](SECURITY.md)).
+
+**When Deckhand talks to Twitch.** On a key press; once an hour while an
+account is linked; every few seconds while a code waits to be approved.
+Only `id.twitch.tv` and `api.twitch.tv`. See [PRIVACY.md](PRIVACY.md).
+
+**The keys.**
+
+- **Stream marker** marks the moment in your live stream, to find it again
+  in the VOD. It needs a live stream and **Store past broadcasts** on (in
+  Twitch's Creator Dashboard, Settings › Stream). Pressed while you're
+  offline, it's marked and a notification says to go live.
+- **Clip** clips the last seconds of your live stream: 30 unless you choose
+  5 to 60, with a title if you give one. It needs a live stream. Twitch
+  makes the clip in the background after accepting the press, so a clip it
+  fails to make later isn't reported.
+- **Chat message** sends its text to your own channel's chat as you, live
+  or not, up to 500 characters.
+- **Stream info** sets your title, your category, or both; whichever you
+  leave out stays as it is. The category is picked from Twitch's own search
+  in the editor, never typed.
+
+**Your own client ID.** If Deckhand's registration with Twitch ever stops
+working, you can register your own app at dev.twitch.tv/console, with
+**Client Type: Public**, and put its client ID in the config as
+`"twitch": { "clientId": "<client ID>" }`. Then link again. It affects only
+the next link; a link you already have keeps working as it is. **A fork of
+Deckhand must register its own client ID**: Twitch requires every
+application to have its own.
+
+**Known gaps.**
+
+- **Your own channel only.** Acting as an editor or moderator of someone
+  else's channel isn't supported.
+- **No ads, raids or chat modes yet.**
+- **A clip Twitch accepts and then fails to make** isn't reported, as above.
+
 ## The control socket
 
 `$XDG_RUNTIME_DIR/deckhand.sock`, mode `0600`: only your user can connect.
@@ -583,7 +671,12 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | `vts.connect` | optional `port` | asks VTube Studio for access and replies at once; how it goes arrives as `vts` events, since it waits for someone to answer VTube Studio's window |
 | `vts.list` | `kind`: `models`, `hotkeys` or `expressions`; `model` (ID) for the last two | what VTube Studio lists; expressions for the loaded model only |
 | `vts.remove` | | forgets the token and disconnects. Keys are untouched |
-| `subscribe` | `events`: any of `state`, `config`, `audio`, `obs`, `vts` | replaces this connection's subscriptions |
+| `twitch.status` | | Twitch: whether it is linked, as whom, what the link allows, and how linking is going — never a token |
+| `twitch.link` | | asks Twitch for a code and replies at once; the code to approve, and how it goes, arrive as `twitch` events. Cancelled if this connection closes |
+| `twitch.cancel` | | stops linking |
+| `twitch.categories` | `query` | Twitch's categories matching a search, by ID and name |
+| `twitch.remove` | | forgets the link and ends it at Twitch. Keys are untouched |
+| `subscribe` | `events`: any of `state`, `config`, `audio`, `obs`, `vts`, `twitch` | replaces this connection's subscriptions |
 | `preview.set`, `preview.clear` | | the editor's unsaved previews on a deck; cleared when its connection closes |
 
 After `subscribe`, events arrive as `{"event": "state", "data": {…}}`. No

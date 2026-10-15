@@ -6,7 +6,8 @@
 
 Stream Deck software for Linux. A small background service drives the decks,
 and an editor lets you set them up: hotkeys, opening apps, audio device
-switching, media controls, OBS Studio, VTube Studio, pages and profiles.
+switching, media controls, OBS Studio, VTube Studio, Twitch, pages and
+profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -21,7 +22,8 @@ It's one person's project, used every day.
 - **It does nothing when nothing is happening.** It waits for key presses,
   devices, players, OBS and VTube Studio rather than checking on them. On my
   laptop, with music playing and live keys on screen, it idles at about 1% of
-  one CPU core.
+  one CPU core. The one exception is a linked Twitch account: Twitch requires
+  apps to check their link once an hour, so Deckhand does, and only then.
 - **It's native, not a Flatpak.** It needs a udev rule, `/dev/uinput` and your
   audio and media services, which is what a sandbox exists to withhold. Keys
   come from its own virtual keyboard at the kernel's input layer, so games see
@@ -133,6 +135,34 @@ computer, and the access it gave Deckhand is the only thing protecting it.
 Deckhand keeps that in the same file only you can read as the OBS password
 ([SECURITY.md](SECURITY.md)).
 
+## Twitch
+
+Keys for your Twitch channel: add a stream marker, make a clip, send a chat
+message, and set your title and category. They act as your own account, on
+your own channel, only when you press them.
+
+- **Linking takes a code, not a developer account.** Deckhand is registered
+  with Twitch once, for everyone, so there's no app to create and no secret
+  to paste in.
+- **Markers and clips need you to be live.** Press one while you're offline
+  and the key is marked, with a notification saying to go live.
+- **Stream info sets the title, the category, or both**, leaving the other
+  as it is: what you change when you switch games. The category is picked
+  from Twitch's own search, never typed.
+- **Chat messages work live or not**, up to Twitch's 500 characters.
+
+To set it up, open **Settings › Integrations › Twitch** in the editor and
+press **Link Twitch account**. It shows a code; enter it at
+twitch.tv/activate, in any browser, and approve "DeckHandApp". The link
+asks only for what the keys need: your title, category and markers, clips,
+and chat messages.
+
+The link renews itself while Deckhand runs. If Deckhand doesn't run for 30
+days, Twitch ends it, and you link again. The tokens stay on your computer,
+in the same file only you can read as the OBS password, and go only to
+Twitch ([SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md)). **Remove** in
+Settings ends the link at Twitch too.
+
 ## Screenshots
 
 Setting up a hotkey:
@@ -184,7 +214,9 @@ from source instead, see [the developer install](REFERENCE.md#developer-install)
   or with `deckhand profile <name>` in a game's launch script.
 - **Run as a Flatpak**, for the reasons above.
 - **Use ydotool or the desktop portals.** It has its own virtual keyboard.
-- **Plugins, a store, accounts or telemetry.** None of them.
+- **Plugins, a store, telemetry, or an account with Deckhand.** None of them.
+  Twitch keys sign in to your own Twitch account, only if you link it, and
+  the tokens stay on your computer.
 
 And what it doesn't do well yet:
 
@@ -212,6 +244,10 @@ And what it doesn't do well yet:
   until then. Changes made from VTube Studio's own window go through the
   model's hotkeys and are seen. Its beta has an event for every expression
   change, which Deckhand uses when it's there.
+- **Twitch keys act on your own channel only**, not one you moderate.
+- **A Twitch clip that fails after the press** isn't reported. Twitch
+  accepts the press and makes the clip in the background; Deckhand doesn't
+  keep asking whether it worked.
 
 ## Things I'd like to add
 
@@ -225,6 +261,7 @@ That's what shapes it.
 - Dials and the touch strip, if I ever have a Stream Deck+ to test on.
 - More OBS keys (replay buffer, virtual camera, studio mode) when someone
   asks for them.
+- More Twitch keys (raids, ads, chat modes) when someone asks for them.
 
 ## More
 
@@ -232,7 +269,9 @@ That's what shapes it.
   `deckhand` command, the control socket, troubleshooting and development.
 - [ARCHITECTURE.md](ARCHITECTURE.md): why it's built the way it is.
 - [SECURITY.md](SECURITY.md): reporting a security problem privately, and
-  where the OBS password and VTube Studio's access are kept.
+  where the OBS password, VTube Studio's access and the Twitch link are kept.
+- [PRIVACY.md](PRIVACY.md): what Deckhand sends, to whom, and when — nothing
+  to its developers.
 
 Bug reports are welcome as issues: include the version from the editor's
 **Settings › About**. I answer them when I can; feature requests are weighed
