@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { strToU8, zipSync, type Zippable } from 'fflate';
 import { expandPath, validateConfig } from '../../../src/config.js';
+import { IconFileError, readIconFile } from '../../../src/icon-file.js';
 import { BUNDLE_FORMAT, BUNDLE_VERSION, CONFIG_ENTRY, ICON_FIELDS, MANIFEST_ENTRY, type BundledIcon, type ExportManifest } from '../shared/backup.js';
 import { BUILTIN_PREFIX } from '../shared/icons.js';
 
@@ -85,17 +86,14 @@ export async function buildExport(configText: string, includeIcons: boolean): Pr
     }
     let known = entryForFile.get(file);
     if (!known) {
+      // Only an image, and never anything in Deckhand's state directory: an
+      // icon naming credentials.json would otherwise carry its tokens out in
+      // the bundle (src/icon-file.ts). Anything refused is listed as missing.
       let data: Buffer;
       try {
-        const stat = await fs.stat(file);
-        if (!stat.isFile()) {
-          manifest.missing.push({ path: ref, reason: 'not a file' });
-          continue;
-        }
-        data = await fs.readFile(file);
+        data = (await readIconFile(file, { image: true })).data;
       } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        manifest.missing.push({ path: ref, reason: code === 'ENOENT' ? 'not found' : `cannot be read (${code ?? (err as Error).message})` });
+        manifest.missing.push({ path: ref, reason: err instanceof IconFileError ? err.reason : `cannot be read (${(err as Error).message})` });
         continue;
       }
       const entry = includeIcons ? entryName(entryForFile.size + 1, file) : null;

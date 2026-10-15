@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import { MAX_ICON_BYTES } from '../../../src/icon-file.js';
 import os from 'node:os';
 import path from 'node:path';
 import { strFromU8, unzipSync } from 'fflate';
@@ -160,6 +161,8 @@ async function probe(file: string, expected: string | null): Promise<'none' | 's
   }
   if (!stat.isFile()) return 'not-a-file';
   if (expected === null) return 'here';
+  // Larger than any icon an export carries (src/icon-file.ts), so not the same file; and not read whole to find out.
+  if (stat.size > MAX_ICON_BYTES) return 'different';
   try {
     return sha256(await fs.readFile(file)) === expected ? 'same' : 'different';
   } catch {

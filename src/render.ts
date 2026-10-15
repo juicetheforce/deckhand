@@ -5,6 +5,7 @@ import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-ico
 import { expandPath } from './config.js';
 import { failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
+import { readIconFile } from './icon-file.js';
 import type { Display } from './types.js';
 
 /**
@@ -79,9 +80,13 @@ async function iconStamp(iconPath: string): Promise<string> {
   }
 }
 
-/** An icon resized to the key. Throws if the file cannot be read or is not an image sharp can decode. */
+/**
+ * An icon resized to the key. Throws if the file may not be read (icon-file.ts:
+ * not a regular file, too large, in the state directory), cannot be read, or
+ * is not an image sharp can decode.
+ */
 async function iconLayer(filePath: string, size: number, fit: 'cover' | 'contain'): Promise<Buffer> {
-  return sharp(await fs.readFile(filePath))
+  return sharp((await readIconFile(filePath, { image: false })).data)
     .resize(size, size, {
       fit,
       position: 'centre',

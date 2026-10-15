@@ -14,6 +14,10 @@ const home = path.join(scratch, 'home');
 await fs.mkdir(path.join(home, 'Pictures', 'ffxiv job'), { recursive: true });
 await fs.mkdir(path.join(home, 'a folder'), { recursive: true });
 process.env.HOME = home; // os.homedir() reads it on every call
+// Deckhand's state directory, where credentials.json lives: read when src/icon-file.ts is imported.
+const stateDir = path.join(home, '.local', 'state', 'deckhand');
+process.env.DECKHAND_STATE_DIR = stateDir;
+await fs.mkdir(stateDir, { recursive: true });
 
 const { buildExport, iconReferences, suggestedExportName, writeExport } = await import('../src/main/export-bundle.js');
 const { CONFIG_ENTRY, MANIFEST_ENTRY } = await import('../src/shared/backup.js');
@@ -74,6 +78,30 @@ await check("a latching toggle's two icons are found and bundled", async () => {
   const bundled = manifest.icons.find((i: { path: string }) => i.path === '~/mic.svg');
   assert.ok(bundled?.entry, `iconOn not bundled: ${JSON.stringify(manifest.icons)}`);
   assert.deepEqual(Buffer.from(unzipSync(zip)[bundled.entry]), svg);
+});
+
+await check('never bundled: credentials.json or anything else in the state directory, a device, or a file that is not an image', async () => {
+  await fs.writeFile(path.join(stateDir, 'credentials.json'), '{"twitch":{"refreshToken":"SECRET-REFRESH"}}', { mode: 0o600 });
+  await fs.writeFile(path.join(home, 'notes.txt'), 'not an image');
+  await fs.symlink(path.join(stateDir, 'credentials.json'), path.join(home, 'innocent.png'));
+  const risky = configWith({
+    0: { icon: '~/.local/state/deckhand/credentials.json' },
+    1: { icon: '~/innocent.png' },
+    2: { icon: '/dev/zero' },
+    3: { icon: '~/notes.txt' },
+  });
+  const { zip, manifest } = await buildExport(JSON.stringify(risky, null, 2) + '\n', true);
+  const files = unzipSync(zip);
+  assert.deepEqual(Object.keys(files).filter((n) => n.startsWith('icons/')), [], `bundled: ${Object.keys(files).join(', ')}`);
+  assert.ok(!Object.values(files).some((f) => strFromU8(f).includes('SECRET-REFRESH')), 'the secret is in the zip');
+  assert.deepEqual(manifest.missing, [
+    { path: '~/.local/state/deckhand/credentials.json', reason: "in Deckhand's state directory" },
+    { path: '~/innocent.png', reason: "in Deckhand's state directory" },
+    { path: '/dev/zero', reason: 'not a file' },
+    { path: '~/notes.txt', reason: 'not an image' },
+  ]);
+  await fs.rm(path.join(home, 'innocent.png'));
+  await fs.rm(path.join(home, 'notes.txt'));
 });
 
 await check('with icons: config.json byte for byte, the manifest, and each file once, byte for byte', async () => {
