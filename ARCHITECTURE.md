@@ -48,7 +48,10 @@ editor (Electron/React) — config producer only
 - **The editor** (`editor/`) is **strictly a config producer**. It writes
   `config.json` and talks to the daemon over the socket to learn deck
   geometry and state, preview keys and switch pages. It cannot start, stop or
-  restart the daemon. A hung or crashed editor cannot stall a key press, and
+  restart the daemon. **Once each time its window opens**, unless Settings ›
+  About's "Check for updates" is off, it asks GitHub for the latest release,
+  to say when a newer one exists; it downloads and installs nothing, and the
+  daemon never asks. A hung or crashed editor cannot stall a key press, and
   closing it changes nothing on the decks.
 - **The `deckhand` command** is a thin client over the same socket. It is how
   a game's launch script or a desktop keyboard shortcut switches profiles.

@@ -29,6 +29,7 @@ import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBu
 import { IconFiles } from './icon-files.js';
 import { oneAtATime } from './one-at-a-time.js';
 import { editorVersion, openInBrowser, openReleases } from './about.js';
+import { LATEST_RELEASE_URL, UpdateChecker } from './updates.js';
 import { Launcher } from './launcher.js';
 import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
@@ -384,6 +385,25 @@ async function appSettings(): Promise<AppSettings> {
   return readSettings(await preferences.read());
 }
 
+/** The installed version, or null in a checkout; a check may name a VERSION file of its own. */
+function installedVersion(): string | null {
+  return editorVersion(CHECK === null ? undefined : process.env.DECKHAND_CHECK_VERSION_FILE);
+}
+
+/**
+ * Settings › About's update check (updates.ts): once each time the window
+ * opens (createWindow), never on a timer. A check asks only a server it names
+ * itself, and nothing otherwise — never GitHub.
+ */
+const updates = new UpdateChecker({
+  url: CHECK === null ? LATEST_RELEASE_URL : (process.env.DECKHAND_CHECK_UPDATE_URL ?? null),
+  version: installedVersion,
+  enabled: async () => (await preferences.read()).checkForUpdates !== false,
+  onChange: (state) => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('updateState', state);
+  },
+});
+
 /** Tell both windows the settings changed, so each applies them at once. */
 async function broadcastSettings(): Promise<void> {
   const settings = await appSettings();
@@ -671,12 +691,20 @@ function registerIpc(): void {
     return view ? view.config.notifications !== false : null;
   };
   ipcMain.handle('notifications', (event) => (fromSettingsWindow(event) ? notificationsOn() : null));
-  // ABOUT: the installed version, and the releases page in the browser — no update check (about.ts).
-  ipcMain.handle('appVersion', (event) => {
-    if (!fromSettingsWindow(event)) return null;
-    // A check may stand in a VERSION file for an install's.
-    const checkFile = CHECK === null ? undefined : process.env.DECKHAND_CHECK_VERSION_FILE;
-    return editorVersion(checkFile);
+  // ABOUT: the installed version, the releases page in the browser, and the update check (updates.ts).
+  ipcMain.handle('appVersion', (event) => (fromSettingsWindow(event) ? installedVersion() : null));
+  ipcMain.handle('updateState', (event) => (fromSettingsWindow(event) ? updates.state() : null));
+  ipcMain.handle('setUpdateCheck', async (event, on: unknown) => {
+    if (!fromSettingsWindow(event) || typeof on !== 'boolean') return updates.state();
+    await preferences.set({ checkForUpdates: on });
+    await updates.setEnabled(on);
+    return updates.state();
+  });
+  ipcMain.handle('openUpdate', (event) => {
+    // The page found by the check — this repository's release page, checked in shared/updates.ts — never one a page sends.
+    const { url } = updates.state();
+    if (!fromSettingsWindow(event) || url === null) return { ok: false, error: 'no update to show' };
+    return openInBrowser(url, CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
   });
   ipcMain.handle('openReleases', (event) => {
     if (!fromSettingsWindow(event)) return { ok: false, error: 'not from the settings window' };
@@ -1079,6 +1107,8 @@ async function finishCheck(rendererReport: unknown): Promise<void> {
 }
 
 function createWindow(): void {
+  // Each time the editor opens: one look at GitHub's latest release, if allowed (updates.ts).
+  void updates.check();
   // Screenshots only: render the settings window's page in this window, at its size.
   const settingsShot = CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_VIEW === 'settings';
   window = new BrowserWindow({

@@ -4,6 +4,7 @@ import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/pr
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection } from '../shared/bridge.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
+import { NO_UPDATE_STATE, type UpdateState } from '../shared/updates.js';
 import { importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
 import { ObsSettings } from './ObsSettings.js';
 import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, StatusDot, Switch } from './settings-ui.js';
@@ -59,6 +60,7 @@ export function SettingsWindow() {
   /** Bumped each time the window is asked to show an integration: opened at it, or asked again while open. */
   const [focus, setFocus] = useState(() => (isSection(opening) ? 1 : 0));
   const dots = useIntegrationDots();
+  const update = useUpdateState();
   /** Reset to defaults asks first (Ryan, 2026-10-14): the footer turns into the question. */
   const [confirmingReset, setConfirmingReset] = useState(false);
 
@@ -87,7 +89,7 @@ export function SettingsWindow() {
   if (!settings) return null;
   const change = (patch: Partial<AppSettings>) => void window.deckhand.setAppSettings(patch).then(setSettings);
   const changeNotifications = (on: boolean) => void window.deckhand.setNotifications(on).then(setNotificationsState);
-  const navItem = (item: { page: Page; name: string }, extra?: { icon: string; dot?: Dot }) => (
+  const navItem = (item: { page: Page; name: string }, extra?: { icon?: string; dot?: Dot; update?: boolean }) => (
     <button
       key={item.page}
       className={`sp-nav-item${page === item.page ? ' sp-nav-item-current' : ''}`}
@@ -95,9 +97,10 @@ export function SettingsWindow() {
       onClick={() => setPage(item.page)}
       data-settings-nav={item.page}
     >
-      {extra && <IntegrationIcon icon={extra.icon} tint={item.page as SettingsSection} size="nav" />}
+      {extra?.icon && <IntegrationIcon icon={extra.icon} tint={item.page as SettingsSection} size="nav" />}
       <span className="sp-nav-name">{item.name}</span>
       {extra?.dot && <StatusDot dot={extra.dot} />}
+      {extra?.update && <span className="sp-dot sp-dot-update" data-dot="update" title="Update available" />}
     </button>
   );
 
@@ -109,7 +112,7 @@ export function SettingsWindow() {
           <span className="sp-nav-heading">INTEGRATIONS</span>
           {INTEGRATION_PAGES.map((item) => navItem(item, { icon: item.icon, dot: dots[item.page] }))}
           <div className="sp-nav-gap" />
-          {LATER_PAGES.map((item) => navItem(item))}
+          {LATER_PAGES.map((item) => navItem(item, item.page === 'about' ? { update: update.status === 'available' } : undefined))}
         </nav>
         <div className="sp-pane">
           {page === 'general' && (
@@ -178,7 +181,7 @@ export function SettingsWindow() {
           {page === 'vts' && <VtsSettings focus={focus} />}
           {page === 'twitch' && <TwitchSettings focus={focus} />}
           {page === 'backups' && <BackupsPage />}
-          {page === 'about' && <AboutPage />}
+          {page === 'about' && <AboutPage update={update} />}
         </div>
       </div>
 
@@ -215,6 +218,16 @@ export function SettingsWindow() {
   );
 }
 
+/** The update check's state (main/updates.ts): asked when the window opens, then told each change. */
+function useUpdateState(): UpdateState {
+  const [state, setState] = useState<UpdateState>(NO_UPDATE_STATE);
+  useEffect(() => {
+    void window.deckhand.updateState().then((s) => s && setState(s));
+    return window.deckhand.onUpdateState(setState);
+  }, []);
+  return state;
+}
+
 /** Each integration's dot in the sidebar: the daemon's state, as the page's own status line reads it (integration-status.ts). */
 function useIntegrationDots(): Partial<Record<SettingsSection, Dot>> {
   const [obs, setObs] = useState<ObsStatus | null>(null);
@@ -237,11 +250,12 @@ function useIntegrationDots(): Partial<Record<SettingsSection, Dot>> {
 
 /**
  * The installed version, selectable so it can be copied into an issue, and
- * the releases page. No update check: Deckhand never asks the network what is
- * newer (main/about.ts). If the browser cannot be opened, the message names
- * the URL, to copy.
+ * the releases page; then whether a newer release exists (main/updates.ts),
+ * and the switch that allows asking. Nothing is downloaded: the link opens
+ * the release's page, whose notes say how to update. If the browser cannot be
+ * opened, the message names the URL, to copy.
  */
-function AboutPage() {
+function AboutPage({ update }: { update: UpdateState }) {
   /** undefined while it is read; null in a checkout, with no VERSION file. */
   const [version, setVersion] = useState<string | null | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -272,9 +286,39 @@ function AboutPage() {
           </LinkButton>
         </div>
       </Group>
+      <Group heading="Updates" data-about="updates">
+        <Row title="Check for updates" detail={updateDetail(update)} htmlFor="settings-check-updates">
+          <Switch id="settings-check-updates" checked={update.enabled} onChange={(on) => void window.deckhand.setUpdateCheck(on)} />
+        </Row>
+        {update.status === 'available' && update.latest && (
+          <>
+            <Divider />
+            <Row title="Update available" detail={`Deckhand ${update.latest} — its page says how to update`}>
+              <LinkButton
+                title={update.url ?? undefined}
+                onClick={() => {
+                  setOpenError(null);
+                  void window.deckhand.openUpdate().then((r) => setOpenError(r.ok ? null : r.error));
+                }}
+                data-about="update"
+              >
+                View release
+              </LinkButton>
+            </Row>
+          </>
+        )}
+      </Group>
       {openError && <Banner kind="error">{openError}</Banner>}
     </div>
   );
+}
+
+/** Under "Check for updates": what it does, or what the last check found when that is worth saying. */
+function updateDetail(update: UpdateState): string {
+  if (update.status === 'off') return 'Off: Deckhand never asks GitHub for a newer version';
+  if (update.status === 'failed') return 'Could not reach GitHub; it asks again the next time the editor opens';
+  if (update.status === 'current') return 'Each time the editor opens. This is the newest release';
+  return 'Each time the editor opens, asks GitHub for the newest release. Nothing is downloaded';
 }
 
 /**

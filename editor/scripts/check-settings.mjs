@@ -14,6 +14,7 @@
 
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -63,10 +64,20 @@ const versionFile = path.join(scratch, 'VERSION');
 await fs.writeFile(versionFile, 'v9.8.7-check\n');
 const openLog = path.join(scratch, 'opened.log');
 
+// The update check, against a GitHub of the check's own: a newer release, and every request it gets.
+const githubRequests = [];
+const github = http.createServer((req, res) => {
+  githubRequests.push({ url: req.url, headers: req.headers });
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ tag_name: 'v9.9.0', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0', body: 'notes' }));
+});
+await new Promise((resolve) => github.listen(0, '127.0.0.1', resolve));
+
 const env = {
   ...process.env,
   DECKHAND_CHECK_VERSION_FILE: versionFile,
   DECKHAND_CHECK_OPEN_LOG: openLog,
+  DECKHAND_CHECK_UPDATE_URL: `http://127.0.0.1:${github.address().port}/repos/juicetheforce/deckhand/releases/latest`,
   DECKHAND_EDITOR_CHECK: 'tray',
   DECKHAND_CONFIG_DIR: configDir,
   DECKHAND_STATE_DIR: stateDir,
@@ -173,6 +184,29 @@ r.editorOpenRefused = await inPage(editor, 'editor', 'window.deckhand.openReleas
 await inPage(editor, 'settings', clickIn('[data-about=releases]'));
 await sleep(300);
 r.opened = await fs.readFile(openLog, 'utf8').catch(() => '');
+
+// UPDATES: asked once when the editor opened; v9.9.0 is newer than v9.8.7-check.
+const updateView = `(() => ({
+  available: document.querySelector('[data-about=update]') !== null,
+  row: document.querySelector('[data-about=updates]')?.textContent ?? null,
+  dot: document.querySelector('[data-settings-nav=about] [data-dot=update]') !== null,
+  switchOn: document.querySelector('#settings-check-updates')?.checked ?? null,
+}))()`;
+r.updatesOnOpen = { requests: githubRequests.length, headers: githubRequests[0]?.headers ?? null };
+r.updateShown = await inPage(editor, 'settings', updateView);
+r.editorOpenUpdateRefused = await inPage(editor, 'editor', 'window.deckhand.openUpdate()');
+await fs.writeFile(openLog, '');
+// Only if it is there: missing, the checks below say so by name instead of the run stopping here.
+if (r.updateShown.available) await inPage(editor, 'settings', clickIn('[data-about=update]'));
+await sleep(300);
+r.updateOpened = await fs.readFile(openLog, 'utf8').catch(() => '');
+// Off: nothing shown, nothing asked; stored in the preferences, not config.json.
+await inPage(editor, 'settings', clickIn('#settings-check-updates'));
+await sleep(300);
+r.updateOff = { view: await inPage(editor, 'settings', updateView), stored: await until(async () => (await prefs()).checkForUpdates === false), requests: githubRequests.length };
+// On again: asked once more, at once.
+await inPage(editor, 'settings', clickIn('#settings-check-updates'));
+r.updateOnAgain = { shown: await until(async () => (await inPage(editor, 'settings', updateView)).available), requests: githubRequests.length };
 
 // The editor window cannot change settings, even through the bridge.
 // Read back from main, not preferences.json: the file is written 400 ms after
@@ -315,6 +349,31 @@ check('the releases link opens the GitHub releases page, once, and only from the
   assert.equal(r.opened, 'https://github.com/juicetheforce/deckhand/releases\n');
   assert.equal(r.editorOpenRefused.ok, false);
 });
+check('Check for updates: asked GitHub once when the editor opened, as "Deckhand", saying nothing about this install', () => {
+  assert.equal(r.updatesOnOpen.requests, 1);
+  assert.equal(r.updatesOnOpen.headers['user-agent'], 'Deckhand');
+  assert.ok(!JSON.stringify(r.updatesOnOpen.headers).includes('9.8.7'), 'the installed version was sent');
+});
+check('a newer release: About says "Update available", names it, and the sidebar puts a dot on About', () => {
+  assert.equal(r.updateShown.available, true);
+  assert.match(r.updateShown.row ?? '', /Update available.*Deckhand v9\.9\.0/);
+  assert.equal(r.updateShown.dot, true);
+  assert.equal(r.updateShown.switchOn, true);
+});
+check("its link opens that release's page, and only from the settings window", () => {
+  assert.equal(r.updateOpened, 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0\n');
+  assert.equal(r.editorOpenUpdateRefused.ok, false);
+});
+check('switched off: no update shown, no dot, nothing asked, kept in the preferences', () => {
+  assert.deepEqual(r.updateOff.view, { available: false, row: r.updateOff.view.row, dot: false, switchOn: false });
+  assert.match(r.updateOff.view.row ?? '', /never asks GitHub/);
+  assert.equal(r.updateOff.stored, true);
+  assert.equal(r.updateOff.requests, 1);
+});
+check('switched on again: asked once more, at once, and shown', () => {
+  assert.equal(r.updateOnAgain.shown, true);
+  assert.equal(r.updateOnAgain.requests, 2);
+});
 check('Notifications starts ticked; unticking writes "notifications": false to config.json, not the preferences', () => {
   assert.deepEqual(r.notificationsShown, [true, false]);
   assert.equal(r.notificationsOffSaved, true);
@@ -365,6 +424,7 @@ check('with Close to system tray unticked, closing the editor quits', () => {
 
 stopWatching();
 await daemon.stop();
+github.close();
 // Retries: Electron's helper processes write to userData for a moment after
 // the editor exits, so the first rmdir can meet ENOTEMPTY (check:failures did).
 await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

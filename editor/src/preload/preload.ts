@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import type { AppSettings } from '../shared/settings.js';
+import type { UpdateState } from '../shared/updates.js';
 
 // Sandboxed preload: bundled to CommonJS by scripts/build-main.mjs, because a
 // sandboxed preload cannot be an ES module. It only forwards calls; every
@@ -56,6 +57,9 @@ const bridge: DeckhandBridge = {
   notifications: () => ipcRenderer.invoke('notifications'),
   appVersion: () => ipcRenderer.invoke('appVersion'),
   openReleases: () => ipcRenderer.invoke('openReleases'),
+  updateState: () => ipcRenderer.invoke('updateState'),
+  setUpdateCheck: (on) => ipcRenderer.invoke('setUpdateCheck', on),
+  openUpdate: () => ipcRenderer.invoke('openUpdate'),
   setNotifications: (on) => ipcRenderer.invoke('setNotifications', on),
   exportConfig: (includeIcons) => ipcRenderer.invoke('exportConfig', includeIcons),
   deleteProfile: (profile, pageName) => ipcRenderer.invoke('deleteProfile', profile, pageName),
@@ -86,6 +90,7 @@ const bridge: DeckhandBridge = {
   showKeptFile: (file) => ipcRenderer.invoke('showKeptFile', file),
   closeSettings: () => ipcRenderer.invoke('closeSettings'),
   onAppSettings: (callback) => subscribe<AppSettings>('appSettings', callback),
+  onUpdateState: (callback) => subscribe<UpdateState>('updateState', callback),
   windowControl: (action) => ipcRenderer.invoke('windowControl', action),
   windowState: () => ipcRenderer.invoke('windowState'),
   onWindowState: (callback) => subscribe<WindowState>('windowState', callback),

@@ -3060,6 +3060,11 @@ body.settings-body {
   background: #e0465c;
 }
 
+/* About in the sidebar, when a newer release exists: the accent, not a status colour. */
+.sp-dot-update {
+  background: var(--accent);
+}
+
 .sp-dot-banner-warn {
   background: #e8b45a;
 }

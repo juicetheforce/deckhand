@@ -3,11 +3,9 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
- * Settings' ABOUT: which Deckhand this is, and where its releases are.
- *
- * **No update check.** Deckhand never asks the network what is newer: a
- * "check for updates" that cannot update would only point at the installer
- * anyway, so the releases page is linked instead, opened in the browser.
+ * Settings' ABOUT: which Deckhand this is, and where its releases are. Whether
+ * a newer one exists is updates.ts: it says so and links to that release's
+ * page, whose notes carry the update command — nothing is downloaded.
  */
 
 /** Where every release and its installer are listed. Fixed here: the page never names a URL to open. */

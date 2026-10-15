@@ -7,6 +7,7 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
+import type { UpdateState } from './updates.js';
 import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
@@ -300,6 +301,12 @@ export interface DeckhandBridge {
   appVersion(): Promise<string | null>;
   /** Open the GitHub releases page in the browser. Settings window only; the URL is fixed in the main process. */
   openReleases(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Whether a newer release exists, as the last check found (shared/updates.ts). Settings window only; null from anywhere else. */
+  updateState(): Promise<UpdateState | null>;
+  /** Turn "Check for updates" on (asks now) or off; resolves with the state as it now is. Settings window only. */
+  setUpdateCheck(on: boolean): Promise<UpdateState>;
+  /** Open the newer release's page, as the check found it. Settings window only; the URL never comes from the page. */
+  openUpdate(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Turn them on or off; resolves with the setting as it now is. */
   setNotifications(on: boolean): Promise<boolean | null>;
   /**
@@ -371,6 +378,8 @@ export interface DeckhandBridge {
   /** Close the settings window: its Done button (settings window only). */
   closeSettings(): Promise<void>;
   onAppSettings(callback: (settings: AppSettings) => void): () => void;
+  /** Each change of the update check's state (settings window). */
+  onUpdateState(callback: (state: UpdateState) => void): () => void;
 
   /**
    * The window's own title bar: both windows are frameless, so
