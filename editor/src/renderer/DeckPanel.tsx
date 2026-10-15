@@ -23,7 +23,7 @@ interface Props {
 }
 
 /**
- * One deck among several shown (scope §10, "Multi-deck editing"): a header
+ * One deck among several shown: a header
  * with its name, columns × rows (8 × 4, as decks are named) and, on the focused deck, the "Editing"
  * marker; then its grid. With one deck shown there is no panel and no
  * canvas — the grid sits in the well as it always has.

@@ -4,15 +4,14 @@ import { twitchChips, twitchView } from './integration-status.js';
 import { Banner, Disclosure, Group, IntegrationHeader } from './settings-ui.js';
 
 /**
- * Settings › Twitch (scope §7, "Streaming integrations"; Claude Design
- * 14k–14m): where a Twitch account is linked. Link asks Twitch for a code;
+ * Settings › Twitch (the design mockups): where a Twitch account is linked. Link asks Twitch for a code;
  * the person approves Deckhand at twitch.tv/activate, in any browser, phone
  * included, and the daemon saves the link. Remove forgets the link, ends it
  * at Twitch, and touches no key.
  *
  * **Cancel exists here**, unlike VTube Studio's Connect: stopping leaves
  * nothing behind on Twitch's side — the code just expires. A Cancel on
- * Twitch's own page is never seen by Deckhand (Twitch session 1), so the
+ * Twitch's own page is never seen by Deckhand, so the
  * code waits here until approved, expired, or cancelled here.
  *
  * No token is ever shown — the daemon never sends one — only the account

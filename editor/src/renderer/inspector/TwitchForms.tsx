@@ -3,7 +3,7 @@ import type { TwitchList } from '../../../../src/control/protocol.js';
 import { NumberSetting, Row, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * Twitch keys (scope §7): each sends one request as the linked account, on
+ * Twitch keys: each sends one request as the linked account, on
  * its own channel. Text is limited as Twitch limits it, counted as the
  * daemon counts it; a category is **picked from Twitch's own search, never
  * typed**, as OBS's and VTube Studio's pickers are.

@@ -3,7 +3,7 @@ import * as obs from '../services/obs.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 /**
- * OBS Studio keys (scope §7, "Streaming integrations"), through
+ * OBS Studio keys, through
  * services/obs.ts. Faces read its cached state, kept current by OBS's own
  * events; a press asks OBS afresh, so it acts on what OBS is doing now, not
  * on what the face last showed.
@@ -84,7 +84,7 @@ const running = (phase: string) => phase === 'live' || phase === 'stopping' || p
  *
  *   { "type": "obs.stream" }
  *
- * **Starts on a press; stops only on a hold** of HOLD_TO_STOP_MS (scope §7):
+ * **Starts on a press; stops only on a hold** of HOLD_TO_STOP_MS:
  * accidentally ending a stream is the worst thing this key can do. A hold, not
  * a second press to confirm — a confirm window would need a timer. A short
  * press while live fails, so the key's badge says to hold it. From the
@@ -192,7 +192,7 @@ const named = (value: unknown) => (typeof value === 'string' && value !== '' ? v
  *   { "type": "obs.scene", "scene": "Gameplay" }
  *
  * Lit while it is the program scene, from OBS's CurrentProgramSceneChanged.
- * **Known gap (Ryan, 2026-10-01)**: in studio mode it switches program
+ * **Known gap**: in studio mode it switches program
  * directly, skipping the preview that studio mode exists for; revisit if a
  * studio-mode user asks.
  */

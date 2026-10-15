@@ -1,7 +1,7 @@
 /**
  * A fake VTube Studio for the tests: its public API on a port of its own,
- * modelled on what a real VTS 1.35.10 did under Proton (docs/code-state.md,
- * "VTube Studio — session 1") rather than on its README where the two differ:
+ * measured against a real VTube Studio 1.35.10 under Proton rather than
+ * modelled on its README where the two differ:
  *
  *   - replies over 1016 bytes split into fragments, as websocket-sharp does;
  *   - a request needing authentication on a session that has none: error 8;
@@ -276,7 +276,7 @@ export async function startFakeVts({ approval = 'allow', port = 0, branch = 'sta
         reply('ModelLoadResponse', { modelID: data.modelID });
         return vts.loadModel(data.modelID);
       }
-      // The loaded model's, whatever model is named: VTS 1.35.10 ignores a modelID here (VTS session 2).
+      // The loaded model's, whatever model is named: VTS 1.35.10 ignores a modelID here (measured).
       case 'ExpressionStateRequest': {
         if (!vts.loaded) return reply('ExpressionStateResponse', { modelLoaded: false, modelName: '', modelID: '', expressions: [] });
         let list = expressionList(vts.loaded);

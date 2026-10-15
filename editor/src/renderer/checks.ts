@@ -1923,7 +1923,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     v2Selected: selectedOn(V2),
   };
 
-  // 8. A key dragged onto the other deck is copied there (scope §10): the
+  // 8. A key dragged onto the other deck is copied there: the
   // original stays, an occupied key is replaced, that deck takes the focus
   // with the copy selected, and the status line says what happened there.
   const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.keyIndex}`);
@@ -2064,7 +2064,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   out.layoutAdded = await until(() => panel(V2)?.querySelector('.grid') !== null && panel(V2)?.querySelector('.grid') !== undefined);
   await sleep(700); // past the autosave
 
-  // The canvas (session 2). Both decks shown, never dragged: stacked, fitted.
+  // The canvas. Both decks shown, never dragged: stacked, fitted.
   const zoom = () => Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
   const zoomLabel = () => document.querySelector('.canvas-zoom-level')?.textContent ?? null;
   const zoomButton = (label: string) =>
@@ -2172,8 +2172,8 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   };
   // The held deck moves exactly as far as the pointer, on screen, wherever
   // it goes — including past the arrangement's edge, which grows the
-  // drawing. (It did not: the centred drawing shifted back by half of any
-  // growth, and the deck fell behind the pointer — Ryan, 2026-09-27.)
+  // drawing. (A centred drawing shifts back by half of any growth, which
+  // would leave the deck behind the pointer.)
   // Measured mid-drag, then cancelled: a cancel leaves the deck where it was.
   const tracks = async (dx: number, dy: number) => {
     const grip = gripAt();
@@ -2204,9 +2204,8 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   };
 
   // Dropped onto the XL: butted against the edge the pointer is nearest, a
-  // gutter apart, its column kept — not the side it came from (Ryan's
-  // revision: a deck held below until its whole height had cleared the top
-  // looked stuck). From below, the pointer carried to near the XL's top: above.
+  // gutter apart, its column kept — not the side it came from (a deck held
+  // below until its whole height had cleared the top looked stuck). From below, the pointer carried to near the XL's top: above.
   const toward = (y: number) => y - gripAt().y;
   const wentAbove = await dragDeck(0, toward(rectOf(panel(XL)!).top + 20));
   out.overlapAbove = { ...wentAbove, offset: offset(), gap: (rectOf(panel(XL)!).top - rectOf(panel(V2)!).bottom) / zoom() };

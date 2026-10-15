@@ -3,13 +3,13 @@ import type { VtsList } from '../../../../src/control/protocol.js';
 import { actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * The VTube Studio keys (scope §7, "Streaming integrations"). What a key acts
+ * The VTube Studio keys. What a key acts
  * on is **picked from VTube Studio's own lists, never typed**, as OBS's are:
  * a mistyped ID would only fail later, on the deck. With VTS not running
  * there is nothing to pick from — "Start VTube Studio to choose" — and a saved
  * choice is always kept and shown.
  *
- * Stored by ID, never by name (scope §7): a model's hotkeys are its own, and
+ * Stored by ID, never by name: a model's hotkeys are its own, and
  * a name can repeat, or be empty. The names are written beside the IDs only
  * to show here and in what the key says when it fails.
  */
@@ -196,8 +196,8 @@ export function VtsModelForm({ at, button, disabled, run }: FormProps) {
 
 /**
  * vts.expression: turn one of a model's expressions on or off — the model
- * first, then its expressions. VTS lists only the loaded model's (scope §7,
- * built around the model in use): for another, the picker says to load it.
+ * first, then its expressions. VTS lists only the loaded model's
+ * expressions: for another, the picker says to load it.
  */
 export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
   const [ask, setAsk] = useState(0);

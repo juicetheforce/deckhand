@@ -13,8 +13,8 @@ import { ICON_CONTENT_TYPES, iconExtension, isShownIcon, sniffIconType } from '.
  *   and reading one hung the reader;
  * - **at most MAX_ICON_BYTES**;
  * - **never under Deckhand's state directory**, after following links:
- *   credentials.json lives there, and an icon naming it was exported with
- *   its tokens inside (code audit 2). Nothing there is an icon;
+ *   credentials.json lives there, and an icon naming it would be exported
+ *   with its tokens inside. Nothing there is an icon;
  * - for the editor and the export, **an image**: one of the shown extensions,
  *   or first bytes that are one of those formats (app icons without an
  *   extension). The daemon leaves the type to sharp, which draws more formats

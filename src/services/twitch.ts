@@ -6,19 +6,19 @@ import { TwitchError } from './twitch-client.js';
 
 /**
  * Twitch: the link to the person's account, and the requests Twitch keys
- * make through it (scope §7, "Streaming integrations"). Unlike OBS and VTube
+ * make through it. Unlike OBS and VTube
  * Studio there is no connection: **a key's press is one request**, and
  * nothing else is sent while Twitch is not being linked or checked.
  *
  * **Linking** is by device code: the person approves Deckhand at
  * twitch.tv/activate, in any browser, and this polls Twitch at the interval
  * it gives until they do. **That poll runs only while linking** — until
- * approved, expired, Cancel, or the client that asked closing (scope §7,
- * call 4) — never at rest. A Cancel on Twitch's own page is never seen: the
- * code stays pending until it expires (Twitch session 1).
+ * approved, expired, Cancel, or the client that asked closing — never
+ * at rest. A Cancel on Twitch's own page is never seen: the
+ * code stays pending until it expires (measured against Twitch).
  *
- * **The hourly check runs while Twitch is linked**, and only then (scope §7,
- * call 1, an accepted timer — ARCHITECTURE): Twitch requires every app that
+ * **The hourly check runs while Twitch is linked**, and only then (an
+ * accepted timer — ARCHITECTURE): Twitch requires every app that
  * keeps a session to validate its token at start and hourly. It also
  * refreshes the access token before it lapses, so the link stays alive while
  * Deckhand runs — each refresh token's 30 days are its own.
@@ -27,7 +27,7 @@ import { TwitchError } from './twitch-client.js';
  * link** (measured): one refresh at a time, shared by the hourly check and
  * every press; the new pair is saved before anything uses it.
  *
- * **A refused refresh keeps the link** (scope §7): Twitch's own faults have
+ * **A refused refresh keeps the link**: Twitch's own faults have
  * looked exactly like a dead link, so the keys are marked refused and
  * notified, the tokens are kept, and the hourly check keeps trying — if
  * Twitch recovers, so does Deckhand, with nothing for the person to do.
@@ -36,7 +36,7 @@ import { TwitchError } from './twitch-client.js';
 
 export type { TwitchLink } from '../control/protocol.js';
 
-/** What the first wave of keys needs, and nothing more (scope §7, call 6). A key needing another scope asks for a new link. */
+/** What the first wave of keys needs, and nothing more. A key needing another scope asks for a new link. */
 export const SCOPES = ['channel:manage:broadcast', 'clips:edit', 'user:write:chat'];
 
 /** Twitch's required validation interval. */

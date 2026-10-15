@@ -89,7 +89,7 @@ console.log('the mapping');
 
 console.log('bundled SVGs: a real viewBox and the SVG namespace');
 {
-  // Claude Design exports have written `sc-camel-view-box` in place of
+  // The design mockups' exports have written `sc-camel-view-box` in place of
   // viewBox, and left out xmlns: librsvg and Chromium then draw the icon at
   // the wrong size, or not at all. Every SVG shipped in assets/, not only
   // the icons.

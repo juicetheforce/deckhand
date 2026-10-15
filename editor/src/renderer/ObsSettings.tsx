@@ -5,8 +5,7 @@ import { obsView } from './integration-status.js';
 import { Banner, Disclosure, Group, InfoTip, IntegrationHeader, LinkButton } from './settings-ui.js';
 
 /**
- * Settings › OBS Studio (scope §7, "Streaming integrations"; Claude Design
- * 14c–14f): where OBS is set up. Saving sets it up — set up means saved, not
+ * Settings › OBS Studio (the design mockups): where OBS is set up. Saving sets it up — set up means saved, not
  * "has connected once", so OBS can be closed while it is done. Test
  * connection tries the form's values without saving and says which thing is
  * wrong. Remove deletes the saved connection and touches no key: OBS keys

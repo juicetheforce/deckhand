@@ -1,5 +1,5 @@
 /**
- * The canvas's arithmetic (scope §10, "Multi-deck editing"): where the shown
+ * The canvas's arithmetic: where the shown
  * decks sit, what a dragged deck snaps to, how an overlap is resolved, and
  * zoom. Pure, so it is tested without a window (test/canvas.test.ts).
  *
@@ -221,13 +221,13 @@ export function snap(raw: DeckPosition, size: DeckSize, others: Neighbour[], zoo
 type Side = 'left' | 'right' | 'above' | 'below';
 
 /**
- * Decks never overlap (Ryan, 2026-09-27). A drop that would overlap another
+ * Decks never overlap. A drop that would overlap another
  * deck is butted against it on the side **the pointer is nearest** — the
  * edge of that deck closest to where the person is holding the dragged one —
  * and keeps its other coordinate. So a deck dragged over another follows the
- * pointer from edge to edge rather than sticking where it came from (Ryan's
- * revision, the same day: the first rule, "the side it came from", held a
- * deck below another until its whole height had cleared the top).
+ * pointer from edge to edge rather than sticking where it came from ("the
+ * side it came from" would hold a deck below another until its whole height
+ * had cleared the top).
  *
  * The deck hit is the one under the pointer, or failing that the one
  * overlapped most. Returns null when butting it there still overlaps a deck,
@@ -276,7 +276,7 @@ export function roundPosition(at: DeckPosition): DeckPosition {
   return { x: Math.round(at.x * 1000) / 1000, y: Math.round(at.y * 1000) / 1000 };
 }
 
-/** The largest zoom that shows every deck in the viewport, never above 100% (scope §10). */
+/** The largest zoom that shows every deck in the viewport, never above 100%. */
 export function fitZoom(bounds: Rect | null, viewport: { width: number; height: number }): number {
   if (!bounds || viewport.width <= 0 || viewport.height <= 0) return 1;
   const w = (bounds.right - bounds.left) * PITCH_PX;

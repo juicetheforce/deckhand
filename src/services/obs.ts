@@ -6,7 +6,7 @@ import { OBS_EVENTS, ObsClient, ObsError, RESOURCE_NOT_FOUND } from './obs-clien
 
 /**
  * OBS Studio, through obs-websocket: the connection and the state OBS keys
- * show (scope §7, "Streaming integrations").
+ * show.
  *
  * **Cost scales with what is on screen** (ARCHITECTURE): no OBS key on a page
  * a deck shows, no connection. The daemon says when one is shown or not

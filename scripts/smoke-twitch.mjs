@@ -1,5 +1,5 @@
 /**
- * Offline test for Twitch (scope §7, "Streaming integrations"): linking by
+ * Offline test for Twitch: linking by
  * device code, the link's tokens and their refresh, the hourly check, and
  * the keys' requests — against scripts/test/fake-twitch.mjs, never the real
  * Twitch (DECKHAND_TWITCH_ID_URL and DECKHAND_TWITCH_API_URL point at it).
@@ -146,7 +146,7 @@ await credentials.setTwitchCredentials({ ...(await credentials.twitchCredentials
 await twitch.checkNow();
 check('a token Twitch no longer accepts is refreshed by the check', refreshes() === r2 + 2 && (await say('after the check')) !== null);
 
-// --- Refused, and recovering (Ryan, scope §7) ------------------------------------
+// --- Refused, and recovering --------------------------------------------------
 
 fake.refuseRefresh = true;
 fake.expireAccess();

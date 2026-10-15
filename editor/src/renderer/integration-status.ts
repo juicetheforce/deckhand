@@ -6,7 +6,7 @@ import type { ObsStatus, TwitchStatus, VtsApprovalState, VtsStatus } from '../..
  * they cannot disagree. Pure — no React, no bridge — so it is tested
  * directly (test/settings-status.test.ts).
  *
- * The dots (Claude Design, 14q): hollow grey = not set up / not linked,
+ * The dots (the design mockups): hollow grey = not set up / not linked,
  * grey = waiting / linking, green = connected / linked, red = couldn't
  * connect. Each answer is the daemon's state, never a guess.
  */
@@ -71,7 +71,7 @@ export function twitchChips(status: TwitchStatus): string[] {
   return TWITCH_CHIPS.filter((c) => status.scopes.includes(c.scope)).map((c) => c.chip);
 }
 
-/** After an import (Claude Design 14o, corrected by Ryan): the icon count only when there is one. */
+/** After an import: the icon count only when there is one. */
 export function importedLine(written: number, keptPrevious: boolean): string {
   const icons = written === 0 ? '' : ` · ${written} icon${written === 1 ? '' : 's'} written`;
   return keptPrevious ? `Imported${icons}. Previous setup kept below.` : `Imported${icons}.`;

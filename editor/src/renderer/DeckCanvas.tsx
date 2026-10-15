@@ -66,7 +66,7 @@ interface Drag {
    * The drawing's frame when the drag began, held until it ends. The drawing
    * is centred in the window: let it grow as the deck passes its edge and it
    * shifts back by half the growth, so the deck falls behind the pointer
-   * (Ryan, 2026-09-27; check:multi-deck, "moves exactly as far as the
+   * (check:multi-deck, "moves exactly as far as the
    * pointer"). While held, the deck may be drawn outside the frame.
    */
   frame: Rect;
@@ -76,8 +76,7 @@ interface Drag {
 const DRAG_START_PX = 4;
 
 /**
- * Several decks shown, arranged like KDE's displays (scope §10, "Multi-deck
- * editing"): each drawn to its real proportions — every key the same size —
+ * Several decks shown, arranged like KDE's displays: each drawn to its real proportions — every key the same size —
  * and dragged by its header, snapping to the others' key columns, rows and
  * edges; decks never overlap. Positions are the person's, remembered by
  * serial; zoom is the window's — Fit all when the editor opens or the shown

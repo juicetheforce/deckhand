@@ -457,8 +457,7 @@ button:disabled {
   overflow: auto;
 }
 
-/* Several decks shown: the canvas (scope §10, "Multi-deck editing";
-   DeckCanvas.tsx). Decks are placed in key units and drawn at 100% inside a
+/* Several decks shown: the canvas (DeckCanvas.tsx). Decks are placed in key units and drawn at 100% inside a
    scaled layer; the sizes here must match canvas.ts (KEY_PX, GAP_PX,
    PAD_X_PX, HEAD_PX, FOOT_PX). With one deck shown none of this is drawn. */
 
@@ -2739,7 +2738,7 @@ body.settings-body {
   color: var(--accent-glyph);
 }
 
-/* --- The settings window (Claude Design, section 14) --------------------------- */
+/* --- The settings window (the design mockups) ---------------------------------- */
 
 .sp-body {
   display: flex;

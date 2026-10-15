@@ -1505,8 +1505,8 @@ remove_udev_rule() {
   fi
 }
 
-# A linked Twitch account's link is ended at Twitch before anything is removed
-# (Ryan, 2026-10-14), not only forgotten: the tokens go with the state
+# A linked Twitch account's link is ended at Twitch before anything is removed,
+# not only forgotten: the tokens go with the state
 # directory below, and a link nothing uses would otherwise stay listed on
 # Twitch until it lapses. Through the running daemon, which holds the tokens
 # and asks Twitch — so before the service stops. Best effort: an uninstall

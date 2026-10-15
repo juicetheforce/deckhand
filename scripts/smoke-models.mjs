@@ -6,7 +6,7 @@
  * that has one. Nothing here lists a model: whatever the installed library
  * knows is tested, and a model a library update adds is tested too.
  *
- * The cases this was written for (code audit 2): a Stream Deck Studio's keys
+ * The cases this was written for: a Stream Deck Studio's keys
  * are 144×112, and every write was refused for being drawn square; a Neo's
  * two touch keys have no screen and were written to on every repaint; a
  * Pedal has no screen at all and every render failed. **None of the three

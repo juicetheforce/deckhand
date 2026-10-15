@@ -3,14 +3,14 @@
  * endpoints (linking by device code, refresh, validate, revoke) and Helix
  * (what keys do). Plain fetch, a one-shot deadline on every request — no
  * timer — and no state: services/twitch.ts holds the link, and is the only
- * caller. What each answer looks like was measured against real Twitch
- * (Twitch session 1, the probe), not only read from its docs.
+ * caller. What each answer looks like was measured against real Twitch,
+ * not only read from its docs.
  *
  * DECKHAND_TWITCH_ID_URL and DECKHAND_TWITCH_API_URL point both at a fake,
  * for tests (scripts/test/fake-twitch.mjs).
  */
 
-/** Deckhand's own client ID: a public client, owned by the project's own Twitch account (scope §7). Public by Twitch's terms. */
+/** Deckhand's own client ID: a public client, owned by the project's own Twitch account. Public by Twitch's terms. */
 export const DECKHAND_CLIENT_ID = 'wak2tnl8hoiznbfq5l8k2rvesfj1ea';
 
 const idUrl = () => process.env.DECKHAND_TWITCH_ID_URL ?? 'https://id.twitch.tv/oauth2';
@@ -24,7 +24,7 @@ const DEADLINE_MS = 10_000;
  * or Twitch's own 5xx. `unauthorized`: Helix or validate refused the access
  * token (401) — a refresh may fix it. `refused`: a refresh was refused
  * ("Invalid refresh token") — revoked, replayed, lapsed, or Twitch's own
- * fault, which looks the same (scope §7). `answer`: any other refusal, with
+ * fault, which looks the same. `answer`: any other refusal, with
  * Twitch's status and message.
  */
 export class TwitchError extends Error {

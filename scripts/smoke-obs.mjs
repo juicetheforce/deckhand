@@ -1,5 +1,5 @@
 /**
- * Offline test for OBS (scope §7, "Streaming integrations"): the obs-websocket
+ * Offline test for OBS: the obs-websocket
  * client, the connection's lifecycle, the Stream, Record and Pause keys, and
  * the credentials file — against scripts/test/fake-obs.mjs, never a real OBS.
  *
@@ -95,8 +95,7 @@ const PASSWORD = 'correct horse battery staple';
 // The auth string is not checked against a known answer: obs-websocket's
 // protocol.md gives an example's inputs but no output, and a value computed
 // here with the same formula would prove nothing. The fake OBS checks it with
-// its own copy of the formula; the proof is a real OBS accepting it
-// (code-state, OBS session 1).
+// its own copy of the formula; the proof is a real OBS accepting it.
 
 // --- 1. In process ---------------------------------------------------------------
 
@@ -253,7 +252,7 @@ check('and nothing was asked of OBS but whether it records', fake.requests.at(-1
 
 // A start OBS never makes (no stream service set up): STARTING, then nothing
 // — OBS shows its error dialog and sends no STOPPED (OBS 32.1 source; seen
-// by Ryan, 2026-10-01: the key showed live and stayed so).
+// on a real deck: the key showed live and stayed so).
 const streamFace = () => defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' }));
 const recordFace = () => defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' }));
 const clearKey = (key) => session.clearFailure('default', 'main', key);
@@ -411,7 +410,7 @@ obs.credentialsChanged();
 check('no password set while OBS asks for one: auth-failed, not unavailable', await until(() => obs.cachedState().connection === 'auth-failed'));
 await credentials.setObsCredentials({ password: PASSWORD });
 
-// --- Not set up: no saved connection (scope §7; credentials.ts) ----------------
+// --- Not set up: no saved connection (credentials.ts) --------------------------
 await until(() => obs.cachedState().connection === 'connected');
 await credentials.removeObsCredentials();
 obs.credentialsChanged();
@@ -607,7 +606,7 @@ check(
   'daemon: the same failure again, within 10 s: the same notification updated in place, with a count',
   await until(() => notes.calls.length === 2 && notes.calls[1].replacesId === notes.calls[0].id && /\(failed 2 times\)$/.test(notes.calls[1].summary)),
 );
-// Ryan's case (2026-10-15): a key's error cleared in the editor, then pressed again — it fails again, and must say so.
+// Found in use: a key's error cleared in the editor, then pressed again — it fails again, and must say so.
 const cleared = await ctl.request('failure.clear', { serial: DECK_SERIAL, profile: 'default', page: 'live', key: 0 });
 check('daemon: the key\'s error cleared (the editor\'s Clear)', cleared.ok && cleared.result.cleared === true);
 await pressInChild(0, 50);

@@ -4,11 +4,11 @@ import { TwitchError } from '../services/twitch-client.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 /**
- * Twitch keys (scope §7, "Streaming integrations"), through
+ * Twitch keys, through
  * services/twitch.ts. **Actions only**: a press is one request as the linked
  * account, on its own channel; no face shows anything live from Twitch, so
  * nothing is asked of Twitch to draw one. Failures only — nothing is notified
- * for a press that worked (scope §7, call 8).
+ * for a press that worked.
  */
 
 /** Twitch is not linked: every Twitch key draws dimmed, with the not-set-up badge. */
@@ -29,7 +29,7 @@ function explain(err: unknown): unknown {
 
 /**
  * twitch.chat — send a chat message to the linked account's own channel, as
- * that account. Works whether or not the channel is live (Twitch session 1).
+ * that account. Works whether or not the channel is live (measured against Twitch).
  *
  *   { "type": "twitch.chat", "message": "Thanks for watching!" }
  *
@@ -74,7 +74,7 @@ const text = (value: unknown) => (typeof value === 'string' ? value : '');
  *
  * Only while live, and only with "Store past broadcasts" on: Twitch answers
  * 404 for both, with a code inside the message for the first
- * (BROADCASTER_NOT_LIVE, measured offline in Twitch session 1).
+ * (BROADCASTER_NOT_LIVE, measured offline against Twitch).
  */
 export const marker: ActionHandler = {
   redraw: 'events',
@@ -87,7 +87,7 @@ export const marker: ActionHandler = {
     } catch (err) {
       if (err instanceof TwitchError && err.status === 404) {
         if (err.code === 'BROADCASTER_NOT_LIVE') throw new ActionNeeded('Markers need a live stream: go live on Twitch first');
-        // Not live is coded; this is the other 404 Twitch documents — `[inference]` until seen on a live stream.
+        // Not live is coded; this is the other 404 Twitch documents — from its docs, not yet seen on a live stream.
         throw new ActionNeeded(`Twitch did not add the marker (${err.message}): markers need "Store past broadcasts" on, in Twitch's Creator Dashboard › Settings › Stream`);
       }
       throw explain(err);
@@ -107,7 +107,7 @@ export const marker: ActionHandler = {
  * background, and Twitch says to assume it failed if Get Clips has not
  * returned it after 60 s. Deckhand does not follow it up — that would be a
  * poll — so a clip that fails later goes unseen, and nothing is notified for
- * one that works (scope §7, call 8).
+ * one that works.
  */
 export const clip: ActionHandler = {
   redraw: 'events',

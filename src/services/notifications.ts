@@ -16,8 +16,8 @@ import * as dbus from 'dbus-next';
  *   after showing, when replaced at 3 s);
  * - **its popup already gone: the old one is closed and a new one shown**
  *   with the count. Not replaces_id: Plasma does not pop up an update to a
- *   notification that has timed out, so a replace then is silent (VTS
- *   session 1, `[confirmed]` on KDE Plasma) — and its popups time out after
+ *   notification that has timed out, so a replace then is silent
+ *   (measured on KDE Plasma) — and its popups time out after
  *   ~5 s, inside the window. Closing the old one keeps one per key in the
  *   desktop's history too.
  *
@@ -59,7 +59,7 @@ const APP_ICON = 'io.github.juicetheforce.Deckhand';
  * named without ".desktop" as the hint asks — so the desktop files them under Deckhand: its own entry in
  * KDE's notification settings, and in its history, where someone finds a
  * "this key needs fixing" message they missed while away. Without it, KDE
- * kept nothing from Deckhand in its history (VTS session 1).
+ * keeps nothing from Deckhand in its history (measured on KDE Plasma).
  */
 const DESKTOP_ENTRY = 'io.github.juicetheforce.Deckhand';
 

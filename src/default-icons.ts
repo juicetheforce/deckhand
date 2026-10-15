@@ -83,7 +83,7 @@ export const BUILTIN_ICONS = [
   'toggle-off',
   // Twitch, in its section colour, apricot #f59a66: one-shot actions, so one
   // face each and no active state. Only the first wave's; the second wave's
-  // (ad, raid, chat mode) are added when those actions exist (Ryan).
+  // (ad, raid, chat mode) are added when those actions exist.
   'twitch-chat',
   'twitch-clip',
   'twitch-marker',
@@ -230,7 +230,7 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     case 'obs.scene':
       return state.active ? 'obs-scene-active' : 'obs-scene';
     // One icon per type: several scene, mute or source keys look alike until
-    // the person names them — no default label (Ryan, 2026-10-01).
+    // the person names them — no default label.
     case 'obs.mute':
       return state.muted ? 'obs-audio-muted' : 'obs-audio';
     case 'obs.source':
@@ -240,10 +240,10 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return state.unavailable ? 'vts-hotkey-unavailable' : 'vts-hotkey';
     case 'vts.model':
       return state.active ? 'vts-model-active' : 'vts-model';
-    // Another model loaded: the same face, off — rare, and not worth an icon of its own (scope §7).
+    // Another model loaded: the same face, off — rare, and not worth an icon of its own.
     case 'vts.expression':
       return state.active ? 'vts-expression-on' : 'vts-expression';
-    // One face each: nothing live from Twitch is shown (scope §7).
+    // One face each: nothing live from Twitch is shown.
     case 'twitch.chat':
       return 'twitch-chat';
     case 'twitch.marker':

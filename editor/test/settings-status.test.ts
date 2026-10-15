@@ -1,6 +1,6 @@
 // What the settings window says about each integration (src/renderer/integration-status.ts):
 // the sidebar's dot and the page's status line, from the daemon's state, as
-// Claude Design's section 14 draws them — and the lines around them.
+// the design mockups draw them — and the lines around them.
 
 import assert from 'node:assert/strict';
 import type { ObsStatus, TwitchStatus, VtsStatus } from '../../src/control/protocol.js';
@@ -42,7 +42,7 @@ const twitch = (link: TwitchStatus['link'], linking: TwitchStatus['linking']['st
   linking: { state: linking },
 });
 
-await check('OBS: not set up (hollow), waiting (grey), connected (green), couldn’t connect (red) — 14c–14f', () => {
+await check('OBS: not set up (hollow), waiting (grey), connected (green), couldn’t connect (red)', () => {
   assert.deepEqual(obsView(obs(false, 'not-set-up')), { dot: 'unset', text: 'Not set up' });
   assert.deepEqual(obsView(obs(true, 'unavailable')), { dot: 'waiting', text: 'Waiting for OBS' });
   assert.deepEqual(obsView(obs(true, 'connected')), { dot: 'ok', text: 'Connected' });
@@ -53,7 +53,7 @@ await check('OBS set up but nothing shown needs it (idle), or mid-connect: waiti
   assert.equal(obsView(obs(true, 'connecting')).dot, 'waiting');
 });
 
-await check('VTube Studio: the same four states — 14g–14j', () => {
+await check('VTube Studio: the same four states', () => {
   assert.deepEqual(vtsView(vts(false, 'not-set-up')), { dot: 'unset', text: 'Not set up' });
   assert.deepEqual(vtsView(vts(true, 'unavailable')), { dot: 'waiting', text: 'Waiting for VTube Studio' });
   assert.deepEqual(vtsView(vts(true, 'connected')), { dot: 'ok', text: 'Connected' });
@@ -68,7 +68,7 @@ await check('VTube Studio set up, and a Connect again denied: the saved token st
   assert.equal(vtsView(vts(true, 'connected', 'denied')).dot, 'ok');
 });
 
-await check('Twitch: not linked (hollow), linking (grey), linked as the account (green) — 14k–14m', () => {
+await check('Twitch: not linked (hollow), linking (grey), linked as the account (green)', () => {
   assert.deepEqual(twitchView(twitch('not-set-up')), { dot: 'unset', text: 'Not linked' });
   assert.deepEqual(twitchView(twitch('not-set-up', 'waiting')), { dot: 'waiting', text: 'Linking…' });
   assert.deepEqual(twitchView(twitch('linked')), { dot: 'ok', text: 'Linked as riccochet' });
@@ -84,7 +84,7 @@ await check("Twitch's chips: all four before linking; once linked, the ones its 
   assert.deepEqual(twitchChips(twitch('linked', 'none', ['user:write:chat'])), ['Chat']);
 });
 
-await check('after an import: the icon count only when some were written (Ryan’s correction to 14o)', () => {
+await check('after an import: the icon count only when some were written', () => {
   assert.equal(importedLine(0, true), 'Imported. Previous setup kept below.');
   assert.equal(importedLine(1, true), 'Imported · 1 icon written. Previous setup kept below.');
   assert.equal(importedLine(3, true), 'Imported · 3 icons written. Previous setup kept below.');

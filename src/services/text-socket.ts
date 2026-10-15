@@ -5,8 +5,8 @@ import net from 'node:net';
  * A WebSocket client for text messages, written on node:net — what VTube
  * Studio is reached by (services/vts-client.ts).
  *
- * **Not Node's own WebSocket**, which cannot talk to VTS (VTS session 1,
- * `[confirmed]`): VTS's server (websocket-sharp) accepts the
+ * **Not Node's own WebSocket**, which cannot talk to VTS (measured
+ * against VTube Studio 1.35.10): VTS's server (websocket-sharp) accepts the
  * permessage-deflate Node's client always offers, and Node 24.18.0's client
  * then decodes the first message and gives every later one as an empty
  * string. This client offers no extension at all, so nothing is compressed.

@@ -6,8 +6,8 @@
  *   again within REPEAT_WINDOW_MS (10 s): its notification says how many
  *   times — **updated in place (replaces_id) while its popup is up**, and
  *   **closed and shown anew once its popup has gone** (NotificationClosed),
- *   since Plasma updates a timed-out one without showing it (VTS session 1,
- *   `[confirmed]` on KDE Plasma);
+ *   since Plasma updates a timed-out one without showing it (seen on KDE
+ *   Plasma);
  * - later than the window, or after the key's failure was cleared (forget),
  *   the count starts again, and the old notification is still closed;
  * - a key's old notification already gone: the close fails quietly and the

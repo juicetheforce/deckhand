@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 
 /**
  * A client for obs-websocket protocol v5, the server built into OBS Studio 28
- * and later. JSON only, over Node's own WebSocket — no dependency (scope §7,
- * "Streaming integrations"). The protocol, as this file uses it:
+ * and later. JSON only, over Node's own WebSocket — no dependency. The
+ * protocol, as this file uses it:
  *
  *   OBS → Hello       (op 0)  versions, and an auth challenge and salt
  *   us  → Identify    (op 1)  rpcVersion 1, the auth string, event categories

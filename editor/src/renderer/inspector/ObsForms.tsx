@@ -3,11 +3,11 @@ import type { ObsList } from '../../../../src/control/protocol.js';
 import { actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * The OBS keys (scope §7, "Streaming integrations"). Stream, Record and Pause
+ * The OBS keys. Stream, Record and Pause
  * have nothing to set — what they act on is OBS itself — so their form says
  * what the key does and what it needs. Scene, Mute input and Show/hide source
- * pick what they act on **from OBS's own lists, never typed** (Ryan,
- * 2026-10-01): a mistyped name would only fail later, on the deck. With OBS
+ * pick what they act on **from OBS's own lists, never typed**:
+ * a mistyped name would only fail later, on the deck. With OBS
  * not running there is nothing to pick from — "Start OBS to choose" — and a
  * saved choice is always kept and shown. The connection is set in Settings ›
  * Integrations › OBS.

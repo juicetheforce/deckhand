@@ -3,8 +3,7 @@ import { iconUrl } from '../shared/icons.js';
 import type { Dot } from './integration-status.js';
 
 /**
- * The settings window's building blocks, as Claude Design's section 14 draws
- * them: a page title, groups (a small heading over a card), rows in a card
+ * The settings window's building blocks, as the design mockups draw them: a page title, groups (a small heading over a card), rows in a card
  * with dividers between, switches, status dots, banners and disclosures.
  * Layout only — every behaviour stays in the page that uses them.
  */

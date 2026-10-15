@@ -180,8 +180,8 @@ export interface VtsStatus {
 /**
  * Whether Twitch is linked. `refused`: Twitch refused the last refresh —
  * revoked, lapsed, or a fault on Twitch's side, which look the same. The
- * link is kept and the hourly check keeps trying it (scope §7, "a refused
- * refresh keeps the link"); Remove or a new link clears it.
+ * link is kept and the hourly check keeps trying it; Remove or a new link
+ * clears it.
  */
 export type TwitchLink = 'not-set-up' | 'linked' | 'refused';
 
@@ -192,7 +192,7 @@ export type TwitchLink = 'not-set-up' | 'linked' | 'refused';
  * kept until the next link: `approved`, `expired` (30 minutes passed),
  * `cancelled` (Deckhand's Cancel, or the client that asked went away),
  * `failed`. A Cancel on Twitch's own page never reaches Deckhand: the code
- * stays waiting until it expires (Twitch session 1, measured). `none`:
+ * stays waiting until it expires (measured against Twitch). `none`:
  * never asked since the daemon started, or removed.
  */
 export type TwitchLinkingState = 'none' | 'starting' | 'waiting' | 'approved' | 'expired' | 'cancelled' | 'failed';

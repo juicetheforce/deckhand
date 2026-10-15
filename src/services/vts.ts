@@ -9,8 +9,8 @@ import { VTS_ERRORS, VtsClient, VtsError } from './vts-client.js';
 
 /**
  * VTube Studio, through its public API: the connection, the access it gives
- * Deckhand, and the state VTS keys show (scope §7, "Streaming
- * integrations"). The same shape as services/obs.ts, on purpose:
+ * Deckhand, and the state VTS keys show. The same
+ * shape as services/obs.ts, on purpose:
  *
  * **Cost scales with what is on screen** (ARCHITECTURE): no VTS key on a page
  * a deck shows, no connection. Once connected it stays connected while VTS
@@ -21,12 +21,12 @@ import { VTS_ERRORS, VtsClient, VtsError } from './vts-client.js';
  * **Not set up** — no saved token — nothing connects. **Only Settings'
  * Connect ever asks VTS for a token** (requestAccess): no key, scan or
  * reconnect does, so VTS's window never appears by itself in the middle of
- * someone's stream (scope §7). A token VTS has revoked is **refused**, as a
+ * someone's stream. A token VTS has revoked is **refused**, as a
  * wrong OBS password is: never retried until Connect gives a new one.
  *
  * **VTS's broadcast is listened to only inside Connect**, for a few seconds,
  * when the connection fails — to say whether VTS is not running, its API is
- * off, or it is on another port. Never at rest (scope §7).
+ * off, or it is on another port. Never at rest.
  *
  * **Expression state** — what Toggle expression keys show — is VTS's for
  * the model loaded only. It is asked once when an expression key comes into
@@ -34,9 +34,9 @@ import { VTS_ERRORS, VtsClient, VtsError } from './vts-client.js';
  * RemoveAllExpressions hotkey; where VTS has ExpressionToggledEvent (its beta
  * branch) that keeps it current too. On the stable branch a change made
  * through a hotkey — from VTS's own window or its keyboard shortcuts too —
- * is seen by its HotkeyTriggeredEvent (VTS session 2, measured); one made
+ * is seen by its HotkeyTriggeredEvent (measured); one made
  * without a hotkey (another plugin setting it directly) is not, until the
- * next of those (scope §7, the stated gap). Never polled.
+ * next of those (a known gap). Never polled.
  *
  * Key faces read cachedState() only — never a request in a render.
  */
@@ -60,7 +60,7 @@ export const DEFAULT_PORT = 8001;
 const BROADCAST_PORT = 47779;
 /** How long Connect listens for that broadcast: longer than the ~4.3 s measured between two. */
 const BROADCAST_LISTEN_MS = 6000;
-/** How long a Model press waits for VTS to say its model has loaded: loads took ~1.1–1.7 s on 1.35.10 (VTS session 2). */
+/** How long a Model press waits for VTS to say its model has loaded: loads took ~1.1–1.7 s on 1.35.10. */
 const MODEL_LOAD_CONFIRM_MS = 8000;
 
 /** What a press of a VTS key says while VTS is not set up, and once VTS stops accepting the saved token. */
@@ -162,9 +162,10 @@ export function credentialsChanged(): void {
  * Finds VTS at `port` (or the saved one, or 8001); if nothing answers, listens
  * to VTS's broadcast once to say why — or to find it on another port. Then
  * VTS shows its window, and this waits for the person, **with no deadline**:
- * a closed connection does not take VTS's window back (VTS session 1), so
- * giving up would only lose an Allow clicked later. Allow saves the port and
- * the token, which sets VTS up; Deny saves nothing.
+ * a closed connection does not take VTS's window back (measured against
+ * VTube Studio 1.35.10), so giving up would only lose an Allow clicked
+ * later. Allow saves the port and the token, which sets VTS up; Deny saves
+ * nothing.
  */
 export async function requestAccess(port?: number): Promise<boolean> {
   if (state.approval.state === 'checking' || state.approval.state === 'waiting') return false;
@@ -302,7 +303,7 @@ export async function request(messageType: string, data?: Record<string, unknown
 
 /**
  * The Model key's press: load a model, and resolve once VTS says it has
- * loaded — VTS answers at once and loads ~1–2 s later (VTS session 2), so
+ * loaded — VTS answers at once and loads ~1–2 s later (measured), so
  * the answer alone proves nothing. `already`: it was loaded, so nothing is
  * sent — **VTS reloads a model asked for again**, and the avatar drops out
  * on stream meanwhile. `unconfirmed`: no event within the one-shot deadline.
@@ -365,9 +366,9 @@ async function pressWith<T>(run: (connected: VtsClient) => Promise<T>, notFound?
  * What a VTS key's picker offers, asked of VTS now — connecting as a press
  * does, and letting go after if no key is shown: the models, one model's
  * hotkeys (loaded or not: VTS lists any model's by ID), or one model's
- * expressions — **only while it is the one loaded** (scope §7): VTS has no
+ * expressions — **only while it is the one loaded**: VTS has no
  * way to ask another model's, and answers for whichever is loaded, whatever
- * model is named (VTS session 2), so the answer's model is checked. In VTS's
+ * model is named (measured), so the answer's model is checked. In VTS's
  * own order. A hotkey with no name is shown by its file.
  */
 export async function list(kind: 'models' | 'hotkeys' | 'expressions', modelId?: string): Promise<VtsList> {
@@ -391,7 +392,7 @@ export async function list(kind: 'models' | 'hotkeys' | 'expressions', modelId?:
       if (kind === 'expressions') {
         const notLoaded = { ok: false, reason: 'not-loaded', message: 'Load it in VTube Studio to see its expressions.' } as const;
         if (state.modelId !== modelId) return notLoaded;
-        // details: which hotkeys use each expression — the names people know them by (Ryan: "EyesLove (Heart Eyes)").
+        // details: which hotkeys use each expression — the names people know them by, e.g. "EyesLove (Heart Eyes)".
         const answer = await connected.request('ExpressionStateRequest', { details: true });
         if (answer.modelLoaded !== true || answer.modelID !== modelId) return notLoaded;
         return {
@@ -540,16 +541,16 @@ function releaseWaiters(): void {
 function onEvent(type: string, data: Record<string, unknown>): void {
   for (const waiter of [...waiters]) if (waiter.match(type, data)) waiter.resolve(true);
   if (type === 'ModelLoadedEvent') {
-    // A load sends "unloaded" for the old model, then "loaded" for the new one ~2 s later (VTS session 1).
+    // A load sends "unloaded" for the old model, then "loaded" for the new one ~2 s later (measured on VTS 1.35.10).
     if (data.modelLoaded === true && typeof data.modelID === 'string') {
       update({ modelId: data.modelID });
-      // A model keeps its expressions across a switch (VTS session 2): ask, never assume off.
+      // A model keeps its expressions across a switch (measured on VTS 1.35.10): ask, never assume off.
       if (wantExpressions && client) void readExpressions(client);
     } else if (data.modelID === state.modelId) {
       update({ modelId: null, expressions: {}, expressionsModel: null });
     }
   } else if (type === 'HotkeyTriggeredEvent') {
-    // The event comes before VTS's answer, and the state is right once answered (VTS session 2): a request sent now is answered after.
+    // The event comes before VTS's answer, and the state is right once answered (measured on VTS 1.35.10): a request sent now is answered after.
     if (wantExpressions && !expressionEvents && client && data.isLive2DItem !== true && EXPRESSION_HOTKEYS.has(String(data.hotkeyAction))) void readExpressions(client);
   } else if (type === 'ExpressionToggledEvent') {
     if (data.isLive2DItem === true || data.modelID !== state.modelId || state.expressionsModel !== state.modelId) return;
@@ -562,7 +563,7 @@ function onEvent(type: string, data: Record<string, unknown>): void {
 async function readExpressions(connected: VtsClient): Promise<void> {
   try {
     const answer = await connected.request('ExpressionStateRequest', { details: false });
-    // Only an answer for the model loaded now is kept: VTS answers for whichever model is loaded (VTS session 2).
+    // Only an answer for the model loaded now is kept: VTS answers for whichever model is loaded (measured on VTS 1.35.10).
     if (client !== connected || answer.modelLoaded !== true || answer.modelID !== state.modelId) return;
     const expressions: Record<string, boolean> = {};
     for (const e of Array.isArray(answer.expressions) ? (answer.expressions as unknown[]) : []) {

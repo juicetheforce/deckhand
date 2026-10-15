@@ -13,7 +13,7 @@ import { openTextSocket, type TextSocket } from './text-socket.js';
  * "Event" and carries an ID of VTS's own.
  *
  * https://github.com/DenchiSoft/VTubeStudio — and what VTS 1.35.10 really
- * does, which differs in places (code-state, "VTube Studio — session 1").
+ * does, which differs in places.
  *
  * Connection only: when to connect, and what the answers mean for a key, are
  * services/vts.ts's. The timers here are one-shot deadlines; the token
@@ -21,7 +21,7 @@ import { openTextSocket, type TextSocket } from './text-socket.js';
  */
 
 /**
- * **Permanent** (Ryan, 2026-10-02; ARCHITECTURE): VTS refuses a saved token
+ * **Permanent** (ARCHITECTURE): VTS refuses a saved token
  * if either string differs from the ones it was given for, so changing them
  * after a release silently disconnects every user. The popup draws the name
  * as a bold title over the developer as a grey subtitle.
@@ -85,7 +85,7 @@ interface Pending {
   timer: NodeJS.Timeout | null;
 }
 
-/** Only ever a loopback connection (scope §7: port only, localhost only). */
+/** Only ever a loopback connection (only the port is a setting, never the host). */
 const HOST = '127.0.0.1';
 
 export class VtsClient {
@@ -160,7 +160,8 @@ export class VtsClient {
    * answers — with the token on Allow; a VtsError `denied` on Deny, `busy`
    * if a request is already showing, `unavailable` if VTS goes away first.
    * No deadline: closing the connection does not take VTS's window back
-   * (VTS session 1), so there is nothing to gain by giving up on it.
+   * (measured against VTube Studio 1.35.10), so there is nothing to gain by
+   * giving up on it.
    */
   async requestToken(icon: string | undefined): Promise<string> {
     const answer = await this.request('AuthenticationTokenRequest', { pluginName: PLUGIN_NAME, pluginDeveloper: PLUGIN_DEVELOPER, ...(icon ? { pluginIcon: icon } : {}) }, null);

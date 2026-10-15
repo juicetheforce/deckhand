@@ -1,5 +1,5 @@
 /**
- * Offline test for VTube Studio (scope §7, "Streaming integrations"): the
+ * Offline test for VTube Studio: the
  * hand-written WebSocket client, the connection's lifecycle, asking VTS for
  * access, and the credentials it saves — against scripts/test/fake-vts.mjs,
  * never a real VTS.
@@ -204,7 +204,7 @@ await until(() => vts.cachedState().modelId === 'm1');
  * A service call's value, or the error it threw: a check compares it and fails
  * by name, and the run goes on. A bare top-level await that throws ends the
  * script, hiding every check after it — three breaks run together lost two
- * that way (VTS session 2).
+ * that way.
  */
 const settle = (promise) => promise.then((value) => value, (err) => err);
 const MODEL_AKARI = { type: 'vts.model', model: 'm1', modelName: 'Akari' };

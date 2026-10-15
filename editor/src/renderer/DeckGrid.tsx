@@ -50,7 +50,7 @@ interface KeyDrop {
 /**
  * Key onto key: drag a button and drop it on another key. On this deck it
  * moves, and an occupied key swaps; on another shown deck it is copied there
- * and the original stays (scope §10). Only the key under the pointer goes,
+ * and the original stays. Only the key under the pointer goes,
  * even with several selected — a block of keys moves by Copy, Paste and
  * Clear.
  *

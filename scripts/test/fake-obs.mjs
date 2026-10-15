@@ -209,7 +209,7 @@ export async function startFakeObs({ password = null, port = 0 } = {}) {
         return broadcast('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
       // The four states in the order a real OBS sends them, outputActive as it
       // reports it: STARTING false, STARTED true, STOPPING false, STOPPED false
-      // (OBS 32.1.1, seen 2026-10-01; code-state, OBS session 1). Streaming is
+      // (OBS 32.1.1, seen 2026-10-01). Streaming is
       // given the same shape, unobserved.
       case 'StartRecord':
         if (obs.recording) return reply(false, null, 'The record output is already running.');

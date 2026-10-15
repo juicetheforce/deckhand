@@ -4,14 +4,13 @@ import { vtsView } from './integration-status.js';
 import { Banner, Disclosure, Group, IntegrationHeader } from './settings-ui.js';
 
 /**
- * Settings › VTube Studio (scope §7, "Streaming integrations"; Claude Design
- * 14g–14j): where VTube Studio is set up. Connect is the only thing in
+ * Settings › VTube Studio (the design mockups): where VTube Studio is set up. Connect is the only thing in
  * Deckhand that ever asks VTS for access — VTS shows a window, and Allow
  * there saves a token, which sets it up. Remove deletes the token and touches
  * no key: VTS keys stay where they are, show "not set up", and come back when
  * it is connected again.
  *
- * **No Cancel** (scope §7): closing the request does not take VTS's window
+ * **No Cancel**: closing the request does not take VTS's window
  * back, so a Cancel would leave a window in VTS that does nothing when
  * clicked. While VTS shows it, this says to answer it there. How Connect goes
  * arrives as status updates (the daemon's "vts" event), each message written

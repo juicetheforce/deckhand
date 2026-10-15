@@ -12,7 +12,7 @@ import { TwitchSettings } from './TwitchSettings.js';
 import { VtsSettings } from './VtsSettings.js';
 
 /**
- * The settings window (Claude Design, section 14): a sidebar of pages —
+ * The settings window (the design mockups): a sidebar of pages —
  * General, Decks, the integrations (OBS Studio, VTube Studio, Twitch, each
  * with a status dot), Backups and About — one page at a time, and a footer.
  * Every change is saved at once and reaches the editor behind it at once,
@@ -61,7 +61,7 @@ export function SettingsWindow() {
   const [focus, setFocus] = useState(() => (isSection(opening) ? 1 : 0));
   const dots = useIntegrationDots();
   const update = useUpdateState();
-  /** Reset to defaults asks first (Ryan, 2026-10-14): the footer turns into the question. */
+  /** Reset to defaults asks first: the footer turns into the question. */
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ export function SettingsWindow() {
               <Group heading="Window">
                 {/* Not the copy sheet's "Keys keep working with the window closed": the
                     daemon runs the keys whatever the editor does, and a subtitle on this
-                    switch reads as what the switch does (scope §10, Ryan 2026-09-18). */}
+                    switch reads as what the switch does. */}
                 <Row title="Close to tray" detail="Closing the editor leaves Deckhand in the system tray" htmlFor="settings-close-to-tray">
                   <Switch id="settings-close-to-tray" checked={settings.closeToTray} onChange={(on) => change({ closeToTray: on })} />
                 </Row>
@@ -566,8 +566,8 @@ function when(iso: string): string {
 
 /**
  * What is in a kept copy, for the line under its title — the profiles by
- * name, not only how many (scope §5, Ryan: choosing between two timestamps
- * is guessing), then decks and keys as the copy sheet counts them.
+ * name, not only how many (choosing between two timestamps is guessing),
+ * then decks and keys as the copy sheet counts them.
  */
 function describeKept(entry: KeptConfig): string {
   if (!entry.summary) return `This file could not be read: ${entry.problem ?? 'unknown error'}`;

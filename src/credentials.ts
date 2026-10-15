@@ -5,7 +5,7 @@ import { STATE_DIR } from './backups.js';
 /**
  * Secrets for the services Deckhand is a client of — OBS's password, VTube
  * Studio's token and Twitch's tokens, one section each — in one owner-only file in the
- * state directory (scope §3, "Secrets"):
+ * state directory:
  *
  *   $XDG_STATE_HOME/deckhand/credentials.json   mode 0600
  *
@@ -130,7 +130,7 @@ async function readFile(): Promise<CredentialsFile> {
  * OBS's saved connection, or null when **OBS is not set up**: no entry at all.
  * Settings always saves host and port, so an OBS with authentication off is
  * set up too — set up means saved, not "has a password" and not "has
- * connected once" (scope §7, "Streaming integrations"). A file that cannot be
+ * connected once". A file that cannot be
  * read or parsed throws: a broken file is not "not set up".
  */
 export async function obsCredentials(): Promise<ObsCredentials | null> {
@@ -161,7 +161,7 @@ export async function removeObsCredentials(): Promise<void> {
  * up**: no token. The token is saved only when the person allows Deckhand in
  * VTS's window (services/vts.ts), and the port with it, so set up means a
  * saved token. A token VTS has since revoked still counts as set up — the
- * connection is refused, as a wrong OBS password is (scope §7). A file that
+ * connection is refused, as a wrong OBS password is. A file that
  * cannot be read or parsed throws.
  */
 export async function vtsCredentials(): Promise<VtsCredentials | null> {
@@ -185,8 +185,8 @@ export async function removeVtsCredentials(): Promise<void> {
  * Twitch's saved link, or null when **Twitch is not set up**: no refresh
  * token, user or client ID. Set up means linked — not "has an access token",
  * which lapses every few hours, and not "the last request worked". A link
- * Twitch refuses still counts as set up, and is kept (scope §7, "a refused
- * refresh keeps the link"). A file that cannot be read or parsed throws.
+ * Twitch refuses still counts as set up, and is kept. A file that cannot be
+ * read or parsed throws.
  */
 export async function twitchCredentials(): Promise<TwitchCredentials | null> {
   const twitch = await readSection('twitch');

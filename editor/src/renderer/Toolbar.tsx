@@ -177,7 +177,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
 }
 
 /**
- * The Device crumb with two or more decks connected (scope §10, 8b): which
+ * The Device crumb with two or more decks connected: which
  * decks the editor draws. **Clicking a name shows only that deck**, as the old
  * dropdown did; **the box adds it alongside the others**. The last shown deck
  * cannot be unticked. Only connected decks are listed (deckChoices), so there

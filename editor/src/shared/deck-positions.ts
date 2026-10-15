@@ -1,6 +1,5 @@
 /**
- * Where each deck sits on the editor's canvas (scope §10, "Multi-deck
- * editing"): the top-left of its grid — key 1's corner — in key units, one
+ * Where each deck sits on the editor's canvas: the top-left of its grid — key 1's corner — in key units, one
  * unit being a key and the gap after it. Key units, not pixels, so a position
  * means the same at any zoom and window size.
  *

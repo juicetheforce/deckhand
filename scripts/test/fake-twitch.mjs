@@ -2,9 +2,8 @@
  * A fake Twitch for the tests: id.twitch.tv's OAuth endpoints and the Helix
  * requests Deckhand makes, on one local port — the daemon finds it through
  * DECKHAND_TWITCH_ID_URL (`${fake.url}/oauth2`) and DECKHAND_TWITCH_API_URL
- * (`${fake.url}/helix`). Modelled on what real Twitch did in the probe
- * (docs/code-state.md, "Twitch — session 1"), not on its docs where the two
- * differ:
+ * (`${fake.url}/helix`). Modelled on what real Twitch did when probed, not
+ * on its docs where the two differ:
  *
  *   - a poll sooner than the interval: `slow_down`, and the interval grows;
  *   - the token answer's scopes are `scope`, an array; validate's `scopes`;

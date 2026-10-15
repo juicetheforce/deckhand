@@ -270,7 +270,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
     /**
      * OBS: the connection, what it shows, and which credentials are set —
      * never a secret. The password is reported only as set or not
-     * (credentials.ts; scope §3, "Secrets").
+     * (credentials.ts).
      */
     async 'obs.status'() {
       return obsStatus();
@@ -358,7 +358,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
      * `started` false when a request is already under way; how it goes comes
      * as "vts" events (`approval`), since it waits for the person to answer
      * VTS's window. `port`: where to look first (else the saved one, or
-     * 8001). Only this ever asks VTS for a token (scope §7).
+     * 8001). Only this ever asks VTS for a token.
      */
     async 'vts.connect'(args) {
       const port = args.port;
@@ -405,7 +405,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
      * Settings' Link, or `deckhand twitch link`: ask Twitch for a code.
      * Replies at once — `started` false when a link is already in progress;
      * the code to show, and how it goes, come as "twitch" events. Polling
-     * Twitch runs only while linking (scope §7, call 4), so **it is
+     * Twitch runs only while linking, so **it is
      * cancelled when this connection closes**: an editor that quits or a CLI
      * that is stopped leaves nothing asking.
      */

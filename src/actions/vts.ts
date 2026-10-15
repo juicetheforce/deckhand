@@ -4,7 +4,7 @@ import { VtsError } from '../services/vts-client.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 /**
- * VTube Studio keys (scope §7, "Streaming integrations"), through
+ * VTube Studio keys, through
  * services/vts.ts. Faces read its cached state, kept current by VTS's own
  * events; a press asks VTS afresh.
  */
@@ -23,14 +23,14 @@ const CHOOSE_AGAIN = 'deleted in VTube Studio? Choose it again in the editor';
  *   { "type": "vts.hotkey", "model": "<model ID>", "hotkey": "<hotkey ID>",
  *     "modelName": "Akari", "hotkeyName": "Heart Eyes" }
  *
- * **By ID, never by name** (scope §7): VTS's hotkeys belong to a model, a
+ * **By ID, never by name**: VTS's hotkeys belong to a model, a
  * name can repeat or be empty, and a model's name is not even spelt the same
  * by every VTS request. The names are kept only to show, and to say what is
  * missing. While another model is loaded the key draws its unavailable face
  * (dashed, no badge), from VTS's ModelLoadedEvent; a press then is marked,
  * and never falls back to a hotkey of the same name in the model loaded.
- * VTS's answer means the hotkey ran (its event comes first, VTS session 1),
- * so a press needs nothing more to confirm it.
+ * VTS's answer means the hotkey ran (its event comes first, measured
+ * against VTube Studio 1.35.10), so a press needs nothing more to confirm it.
  */
 export const hotkey: ActionHandler = {
   redraw: 'events',
@@ -72,7 +72,8 @@ export const hotkey: ActionHandler = {
  *   { "type": "vts.model", "model": "<model ID>", "modelName": "Akari" }
  *
  * Lit only by VTS's ModelLoadedEvent, never by the press: VTS answers a load
- * at once and finishes it ~1–2 s later (VTS session 2), so a press waits for
+ * at once and finishes it ~1–2 s later (measured against VTube Studio
+ * 1.35.10), so a press waits for
  * the event naming its model, and is marked if none comes. A press while its
  * model is already loaded does nothing — VTS would reload it, and the avatar
  * would drop out on stream. VTS loads one model every 2 seconds; a press
@@ -110,8 +111,7 @@ export const model: ActionHandler = {
  * only for the model loaded. Lit while VTS says it is on (services/vts.ts
  * keeps that, and on VTS's stable branch misses a change made without a
  * hotkey — by another plugin — until the next model load or expression
- * hotkey; scope §7). Built
- * around the model in use (scope §7): **while another model is loaded the
+ * hotkey). Built around the model in use: **while another model is loaded the
  * key keeps its normal face**, and a press is marked, saying so.
  */
 export const expression: ActionHandler = {

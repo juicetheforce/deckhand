@@ -448,7 +448,7 @@ check('a stale id does not confirm the review that is waiting; Cancel removes it
 });
 check('a hostile bundle: the autostart entry is listed as not restored, and never written', () => {
   assert.match(r.hostileReview, /1 file not restored:[\s\S]*~\/\.config\/autostart\/evil\.desktop \(not an image file Deckhand shows\)/);
-  // No icon count when none were written (Ryan's correction to 14o).
+  // No icon count when none were written.
   assert.match(r.hostileStatus, /^Imported\. Previous setup kept below\./);
   assert.equal(r.noAutostart, true);
 });

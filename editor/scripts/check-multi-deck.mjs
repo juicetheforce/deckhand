@@ -2,7 +2,7 @@
 // decks, an XL (8×4) and an Original V2 (5×3): SHOW IN EDITOR, a panel per
 // deck stacked in the Device list's order, click-to-focus, each deck's own
 // page, nothing done on one deck reaching the other but a key dragged there,
-// which is copied (scope §10, "Multi-deck editing"); and the canvas — Fit all and zoom, work at 50%, a
+// which is copied; and the canvas — Fit all and zoom, work at 50%, a
 // deck dragged and snapped, an overlap butted, positions remembered across a
 // hide and a reopen. The one-deck case is check:one-deck's.
 //
@@ -184,7 +184,7 @@ if (r && !r.error) {
   });
   check('its "Add a layout" button gives that deck a layout, drawn in its panel', () => assert.equal(r.layoutAdded, true));
 
-  // The canvas (session 2). canvas.ts: a key is 88 px and a pitch 98 px at
+  // The canvas. canvas.ts: a key is 88 px and a pitch 98 px at
   // 100%; a butted deck is a 16 px gutter away.
   const near = (actual, expected, tolerance, what) =>
     assert.ok(Math.abs(actual - expected) <= tolerance, `${what}: ${actual}, expected ${expected} ± ${tolerance}`);
