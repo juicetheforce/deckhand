@@ -70,6 +70,9 @@ console.log('the mapping');
     [{ type: 'media.control', method: 'stop' }, { playing: true }, 'stop'],
     [{ type: 'media.control', method: 'Pause' }, {}, 'pause'],
     [{ type: 'twitch.chat', message: 'hi' }, {}, 'twitch-chat'],
+    [{ type: 'twitch.marker' }, {}, 'twitch-marker'],
+    [{ type: 'twitch.clip' }, {}, 'twitch-clip'],
+    [{ type: 'twitch.streamInfo', title: 'x' }, {}, 'twitch-stream-info'],
     [{ type: 'no.such.action' }, {}, null],
   ];
   const wrong = rows.filter(([action, state, want]) => defaultIconFor(action, state) !== want);

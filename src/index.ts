@@ -485,7 +485,7 @@ async function main(): Promise<void> {
   });
   const stopTwitch = twitchService.subscribe(() => {
     if (twitchService.cachedState().link !== 'not-set-up') notSetUpTold.clear();
-    sessions.forEach((s) => s.invalidateByType(['twitch.chat']));
+    sessions.forEach((s) => s.invalidateByType(['twitch.chat', 'twitch.marker', 'twitch.clip', 'twitch.streamInfo']));
     events?.twitch();
   });
   // A saved link is validated now and hourly after (Twitch's rule): the one

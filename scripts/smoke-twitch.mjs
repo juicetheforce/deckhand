@@ -205,6 +205,18 @@ check("an earlier link's cancel cannot stop a later one", linking() === 'waiting
 cancelNew();
 check("its own does", linking() === 'cancelled');
 
+// --- Category search --------------------------------------------------------------
+
+const found = await twitch.searchCategories('fort');
+check("category search: Twitch's own, by ID with the name", found.ok && found.items.length === 1 && found.items[0].id === '33214' && found.items[0].name === 'Fortnite');
+check('…the query sent as typed, encoded', fake.searches.at(-1) === 'fort');
+const none = await twitch.searchCategories('nothing like this');
+check('no match: an empty list, not an error', none.ok && none.items.length === 0);
+fake.down = true;
+const downList = await twitch.searchCategories('fort');
+check('Twitch down: an answer saying so, not an error', downList.ok === false && downList.reason === 'unavailable');
+fake.down = false;
+
 // --- A new link, and Remove -------------------------------------------------------
 
 const oldLink = await credentials.twitchCredentials();
@@ -226,6 +238,8 @@ const revokesBefore = count('/oauth2/revoke');
 await twitch.remove();
 check('Remove: not set up, nothing saved', twitch.status().setUp === false && (await credentials.twitchCredentials()) === null);
 check('…and the link is ended at Twitch, by its refresh token', count('/oauth2/revoke') === revokesBefore + 1 && fake.requests.at(-1).body.token === newLink.refreshToken && fake.linksAlive() === 1);
+const notLinkedList = await twitch.searchCategories('fort');
+check('category search while not linked: an answer saying to link, and nothing sent', notLinkedList.ok === false && notLinkedList.reason === 'not-set-up' && fake.searches.length === 2);
 check('after Remove, a press is NotSetUp again', (await rejection(say('gone'))) instanceof NotSetUp);
 
 check('no poll in this run was sooner than Twitch asked: never answered slow_down', fake.slowDowns === 0);
@@ -261,6 +275,12 @@ await fs.writeFile(
                   0: { label: 'Hello', action: { type: 'twitch.chat', message: 'hello chat' } },
                   1: { label: 'Long', action: { type: 'twitch.chat', message: LONG } },
                   2: { label: 'Empty', action: { type: 'twitch.chat', message: '' } },
+                  3: { label: 'Mark', action: { type: 'twitch.marker', description: 'Boss fight' } },
+                  4: { label: 'Clip', action: { type: 'twitch.clip', title: 'What a save', duration: 20 } },
+                  5: { label: 'Clip plain', action: { type: 'twitch.clip' } },
+                  6: { label: 'Info', action: { type: 'twitch.streamInfo', title: 'Ranked grind', category: '33214', categoryName: 'Fortnite' } },
+                  7: { label: 'Title only', action: { type: 'twitch.streamInfo', title: 'Just a title' } },
+                  8: { label: 'Gone category', action: { type: 'twitch.streamInfo', category: '999', categoryName: 'Deleted game' } },
                 },
               },
             },
@@ -379,6 +399,36 @@ fake.approve();
 check('cli: approved — it says so and exits 0', (await linking1.done) === 0 && /Linked as fakestreamer/.test(linking1.stderr));
 await press(0);
 check('daemon: linked again, the key sends', await until(() => fake.chat.filter((c) => c.message === 'hello chat').length >= 3));
+
+// Marker, Clip, Stream info.
+const notes0 = notes.calls.length;
+await press(3);
+check('Marker while offline: marked and notified, saying to go live', await until(async () => /need a live stream/.test((await failedOn(3)) ?? '')) && (await until(() => notes.calls.length === notes0 + 1)));
+await press(4);
+check('Clip while offline: marked and notified, saying to go live', await until(async () => /Clips need a live stream/.test((await failedOn(4)) ?? '')) && (await until(() => notes.calls.length === notes0 + 2)));
+fake.live = true;
+await press(3);
+check('Marker while live: added with its description, and the mark cleared', await until(() => fake.markers.at(-1)?.description === 'Boss fight') && (await until(async () => (await failedOn(3)) === null)));
+fake.vodsOff = true;
+await press(3);
+check('Marker with "Store past broadcasts" off: marked, saying to turn it on', await until(async () => /Store past broadcasts/.test((await failedOn(3)) ?? '')));
+fake.vodsOff = false;
+await press(4);
+check('Clip while live: asked with its title and duration, as the linked account', await until(() => fake.clips.at(-1)?.title === 'What a save' && fake.clips.at(-1)?.duration === '20' && fake.clips.at(-1)?.broadcaster === '151766307'));
+check('…202 counts as done: the mark cleared, nothing notified', await until(async () => (await failedOn(4)) === null) && notes.calls.length === notes0 + 3);
+await press(5);
+check("Clip with nothing set: no title or duration sent — Twitch's defaults", await until(() => fake.clips.length === 2) && fake.clips.at(-1).title === null && fake.clips.at(-1).duration === null);
+fake.live = false;
+await press(6);
+check('Stream info: title and category set together, live or not', await until(() => fake.channel.title === 'Ranked grind' && fake.channel.gameId === '33214') && (await failedOn(6)) === null);
+await press(7);
+check('Stream info with only a title: the category left as it is', await until(() => fake.channel.title === 'Just a title') && fake.channel.gameId === '33214');
+await press(8);
+check("Stream info with a category Twitch no longer has: marked with Twitch's reason, nothing changed", await until(async () => /game_id is not valid/.test((await failedOn(8)) ?? '')) && fake.channel.gameId === '33214');
+const socketSearch = await ctl.request('twitch.categories', { query: 'league' });
+check('socket: twitch.categories answers from Twitch’s search', socketSearch.ok && socketSearch.result.ok && socketSearch.result.items[0]?.name === 'League of Legends');
+const emptySearch = await ctl.request('twitch.categories', { query: '   ' });
+check('socket: an empty search is refused, not sent', !emptySearch.ok && emptySearch.error?.code === 'bad_request');
 
 // `deckhand twitch link`, stopped with Ctrl+C: the daemon stops asking.
 const linking2 = cli(['twitch', 'link']);

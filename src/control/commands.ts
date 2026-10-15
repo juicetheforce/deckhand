@@ -415,6 +415,17 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       return { started: cancel !== null, ...twitchService.status() };
     },
 
+    /**
+     * The Stream info key's category picker: Twitch's categories matching
+     * `query`, asked of Twitch now, through the daemon's token. An empty
+     * query is refused here rather than sent.
+     */
+    async 'twitch.categories'(args) {
+      const query = typeof args.query === 'string' ? args.query.trim() : '';
+      if (query === '' || query.length > 100) throw new ControlError('bad_request', '"query" must be some text to search for, up to 100 characters');
+      return twitchService.searchCategories(query);
+    },
+
     /** Settings' Cancel: stop linking. The code just expires at Twitch; nothing is left behind there. */
     async 'twitch.cancel'() {
       twitchService.cancelLinking();

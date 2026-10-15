@@ -50,6 +50,9 @@ export const registry: Record<string, ActionHandler> = {
   'vts.model': vts.model,
   'vts.expression': vts.expression,
   'twitch.chat': twitch.chat,
+  'twitch.marker': twitch.marker,
+  'twitch.clip': twitch.clip,
+  'twitch.streamInfo': twitch.streamInfo,
 };
 
 /**

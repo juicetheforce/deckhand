@@ -1,6 +1,6 @@
 import { ActionNeeded, NotSetUp } from '../action-error.js';
 import { removeTwitchCredentials, setTwitchCredentials, twitchCredentials, type TwitchCredentials } from '../credentials.js';
-import type { TwitchLink, TwitchLinking, TwitchStatus } from '../control/protocol.js';
+import type { TwitchLink, TwitchLinking, TwitchList, TwitchStatus } from '../control/protocol.js';
 import * as client from './twitch-client.js';
 import { TwitchError } from './twitch-client.js';
 
@@ -196,14 +196,15 @@ async function refreshNow(stale: string | undefined): Promise<TwitchCredentials>
 /**
  * A Helix request for a key's press, as the linked account: refreshes first
  * if the access token has lapsed, and once more on a 401, then tries once
- * again. `scope`: what the request needs — a link that does not allow it is
- * asked to be made again. Rejects with a message fit for the key's badge.
+ * again. `need`: the scope the request needs — a link that does not allow
+ * it is asked to be made again; none for a request any token may make.
+ * Rejects with a message fit for the key's badge.
  */
-export async function request(method: 'GET' | 'POST' | 'PATCH', path: string, body: unknown, need: { scope: string; what: string }): Promise<Record<string, unknown>> {
+export async function request(method: 'GET' | 'POST' | 'PATCH', path: string, body: unknown, need?: { scope: string; what: string }): Promise<Record<string, unknown>> {
   const saved = await twitchCredentials();
   if (!saved) throw new NotSetUp(NOT_SET_UP_MESSAGE);
   if (state.link === 'refused') throw new ActionNeeded(REFUSED_MESSAGE);
-  if (!saved.scopes.includes(need.scope)) {
+  if (need && !saved.scopes.includes(need.scope)) {
     throw new ActionNeeded(`Twitch's link does not allow ${need.what}: link again in Deckhand's Settings › Integrations`);
   }
   let current = saved;
@@ -214,6 +215,30 @@ export async function request(method: 'GET' | 'POST' | 'PATCH', path: string, bo
     if (!(err instanceof TwitchError) || err.kind !== 'unauthorized') throw err;
     current = await refresh(current.accessToken);
     return client.helix(current.clientId, current.accessToken!, method, path, body);
+  }
+}
+
+/**
+ * The Stream info key's category picker: Twitch's own search, asked through
+ * the daemon, which holds the token — the editor never has one. Any token
+ * may search (no scope). Up to 20, in Twitch's order. Not linked, refused or
+ * unreachable is an answer, not an error, as OBS's and VTS's lists are.
+ */
+export async function searchCategories(query: string): Promise<TwitchList> {
+  if (state.link === 'not-set-up') return { ok: false, reason: 'not-set-up', message: 'Link a Twitch account to choose a category' };
+  if (state.link === 'refused') return { ok: false, reason: 'refused', message: REFUSED_MESSAGE };
+  try {
+    const answer = await request('GET', `/search/categories?first=20&query=${encodeURIComponent(query)}`, undefined);
+    const items = (Array.isArray(answer.data) ? answer.data : [])
+      .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
+      .map((c) => ({ id: typeof c.id === 'string' ? c.id : '', name: typeof c.name === 'string' ? c.name : '' }))
+      .filter((c) => c.id !== '' && c.name !== '');
+    return { ok: true, items };
+  } catch (err) {
+    if (err instanceof NotSetUp) return { ok: false, reason: 'not-set-up', message: 'Link a Twitch account to choose a category' };
+    if (err instanceof ActionNeeded) return { ok: false, reason: 'refused', message: err.message };
+    if (err instanceof TwitchError && err.kind === 'unavailable') return { ok: false, reason: 'unavailable', message: 'Twitch could not be reached' };
+    return { ok: false, reason: 'other', message: (err as Error).message };
   }
 }
 

@@ -246,6 +246,12 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     // One face each: nothing live from Twitch is shown (scope §7).
     case 'twitch.chat':
       return 'twitch-chat';
+    case 'twitch.marker':
+      return 'twitch-marker';
+    case 'twitch.clip':
+      return 'twitch-clip';
+    case 'twitch.streamInfo':
+      return 'twitch-stream-info';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

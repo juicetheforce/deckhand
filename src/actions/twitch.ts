@@ -59,3 +59,102 @@ export const chat: ActionHandler = {
 
   describe: async () => (notSetUp() ? UNSET : null),
 };
+
+/** Twitch's limit on a marker's description and a stream's title. */
+const MAX_DESCRIPTION = 140;
+const MAX_TITLE = 140;
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+
+/**
+ * twitch.marker — mark this moment in the live stream, to find it later in
+ * the VOD (Twitch's Highlighter, the Stream Manager).
+ *
+ *   { "type": "twitch.marker", "description": "Boss fight" }
+ *
+ * Only while live, and only with "Store past broadcasts" on: Twitch answers
+ * 404 for both, with a code inside the message for the first
+ * (BROADCASTER_NOT_LIVE, measured offline in Twitch session 1).
+ */
+export const marker: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const description = text(params.description).trim();
+    if ([...description].length > MAX_DESCRIPTION) throw new ActionNeeded(`Twitch takes marker descriptions of up to ${MAX_DESCRIPTION} characters: shorten this one in the editor`);
+    try {
+      const id = await twitch.userId();
+      await twitch.request('POST', '/streams/markers', { user_id: id, ...(description ? { description } : {}) }, { scope: 'channel:manage:broadcast', what: 'markers' });
+    } catch (err) {
+      if (err instanceof TwitchError && err.status === 404) {
+        if (err.code === 'BROADCASTER_NOT_LIVE') throw new ActionNeeded('Markers need a live stream: go live on Twitch first');
+        // Not live is coded; this is the other 404 Twitch documents — `[inference]` until seen on a live stream.
+        throw new ActionNeeded(`Twitch did not add the marker (${err.message}): markers need "Store past broadcasts" on, in Twitch's Creator Dashboard › Settings › Stream`);
+      }
+      throw explain(err);
+    }
+  },
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
+
+/**
+ * twitch.clip — clip the live stream: the last `duration` seconds (5–60,
+ * Twitch's default 30), with an optional title.
+ *
+ *   { "type": "twitch.clip", "title": "What a save", "duration": 30 }
+ *
+ * **Twitch's 202 means accepted, not made**: a clip is made in the
+ * background, and Twitch says to assume it failed if Get Clips has not
+ * returned it after 60 s. Deckhand does not follow it up — that would be a
+ * poll — so a clip that fails later goes unseen, and nothing is notified for
+ * one that works (scope §7, call 8).
+ */
+export const clip: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const title = text(params.title).trim();
+    const duration = typeof params.duration === 'number' ? params.duration : undefined;
+    if (duration !== undefined && !(duration >= 5 && duration <= 60)) throw new ActionNeeded('A clip is 5 to 60 seconds long: change it in the editor');
+    try {
+      const id = await twitch.userId();
+      const query = new URLSearchParams({ broadcaster_id: id });
+      if (title) query.set('title', title);
+      if (duration !== undefined) query.set('duration', String(Math.round(duration * 10) / 10));
+      await twitch.request('POST', `/clips?${query}`, undefined, { scope: 'clips:edit', what: 'clips' });
+    } catch (err) {
+      if (err instanceof TwitchError && err.status === 404) throw new ActionNeeded('Clips need a live stream: go live on Twitch first');
+      throw explain(err);
+    }
+  },
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};
+
+/**
+ * twitch.streamInfo — set the stream's title, its category, or both: what a
+ * streamer changes when they switch games. A field left out is left as it
+ * is on Twitch. Works live or not.
+ *
+ *   { "type": "twitch.streamInfo", "title": "Ranked grind", "category": "33214", "categoryName": "Fortnite" }
+ *
+ * The category is Twitch's ID, chosen in the editor from Twitch's own
+ * search, never typed; the name is kept only to show.
+ */
+export const streamInfo: ActionHandler = {
+  async execute(_ctx, params: ActionDef) {
+    const title = text(params.title).trim();
+    const category = text(params.category).trim();
+    if (!title && !category) throw new Error('no title or category chosen');
+    if ([...title].length > MAX_TITLE) throw new ActionNeeded(`Twitch takes titles of up to ${MAX_TITLE} characters: shorten this one in the editor`);
+    try {
+      const id = await twitch.userId();
+      await twitch.request(
+        'PATCH',
+        `/channels?broadcaster_id=${encodeURIComponent(id)}`,
+        { ...(title ? { title } : {}), ...(category ? { game_id: category } : {}) },
+        { scope: 'channel:manage:broadcast', what: 'changing the title or category' },
+      );
+    } catch (err) {
+      throw explain(err);
+    }
+  },
+
+  describe: async () => (notSetUp() ? UNSET : null),
+};

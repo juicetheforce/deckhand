@@ -17,6 +17,9 @@
  *   - offline, a marker and a clip are refused with Twitch's own strings;
  *   - an expired code: 400 "invalid device code".
  *
+ * Guessed, not seen: a marker's 404 with VODs off (Twitch's documented
+ * reason, as the message), and its answers to a category it does not know.
+ *
  *   const twitch = await startFakeTwitch({ interval: 1 });
  *   twitch.url; twitch.requests;            // every request: { method, path, body }
  *   twitch.approve();                       // the person approves the code waiting (the latest)
@@ -28,6 +31,10 @@
  *   twitch.dropChat = { code: 'msg_duplicate', message: '…' };   // the next messages are not sent
  *   twitch.chat;                            // messages sent: { broadcaster, sender, message }
  *   twitch.slowDowns;                       // polls answered slow_down: sooner than the interval
+ *   twitch.vodsOff = true;                  // "Store past broadcasts" off: markers 404 even live
+ *   twitch.markers; twitch.clips;           // made while live: { description } / { title, duration }
+ *   twitch.channel;                         // { title, gameId }, as PATCH /channels left it
+ *   twitch.searches;                        // every category search's query
  *   twitch.linksAlive();                    // how many links still have a working refresh token
  *   await twitch.stop();
  */
@@ -35,6 +42,14 @@ import { randomBytes } from 'node:crypto';
 import http from 'node:http';
 
 const USER = { id: '151766307', login: 'fakestreamer' };
+/** Categories the fake knows, by ID: what search finds, and what PATCH /channels accepts. */
+const CATEGORIES = [
+  { id: '509658', name: 'Just Chatting' },
+  { id: '33214', name: 'Fortnite' },
+  { id: '21779', name: 'League of Legends' },
+  { id: '1469308723', name: 'Software and Game Development' },
+  { id: '509670', name: 'Science & Technology' },
+];
 
 export async function startFakeTwitch({ interval = 1, expiresIn = 14000, clientId = 'wak2tnl8hoiznbfq5l8k2rvesfj1ea' } = {}) {
   /** Device codes: device_code → { userCode, scopes, interval, lastPoll, state: 'pending'|'approved'|'expired'|'used' }. */
@@ -49,6 +64,11 @@ export async function startFakeTwitch({ interval = 1, expiresIn = 14000, clientI
     requests: [],
     chat: [],
     slowDowns: 0,
+    vodsOff: false,
+    markers: [],
+    clips: [],
+    channel: { title: 'Old title', gameId: '509658' },
+    searches: [],
     live: false,
     down: false,
     refuseRefresh: false,
@@ -164,12 +184,34 @@ export async function startFakeTwitch({ interval = 1, expiresIn = 14000, clientI
         return reply(200, { data: [{ message_id: token(32), is_sent: true, drop_reason: null }] }, limits);
       }
       if (url.pathname === '/helix/streams/markers' && req.method === 'POST') {
+        if (!link.scopes.includes('channel:manage:broadcast')) return reply(401, { error: 'Unauthorized', status: 401, message: 'Missing scope: channel:manage:broadcast' });
         if (!twitch.live) return reply(404, { error: 'Not Found', status: 404, message: 'code:"BROADCASTER_NOT_LIVE" message:"Stream markers cannot be created when the channel is offline."' }, limits);
+        if (twitch.vodsOff) return reply(404, { error: 'Not Found', status: 404, message: "The user hasn't enabled video on demand (VOD)." }, limits);
+        twitch.markers.push({ description: body.description });
         return reply(200, { data: [{ id: token(8), created_at: new Date().toISOString(), description: body.description ?? '', position_seconds: 60 }] }, limits);
       }
       if (url.pathname === '/helix/clips' && req.method === 'POST') {
         if (!twitch.live) return reply(404, { error: 'Not Found', status: 404, message: 'Channel offline.' }, limits);
+        twitch.clips.push({ broadcaster: url.searchParams.get('broadcaster_id'), title: url.searchParams.get('title'), duration: url.searchParams.get('duration') });
         return reply(202, { data: [{ id: token(12), edit_url: 'https://clips.twitch.tv/x/edit' }] }, limits);
+      }
+      if (url.pathname === '/helix/channels' && req.method === 'PATCH') {
+        if (url.searchParams.get('broadcaster_id') !== USER.id) return reply(401, { error: 'Unauthorized', status: 401, message: 'The ID in broadcaster_id must match the user ID found in the OAuth token.' });
+        if (body.title === undefined && body.game_id === undefined) return reply(400, { error: 'Bad Request', status: 400, message: 'The request must update at least one property.' });
+        if (body.title !== undefined && (body.title === '' || [...body.title].length > 140)) return reply(400, { error: 'Bad Request', status: 400, message: 'The title field may not contain an empty string.' });
+        if (body.game_id !== undefined && !CATEGORIES.some((c) => c.id === body.game_id)) return reply(400, { error: 'Bad Request', status: 400, message: 'The ID in game_id is not valid.' });
+        if (body.title !== undefined) twitch.channel.title = body.title;
+        if (body.game_id !== undefined) twitch.channel.gameId = body.game_id;
+        res.writeHead(204, limits);
+        return res.end();
+      }
+      if (url.pathname === '/helix/search/categories' && req.method === 'GET') {
+        const query = (url.searchParams.get('query') ?? '').toLowerCase();
+        twitch.searches.push(query);
+        if (!query) return reply(400, { error: 'Bad Request', status: 400, message: 'The query query parameter is required.' });
+        const words = query.split(/\s+/).filter(Boolean);
+        const data = CATEGORIES.filter((c) => words.every((w) => c.name.toLowerCase().includes(w))).map((c) => ({ ...c, box_art_url: '' }));
+        return reply(200, { data, pagination: {} }, limits);
       }
       return reply(404, { error: 'Not Found', status: 404, message: 'fake Twitch has no such endpoint' });
     }

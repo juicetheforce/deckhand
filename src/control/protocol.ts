@@ -221,6 +221,15 @@ export interface TwitchStatus {
 }
 
 /**
+ * The "twitch.categories" result: Twitch's categories matching a search, by
+ * ID, with the name to show. Not linked or unreachable is an answer, not an
+ * error, as for OBS and VTube Studio.
+ */
+export type TwitchList =
+  | { ok: true; items: Array<{ id: string; name: string }> }
+  | { ok: false; reason: 'not-set-up' | 'refused' | 'unavailable' | 'other'; message: string };
+
+/**
  * The "vts.list" result: what a VTube Studio key's picker offers — models,
  * one model's hotkeys, or the loaded model's expressions (`not-loaded` for
  * another) — by ID (an expression's is its file), with the name to show. Not reachable is an
