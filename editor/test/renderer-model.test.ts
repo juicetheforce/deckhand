@@ -997,9 +997,9 @@ await check('Twitch: its keys need a linked account, gated only when the daemon 
   assert.equal(notSetUp(linked(true), 'twitch.chat'), false);
   // Not knowing — no daemon, or one from before Twitch — blocks nothing.
   assert.equal(notSetUp({} as DaemonView, 'twitch.chat'), false);
-  assert.match(notSetUpText(linked(false), 'twitch.chat') ?? '', /^Twitch is not set up\. Its keys do nothing until a Twitch account is linked\.$/);
-  // No Settings section for Twitch yet: no button may offer one.
-  assert.equal(settingsSectionOf('twitch.chat'), null);
+  assert.match(notSetUpText(linked(false), 'twitch.chat') ?? '', /^Twitch is not set up\. Its keys do nothing until an account is linked in Settings › Integrations\.$/);
+  // Its own Settings section, as OBS's and VTube Studio's.
+  assert.equal(settingsSectionOf('twitch.chat'), 'twitch');
   assert.equal(settingsSectionOf('vts.model'), 'vts');
 });
 

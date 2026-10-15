@@ -97,7 +97,7 @@ export interface ObsForm {
 export type ObsSaveResult = { ok: true; status: ObsStatus; attempt: ObsAttempt } | { ok: false; error: string };
 
 /** Where to open the settings window: its top, or one section. */
-export type SettingsSection = 'obs' | 'vts';
+export type SettingsSection = 'obs' | 'vts' | 'twitch';
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
@@ -352,6 +352,18 @@ export interface DeckhandBridge {
   vtsConnect(port?: number): Promise<{ ok: true; started: boolean; status: VtsStatus } | { ok: false; error: string }>;
   /** Remove VTube Studio's saved token; keys untouched (settings window only). */
   vtsRemove(): Promise<{ ok: true; status: VtsStatus } | { ok: false; error: string }>;
+  /** Twitch: whether it is linked, as whom, and where linking is (twitch.status) — never a token. Null with no daemon. */
+  twitchStatus(): Promise<TwitchStatus | null>;
+  /** Every change to it, the code to show while linking included. Returns an unsubscribe. */
+  onTwitchStatus(callback: (status: TwitchStatus | null) => void): () => void;
+  /** Link: ask Twitch for a code; the code and how it goes arrive by onTwitchStatus (settings window only). */
+  twitchLink(): Promise<{ ok: true; started: boolean; status: TwitchStatus } | { ok: false; error: string }>;
+  /** Cancel linking (settings window only). */
+  twitchCancel(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
+  /** Remove the link, and end it at Twitch (settings window only). */
+  twitchRemove(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
+  /** Open twitch.tv/activate with the code being shown filled in. The URL is the daemon's, checked in the main process (settings window only). */
+  twitchOpenActivate(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Close the settings window: its Done button (settings window only). */
   closeSettings(): Promise<void>;
   onAppSettings(callback: (settings: AppSettings) => void): () => void;

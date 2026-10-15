@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
-import type { ObsStatus, VtsStatus } from '../../../src/control/protocol.js';
+import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import type { AppSettings } from '../shared/settings.js';
 
 // Sandboxed preload: bundled to CommonJS by scripts/build-main.mjs, because a
@@ -76,6 +76,12 @@ const bridge: DeckhandBridge = {
   onVtsStatus: (callback) => subscribe<VtsStatus | null>('vtsStatus', callback),
   vtsConnect: (port) => ipcRenderer.invoke('vtsConnect', port),
   vtsRemove: () => ipcRenderer.invoke('vtsRemove'),
+  twitchStatus: () => ipcRenderer.invoke('twitchStatus'),
+  onTwitchStatus: (callback) => subscribe<TwitchStatus | null>('twitchStatus', callback),
+  twitchLink: () => ipcRenderer.invoke('twitchLink'),
+  twitchCancel: () => ipcRenderer.invoke('twitchCancel'),
+  twitchRemove: () => ipcRenderer.invoke('twitchRemove'),
+  twitchOpenActivate: () => ipcRenderer.invoke('twitchOpenActivate'),
   closeSettings: () => ipcRenderer.invoke('closeSettings'),
   onAppSettings: (callback) => subscribe<AppSettings>('appSettings', callback),
   windowControl: (action) => ipcRenderer.invoke('windowControl', action),

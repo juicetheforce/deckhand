@@ -44,13 +44,18 @@ export function editorVersion(file: string = path.resolve(import.meta.dirname, '
  * file instead, so a check can see what would have been.
  */
 export function openReleases(checkLog: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  return openInBrowser(RELEASES_URL, checkLog);
+}
+
+/** Open a URL the main process chose in the browser, as openReleases does — never one a page sends. */
+export function openInBrowser(url: string, checkLog: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
   if (checkLog !== null) {
-    appendFileSync(checkLog, `${RELEASES_URL}\n`);
+    appendFileSync(checkLog, `${url}\n`);
     return Promise.resolve({ ok: true });
   }
   return new Promise((resolve) => {
-    const child = spawn('gio', ['open', RELEASES_URL], { detached: true, stdio: 'ignore' });
-    child.once('error', (err) => resolve({ ok: false, error: `could not open the browser (${err.message}): ${RELEASES_URL}` }));
+    const child = spawn('gio', ['open', url], { detached: true, stdio: 'ignore' });
+    child.once('error', (err) => resolve({ ok: false, error: `could not open the browser (${err.message}): ${url}` }));
     child.once('spawn', () => {
       child.unref();
       resolve({ ok: true });

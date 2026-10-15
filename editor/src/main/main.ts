@@ -28,7 +28,7 @@ import { planImport, readImport, writePlannedIcons, type ImportPlan } from './im
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
 import { oneAtATime } from './one-at-a-time.js';
-import { editorVersion, openReleases } from './about.js';
+import { editorVersion, openInBrowser, openReleases } from './about.js';
 import { Launcher } from './launcher.js';
 import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
@@ -124,6 +124,7 @@ let storeError: string | null = null;
 /** The OBS status last sent to the settings window, so it is told only of a change. */
 let sentObs = '';
 let sentVts = '';
+let sentTwitch = '';
 
 const daemon = new DaemonClient({
   socketPath: socketPath(),
@@ -139,6 +140,11 @@ const daemon = new DaemonClient({
     if (vts !== sentVts) {
       sentVts = vts;
       settings?.webContents.send('vtsStatus', view.vts ?? null);
+    }
+    const twitch = JSON.stringify(view.twitch ?? null);
+    if (twitch !== sentTwitch) {
+      sentTwitch = twitch;
+      settings?.webContents.send('twitchStatus', view.twitch ?? null);
     }
   },
 });
@@ -444,6 +450,7 @@ function openSettings(section?: SettingsSection): void {
   reportWindowState(created);
   sentObs = JSON.stringify(daemon.view().obs ?? null);
   sentVts = JSON.stringify(daemon.view().vts ?? null);
+  sentTwitch = JSON.stringify(daemon.view().twitch ?? null);
   void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings', ...(section ? { section } : {}) } });
 }
 
@@ -722,7 +729,7 @@ function registerIpc(): void {
     if (fromSettingsWindow(event) && pendingImport?.id === id) pendingImport = null;
   });
   ipcMain.handle('openSettings', (event, section: unknown) => {
-    if (fromOurWindow(event)) openSettings(section === 'obs' || section === 'vts' ? section : undefined);
+    if (fromOurWindow(event)) openSettings(section === 'obs' || section === 'vts' || section === 'twitch' ? section : undefined);
   });
   // --- OBS, in Settings › Integrations. Never a secret back: the daemon reports only whether a password is set. ---
   ipcMain.handle('obsStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().obs ?? null) : null));
@@ -770,6 +777,30 @@ function registerIpc(): void {
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
+  });
+  ipcMain.handle('twitchStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().twitch ?? null) : null));
+  const twitchCall = async <T,>(event: Electron.IpcMainInvokeEvent, call: () => Promise<T>) => {
+    if (!fromSettingsWindow(event)) return { ok: false as const, error: 'not allowed' };
+    try {
+      return { ok: true as const, ...(await call()) };
+    } catch (err) {
+      return { ok: false as const, error: (err as Error).message };
+    }
+  };
+  ipcMain.handle('twitchLink', (event) =>
+    twitchCall(event, async () => {
+      const { started, ...status } = await daemon.twitchLink();
+      return { started, status };
+    }),
+  );
+  ipcMain.handle('twitchCancel', (event) => twitchCall(event, async () => ({ status: await daemon.twitchCancel() })));
+  ipcMain.handle('twitchRemove', (event) => twitchCall(event, async () => ({ status: await daemon.twitchRemove() })));
+  ipcMain.handle('twitchOpenActivate', (event) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    // The daemon's URL, never the page's, and only Twitch's activate page.
+    const url = daemon.view().twitch?.linking.verificationUri;
+    if (!url || !/^https:\/\/www\.twitch\.tv\/activate(\?|$)/.test(url)) return { ok: false, error: 'no Twitch code is waiting to be approved' };
+    return openInBrowser(url, CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
   });
   ipcMain.handle('closeSettings', (event) => {
     if (fromSettingsWindow(event)) settingsWindow?.close();

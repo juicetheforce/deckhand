@@ -58,7 +58,7 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
 export const INTEGRATIONS: Record<Integration, { name: string; notSetUp: string }> = {
   obs: { name: 'OBS', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
   vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
-  twitch: { name: 'Twitch', notSetUp: 'Its keys do nothing until a Twitch account is linked.' },
+  twitch: { name: 'Twitch', notSetUp: 'Its keys do nothing until an account is linked in Settings › Integrations.' },
 };
 
 /** What a not-set-up action says, whole: "OBS is not set up. Its keys do nothing until…". Null for a set-up one. */
@@ -68,15 +68,9 @@ export function notSetUpText(daemon: DaemonView, type: string | undefined): stri
   return `${INTEGRATIONS[integration].name} is not set up. ${INTEGRATIONS[integration].notSetUp}`;
 }
 
-/**
- * The Settings section where an action's integration is set up. Null for an
- * action of none — and for Twitch until its section is built (Twitch session
- * 2): linked meanwhile by `deckhand twitch link`, so no button offers a
- * Settings section that is not there.
- */
+/** The Settings section where an action's integration is set up: each has its own. Null for an action of none. */
 export function settingsSectionOf(type: string | undefined): SettingsSection | null {
-  const integration = integrationOf(type);
-  return integration === 'twitch' ? null : integration;
+  return integrationOf(type);
 }
 
 export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {

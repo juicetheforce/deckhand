@@ -128,6 +128,28 @@ export class DaemonClient {
     return (await this.request('vts.list', kind === 'models' ? { kind } : { kind, model })) as VtsList;
   }
 
+  /** Settings' Link: asks Twitch for a code; replies at once, and the code and how it goes arrive as "twitch" events. Cancelled if this connection closes. */
+  async twitchLink(): Promise<TwitchStatus & { started: boolean }> {
+    const reply = (await this.request('twitch.link')) as TwitchStatus & { started: boolean };
+    const { started: _started, ...status } = reply;
+    this.update({ twitch: status });
+    return reply;
+  }
+
+  /** Settings' Cancel: stop linking. */
+  async twitchCancel(): Promise<TwitchStatus> {
+    const status = (await this.request('twitch.cancel')) as TwitchStatus;
+    this.update({ twitch: status });
+    return status;
+  }
+
+  /** Settings' Remove: forget the link, and end it at Twitch. */
+  async twitchRemove(): Promise<TwitchStatus> {
+    const status = (await this.request('twitch.remove')) as TwitchStatus;
+    this.update({ twitch: status });
+    return status;
+  }
+
   /** Twitch's categories matching a search (twitch.categories), for the Stream info picker. */
   async twitchCategories(query: string): Promise<TwitchList> {
     return (await this.request('twitch.categories', { query })) as TwitchList;

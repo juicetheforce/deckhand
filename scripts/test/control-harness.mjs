@@ -34,6 +34,7 @@ export const server = await import(dist('control/server.js'));
 export const commands = await import(dist('control/commands.js'));
 const obsService = await import(dist('services/obs.js'));
 const vtsService = await import(dist('services/vts.js'));
+const twitchService = await import(dist('services/twitch.js'));
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -129,6 +130,8 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
   });
   // As src/index.ts: VTube Studio's status reaches subscribers as the "vts" event.
   const stopVts = vtsService.subscribe(() => events.vts());
+  // And Twitch's, as the "twitch" event.
+  const stopTwitch = twitchService.subscribe(() => events.twitch());
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
@@ -154,6 +157,7 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
     if (options.obsDemand) obsService.setWanted(false);
     stopObs();
     stopVts();
+    stopTwitch();
     await control.stop();
     for (const session of sessions.values()) await session.close();
   }

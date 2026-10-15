@@ -2811,6 +2811,20 @@ body.settings-body {
   cursor: pointer;
 }
 
+/* Twitch's linking code: large, to read across the room or type on a phone. */
+.twitch-code {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.twitch-code-value {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  user-select: all;
+}
+
 .obs-confirm {
   display: flex;
   flex-direction: column;
