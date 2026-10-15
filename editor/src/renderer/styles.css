@@ -2363,25 +2363,7 @@ button:disabled {
 .kept-list {
   list-style: none;
   margin: 0;
-  padding: 0 16px 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.kept-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.kept-list li.kept-empty {
-  border-style: dashed;
-  justify-content: center;
+  padding: 0;
 }
 
 .kept-what {
@@ -2393,23 +2375,28 @@ button:disabled {
 }
 
 .kept-title {
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef0fa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kept-when {
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .kept-sub {
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .kept-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.settings-button.danger {
-  color: var(--red);
-  border-color: var(--red);
 }
 
 /* Bulk operations: multi-select, the key menu, the status line */
@@ -2593,7 +2580,8 @@ button:disabled {
 
 /* The settings scroll under the bar, never with it (the window is not resizable, so only a very large font would need it). */
 .settings-body .window-body {
-  overflow: auto;
+  /* The page pane scrolls, never the window: the sidebar and footer stay put. */
+  overflow: hidden;
 }
 
 body.settings-body {
@@ -2607,89 +2595,28 @@ body.settings-body {
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 18px 20px 20px;
-}
-
-.settings-heading {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.settings-heading:not(:first-child) {
-  margin-top: 6px;
-}
-
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.settings-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.settings-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #eef0fa;
-}
-
-.settings-sub {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-/* The same as the toolbar's dropdowns (.crumb select), open list included:
-   without the option background the list is drawn in the system's grey. */
-.settings-select {
-  min-width: 170px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: 9px;
-  padding: 5px 8px;
-}
-
-.settings-select option {
-  background: #16172a;
-}
-
-.settings-check {
-  flex: none;
-  width: 19px;
-  height: 19px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
+  height: 100%;
 }
 
 .settings-swatches {
   display: flex;
-  gap: 9px;
+  gap: 8px;
+}
+
+.settings-swatches {
+  flex-shrink: 0;
 }
 
 .swatch {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border-radius: 9px;
-  border: 2px solid transparent;
+  border-radius: 7px;
+  border: none;
 }
 
 .swatch-selected {
-  border-color: #fff;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 2px #131628, 0 0 0 4px #fff;
 }
 
 .settings-export {
@@ -2699,149 +2626,10 @@ body.settings-body {
   flex: none;
 }
 
-.settings-inline-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-}
-
-/* The footer's secondary button, in a row. */
-.settings-button {
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #eef0fa;
-  font-size: 12px;
-}
-
-.settings-button:disabled {
-  opacity: 0.55;
-}
-
-.settings-status {
-  margin: -2px 4px 0;
-  font-size: 11px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.6);
-  overflow-wrap: anywhere;
-}
-
-.settings-status-warn {
-  color: #f0c77a;
-}
-
-.settings-status-error {
-  color: #f19a9a;
-}
-
-/* Settings › Integrations › OBS: a card holding a small form. */
-.obs-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  scroll-margin-top: 12px;
-}
-
-.obs-fields {
-  display: flex;
-  gap: 10px;
-}
-
-.obs-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1 1 0;
-  min-width: 0;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.obs-field-port {
-  flex: 0 0 80px;
-}
-
-.settings-input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: 9px;
-  padding: 5px 8px;
-  color: #eef0fa;
-  font-size: 12px;
-  min-width: 0;
-}
-
-.settings-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
-}
-
-.obs-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .settings-version {
   user-select: text;
   cursor: text;
   font-variant-numeric: tabular-nums;
-}
-
-/* In a settings row, centred like every other row's control. */
-.obs-link.about-link {
-  align-self: center;
-}
-
-.obs-link {
-  align-self: flex-start;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 11px;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-/* Twitch's linking code: large, to read across the room or type on a phone. */
-.twitch-code {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.twitch-code-value {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  user-select: all;
-}
-
-.obs-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-button-primary {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  font-weight: 600;
-}
-
-.settings-button-danger {
-  background: rgba(241, 154, 154, 0.14);
-  border-color: rgba(241, 154, 154, 0.45);
-  color: #f7c2c2;
-  font-weight: 600;
 }
 
 .import-review {
@@ -2895,7 +2683,9 @@ body.settings-body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
 }
 
 .settings-note {
@@ -2904,24 +2694,692 @@ body.settings-body {
   color: rgba(255, 255, 255, 0.35);
 }
 
-.settings-footer button {
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 12.5px;
+
+.settings-glyph {
+  color: var(--accent-glyph);
 }
 
-.settings-footer button.primary {
-  padding: 0 18px;
+/* --- The settings window (Claude Design, section 14) --------------------------- */
+
+.sp-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sp-nav {
+  width: 190px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.sp-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.sp-nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sp-nav-item-current,
+.sp-nav-item-current:hover {
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: #eef0fa;
+  font-weight: 600;
+}
+
+.sp-nav-name {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.sp-nav-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.36);
+  padding: 10px 10px 4px;
+}
+
+.sp-nav-gap {
+  height: 8px;
+}
+
+.sp-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.sp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.sp-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #eef0fa;
+}
+
+.sp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sp-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+  min-height: 16px;
+}
+
+.sp-group-heading {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.sp-spacer {
+  flex: 1;
+}
+
+.sp-card {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sp-row,
+.sp-kept {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+}
+
+.sp-kept {
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.sp-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-row-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef0fa;
+}
+
+.sp-row-detail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.sp-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 0 14px;
+}
+
+.sp-switch {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  flex-shrink: 0;
+}
+
+.sp-switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.sp-switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  transition: background 0.12s;
+}
+
+.sp-switch-track::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.12s;
+}
+
+.sp-switch input:checked + .sp-switch-track {
+  background: var(--accent);
+}
+
+.sp-switch input:checked + .sp-switch-track::after {
+  left: 17px;
+}
+
+.sp-switch input:disabled + .sp-switch-track {
+  opacity: 0.4;
+}
+
+.sp-switch input:focus-visible + .sp-switch-track {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.sp-select {
+  width: 170px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 12px;
+  color: #eef0fa;
+  flex-shrink: 0;
+}
+
+.sp-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #dfe2f2;
+  white-space: nowrap;
+}
+
+.sp-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sp-button {
+  height: 30px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #dfe2f2;
+}
+
+.sp-button:disabled {
+  opacity: 0.5;
+}
+
+.sp-button-primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
 }
 
-.settings-glyph {
-  color: var(--accent-glyph);
+.sp-button-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.sp-button-danger {
+  background: transparent;
+  border-color: rgba(232, 90, 110, 0.35);
+  color: #f2a0ac;
+}
+
+.sp-button-danger-solid {
+  background: rgba(232, 90, 110, 0.18);
+  border-color: rgba(232, 90, 110, 0.55);
+  color: #f7c2c2;
+  font-weight: 600;
+}
+
+.sp-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #8f9cf0;
+  white-space: nowrap;
+}
+
+.sp-link:hover {
+  text-decoration: underline;
+}
+
+.sp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.sp-dot-unset {
+  border: 1.5px solid #8a8fa8;
+}
+
+.sp-dot-waiting,
+.sp-dot-banner-info {
+  background: #8a8fa8;
+}
+
+.sp-dot-ok,
+.sp-dot-banner-ok {
+  background: #3fbf8f;
+}
+
+.sp-dot-failed,
+.sp-dot-banner-error {
+  background: #e0465c;
+}
+
+.sp-dot-banner-warn {
+  background: #e8b45a;
+}
+
+.sp-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 11.5px;
+}
+
+.sp-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sp-banner-ok {
+  background: rgba(63, 191, 143, 0.09);
+  border: 1px solid rgba(63, 191, 143, 0.25);
+  color: #a7e3c9;
+}
+
+.sp-banner-error {
+  background: rgba(224, 70, 92, 0.1);
+  border: 1px solid rgba(224, 70, 92, 0.35);
+  color: #f7c4cc;
+}
+
+.sp-banner-warn {
+  background: rgba(232, 180, 90, 0.09);
+  border: 1px solid rgba(232, 180, 90, 0.3);
+  color: #f0d7a6;
+}
+
+.sp-banner-info {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sp-info {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.3px solid rgba(255, 255, 255, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+  font-family: Georgia, serif;
+  cursor: help;
+}
+
+.sp-disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-disclosure-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.52);
+  align-self: flex-start;
+}
+
+.sp-disclosure-mark {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.36);
+  display: inline-block;
+}
+
+.sp-disclosure[data-open='true'] .sp-disclosure-mark {
+  transform: rotate(90deg);
+}
+
+.sp-disclosure-body {
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sp-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sp-tile-nav {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.sp-tile-nav img {
+  width: 11px;
+  height: 11px;
+}
+
+.sp-tile-page {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.sp-tile-page img {
+  width: 22px;
+  height: 22px;
+}
+
+.sp-tile-obs {
+  background: rgba(177, 138, 232, 0.13);
+  border: 1px solid rgba(177, 138, 232, 0.35);
+}
+
+.sp-tile-vts {
+  background: rgba(198, 224, 92, 0.13);
+  border: 1px solid rgba(198, 224, 92, 0.35);
+}
+
+.sp-tile-twitch {
+  background: rgba(245, 154, 102, 0.13);
+  border: 1px solid rgba(245, 154, 102, 0.35);
+}
+
+.sp-int-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sp-int-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sp-int-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.sp-int-status-failed {
+  color: #f2a0ac;
+}
+
+.sp-int-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sp-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: rgba(232, 180, 90, 0.07);
+  border: 1px solid rgba(232, 180, 90, 0.28);
+}
+
+.sp-confirm-text {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #f0d7a6;
+}
+
+.sp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 13px 14px;
+}
+
+.sp-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.sp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sp-field-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-field-port {
+  width: 78px;
+  flex-shrink: 0;
+}
+
+.sp-field-password {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.sp-field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.sp-input {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 12px;
+  color: #eef0fa;
+  min-width: 0;
+}
+
+.sp-input::placeholder {
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.sp-input:focus {
+  outline: none;
+  border-color: rgba(var(--accent-rgb), 0.6);
+}
+
+.sp-input-error,
+.sp-input-error:focus {
+  border-color: rgba(224, 70, 92, 0.7);
+}
+
+.sp-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 16px;
+  border-radius: 14px;
+  background: rgba(245, 154, 102, 0.06);
+  border: 1px solid rgba(245, 154, 102, 0.3);
+}
+
+.sp-code-value {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #fbe1cf;
+  font-family: ui-monospace, Menlo, monospace;
+  user-select: all;
+}
+
+.sp-code-wait {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.sp-code .sp-actions {
+  margin-top: 4px;
+}
+
+.sp-chips-box {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+}
+
+.sp-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sp-chip {
+  height: 24px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border-radius: 7px;
+  background: rgba(245, 154, 102, 0.06);
+  border: 1px solid rgba(245, 154, 102, 0.2);
+  font-size: 11px;
+  color: rgba(248, 199, 168, 0.75);
+  white-space: nowrap;
+}
+
+.sp-chip-on {
+  background: rgba(245, 154, 102, 0.12);
+  border-color: rgba(245, 154, 102, 0.3);
+  color: #f8c7a8;
+}
+
+.sp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 20px 14px;
+}
+
+.sp-empty-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sp-about {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+}
+
+.sp-about-icon {
+  flex-shrink: 0;
+}
+
+.sp-about-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-about-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #eef0fa;
+}
+
+.sp-about .settings-version {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
+  font-family: ui-monospace, Menlo, monospace;
 }

@@ -94,6 +94,7 @@ const daemon = await startDaemon(scratch, CONFIG);
 await daemon.attach(XL, new FakeDeck());
 const stopWatching = await reloadLikeTheDaemon(daemon);
 
+const openLog = path.join(scratch, 'opened.log');
 const env = {
   ...process.env,
   DECKHAND_EDITOR_CHECK: 'tray',
@@ -103,6 +104,8 @@ const env = {
   DECKHAND_BUILTIN_ICONS: path.join(repoRoot, 'assets', 'icons'),
   DECKHAND_CHECK_EXPORT_PATH: exportPath,
   DECKHAND_CHECK_IMPORT_PATH: importPath,
+  // Open folder and Show file write what they would open here, and open nothing.
+  DECKHAND_CHECK_OPEN_LOG: openLog,
 };
 delete env.ELECTRON_RUN_AS_NODE;
 
@@ -136,6 +139,9 @@ await until(async () => (await inPage(editor, 'editor', "document.querySelector(
 
 await inPage(editor, 'editor', "document.querySelector('.toolbar-settings').click(), true");
 await until(async () => (await stateOf(editor)).settingsOpen);
+// Export, import and the kept configurations are the Backups page.
+await until(async () => (await inPage(editor, 'settings', "document.querySelector('[data-settings-nav=backups]') !== null")) === true);
+await inPage(editor, 'settings', "document.querySelector('[data-settings-nav=backups]').click(), true");
 await until(async () => (await inPage(editor, 'settings', "document.querySelector('.settings-export') !== null")) === true);
 r.iconsTickedByDefault = await inPage(editor, 'settings', "document.querySelector('.settings-export input[type=checkbox]').checked");
 
@@ -186,7 +192,7 @@ r.afterFailure = await fs.readdir(outDir);
 // --- Import ---
 const exists = (p) => fs.access(p).then(() => true, () => false);
 const reviewText = "document.querySelector('.import-review')?.innerText ?? null";
-const importStatus = "document.querySelector('[data-status=import]')?.textContent ?? null";
+const importStatus = "document.querySelector('[data-status=import] .sp-banner-text')?.textContent ?? null";
 /** Click Import… and wait for the review, or for a new status line if the file is refused. */
 async function chooseNow() {
   const before = await inPage(editor, 'settings', importStatus);
@@ -227,6 +233,19 @@ r.nothingWrittenAtReview = {
   configUnchanged: (await fs.readFile(configFile, 'utf8')).includes('AFTER-EXPORT'),
 };
 r.importStatus = await confirmNow();
+// Show file: the kept copy of what the import replaced, shown in the file manager — named by the page, resolved by main.
+r.showFile = await inPage(editor, 'settings', "document.querySelector('[data-status=import] [data-backup=show-file]') !== null");
+if (r.showFile) await inPage(editor, 'settings', "document.querySelector('[data-backup=show-file]').click(), true");
+await until(async () => /show /.test(await fs.readFile(openLog, 'utf8').catch(() => '')));
+r.shownFile = (await fs.readFile(openLog, 'utf8').catch(() => '')).trim();
+r.showOutsideRefused = await inPage(editor, 'settings', "window.deckhand.showKeptFile('../../.bashrc').then((x) => x.ok)");
+r.editorShowRefused = await inPage(editor, 'editor', "window.deckhand.showKeptFile('x').then((x) => x.ok)");
+await fs.writeFile(openLog, '');
+// Open folder: the kept configurations' folder, its path the link's tooltip.
+r.openFolderTitle = await inPage(editor, 'settings', "document.querySelector('[data-backup=open-folder]')?.title ?? null");
+await inPage(editor, 'settings', "document.querySelector('[data-backup=open-folder]').click(), true");
+await until(async () => (await fs.readFile(openLog, 'utf8').catch(() => '')).length > 0);
+r.openedFolder = (await fs.readFile(openLog, 'utf8').catch(() => '')).trim();
 {
   const text = await fs.readFile(configFile, 'utf8');
   const backups = (await fs.readdir(path.join(stateDir, 'backups')).catch(() => [])).filter((n) => n.startsWith('before-import-'));
@@ -409,8 +428,19 @@ check('import review, before anything is written: where the outside-home icon wi
   assert.deepEqual(r.nothingWrittenAtReview, { dove: false, far: false, configUnchanged: true });
 });
 check('import confirmed: icons restored byte for byte, the outside one in the restored folder, nothing outside home, config replaced, the old one kept', () => {
-  assert.match(r.importStatus, /^Imported\. 3 icon files written\. Your previous configuration is kept at .*before-import-/);
+  assert.equal(r.importStatus, 'Imported · 3 icons written. Previous setup kept below.');
   assert.deepEqual(r.afterImport, { dove: true, mic: true, far: true, nothingOutsideHome: true, labelGone: true, pointsAtRestored: true, backups: 1, backupHoldsReplaced: true });
+});
+check('after an import, Show file shows the kept copy of what it replaced; a name outside the kept folder, or from the editor window, is refused', () => {
+  assert.equal(r.showFile, true);
+  assert.match(r.shownFile, new RegExp(`^show ${stateDir}/backups/before-import-[^/]+\\.json$`));
+  assert.equal(r.showOutsideRefused, false);
+  assert.equal(r.editorShowRefused, false);
+});
+check("Open folder opens the kept configurations' folder, its path the tooltip", () => {
+  assert.equal(r.openedFolder, `${stateDir}/backups`);
+  // As main shows paths: ~/ for one under home; the check's is in /tmp.
+  assert.match(r.openFolderTitle ?? '', /\/backups$/);
 });
 check('a stale id does not confirm the review that is waiting; Cancel removes it and changes nothing', () => {
   const refused = { ok: false, error: 'this import is no longer waiting; choose the file again' };
@@ -418,12 +448,13 @@ check('a stale id does not confirm the review that is waiting; Cancel removes it
 });
 check('a hostile bundle: the autostart entry is listed as not restored, and never written', () => {
   assert.match(r.hostileReview, /1 file not restored:[\s\S]*~\/\.config\/autostart\/evil\.desktop \(not an image file Deckhand shows\)/);
-  assert.match(r.hostileStatus, /^Imported\. 0 icon files written\./);
+  // No icon count when none were written (Ryan's correction to 14o).
+  assert.match(r.hostileStatus, /^Imported\. Previous setup kept below\./);
   assert.equal(r.noAutostart, true);
 });
 check('a bare .json: the review says config only, paths as written; confirmed, it is the config', () => {
   assert.match(r.bareReview, /configuration file, not a Deckhand export: a config-only restore/);
-  assert.match(r.bareStatus, /^Imported\. 0 icon files written\./);
+  assert.match(r.bareStatus, /^Imported\. Previous setup kept below\./);
   assert.equal(r.bareOnDisk, true);
 });
 check('a file that is neither is refused with why, and no review', () => {
@@ -435,7 +466,7 @@ check('the editor window cannot start an import', () => assert.deepEqual(r.edito
 check('the kept configurations are listed with what is in them, not just a time', () => {
   assert.ok(r.keptRows.length >= 2, `expected several kept configurations, got ${JSON.stringify(r.keptRows)}`);
   assert.ok(
-    r.keptRows.every((row) => /Before (an import|deleting a profile) · /.test(row.title)),
+    r.keptRows.every((row) => /^Before (import|deleting a profile) · /.test(row.title)),
     `titles do not say what kept them: ${JSON.stringify(r.keptRows.map((x) => x.title))}`,
   );
   assert.ok(

@@ -100,6 +100,8 @@ const setSelect = (value) =>
 const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
 const clickButton = (text) =>
   `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) throw new Error('no button ' + ${JSON.stringify(text)}); b.click(); return true; })()`;
+/** Show one page of the settings window, by its sidebar entry. */
+const nav = (editor, page) => inPage(editor, 'settings', clickIn(`[data-settings-nav=${page}]`)).then(() => sleep(100));
 async function openSettings(editor) {
   await clickGear(editor);
   await until(async () => (await stateOf(editor)).settingsOpen);
@@ -118,24 +120,54 @@ await openSettings(editor);
 await clickGear(editor);
 await sleep(300);
 r.windowsWithSettings = (await stateOf(editor)).windows;
+// It opens on General; the pages are the sidebar's.
+r.layout = await inPage(
+  editor,
+  'settings',
+  `({
+    page: document.querySelector('.settings').dataset.settingsPage,
+    nav: [...document.querySelectorAll('[data-settings-nav]')].map((b) => b.textContent.trim()),
+    heading: document.querySelector('.sp-nav-heading')?.textContent ?? null,
+    note: document.querySelector('.settings-note').textContent,
+  })`,
+);
 r.shown = await inPage(
   editor,
   'settings',
   `({
-    deckOptions: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent),
-    deckValue: document.querySelector('#settings-default-deck').value,
     closeToTray: document.querySelector('#settings-close-to-tray').checked,
-    subtitle: document.querySelector('#settings-close-to-tray').closest('.settings-row').querySelector('.settings-sub').textContent,
+    subtitle: document.querySelector('#settings-close-to-tray').closest('.sp-row').querySelector('.sp-row-detail').textContent,
     accentChecked: document.querySelector('[role=radio][aria-checked=true]').dataset.accentSwatch,
     title: document.title,
   })`,
 );
+await nav(editor, 'decks');
+Object.assign(
+  r.shown,
+  await inPage(
+    editor,
+    'settings',
+    `({
+      deckOptions: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent),
+      deckValue: document.querySelector('#settings-default-deck').value,
+      decksNote: document.querySelector('.settings-note').textContent,
+    })`,
+  ),
+);
+// The pages whose changes do not save by themselves do not say they do: OBS has its own Save.
+r.notes = {};
+for (const page of ['obs', 'vts', 'twitch', 'backups', 'about']) {
+  await nav(editor, page);
+  r.notes[page] = await inPage(editor, 'settings', "document.querySelector('.settings-note').textContent");
+}
 
 // ABOUT: the version, selectable; the releases link opens only the releases page.
+await nav(editor, 'about');
 r.about = await inPage(
   editor,
   'settings',
-  `(() => { const v = document.querySelector('.settings-version'); return { text: v.textContent, select: getComputedStyle(v).userSelect }; })()`,
+  `(() => { const v = document.querySelector('.settings-version'); const icon = document.querySelector('.sp-about-icon');
+    return { text: v.textContent, select: getComputedStyle(v).userSelect, icon: icon?.getAttribute('src') ?? null, iconLoaded: icon ? icon.complete && icon.naturalWidth > 0 : false }; })()`,
 );
 r.editorOpenRefused = await inPage(editor, 'editor', 'window.deckhand.openReleases()');
 await inPage(editor, 'settings', clickIn('[data-about=releases]'));
@@ -148,8 +180,10 @@ r.opened = await fs.readFile(openLog, 'utf8').catch(() => '');
 r.editorRefused = await inPage(editor, 'editor', "window.deckhand.setAppSettings({ accent: 'teal' }).then(() => window.deckhand.appSettings()).then((s) => s.accent)");
 
 // Default deck → the XL; purple accent — each saved at once, the accent live in the editor.
+await nav(editor, 'decks');
 await inPage(editor, 'settings', setSelect(XL));
 r.deckSaved = await until(async () => (await prefs()).defaultDeck === XL);
+await nav(editor, 'general');
 await inPage(editor, 'settings', clickIn('[data-accent-swatch=purple]'));
 r.accentSaved = await until(async () => (await prefs()).accent === 'purple');
 r.accentLiveInEditor = await until(async () => (await editorAccent(editor)) === 'purple');
@@ -176,6 +210,7 @@ daemon.sessions.delete(XL);
 daemon.events.state();
 r.unpluggedMovesToV2 = await until(async () => (await openDeck(editor)) === V2);
 await openSettings(editor);
+await nav(editor, 'decks');
 r.unpluggedShown = await inPage(
   editor,
   'settings',
@@ -205,14 +240,17 @@ r.notificationsOffSaved = await until(async () => (await configJson()).notificat
 r.notificationsNotInPrefs = !('notifications' in (await prefs()));
 
 // Reset to defaults: all three back, the accent gone from the editor, notifications on again.
-await inPage(editor, 'settings', clickButton('Reset to defaults'));
+await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
 });
 r.accentAfterReset = await until(async () => (await editorAccent(editor)) === 'blue');
-r.resetShown = await inPage(editor, 'settings', "[document.querySelector('#settings-default-deck').value, document.querySelector('#settings-close-to-tray').checked]");
+r.resetShown = [
+  await nav(editor, 'decks').then(() => inPage(editor, 'settings', "document.querySelector('#settings-default-deck').value")),
+  await nav(editor, 'general').then(() => inPage(editor, 'settings', "document.querySelector('#settings-close-to-tray').checked")),
+];
 
 // Done closes the settings window and leaves the editor open.
 await inPage(editor, 'settings', clickButton('Done'));
@@ -232,6 +270,16 @@ if (editor.exited === null) editor.child.kill();
 
 check('Automatic opens on the first connected deck with a layout (the V2, first in config)', () => assert.equal(r.automaticOpensOn, V2));
 check('the gear opens one settings window; a second click brings it forward rather than opening another', () => assert.equal(r.windowsWithSettings, 2));
+check('it opens on General, with the sidebar: General, Decks, INTEGRATIONS (OBS Studio, VTube Studio, Twitch), Backups, About', () => {
+  assert.equal(r.layout.page, 'general');
+  assert.deepEqual(r.layout.nav, ['General', 'Decks', 'OBS Studio', 'VTube Studio', 'Twitch', 'Backups', 'About']);
+  assert.equal(r.layout.heading, 'INTEGRATIONS');
+});
+check('"Changes save automatically" only where it is true: General and Decks, not OBS (its own Save) or the other pages', () => {
+  assert.equal(r.layout.note, 'Changes save automatically');
+  assert.equal(r.shown.decksNote, 'Changes save automatically');
+  assert.deepEqual(r.notes, { obs: '', vts: '', twitch: '', backups: '', about: '' });
+});
 check('the settings window shows every deck by name, Automatic, close-to-tray on, blue, and the corrected subtitle', () => {
   assert.deepEqual(r.shown.deckOptions, ['Automatic', 'Deck V2', 'Deck XL']);
   assert.equal(r.shown.deckValue, '');
@@ -242,9 +290,11 @@ check('the settings window shows every deck by name, Automatic, close-to-tray on
   assert.equal(r.shown.title, 'Deckhand Settings');
 });
 check('the editor window cannot change settings through the bridge', () => assert.notEqual(r.editorRefused, 'teal'));
-check('ABOUT shows the installed version, selectable to copy', () => {
+check("About shows the installed version, selectable to copy, beside Deckhand's own icon", () => {
   assert.equal(r.about.text, 'v9.8.7-check');
   assert.equal(r.about.select, 'text');
+  assert.match(r.about.icon ?? '', /deckhand/);
+  assert.equal(r.about.iconLoaded, true);
 });
 check('the releases link opens the GitHub releases page, once, and only from the settings window', () => {
   assert.equal(r.opened, 'https://github.com/juicetheforce/deckhand/releases\n');

@@ -108,7 +108,7 @@ const section = (editor) =>
       port: s.querySelector('[data-obs-field=port]')?.value ?? null,
       password: s.querySelector('[data-obs-field=password]')?.value ?? null,
       placeholder: s.querySelector('[data-obs-field=password]')?.placeholder ?? null,
-      afterFields: s.querySelector('.obs-fields')?.nextElementSibling?.textContent ?? null,
+      strongHint: s.querySelector('[data-obs-hint=strong-password]')?.getAttribute('title') ?? null,
       confirm: s.querySelector('[data-obs-confirm]')?.textContent ?? null,
       removable: s.querySelector('[data-obs=remove]') !== null,
       busy: s.querySelector('[data-obs=save]')?.disabled ?? null,
@@ -207,7 +207,7 @@ r.opened = await section(editor);
 r.deepLink = await inPage(
   editor,
   'settings',
-  `(() => { const s = document.querySelector('#settings-obs').getBoundingClientRect(); return { inView: s.top >= 0 && s.top < window.innerHeight, focused: document.activeElement?.dataset.obsField ?? null, headings: [...document.querySelectorAll('.settings-heading')].map((h) => h.textContent) }; })()`,
+  `(() => { const s = document.querySelector('#settings-obs').getBoundingClientRect(); return { inView: s.top >= 0 && s.top < window.innerHeight, focused: document.activeElement?.dataset.obsField ?? null, headings: [...document.querySelectorAll('.sp-nav-heading')].map((h) => h.textContent), page: document.querySelector('.settings').dataset.settingsPage }; })()`,
 );
 
 // Test connection: says which thing is wrong, and saves nothing. Never on the
@@ -375,23 +375,24 @@ check('OBS closed: "Start OBS to choose", the saved scene still shown, nothing e
 });
 check('the editor opens Settings at the OBS section, under INTEGRATIONS, in view, the host focused', () => {
   assert.ok(r.deepLink.headings.includes('INTEGRATIONS'), JSON.stringify(r.deepLink.headings));
+  assert.equal(r.deepLink.page, 'obs', 'the OBS page is the one shown');
   assert.equal(r.deepLink.inView, true);
   assert.equal(r.deepLink.focused, 'host');
 });
 check('with nothing saved: not set up, on the defaults, no password saved', () => {
   assert.equal(r.opened.state, 'not-set-up');
   assert.match(r.opened.statusText, /Not set up/);
-  assert.deepEqual([r.opened.host, r.opened.port, r.opened.placeholder], ['127.0.0.1', '4455', 'None saved']);
+  assert.deepEqual([r.opened.host, r.opened.port, r.opened.placeholder], ['127.0.0.1', '4455', 'From Show Connect Info']);
   assert.equal(r.opened.removable, false, 'nothing to remove');
 });
-check('the password field is followed by the strong-password advice', () =>
-  assert.match(r.opened.afterFields ?? '', /strong password.*listens on your whole network/),
+check("the password field's ⓘ carries the strong-password advice", () =>
+  assert.equal(r.opened.strongHint, 'OBS accepts connections from your whole network. Use a strong password.'),
 );
 check(`Test, nothing on the port: ${realObs ? 'a real OBS runs here, so its server is off' : 'OBS is not running'}`, () =>
   assert.match(r.testNoPassword, realObs ? /WebSocket server is off/ : /OBS is not running/),
 );
 check('Test, no password where OBS asks for one: says so, and where to find it', () => assert.match(r.testNoPasswordRightPort, /asks for a password.*Show Connect Info/));
-check('Test, a wrong password: says so', () => assert.match(r.testWrong, /refused the password/));
+check('Test, a wrong password: says so', () => assert.equal(r.testWrong, 'OBS rejected the password.'));
 check('Test, the right values: connected, naming OBS — and nothing saved', () => {
   assert.match(r.testRight, /Connected to OBS 32\.1\.1-fake/);
   assert.equal(r.afterTest.section.state, 'not-set-up');

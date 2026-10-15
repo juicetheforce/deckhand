@@ -3,7 +3,7 @@ import { promises as fs, appendFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import readline from 'node:readline';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, net, shell, type IpcMainInvokeEvent } from 'electron';
 // The daemon's own modules, imported rather than copied. Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
 import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
@@ -416,10 +416,10 @@ function openSettings(section?: SettingsSection): void {
     // So clicking into the editor closes it instead (closeSettingsOnFocus).
     parent: window,
     // Frameless, so the content is the window: a 32 px title bar
-    // (TitleBar.tsx), the settings and the Backup section (export and import,
-    // with room for two lines of result). An import's review is longer; the
-    // window scrolls.
-    width: 640,
+    // (TitleBar.tsx), then the sidebar, the page and the footer (Claude
+    // Design, section 14: 780 × 540). A long page — an import's review —
+    // scrolls inside the page; the sidebar and footer stay.
+    width: SETTINGS_WIDTH,
     height: SETTINGS_HEIGHT,
     resizable: false,
     minimizable: false,
@@ -480,8 +480,9 @@ function closeSettingsOnFocus(): void {
   closing.close();
 }
 
-/** The settings window's height (openSettings). */
-const SETTINGS_HEIGHT = 780;
+/** The settings window's size (openSettings). */
+const SETTINGS_WIDTH = 780;
+const SETTINGS_HEIGHT = 540;
 
 /** The home directory as `~`, for showing a path. */
 function tildePath(file: string): string {
@@ -720,6 +721,28 @@ function registerIpc(): void {
     } catch (err) {
       return { ok: false, error: (err as Error).message };
     }
+  });
+  // Settings › Backups' Open folder and Show file: the kept folder, and one
+  // kept file in it, named by the page and resolved here — never a path the
+  // page sends. A check opens nothing, as About's link (about.ts).
+  const checkOpenLog = () => (CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
+  ipcMain.handle('openKeptFolder', async (event): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    await fs.mkdir(BACKUP_DIR, { recursive: true }).catch(() => undefined);
+    return openInBrowser(BACKUP_DIR, checkOpenLog());
+  });
+  ipcMain.handle('showKeptFile', (event, file: unknown): { ok: true } | { ok: false; error: string } => {
+    if (!fromSettingsWindow(event) || typeof file !== 'string') return { ok: false, error: 'not allowed' };
+    let full: string;
+    try {
+      full = keptConfigPath(BACKUP_DIR, path.basename(file));
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+    const log = checkOpenLog();
+    if (log !== null) appendFileSync(log, `show ${full}\n`);
+    else shell.showItemInFolder(full);
+    return { ok: true };
   });
   ipcMain.handle('chooseImport', async (event): Promise<ImportChoice> => (fromSettingsWindow(event) ? chooseImport() : { ok: false, error: 'not allowed' }));
   ipcMain.handle('confirmImport', async (event, id: unknown): Promise<ImportResult> =>
@@ -1059,7 +1082,7 @@ function createWindow(): void {
   // Screenshots only: render the settings window's page in this window, at its size.
   const settingsShot = CHECK === 'screenshot' && process.env.DECKHAND_EDITOR_VIEW === 'settings';
   window = new BrowserWindow({
-    width: settingsShot ? 640 : 1400,
+    width: settingsShot ? SETTINGS_WIDTH : 1400,
     height: settingsShot ? SETTINGS_HEIGHT : 900,
     show: CHECK === null,
     /*

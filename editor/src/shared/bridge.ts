@@ -362,6 +362,10 @@ export interface DeckhandBridge {
   twitchCancel(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
   /** Remove the link, and end it at Twitch (settings window only). */
   twitchRemove(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
+  /** Open the kept backups' folder in the file manager (settings window only). */
+  openKeptFolder(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Show one kept backup, by its file name, in the file manager (settings window only). */
+  showKeptFile(file: string): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Open twitch.tv/activate with the code being shown filled in. The URL is the daemon's, checked in the main process (settings window only). */
   twitchOpenActivate(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Close the settings window: its Done button (settings window only). */

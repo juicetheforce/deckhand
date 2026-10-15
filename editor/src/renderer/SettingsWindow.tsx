@@ -1,30 +1,64 @@
 import { useEffect, useState } from 'react';
+import logoUrl from '../../../assets/logo/deckhand.svg';
+import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
+import type { SettingsSection } from '../shared/bridge.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
+import { importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
 import { ObsSettings } from './ObsSettings.js';
+import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, StatusDot, Switch } from './settings-ui.js';
 import { TwitchSettings } from './TwitchSettings.js';
 import { VtsSettings } from './VtsSettings.js';
 
 /**
- * The settings window: DEVICES, BEHAVIOR, INTEGRATIONS (OBS, VTube Studio, Twitch;
- * Twitch later), APPEARANCE, BACKUP (export and import of the whole
- * configuration) and ABOUT (the version), one card per setting, and a footer.
+ * The settings window (Claude Design, section 14): a sidebar of pages —
+ * General, Decks, the integrations (OBS Studio, VTube Studio, Twitch, each
+ * with a status dot), Backups and About — one page at a time, and a footer.
  * Every change is saved at once and reaches the editor behind it at once,
- * except an import, which waits for its review to be confirmed — so Done only
- * closes the window.
+ * except OBS's connection (its own Save), VTube Studio's port (saved by
+ * Connect) and an import, which waits for its review — so the footer says
+ * "Changes save automatically" only on the pages where that is true, and
+ * Done only closes the window.
  *
  * It runs in its own window, a child of the editor's, frameless, under its
- * own title bar with a close button only (main.tsx, TitleBar.tsx).
+ * own title bar with a close button only (main.tsx, TitleBar.tsx). Opened at
+ * an integration (a not-set-up key's Set up), it shows that page.
  */
+
+type Page = 'general' | 'decks' | SettingsSection | 'backups' | 'about';
+
+const PAGES: ReadonlyArray<{ page: Page; name: string }> = [
+  { page: 'general', name: 'General' },
+  { page: 'decks', name: 'Decks' },
+];
+const INTEGRATION_PAGES: ReadonlyArray<{ page: SettingsSection; name: string; icon: string }> = [
+  { page: 'obs', name: 'OBS Studio', icon: 'obs-stream' },
+  { page: 'vts', name: 'VTube Studio', icon: 'vts-model' },
+  { page: 'twitch', name: 'Twitch', icon: 'twitch-chat' },
+];
+const LATER_PAGES: ReadonlyArray<{ page: Page; name: string }> = [
+  { page: 'backups', name: 'Backups' },
+  { page: 'about', name: 'About' },
+];
+/** Where "Changes save automatically" is true. */
+const SAVES_AUTOMATICALLY = new Set<Page>(['general', 'decks']);
+
+const isSection = (value: string | null): value is SettingsSection => value === 'obs' || value === 'vts' || value === 'twitch';
+const ALL_PAGES = new Set<string>([...PAGES, ...INTEGRATION_PAGES, ...LATER_PAGES].map((p) => p.page));
+/** `?page=`: a page to open at — set only by the screenshot script (`--settings --page backups`). */
+const requestedPage = (value: string | null): Page | null => (value !== null && ALL_PAGES.has(value) ? (value as Page) : null);
+
 export function SettingsWindow() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [decks, setDecks] = useState<DeckOption[]>([]);
   /** In config.json, not with the settings above; null while it is not open. */
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
-  /** Bumped each time the window is asked to show a section: opened at it, or asked again while open. */
-  const [obsFocus, setObsFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'obs' ? 1 : 0));
-  const [vtsFocus, setVtsFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'vts' ? 1 : 0));
-  const [twitchFocus, setTwitchFocus] = useState(() => (new URLSearchParams(window.location.search).get('section') === 'twitch' ? 1 : 0));
+  const params = new URLSearchParams(window.location.search);
+  const opening = params.get('section');
+  const [page, setPage] = useState<Page>(() => (isSection(opening) ? opening : (requestedPage(params.get('page')) ?? 'general')));
+  /** Bumped each time the window is asked to show an integration: opened at it, or asked again while open. */
+  const [focus, setFocus] = useState(() => (isSection(opening) ? 1 : 0));
+  const dots = useIntegrationDots();
 
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
@@ -38,9 +72,8 @@ export function SettingsWindow() {
     window.addEventListener('focus', refreshDecks);
     const stop = window.deckhand.onAppSettings(setSettings);
     const stopSection = window.deckhand.onSettingsSection((section) => {
-      if (section === 'obs') setObsFocus((n) => n + 1);
-      if (section === 'vts') setVtsFocus((n) => n + 1);
-      if (section === 'twitch') setTwitchFocus((n) => n + 1);
+      setPage(section);
+      setFocus((n) => n + 1);
     });
     return () => {
       window.removeEventListener('focus', refreshDecks);
@@ -52,121 +85,139 @@ export function SettingsWindow() {
   if (!settings) return null;
   const change = (patch: Partial<AppSettings>) => void window.deckhand.setAppSettings(patch).then(setSettings);
   const changeNotifications = (on: boolean) => void window.deckhand.setNotifications(on).then(setNotificationsState);
+  const navItem = (item: { page: Page; name: string }, extra?: { icon: string; dot?: Dot }) => (
+    <button
+      key={item.page}
+      className={`sp-nav-item${page === item.page ? ' sp-nav-item-current' : ''}`}
+      aria-current={page === item.page ? 'page' : undefined}
+      onClick={() => setPage(item.page)}
+      data-settings-nav={item.page}
+    >
+      {extra && <IntegrationIcon icon={extra.icon} tint={item.page as SettingsSection} size="nav" />}
+      <span className="sp-nav-name">{item.name}</span>
+      {extra?.dot && <StatusDot dot={extra.dot} />}
+    </button>
+  );
 
   return (
-    <main className="settings">
-      <span className="settings-heading">DEVICES</span>
-      <div className="settings-row">
-        <div className="settings-text">
-          <label className="settings-title" htmlFor="settings-default-deck">
-            Default deck
-          </label>
-          <span className="settings-sub">The deck the editor opens on</span>
-        </div>
-        <select
-          id="settings-default-deck"
-          className="settings-select"
-          value={decks.some((d) => d.serial === settings.defaultDeck) ? settings.defaultDeck! : ''}
-          onChange={(e) => change({ defaultDeck: e.target.value === '' ? null : e.target.value })}
-        >
-          <option value="">Automatic</option>
-          {decks.map((d) => (
-            <option key={d.serial} value={d.serial}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <span className="settings-heading">BEHAVIOR</span>
-      <div className="settings-row">
-        <div className="settings-text">
-          <label className="settings-title" htmlFor="settings-close-to-tray">
-            Close to system tray
-          </label>
-          {/* Not "Keeps keys active": the daemon runs the keys whatever the editor does. */}
-          <span className="settings-sub">Closing the editor leaves Deckhand in the system tray</span>
-        </div>
-        <input
-          id="settings-close-to-tray"
-          type="checkbox"
-          className="settings-check"
-          checked={settings.closeToTray}
-          onChange={(e) => change({ closeToTray: e.target.checked })}
-        />
-      </div>
-      <div className="settings-row">
-        <div className="settings-text">
-          <label className="settings-title" htmlFor="settings-notifications">
-            Notifications
-          </label>
-          <span className="settings-sub">
-            {notifications === null
-              ? 'Needs config.json to be open'
-              : 'A desktop notification when a key needs you to do something, such as holding Stream to stop'}
-          </span>
-        </div>
-        <input
-          id="settings-notifications"
-          type="checkbox"
-          className="settings-check"
-          checked={notifications ?? true}
-          disabled={notifications === null}
-          onChange={(e) => changeNotifications(e.target.checked)}
-        />
-      </div>
-
-      <span className="settings-heading">INTEGRATIONS</span>
-      <ObsSettings focus={obsFocus} />
-      <VtsSettings focus={vtsFocus} />
-      <TwitchSettings focus={twitchFocus} />
-
-      <span className="settings-heading">APPEARANCE</span>
-      <div className="settings-row">
-        <div className="settings-text">
-          <span className="settings-title">Accent color</span>
-          <span className="settings-sub">Applies to selections, toggles and active keys</span>
-        </div>
-        <div className="settings-swatches" role="radiogroup" aria-label="Accent color">
-          {ACCENTS.map((a) => (
-            <button
-              key={a.name}
-              role="radio"
-              aria-checked={settings.accent === a.name}
-              aria-label={a.label}
-              title={a.label}
-              data-accent-swatch={a.name}
-              className={settings.accent === a.name ? 'swatch swatch-selected' : 'swatch'}
-              style={{ background: a.hex }}
-              onClick={() => change({ accent: a.name as AccentName })}
-            />
-          ))}
+    <main className="settings" data-settings-page={page}>
+      <div className="sp-body">
+        <nav className="sp-nav" aria-label="Settings pages">
+          {PAGES.map((item) => navItem(item))}
+          <span className="sp-nav-heading">INTEGRATIONS</span>
+          {INTEGRATION_PAGES.map((item) => navItem(item, { icon: item.icon, dot: dots[item.page] }))}
+          <div className="sp-nav-gap" />
+          {LATER_PAGES.map((item) => navItem(item))}
+        </nav>
+        <div className="sp-pane">
+          {page === 'general' && (
+            <div className="sp-page" data-settings-section="general">
+              <PageTitle>General</PageTitle>
+              <Group heading="Window">
+                {/* Not the copy sheet's "Keys keep working with the window closed": the
+                    daemon runs the keys whatever the editor does, and a subtitle on this
+                    switch reads as what the switch does (scope §10, Ryan 2026-09-18). */}
+                <Row title="Close to tray" detail="Closing the editor leaves Deckhand in the system tray" htmlFor="settings-close-to-tray">
+                  <Switch id="settings-close-to-tray" checked={settings.closeToTray} onChange={(on) => change({ closeToTray: on })} />
+                </Row>
+                <Divider />
+                <Row
+                  title="Notifications"
+                  detail={notifications === null ? 'Needs config.json to be open' : 'When a key needs you, like holding Stream to stop'}
+                  htmlFor="settings-notifications"
+                >
+                  <Switch id="settings-notifications" checked={notifications ?? true} disabled={notifications === null} onChange={changeNotifications} />
+                </Row>
+              </Group>
+              <Group heading="Appearance">
+                <Row title="Accent color">
+                  <div className="settings-swatches" role="radiogroup" aria-label="Accent color">
+                    {ACCENTS.map((a) => (
+                      <button
+                        key={a.name}
+                        role="radio"
+                        aria-checked={settings.accent === a.name}
+                        aria-label={a.label}
+                        title={a.label}
+                        data-accent-swatch={a.name}
+                        className={settings.accent === a.name ? 'swatch swatch-selected' : 'swatch'}
+                        style={{ background: a.hex }}
+                        onClick={() => change({ accent: a.name as AccentName })}
+                      />
+                    ))}
+                  </div>
+                </Row>
+              </Group>
+            </div>
+          )}
+          {page === 'decks' && (
+            <div className="sp-page" data-settings-section="decks">
+              <PageTitle>Decks</PageTitle>
+              <Group heading="Editor">
+                <Row title="Default deck" detail="Opens when the editor starts" htmlFor="settings-default-deck">
+                  <select
+                    id="settings-default-deck"
+                    className="sp-select"
+                    value={decks.some((d) => d.serial === settings.defaultDeck) ? settings.defaultDeck! : ''}
+                    onChange={(e) => change({ defaultDeck: e.target.value === '' ? null : e.target.value })}
+                  >
+                    <option value="">Automatic</option>
+                    {decks.map((d) => (
+                      <option key={d.serial} value={d.serial}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </Row>
+              </Group>
+            </div>
+          )}
+          {page === 'obs' && <ObsSettings focus={focus} />}
+          {page === 'vts' && <VtsSettings focus={focus} />}
+          {page === 'twitch' && <TwitchSettings focus={focus} />}
+          {page === 'backups' && <BackupsPage />}
+          {page === 'about' && <AboutPage />}
         </div>
       </div>
-
-      <span className="settings-heading">BACKUP</span>
-      <ExportRow />
-      <ImportAndKept />
-
-      <span className="settings-heading">ABOUT</span>
-      <AboutRow />
 
       <div className="settings-footer">
-        <span className="settings-note">Settings apply immediately</span>
+        <span className="settings-note">{SAVES_AUTOMATICALLY.has(page) ? 'Changes save automatically' : ''}</span>
         <button
+          className="sp-button sp-button-quiet"
           onClick={() => {
             void window.deckhand.resetAppSettings().then(setSettings);
             if (notifications === false) changeNotifications(true);
           }}
+          data-settings="reset"
         >
-          Reset to defaults
+          Reset to defaults…
         </button>
-        <button className="primary" onClick={() => void window.deckhand.closeSettings()}>
+        <button className="sp-button sp-button-primary" onClick={() => void window.deckhand.closeSettings()} data-settings="done">
           Done
         </button>
       </div>
     </main>
   );
+}
+
+/** Each integration's dot in the sidebar: the daemon's state, as the page's own status line reads it (integration-status.ts). */
+function useIntegrationDots(): Partial<Record<SettingsSection, Dot>> {
+  const [obs, setObs] = useState<ObsStatus | null>(null);
+  const [vts, setVts] = useState<VtsStatus | null>(null);
+  const [twitch, setTwitch] = useState<TwitchStatus | null>(null);
+  useEffect(() => {
+    void window.deckhand.obsStatus().then(setObs);
+    void window.deckhand.vtsStatus().then(setVts);
+    void window.deckhand.twitchStatus().then(setTwitch);
+    const stops = [window.deckhand.onObsStatus(setObs), window.deckhand.onVtsStatus(setVts), window.deckhand.onTwitchStatus(setTwitch)];
+    return () => stops.forEach((stop) => stop());
+  }, []);
+  // No daemon: no dot, rather than one that claims to know.
+  return {
+    obs: obs ? obsView(obs).dot : undefined,
+    vts: vts ? vtsView(vts).dot : undefined,
+    twitch: twitch ? twitchView(twitch).dot : undefined,
+  };
 }
 
 /**
@@ -175,7 +226,7 @@ export function SettingsWindow() {
  * newer (main/about.ts). If the browser cannot be opened, the message names
  * the URL, to copy.
  */
-function AboutRow() {
+function AboutPage() {
   /** undefined while it is read; null in a checkout, with no VERSION file. */
   const [version, setVersion] = useState<string | null | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -183,111 +234,63 @@ function AboutRow() {
     void window.deckhand.appVersion().then(setVersion);
   }, []);
   return (
-    <div className="settings-row" data-about="version">
-      <div className="settings-text">
-        <span className="settings-title">Deckhand</span>
-        <span className="settings-sub settings-version" data-about-version={version ?? ''}>
-          {version === undefined ? '' : version === null ? 'A development build: not installed' : version}
-        </span>
-        {openError && <span className="settings-status settings-status-error">{openError}</span>}
-      </div>
-      <button
-        className="obs-link about-link"
-        title="github.com/juicetheforce/deckhand/releases"
-        onClick={() => {
-          setOpenError(null);
-          void window.deckhand.openReleases().then((r) => setOpenError(r.ok ? null : r.error));
-        }}
-        data-about="releases"
-      >
-        Releases on GitHub
-      </button>
+    <div className="sp-page" data-settings-section="about">
+      <PageTitle>About</PageTitle>
+      <Group>
+        <div className="sp-about" data-about="version">
+          <img className="sp-about-icon" src={logoUrl} width={40} height={40} alt="" />
+          <div className="sp-about-text">
+            <span className="sp-about-name">Deckhand</span>
+            <span className="settings-version" data-about-version={version ?? ''}>
+              {version === undefined ? '' : version === null ? 'A development build: not installed' : version}
+            </span>
+          </div>
+          <LinkButton
+            title="github.com/juicetheforce/deckhand/releases"
+            onClick={() => {
+              setOpenError(null);
+              void window.deckhand.openReleases().then((r) => setOpenError(r.ok ? null : r.error));
+            }}
+            data-about="releases"
+          >
+            Releases on GitHub
+          </LinkButton>
+        </div>
+      </Group>
+      {openError && <Banner kind="error">{openError}</Banner>}
     </div>
   );
 }
 
 /**
- * Export. With icons is the default, and is not
- * remembered: a config-only restore onto a fresh install is a deck of blank
- * buttons, so each export starts from the safe choice.
+ * Backups: export, import, and the kept configurations. Export with icons is
+ * the default, and is not remembered: a config-only restore onto a fresh
+ * install is a deck of blank buttons, so each export starts from the safe
+ * choice. Choosing a file to import writes nothing: main plans the import
+ * and this shows the review — every relocated icon and where it will go
+ * included — until Replace configuration or Cancel.
  */
-function ExportRow() {
+function BackupsPage() {
   const [includeIcons, setIncludeIcons] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ExportResult | null>(null);
-
-  const run = async () => {
-    setBusy(true);
-    setResult(null);
-    try {
-      setResult(await window.deckhand.exportConfig(includeIcons));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="settings-row">
-        <div className="settings-text">
-          <span className="settings-title">Export configuration</span>
-          <span className="settings-sub">Export entire configuration to a zip file</span>
-        </div>
-        <div className="settings-export">
-          <label className="settings-inline-check">
-            <input type="checkbox" className="settings-check" checked={includeIcons} onChange={(e) => setIncludeIcons(e.target.checked)} />
-            Include icons
-          </label>
-          <button className="settings-button" disabled={busy} onClick={() => void run()}>
-            {busy ? 'Exporting…' : 'Export…'}
-          </button>
-        </div>
-      </div>
-      <ExportStatus result={result} />
-    </>
-  );
-}
-
-function ExportStatus({ result }: { result: ExportResult | null }) {
-  if (!result || (!result.ok && result.cancelled)) return null;
-  if (!result.ok) {
-    return (
-      <p className="settings-status settings-status-error" role="status" data-status="export">
-        Export failed: {result.error}
-      </p>
-    );
-  }
-  const what = result.includesIcons ? `${result.iconFiles} icon file${result.iconFiles === 1 ? '' : 's'}, ${megabytes(result.bytes)}` : `config only, ${megabytes(result.bytes)}`;
-  const shown = result.missing.slice(0, 3).map((m) => `${m.path} (${m.reason})`);
-  const more = result.missing.length - shown.length;
-  return (
-    <p className="settings-status" role="status" data-status="export">
-      Exported to {result.path} — {what}.
-      {result.missing.length > 0 && (
-        <span className="settings-status-warn">
-          {' '}
-          {result.missing.length === 1 ? 'One icon' : `${result.missing.length} icons`} could not be read and {result.missing.length === 1 ? 'is' : 'are'} not in it: {shown.join(', ')}
-          {more > 0 ? `, and ${more} more` : ''}.
-        </span>
-      )}
-      {result.unsavedLeftOut && <span className="settings-status-warn"> Edits the editor could not save are not in it.</span>}
-    </p>
-  );
-}
-
-/**
- * Import. Choosing a file writes nothing: main plans
- * the import and this shows the review — every relocated icon and where it
- * will go included — until Replace configuration or Cancel.
- */
-function ImportAndKept() {
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<ExportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [review, setReview] = useState<ImportReview | null>(null);
-  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string; keptFile?: string } | null>(null);
   // The kept configurations, reread whenever one is made or removed.
   const [kept, setKept] = useState<KeptConfigList | null>(null);
   const refreshKept = () => void window.deckhand.keptConfigs().then(setKept);
   useEffect(refreshKept, []);
+
+  const runExport = async () => {
+    setExporting(true);
+    setExported(null);
+    try {
+      setExported(await window.deckhand.exportConfig(includeIcons));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /**
    * Choosing a file and restoring a kept one are the same thing: main plans
@@ -302,7 +305,7 @@ function ImportAndKept() {
     try {
       const choice = await call();
       if (choice.ok) setReview(choice.review);
-      else if (!choice.cancelled) setMessage({ error: true, text: choice.error });
+      else if (!choice.cancelled) setMessage({ kind: 'error', text: choice.error });
     } finally {
       setBusy(false);
     }
@@ -317,7 +320,7 @@ function ImportAndKept() {
     try {
       const result: ImportResult = await window.deckhand.confirmImport(review.id);
       setReview(null);
-      setMessage(result.ok ? { error: false, text: importedText(result) } : { error: true, text: `Import failed: ${result.error}` });
+      setMessage(result.ok ? { kind: 'ok', text: importedText(result), keptFile: result.backup ?? undefined } : { kind: 'error', text: `Import failed: ${result.error}` });
       refreshKept(); // the import kept the configuration it replaced
     } finally {
       setBusy(false);
@@ -325,43 +328,89 @@ function ImportAndKept() {
   };
   const remove = async (file: string) => {
     const result = await window.deckhand.deleteKeptConfig(file);
-    if (!result.ok) setMessage({ error: true, text: `That kept configuration could not be deleted: ${result.error ?? 'unknown error'}` });
+    if (!result.ok) setMessage({ kind: 'error', text: `That kept configuration could not be deleted: ${result.error ?? 'unknown error'}` });
     refreshKept();
   };
+  const disabled = busy || review !== null;
 
   return (
-    <>
-      <div className="settings-row">
-        <div className="settings-text">
-          <span className="settings-title">Import configuration</span>
-          <span className="settings-sub">Replace the configuration from an export or a backup file</span>
-        </div>
-        <button className="settings-button" disabled={busy || review !== null} onClick={() => void choose()}>
-          Import…
-        </button>
-      </div>
+    <div className="sp-page" data-settings-section="backups">
+      <PageTitle>Backups</PageTitle>
+      <Group heading="Configuration">
+        <Row title="Export" detail="All profiles and settings as a .zip">
+          <div className="settings-export">
+            <label className="sp-check">
+              <input type="checkbox" checked={includeIcons} onChange={(e) => setIncludeIcons(e.target.checked)} />
+              Include icons
+            </label>
+            <button className="sp-button" disabled={exporting} onClick={() => void runExport()} data-backup="export">
+              {exporting ? 'Exporting…' : 'Export…'}
+            </button>
+          </div>
+        </Row>
+        <Divider />
+        <Row title="Import" detail="Replaces the current setup. A backup is kept first.">
+          <button className="sp-button" disabled={disabled} onClick={() => void choose()} data-backup="import">
+            Import…
+          </button>
+        </Row>
+      </Group>
+      <ExportStatus result={exported} />
       {message && (
-        <p className={message.error ? 'settings-status settings-status-error' : 'settings-status'} role="status" data-status="import">
+        <Banner
+          kind={message.kind}
+          data-status="import"
+          action={
+            message.keptFile ? (
+              <LinkButton onClick={() => void window.deckhand.showKeptFile(message.keptFile!)} data-backup="show-file">
+                Show file
+              </LinkButton>
+            ) : undefined
+          }
+        >
           {message.text}
-        </p>
+        </Banner>
       )}
       {review && <ImportReviewPanel review={review} busy={busy} onCancel={cancel} onConfirm={() => void confirm()} />}
-      <KeptConfigs
-        list={kept}
-        disabled={busy || review !== null}
-        onRestore={(file) => void choose(() => window.deckhand.restoreKeptConfig(file))}
-        onDelete={(file) => void remove(file)}
-      />
-    </>
+      {kept && (
+        <KeptConfigs list={kept} disabled={disabled} onRestore={(file) => void choose(() => window.deckhand.restoreKeptConfig(file))} onDelete={(file) => void remove(file)} />
+      )}
+    </div>
+  );
+}
+
+function ExportStatus({ result }: { result: ExportResult | null }) {
+  if (!result || (!result.ok && result.cancelled)) return null;
+  if (!result.ok) {
+    return (
+      <Banner kind="error" data-status="export">
+        Export failed: {result.error}
+      </Banner>
+    );
+  }
+  const what = result.includesIcons ? `${result.iconFiles} icon file${result.iconFiles === 1 ? '' : 's'}, ${megabytes(result.bytes)}` : `config only, ${megabytes(result.bytes)}`;
+  const shown = result.missing.slice(0, 3).map((m) => `${m.path} (${m.reason})`);
+  const more = result.missing.length - shown.length;
+  const warn = result.missing.length > 0 || result.unsavedLeftOut;
+  return (
+    <Banner kind={warn ? 'warn' : 'ok'} data-status="export">
+      Exported to {result.path} — {what}.
+      {result.missing.length > 0 && (
+        <>
+          {' '}
+          {result.missing.length === 1 ? 'One icon' : `${result.missing.length} icons`} could not be read and {result.missing.length === 1 ? 'is' : 'are'} not in it: {shown.join(', ')}
+          {more > 0 ? `, and ${more} more` : ''}.
+        </>
+      )}
+      {result.unsavedLeftOut && <> Edits the editor could not save are not in it.</>}
+    </Banner>
   );
 }
 
 /**
- * The configurations kept before a profile delete or an import.
- * Each entry says what is in it — profiles by name, decks, keys — because
- * choosing between two timestamps means guessing. They are
- * never deleted automatically: Delete here is the only thing that removes one,
- * and at the cap a delete or import refuses rather than drop the oldest.
+ * The configurations kept before a profile delete or an import. They are
+ * never deleted automatically: Delete here is the only thing that removes
+ * one, and at the cap a delete or import refuses rather than drop the oldest.
  */
 function KeptConfigs({
   list,
@@ -369,73 +418,98 @@ function KeptConfigs({
   onRestore,
   onDelete,
 }: {
-  list: KeptConfigList | null;
+  list: KeptConfigList;
   disabled: boolean;
   onRestore: (file: string) => void;
   onDelete: (file: string) => void;
 }) {
   const [confirming, setConfirming] = useState<string | null>(null);
-  if (!list) return null;
+  const [openError, setOpenError] = useState<string | null>(null);
   return (
     <>
-      <div className="settings-row">
-        <div className="settings-text">
-          <span className="settings-title">Kept configurations</span>
-          <span className="settings-sub">
-            Kept before a profile delete or an import, in {list.folder}. Never deleted automatically; at most {list.max}, and then a
-            delete or import asks you to remove one.
-          </span>
-        </div>
-      </div>
-      <ul className="kept-list" data-kept-count={list.entries.length}>
-        {list.entries.length === 0 && <li className="kept-empty muted small">Nothing kept yet. Deleting a profile or importing keeps one.</li>}
-        {list.entries.map((entry) => (
-          <li key={entry.file} data-kept={entry.file}>
-            <div className="kept-what">
-              <span className="kept-title">
-                {entry.reason === 'delete' ? 'Before deleting a profile' : 'Before an import'} · {when(entry.keptAt)}
-              </span>
-              <span className="kept-sub">{describeKept(entry)}</span>
-            </div>
-            <div className="kept-actions">
-              <button className="settings-button" disabled={disabled} onClick={() => onRestore(entry.file)}>
-                Restore…
-              </button>
-              {confirming === entry.file ? (
-                <>
-                  <button
-                    className="settings-button danger"
-                    onClick={() => {
-                      setConfirming(null);
-                      onDelete(entry.file);
-                    }}
-                  >
-                    Delete for good
-                  </button>
-                  <button className="settings-button" onClick={() => setConfirming(null)}>
-                    Keep
-                  </button>
-                </>
-              ) : (
-                <button className="settings-button" disabled={disabled} onClick={() => setConfirming(entry.file)}>
-                  Delete
-                </button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <Group
+        heading="Kept backups"
+        data-kept-count={String(list.entries.length)}
+        extra={
+          <>
+            <InfoTip text={`Kept before deleting a profile or importing. Up to ${list.max}; after that you’ll be asked to remove one. Never deleted automatically.`} />
+            <LinkButton
+              title={list.folder}
+              onClick={() => {
+                setOpenError(null);
+                void window.deckhand.openKeptFolder().then((r) => setOpenError(r.ok ? null : r.error));
+              }}
+              data-backup="open-folder"
+            >
+              Open folder
+            </LinkButton>
+          </>
+        }
+      >
+        {list.entries.length === 0 ? (
+          <div className="sp-empty kept-empty">
+            <span className="sp-empty-title">None yet</span>
+            <span className="sp-row-detail">One is kept each time you delete a profile or import.</span>
+          </div>
+        ) : (
+          <ul className="kept-list">
+            {list.entries.map((entry, i) => (
+              <li key={entry.file} data-kept={entry.file}>
+                {i > 0 && <Divider />}
+                <div className="sp-kept">
+                  <div className="kept-what">
+                    <span className="kept-title">
+                      {entry.reason === 'delete' ? 'Before deleting a profile' : 'Before import'} <span className="kept-when">· {when(entry.keptAt)}</span>
+                    </span>
+                    <span className="kept-sub">{describeKept(entry)}</span>
+                  </div>
+                  <div className="kept-actions">
+                    <button className="sp-button" disabled={disabled} onClick={() => onRestore(entry.file)}>
+                      Restore…
+                    </button>
+                    {confirming === entry.file ? (
+                      <>
+                        <button
+                          className="sp-button sp-button-danger-solid"
+                          onClick={() => {
+                            setConfirming(null);
+                            onDelete(entry.file);
+                          }}
+                        >
+                          Delete for good
+                        </button>
+                        <button className="sp-button" onClick={() => setConfirming(null)}>
+                          Keep
+                        </button>
+                      </>
+                    ) : (
+                      <button className="sp-button sp-button-quiet" disabled={disabled} onClick={() => setConfirming(entry.file)}>
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Group>
+      {openError && <Banner kind="error">{openError}</Banner>}
     </>
   );
 }
 
-/** A kept copy's time, as this machine shows times. */
+/** A kept copy's time, as this machine shows dates and times. */
 function when(iso: string): string {
   const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/** What is in a kept copy, for the line under its title. */
+/**
+ * What is in a kept copy, for the line under its title — the profiles by
+ * name, not only how many (scope §5, Ryan: choosing between two timestamps
+ * is guessing), then decks and keys as the copy sheet counts them.
+ */
 function describeKept(entry: KeptConfig): string {
   if (!entry.summary) return `This file could not be read: ${entry.problem ?? 'unknown error'}`;
   const { profiles, decks, keys } = entry.summary;
@@ -444,9 +518,9 @@ function describeKept(entry: KeptConfig): string {
 }
 
 function importedText(result: Extract<ImportResult, { ok: true }>): string {
-  const parts = [`Imported. ${result.written} icon file${result.written === 1 ? '' : 's'} written.`];
+  const parts = [importedLine(result.written, result.backup !== null)];
   if (result.appeared.length > 0) parts.push(`Not written, because a file appeared there after the review: ${result.appeared.join(', ')}.`);
-  parts.push(result.backup ? `Your previous configuration is kept at ${result.backup}.` : 'There was no previous configuration to keep.');
+  if (result.backup === null) parts.push('There was no previous configuration to keep.');
   return parts.join(' ');
 }
 
@@ -529,10 +603,10 @@ function ImportReviewPanel({ review, busy, onCancel, onConfirm }: { review: Impo
       )}
 
       <div className="import-review-actions">
-        <button className="settings-button" disabled={busy} onClick={onCancel}>
+        <button className="sp-button" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
-        <button className="settings-button settings-button-danger" disabled={busy} onClick={onConfirm}>
+        <button className="sp-button sp-button-danger-solid" disabled={busy} onClick={onConfirm}>
           {busy ? 'Importing…' : 'Replace configuration'}
         </button>
       </div>

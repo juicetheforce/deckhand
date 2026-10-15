@@ -341,7 +341,7 @@ check('not set up: a drag places nothing, and a click opens Settings without ret
 check('Settings: a VTube Studio section under INTEGRATIONS, not set up, port 8001, opened at it in view with the port focused', () => {
   assert.equal(r.opened.state, 'not-set-up');
   assert.equal(r.opened.status, 'not-set-up');
-  assert.match(r.opened.statusText, /^Not set up\./);
+  assert.equal(r.opened.statusText, 'Not set up');
   assert.equal(r.opened.port, '8001');
   assert.equal(r.opened.connect, 'Connect');
   assert.equal(r.opened.removable, false, 'nothing to remove');

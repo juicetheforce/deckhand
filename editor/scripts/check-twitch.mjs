@@ -256,13 +256,15 @@ check('not linked: the key is dimmed, and its callout offers Set up Twitch', () 
   assert.match(r.notLinked.callout, /Twitch is not set up/);
   assert.equal(r.notLinked.calloutButton, 'Set up Twitch');
 });
-check("Settings opens at Twitch, Link focused, saying what the link allows, that it is listed as DeckHandApp, and the 30-day rule", () => {
+check('Settings opens at Twitch, Link Twitch focused, saying what the link will be able to do, on your own channel only', () => {
   assert.equal(r.opened.state, 'not-set-up');
   assert.equal(r.focused, 'link');
-  assert.equal(r.opened.link, 'Link Twitch account');
-  assert.match(r.opened.allows, /title and category, and add stream markers, make clips of your stream, send chat messages as you/);
-  assert.match(r.opened.allows, /DeckHandApp/);
-  assert.match(r.opened.text, /If Deckhand does not run for 30 days, Twitch ends it/);
+  assert.equal(r.opened.link, 'Link Twitch');
+  assert.match(r.opened.allows, /^WILL BE ABLE TO\s*Title & categoryMarkersClipsChatYour channel only, and only when a key is pressed$/);
+});
+check('linked: what it is allowed, and About this link open — listed as DeckHandApp, the 30-day rule', () => {
+  assert.match(r.linked.allows, /^ALLOWED\s*Title & categoryMarkersClipsChat/);
+  assert.match(r.linked.text, /Listed as DeckHandApp at twitch\.tv\/settings\/connections\. Renews while Deckhand runs; Twitch ends it after 30 days unused\./);
 });
 check('only the Settings window can link or open the activate page', () => {
   assert.equal(r.editorCannotLink, true);
@@ -278,7 +280,7 @@ check("Open twitch.tv/activate opens Twitch's page with the code filled in — t
   assert.equal(r.openedUrl, `https://www.twitch.tv/activate?device-code=${r.waiting.code}`);
 });
 check('approved at Twitch: linked, as the account, saved with the client ID it was made with', () => {
-  assert.match(r.linked.statusText, /^Linked as fakestreamer\.$/);
+  assert.equal(r.linked.statusText, 'Linked as fakestreamer');
   assert.equal(r.linked.linking, 'approved');
   assert.equal(r.saved.clientId, fake.clientId);
   assert.equal(r.saved.login, 'fakestreamer');
