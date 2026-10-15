@@ -69,6 +69,7 @@ console.log('the mapping');
     [{ type: 'media.control', method: 'previous' }, {}, 'previous'],
     [{ type: 'media.control', method: 'stop' }, { playing: true }, 'stop'],
     [{ type: 'media.control', method: 'Pause' }, {}, 'pause'],
+    [{ type: 'twitch.chat', message: 'hi' }, {}, 'twitch-chat'],
     [{ type: 'no.such.action' }, {}, null],
   ];
   const wrong = rows.filter(([action, state, want]) => defaultIconFor(action, state) !== want);
@@ -81,6 +82,35 @@ console.log('the mapping');
   const mapped = rows.map(([a, s]) => defaultIconFor(a, s)).filter(Boolean);
   check('every default names a file that exists', mapped.every((name) => files.includes(name)));
   check('no default is the missing icon', !mapped.includes('missing'));
+}
+
+console.log('bundled SVGs: a real viewBox and the SVG namespace');
+{
+  // Claude Design exports have written `sc-camel-view-box` in place of
+  // viewBox, and left out xmlns: librsvg and Chromium then draw the icon at
+  // the wrong size, or not at all. Every SVG shipped in assets/, not only
+  // the icons.
+  const ASSETS = path.join(REPO, 'assets');
+  const svgs = [];
+  const walk = async (dir) => {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else if (entry.name.endsWith('.svg')) svgs.push(full);
+    }
+  };
+  await walk(ASSETS);
+  const faults = [];
+  for (const file of svgs) {
+    const text = await fs.readFile(file, 'utf8');
+    const root = /<svg\b[^>]*>/.exec(text)?.[0] ?? '';
+    const name = path.relative(REPO, file);
+    if (/sc-camel-view-box/i.test(text)) faults.push(`${name}: sc-camel-view-box`);
+    if (!/\sviewBox="[-\d.]+[ ,]+[-\d.]+[ ,]+[\d.]+[ ,]+[\d.]+"/.test(root)) faults.push(`${name}: no viewBox on <svg>`);
+    if (!/\sxmlns="http:\/\/www\.w3\.org\/2000\/svg"/.test(root)) faults.push(`${name}: no SVG xmlns on <svg>`);
+  }
+  check(`all ${svgs.length} bundled SVGs have a viewBox and the SVG xmlns, and no sc-camel-view-box`, svgs.length > 0 && faults.length === 0);
+  for (const fault of faults) console.log(`       ${fault}`);
 }
 
 console.log('builtin: references');

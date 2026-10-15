@@ -81,6 +81,13 @@ export const BUILTIN_ICONS = [
   // The latching toggle's two faces: down and up.
   'toggle',
   'toggle-off',
+  // Twitch, in its section colour, apricot #f59a66: one-shot actions, so one
+  // face each and no active state. Only the first wave's; the second wave's
+  // (ad, raid, chat mode) are added when those actions exist (Ryan).
+  'twitch-chat',
+  'twitch-clip',
+  'twitch-marker',
+  'twitch-stream-info',
   'volume-down',
   // VTube Studio, in its section colour, lime: an active face is the glyph
   // filled lime, never OBS teal, so it cannot read as an OBS key. A hotkey
@@ -236,9 +243,9 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
     // Another model loaded: the same face, off — rare, and not worth an icon of its own (scope §7).
     case 'vts.expression':
       return state.active ? 'vts-expression-on' : 'vts-expression';
-    // Provisional, until Twitch's own icons are drawn (Twitch session 2).
+    // One face each: nothing live from Twitch is shown (scope §7).
     case 'twitch.chat':
-      return 'text-macro';
+      return 'twitch-chat';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.
