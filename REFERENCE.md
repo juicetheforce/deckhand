@@ -574,7 +574,7 @@ whether you're streaming comes from OBS.
 **Linking.** In the editor, **Settings › Integrations › Twitch**: **Link
 Twitch account**. Settings shows a code. Press **Open twitch.tv/activate**,
 or go to twitch.tv/activate in any browser, your phone's included, and
-enter it. Twitch asks whether to allow "DeckHandApp" the three permissions
+enter it. Twitch asks whether to allow "Deckhand App" the three permissions
 below; approve, and Settings says "Linked as …". The code lasts 30 minutes.
 **Cancel** stops waiting. Cancelling on Twitch's page doesn't reach
 Deckhand, so cancel in Settings too, or let the code expire.

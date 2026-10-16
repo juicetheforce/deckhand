@@ -83,7 +83,7 @@ from anywhere**. Anything that can read the credentials file can act as you
 on Twitch, within what the link allows (your title, category and markers;
 clips; chat messages), until the link is ended. End it with **Remove** in
 Deckhand's Settings, which revokes it at Twitch, or at
-twitch.tv/settings/connections, where Twitch lists it as "DeckHandApp".
+twitch.tv/settings/connections, where Twitch lists it as "Deckhand App".
 Changing your Twitch password ends it too.
 
 Deckhand talks to Twitch only at `id.twitch.tv` and `api.twitch.tv`, over

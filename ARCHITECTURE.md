@@ -179,7 +179,7 @@ needs no secret — which an open-source app cannot keep — and nobody has to
 register a developer app of their own. The person approves Deckhand at
 twitch.tv/activate with the code Settings shows; the daemon asks Twitch
 whether they have, at the interval Twitch gives, until they do, the code
-expires, or they cancel. Twitch lists the app as "DeckHandApp". The client
+expires, or they cancel. Twitch lists the app as "Deckhand App". The client
 ID is the project's, owned by an account that exists only to own it; if it
 were ever revoked, every link would stop at once, so `config.json`'s
 `twitch.clientId` lets someone link with their own public app without

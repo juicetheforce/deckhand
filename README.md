@@ -157,7 +157,7 @@ your own channel, only when you press them.
 
 To set it up, open **Settings › Integrations › Twitch** in the editor and
 press **Link Twitch account**. It shows a code; enter it at
-twitch.tv/activate, in any browser, and approve "DeckHandApp". The link
+twitch.tv/activate, in any browser, and approve "Deckhand App". The link
 asks only for what the keys need: your title, category and markers, clips,
 and chat messages.
 
