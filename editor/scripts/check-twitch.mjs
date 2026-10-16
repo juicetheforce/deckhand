@@ -262,9 +262,9 @@ check('Settings opens at Twitch, Link Twitch focused, saying what the link will 
   assert.equal(r.opened.link, 'Link Twitch');
   assert.match(r.opened.allows, /^WILL BE ABLE TO\s*Title & categoryMarkersClipsChatYour channel only, and only when a key is pressed$/);
 });
-check('linked: what it is allowed, and About this link open — listed as DeckHandApp, the 30-day rule', () => {
+check('linked: what it is allowed, and About this link open — listed as Deckhand App, the 30-day rule', () => {
   assert.match(r.linked.allows, /^ALLOWED\s*Title & categoryMarkersClipsChat/);
-  assert.match(r.linked.text, /Listed as DeckHandApp at twitch\.tv\/settings\/connections\. Renews while Deckhand runs; Twitch ends it after 30 days unused\./);
+  assert.match(r.linked.text, /Listed as Deckhand App at twitch\.tv\/settings\/connections\. Renews while Deckhand runs; Twitch ends it after 30 days unused\./);
 });
 check('only the Settings window can link or open the activate page', () => {
   assert.equal(r.editorCannotLink, true);

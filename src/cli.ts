@@ -500,7 +500,7 @@ async function main(argv: string[]): Promise<void> {
           const r = resultOf<TwitchStatus & { revoked?: boolean | null }>(await client.request(sub === 'status' ? 'twitch.status' : 'twitch.remove'));
           print(json, r, () =>
             r.revoked === false
-              ? `${twitchStatusText(r)}\nTwitch did not confirm ending the link: end it at twitch.tv/settings/connections, where it is listed as DeckHandApp`
+              ? `${twitchStatusText(r)}\nTwitch did not confirm ending the link: end it at twitch.tv/settings/connections, where it is listed as Deckhand App`
               : twitchStatusText(r),
           );
         } else if (sub === 'link') {

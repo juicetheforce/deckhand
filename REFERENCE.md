@@ -214,7 +214,9 @@ export.
 **Your configuration** is `~/.config/deckhand/config.json`. The editor writes
 it, and it is plain JSON you can edit by hand ([Configuration](#configuration)).
 Save it and the decks update, with no restart. A file that doesn't validate is
-refused, and the decks keep the last good one. Every accepted change keeps the
+refused, and the decks keep the last good one. **Keep it a real file, not a
+symbolic link** (into a dotfiles repository, say): the daemon doesn't see
+changes made through a link, and the editor won't open one. Every accepted change keeps the
 one it replaced in `~/.local/state/deckhand/backups/` — the newest 20, at most
 one every five minutes. The editor's **Settings › Backups** exports the whole
 configuration, icons included, and imports it on another machine.

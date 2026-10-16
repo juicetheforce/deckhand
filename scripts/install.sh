@@ -1522,7 +1522,7 @@ end_twitch_link() {
     say "Ended the Twitch link at Twitch"
   else
     warn "Twitch did not confirm ending its link (no answer, or Deckhand's service is not running)."
-    warn "The tokens are deleted with Deckhand's state; end the link at twitch.tv/settings/connections, where it is listed as DeckHandApp."
+    warn "The tokens are deleted with Deckhand's state; end the link at twitch.tv/settings/connections, where it is listed as Deckhand App."
   fi
   return 0
 }

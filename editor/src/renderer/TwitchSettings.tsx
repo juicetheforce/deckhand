@@ -20,7 +20,7 @@ import { Banner, Disclosure, Group, IntegrationHeader } from './settings-ui.js';
 
 type Message = { kind: 'ok' | 'warn' | 'error'; text: string };
 
-const ABOUT = 'Listed as DeckHandApp at twitch.tv/settings/connections. Renews while Deckhand runs; Twitch ends it after 30 days unused.';
+const ABOUT = 'Listed as Deckhand App at twitch.tv/settings/connections. Renews while Deckhand runs; Twitch ends it after 30 days unused.';
 const REFUSED = "Twitch no longer accepts the link. Deckhand keeps trying hourly, in case it is Twitch's fault; link again if it does not come back.";
 
 /** Linking is under way: asking for a code, or the code waiting to be approved. */
@@ -75,7 +75,7 @@ export function TwitchSettings({ focus }: { focus: number }) {
       result.revoked === false
         ? {
             kind: 'warn',
-            text: 'Removed here, but Twitch did not confirm ending the link: end it at twitch.tv/settings/connections, where it is listed as DeckHandApp. Twitch keys stay where they are.',
+            text: 'Removed here, but Twitch did not confirm ending the link: end it at twitch.tv/settings/connections, where it is listed as Deckhand App. Twitch keys stay where they are.',
           }
         : { kind: 'ok', text: 'Removed, and ended at Twitch. Twitch keys stay where they are, and work again once an account is linked.' },
     );
