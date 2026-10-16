@@ -49,10 +49,10 @@ export interface DeckStatus {
   profile?: string;
   page?: string;
   brightness?: number;
-  /** Keys showing a preview. */
-  previews?: number[];
-  /** Keys latched down by a toggle, so the editor's grid can show it. */
-  latched?: number[];
+  /** Keys showing a preview, by control id. */
+  previews?: string[];
+  /** Keys latched down by a toggle, by control id, so the editor's grid can show it. */
+  latched?: string[];
   /** Keys whose last press failed, on any page or profile. */
   failed?: KeyFailure[];
 }
@@ -61,7 +61,8 @@ export interface DeckStatus {
 export interface KeyFailure {
   profile: string;
   page: string;
-  key: number;
+  /** The key, by control id. */
+  key: string;
   /** The failed action's error message, as logged. */
   error: string;
 }

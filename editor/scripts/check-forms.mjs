@@ -111,14 +111,14 @@ session.runFromSocket = (action) => {
 const previewed = [];
 const setPreview = session.setPreview.bind(session);
 session.setPreview = (index, button) => {
-  previewed.push({ index, button: structuredClone(button) });
+  previewed.push({ index: Number(index), button: structuredClone(button) });
   return setPreview(index, button);
 };
 
 // The handshake: a preview on key 31 means "unplug the built-in microphone now".
 let unplugged = false;
 const unplugTimer = setInterval(async () => {
-  if (unplugged || !session.previewKeys().includes(31)) return;
+  if (unplugged || !session.previewKeys().includes('31')) return;
   unplugged = true;
   await fs.writeFile(PACTL_STATE, JSON.stringify({ absent: ['alsa_input.pci-0000_00_1f.3.HiFi__Mic__source'] }));
   await audio.refreshCache();

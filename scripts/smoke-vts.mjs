@@ -504,7 +504,7 @@ const ready = await until(async () => {
 check('the daemon came up on the fake deck, on a page with no VTS key', ready);
 const ctl = await connect(SOCKET);
 const goTo = (page) => ctl.request('action.run', { serial: DECK_SERIAL, action: { type: 'page', to: page } });
-const failedOn = async (key) => (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.find((f) => f.key === key)?.error ?? null;
+const failedOn = async (key) => (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.find((f) => f.key === String(key))?.error ?? null;
 
 await goTo('vtube');
 await sleep(500);

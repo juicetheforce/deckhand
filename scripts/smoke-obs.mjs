@@ -174,7 +174,7 @@ const CONFIG = {
 const daemon = await startDaemon(TMP, CONFIG);
 const deck = new FakeDeck();
 const session = await daemon.attach(SERIAL, deck);
-const failedKey = (key) => session.failedKeys().find((f) => f.key === key)?.error ?? null;
+const failedKey = (key) => session.failedKeys().find((f) => f.key === String(key))?.error ?? null;
 const tap = async (key, heldMs = 30) => {
   deck.press(key);
   await sleep(heldMs);
@@ -617,7 +617,7 @@ check(
 await pressInChild(2);
 const failedNowhere = await until(async () => {
   const st = await ctl.request('status', {});
-  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 2);
+  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === '2');
 });
 await sleep(300);
 check('daemon: a failure that says nothing to do is badged, not notified', failedNowhere && notes.calls.length === 3);
@@ -633,7 +633,7 @@ await sleep(800);
 await pressInChild(3);
 const pauseFailed = await until(async () => {
   const st = await ctl.request('status', {});
-  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === 3 && /Nothing is recording/.test(f.error));
+  return st.result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.some((f) => f.key === '3' && /Nothing is recording/.test(f.error));
 });
 await sleep(300);
 check('daemon: with notifications off, a failure that says what to do is badged only', pauseFailed && notes.calls.length === 3);

@@ -22,7 +22,7 @@ const notSetUp = () => obs.cachedState().connection === 'not-set-up';
  * holding that press does not stop what it just started.
  */
 const armed = new Set<string>();
-const keyOf = (ctx: ActionContext) => `${ctx.deck.serial}:${ctx.buttonIndex}`;
+const keyOf = (ctx: ActionContext) => `${ctx.deck.serial}:${ctx.key}`;
 
 /** How long a Stream or Record press waits for OBS to say it started, or did not. */
 export const START_CONFIRM_MS = 5000;

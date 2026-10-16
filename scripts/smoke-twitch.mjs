@@ -364,7 +364,7 @@ const ready = await until(async () => {
 check('daemon: up on the fake deck', ready);
 check('daemon: a saved link is validated at start, and nothing else is asked', await until(() => count('/oauth2/validate') === 1) && fake.requests.length === 1);
 const ctl = await connect(SOCKET);
-const failedOn = async (key) => (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.find((f) => f.key === key)?.error ?? null;
+const failedOn = async (key) => (await ctl.request('status', {})).result.decks.find((d) => d.serial === DECK_SERIAL)?.failed?.find((f) => f.key === String(key))?.error ?? null;
 
 const status0 = cli(['twitch']);
 await status0.done;

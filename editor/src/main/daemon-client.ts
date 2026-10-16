@@ -100,12 +100,13 @@ export class DaemonClient {
 
   /** Show a button on a key without saving it. Resolves once the daemon has rendered it. */
   async previewSet(serial: string, key: number, button: ButtonDef): Promise<void> {
-    await this.request('preview.set', { serial, key, button });
+    // The socket names keys by control id; a Stream Deck's key 7 is "7".
+    await this.request('preview.set', { serial, key: String(key), button });
   }
 
   /** Clear one previewed key, or every preview on the deck. */
   async previewClear(serial: string, key?: number): Promise<void> {
-    await this.request('preview.clear', key === undefined ? { serial } : { serial, key });
+    await this.request('preview.clear', key === undefined ? { serial } : { serial, key: String(key) });
   }
 
   /** Make a profile active on the decks. */
@@ -120,7 +121,7 @@ export class DaemonClient {
    */
   /** Clear one key's failure mark (failure.clear). */
   async clearFailure(serial: string, profile: string, page: string, key: number): Promise<void> {
-    await this.request('failure.clear', { serial, profile, page, key });
+    await this.request('failure.clear', { serial, profile, page, key: String(key) });
   }
 
   /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys or (loaded only) expressions. */

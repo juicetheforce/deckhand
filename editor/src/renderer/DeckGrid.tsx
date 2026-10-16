@@ -16,11 +16,13 @@ interface Props {
   /** Each app's resolved icon, for app keys with no icon of their own (model.ts appIconsOf). */
   appIcons: AppIcons;
   /** Keys on this page whose last press on the deck failed, and why (model.ts failedKeysOn). */
-  failedKeys: Record<number, string>;
+  /** By control id. */
+  failedKeys: Record<string, string>;
   /** Whether an action's integration is not set up (model.ts notSetUp): its key is drawn as the deck draws it — dimmed, with the not-set-up badge. */
   notSetUp: (type: string | undefined) => boolean;
   /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
-  latchedKeys: number[];
+  /** By control id. */
+  latchedKeys: string[];
   selectedKeys: number[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
   onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
@@ -180,9 +182,9 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           button={page.buttons[String(k.index)]}
           iconStamps={iconStamps}
           appIcons={appIcons}
-          failure={failedKeys[k.index]}
+          failure={failedKeys[k.id]}
           unset={notSetUp(page.buttons[String(k.index)]?.action?.type)}
-          latched={latchedKeys.includes(k.index)}
+          latched={latchedKeys.includes(k.id)}
           selected={selectedKeys.includes(k.index)}
           onClick={(modifiers) => {
             if (!keyDrag.takeSuppressedClick()) onClickKey(k.index, modifiers);

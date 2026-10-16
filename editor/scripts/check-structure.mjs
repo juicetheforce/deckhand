@@ -103,7 +103,7 @@ const openedWith = { a: daemon.sessions.get(A).currentPage(), b: daemon.sessions
 let pressed = false;
 const presser = setInterval(() => {
   const session = daemon.sessions.get(A);
-  if (!pressed && session.previewKeys().includes(0)) {
+  if (!pressed && session.previewKeys().includes('0')) {
     pressed = true;
     void session.goToPage('main');
   }

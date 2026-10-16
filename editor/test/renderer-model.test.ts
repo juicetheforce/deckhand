@@ -77,10 +77,15 @@ function geometry(serial: string, columns: number, rows: number, pixels: number)
     model: 'test',
     productName: `Test ${columns}x${rows}`,
     keyCount: columns * rows,
+    units: 'cells' as const,
     iconSize: pixels,
     rows,
     columns,
-    keys: Array.from({ length: columns * rows }, (_, i) => ({ index: i, row: Math.floor(i / columns), column: i % columns, feedback: 'lcd' })),
+    keys: Array.from({ length: columns * rows }, (_, i) => {
+      const row = Math.floor(i / columns);
+      const column = i % columns;
+      return { id: String(i), index: i, row, column, x: column, y: row, w: 1, h: 1, shape: 'square' as const, feedback: 'lcd' };
+    }),
     unsupported: [],
   };
 }
@@ -951,9 +956,9 @@ await check('latched keys: only while the grid shows the page the deck is on', (
   const xl = view.status!.decks.find((d) => d.serial === XL)!;
   xl.profile = 'default';
   xl.page = 'main';
-  xl.latched = [2, 5];
-  view.status!.decks.find((d) => d.serial === V2)!.latched = [1];
-  assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), [2, 5]);
+  xl.latched = ['2', '5'];
+  view.status!.decks.find((d) => d.serial === V2)!.latched = ['1'];
+  assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), ['2', '5']);
   // A latch is released when the deck leaves the page, so one on a page the
   // deck is not showing cannot exist: drawing it would be a lie.
   assert.deepEqual(latchedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), []);
@@ -1021,11 +1026,11 @@ await check('failed keys: only those on the page being edited, from the deck bei
   const view = daemonView([XL, V2]);
   const xl = view.status!.decks.find((d) => d.serial === XL)!;
   xl.failed = [
-    { profile: 'default', page: 'main', key: 3, error: 'no' },
-    { profile: 'default', page: 'games', key: 1, error: 'other page' },
-    { profile: 'raid', page: 'main', key: 4, error: 'other profile' },
+    { profile: 'default', page: 'main', key: '3', error: 'no' },
+    { profile: 'default', page: 'games', key: '1', error: 'other page' },
+    { profile: 'raid', page: 'main', key: '4', error: 'other profile' },
   ];
-  view.status!.decks.find((d) => d.serial === V2)!.failed = [{ profile: 'default', page: 'main', key: 5, error: 'other deck' }];
+  view.status!.decks.find((d) => d.serial === V2)!.failed = [{ profile: 'default', page: 'main', key: '5', error: 'other deck' }];
   assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'main' }), { 3: 'no' });
   assert.deepEqual(failedKeysOn(view, { profile: 'default', serial: XL, page: 'games' }), { 1: 'other page' });
   assert.deepEqual(failedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'an older daemon sends no list');

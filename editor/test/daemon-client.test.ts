@@ -74,7 +74,7 @@ await check('connects, subscribes, and reads status and geometry', async () => {
   const v = await until(client, (x) => x.connected);
   assert.equal(v.problem, null);
   assert.equal(v.status?.activeProfile?.id, 'default');
-  assert.equal(v.status?.protocol, 1);
+  assert.equal(v.status?.protocol, 2);
   const deck = v.decks?.find((d) => d.serial === XL);
   assert.ok(deck, 'XL geometry missing');
   assert.equal(deck.keyCount, 32);
@@ -106,9 +106,9 @@ await check('previewSet renders on the fake deck and shows in state; previewClea
   const savedImage = xl.images.get(3);
   await client.previewSet(XL, 3, { label: 'previewed', background: '#ff0000' });
   assert.ok((xl.writes.get(3) ?? 0) > before, 'nothing written to key 3');
-  await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
+  await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
   await client.previewClear(XL, 3);
-  await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
+  await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
   assert.ok(xl.images.get(3)?.equals(savedImage), 'key 3 not restored to its saved image');
 });
 
@@ -153,7 +153,7 @@ await check('a daemon stopping is reported, pending requests reject, and the cli
 await check("stopping the client clears the previews it set (the daemon's rule, through this client)", async () => {
   const session = daemon.sessions.get(XL);
   await client.previewSet(XL, 7, { label: 'mine' });
-  assert.deepEqual(session.previewKeys(), [7]);
+  assert.deepEqual(session.previewKeys(), ['7']);
   client.stop();
   const started = Date.now();
   while (session.previewKeys().length > 0 && Date.now() - started < 2000) await sleep(20);

@@ -145,14 +145,15 @@ export interface DeckHandle {
    * restarting all have to release it, and nothing may leave a key held.
    * Throws if another key on this deck already latches an overlapping combo.
    */
-  toggleLatch(index: number, combo: string): Promise<void>;
+  toggleLatch(key: string, combo: string): Promise<void>;
   /** Whether this key is latched down, for its face. */
-  isLatched(index: number): boolean;
+  isLatched(key: string | null): boolean;
 }
 
 export interface ActionContext {
   deck: DeckHandle;
-  buttonIndex: number;
+  /** The key pressed, by control id (src/devices.ts); null for an action run over the control socket, which belongs to no key. */
+  key: string | null;
   /** A deck key press, or an action run over the control socket. Keys held are tracked per source. */
   source: 'deck' | 'socket';
   /** Switch the active profile on every connected deck, by ID or name. */

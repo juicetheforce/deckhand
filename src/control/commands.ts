@@ -1,4 +1,5 @@
 import { isKnownAction } from '../actions/index.js';
+import { CONTROL_ID } from '../config.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
@@ -159,7 +160,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       previewOwners.delete(slot);
       const separator = slot.lastIndexOf(':');
       const session = deps.sessions.get(slot.slice(0, separator));
-      void session?.clearPreview(Number(slot.slice(separator + 1)));
+      void session?.clearPreview(slot.slice(separator + 1));
     }
   };
 
@@ -529,12 +530,16 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function requireKey(args: Record<string, unknown>, name: string): number {
+/**
+ * A key, by control id (src/devices.ts). A whole number is taken as the
+ * Stream Deck key it always named — 7 is "7" — so scripts written for
+ * protocol 1 keep working.
+ */
+function requireKey(args: Record<string, unknown>, name: string): string {
   const value = args[name];
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new ControlError('bad_request', `"${name}" must be a key index (a whole number, 0 or more)`);
-  }
-  return value;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return String(value);
+  if (typeof value === 'string' && CONTROL_ID.test(value)) return value;
+  throw new ControlError('bad_request', `"${name}" must be a key id ("7", or a whole number for a Stream Deck's key)`);
 }
 
 /** An action as the socket accepts it: an object whose type is registered. */

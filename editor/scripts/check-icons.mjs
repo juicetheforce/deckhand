@@ -110,7 +110,7 @@ const previewRequests = [];
 const setPreview = session.setPreview.bind(session);
 const previewPage = new Map();
 session.setPreview = (index, button) => {
-  previewRequests.push(index);
+  previewRequests.push(Number(index));
   previewPage.set(index, session.currentPage());
   return setPreview(index, button);
 };
@@ -141,10 +141,10 @@ let renamedAway = false;
 let renamedBack = false;
 const renameTimer = setInterval(async () => {
   const previews = daemon.sessions.get(SERIAL)?.previewKeys() ?? [];
-  if (!renamedAway && previews.includes(30)) {
+  if (!renamedAway && previews.includes('30')) {
     renamedAway = true;
     await fs.rename(AWAY, AWAY + '.moved');
-  } else if (renamedAway && !renamedBack && previews.includes(29)) {
+  } else if (renamedAway && !renamedBack && previews.includes('29')) {
     renamedBack = true;
     await fs.rename(AWAY + '.moved', AWAY);
   }
@@ -153,7 +153,7 @@ const renameTimer = setInterval(async () => {
 // The watcher handshake: a preview on key 31 means "add a file to the open folder now".
 let wroteNewFile = false;
 const signalTimer = setInterval(async () => {
-  if (wroteNewFile || !daemon.sessions.get(SERIAL)?.previewKeys().includes(31)) return;
+  if (wroteNewFile || !daemon.sessions.get(SERIAL)?.previewKeys().includes('31')) return;
   wroteNewFile = true;
   await png('FFXIV/BEAR/Frost.png');
 }, 50);

@@ -73,9 +73,10 @@ export function settingsSectionOf(type: string | undefined): SettingsSection | n
   return integrationOf(type);
 }
 
-export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
+/** By control id, as the daemon names keys ("7" for a Stream Deck's key 7). */
+export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<string, string> {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
-  const failed: Record<number, string> = {};
+  const failed: Record<string, string> = {};
   for (const f of deck?.failed ?? []) if (f.profile === selection.profile && f.page === selection.page) failed[f.key] = f.error;
   return failed;
 }
@@ -594,7 +595,7 @@ export function faceIcon(button: ButtonDef | undefined, latched = false, appIcon
  * when the deck leaves the page, so a latch on another page cannot exist, and
  * drawing one would be a lie. The deck is the truth.
  */
-export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): number[] {
+export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): string[] {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
   if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return [];
   return deck.latched ?? [];

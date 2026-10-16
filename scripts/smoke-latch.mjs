@@ -188,24 +188,24 @@ const press2 = async (index) => {
 
 await press2(0);
 check('one press latches the combo down, and the physical release does not lift it', (await keysDown()).includes(SHIFT));
-check('the session reports it latched, for the face and the socket', toggles.isLatched(0) && toggles.latchedKeys().includes(0));
+check('the session reports it latched, for the face and the socket', toggles.isLatched('0') && toggles.latchedKeys().includes('0'));
 await press2(0);
-check('a second press releases it', (await keysDown()).length === 0 && !toggles.isLatched(0));
+check('a second press releases it', (await keysDown()).length === 0 && !toggles.isLatched('0'));
 
 // Overlapping combos: refused rather than allowed to steal the release.
 await press2(0);
 await press2(2); // shift+ctrl overlaps the latched shift
-check('a second key latching an overlapping combo is refused', !toggles.isLatched(2));
-check('the refused press badges the key, and the first latch is untouched', daemon.failures.forDeck(SERIAL).some((f) => f.key === 2) && toggles.isLatched(0) && (await keysDown()).includes(SHIFT));
+check('a second key latching an overlapping combo is refused', !toggles.isLatched('2'));
+check('the refused press badges the key, and the first latch is untouched', daemon.failures.forDeck(SERIAL).some((f) => f.key === '2') && toggles.isLatched('0') && (await keysDown()).includes(SHIFT));
 await press2(3); // ctrl overlaps nothing held
-check('a key latching a combo that overlaps nothing is allowed', toggles.isLatched(3) && (await keysDown()).includes(CTRL));
+check('a key latching a combo that overlaps nothing is allowed', toggles.isLatched('3') && (await keysDown()).includes(CTRL));
 await press2(3);
 await press2(0);
 check('both released again', (await keysDown()).length === 0 && toggles.latchedKeys().length === 0);
 
 // A toggle with no keys fails the press rather than latching nothing.
 await press2(4);
-check('a toggle with no "keys" fails and latches nothing', !toggles.isLatched(4) && daemon.failures.forDeck(SERIAL).some((f) => f.key === 4));
+check('a toggle with no "keys" fails and latches nothing', !toggles.isLatched('4') && daemon.failures.forDeck(SERIAL).some((f) => f.key === '4'));
 
 // The face: the built-in default pair, and the key really redrawn.
 check('the default icon is the toggle pair, by state', defaultIconFor({ type: 'toggle' }, { latched: true }) === 'toggle' && defaultIconFor({ type: 'toggle' }, { latched: false }) === 'toggle-off');
@@ -239,24 +239,24 @@ check('a profile switch releases a latched key', (await keysDown()).length === 0
 
 await toggles.setLayout(TOGGLE_CONFIG.profiles.home.layouts[SERIAL]);
 await press2(0);
-await toggles.setPreview(0, { label: 'unsaved' });
-check('a preview over a latched key releases it, since a previewed key cannot be pressed', (await keysDown()).length === 0 && !toggles.isLatched(0));
-await toggles.clearPreview(0);
+await toggles.setPreview('0', { label: 'unsaved' });
+check('a preview over a latched key releases it, since a previewed key cannot be pressed', (await keysDown()).length === 0 && !toggles.isLatched('0'));
+await toggles.clearPreview('0');
 
 // A config reload: the same toggle keeps its latch, a changed key loses it.
 await press2(0);
 await press2(3);
 await toggles.reconfigure({}, TOGGLE_CONFIG.profiles.home.layouts[SERIAL], {}, true);
-check('a reload that leaves the key alone keeps the latch', toggles.isLatched(0) && (await keysDown()).includes(SHIFT));
+check('a reload that leaves the key alone keeps the latch', toggles.isLatched('0') && (await keysDown()).includes(SHIFT));
 const edited = structuredClone(TOGGLE_CONFIG.profiles.home.layouts[SERIAL]);
 edited.pages.one.buttons['3'] = { action: { type: 'toggle', keys: 'alt' } }; // retargeted
 await toggles.reconfigure({}, edited, {}, true);
-check('a key edited under a latch releases it', !toggles.isLatched(3) && !(await keysDown()).includes(CTRL));
-check('and the untouched key is still latched', toggles.isLatched(0) && (await keysDown()).includes(SHIFT));
+check('a key edited under a latch releases it', !toggles.isLatched('3') && !(await keysDown()).includes(CTRL));
+check('and the untouched key is still latched', toggles.isLatched('0') && (await keysDown()).includes(SHIFT));
 const cleared = structuredClone(edited);
 delete cleared.pages.one.buttons['0'];
 await toggles.reconfigure({}, cleared, {}, true);
-check('a key cleared under a latch releases it', !toggles.isLatched(0) && (await keysDown()).length === 0);
+check('a key cleared under a latch releases it', !toggles.isLatched('0') && (await keysDown()).length === 0);
 
 // The status the editor's grid reads.
 await toggles.reconfigure({}, TOGGLE_CONFIG.profiles.home.layouts[SERIAL], {}, true);
@@ -264,7 +264,7 @@ await press2(0);
 // The same snapshot the socket's status and state events carry.
 const snapshot = commands.stateSnapshot(daemon.deps);
 const deckStatus = snapshot.decks.find((d) => d.serial === SERIAL);
-check('the socket status reports the latched key', Array.isArray(deckStatus?.latched) && deckStatus.latched.includes(0));
+check('the socket status reports the latched key', Array.isArray(deckStatus?.latched) && deckStatus.latched.includes('0'));
 
 // The helper dying takes the keyboard with it: the latch must not survive it.
 input.stop();

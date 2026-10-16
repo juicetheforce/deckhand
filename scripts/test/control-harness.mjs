@@ -27,6 +27,7 @@ if (!process.env.DECKHAND_STATE_DIR) {
 const dist = (file) => path.join(REPO, 'dist', file);
 
 export const { DeckSession } = await import(dist('deck.js'));
+export const { hidDevice } = await import(dist('drivers/hid.js'));
 export const { Profiles } = await import(dist('profiles.js'));
 export const { KeyFailures } = await import(dist('key-failures.js'));
 export const { validateConfig } = await import(dist('config.js'));
@@ -136,8 +137,8 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
 
   async function attach(serial, fake) {
     const id = profiles.chooseProfileFor(serial);
-    const session = new DeckSession(fake, {
-      serial,
+    const session = new DeckSession(hidDevice(fake, serial), {
+      serial: serial,
       hardware: state.config.decks?.[serial] ?? {},
       layout: profiles.layoutFor(id, serial),
       defaults: {},

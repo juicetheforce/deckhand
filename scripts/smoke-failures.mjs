@@ -82,7 +82,7 @@ console.log('a failed press marks the key');
   fake.press(0);
   await settle();
   const failed = await failedKeys(client);
-  check('status lists it, with the page, profile and error', failed.length === 1 && failed[0].key === 0 && failed[0].page === 'main' && failed[0].profile === 'home' && failed[0].error === 'the test says no');
+  check('status lists it, with the page, profile and error', failed.length === 1 && failed[0].key === '0' && failed[0].page === 'main' && failed[0].profile === 'home' && failed[0].error === 'the test says no');
   check('the deck draws the badge', badged(fake, 0));
   check('one write, the repaint every press already had', (fake.writes.get(0) ?? 0) - writesBefore === 1);
   check('a state event tells the editor', stateEvents() > eventsBefore);
@@ -121,19 +121,19 @@ console.log('failures that mark the key');
   ran = 0;
   fake.press(2);
   await settle();
-  check('multi: a failed step marks the key', (await failedKeys(client)).some((f) => f.key === 2 && f.error.startsWith('step 1 failed')));
+  check('multi: a failed step marks the key', (await failedKeys(client)).some((f) => f.key === '2' && f.error.startsWith('step 1 failed')));
   check('multi: the steps after it still ran', ran === 1);
 
   fake.press(3);
   await settle();
-  check('go to a page the deck does not have marks the key', (await failedKeys(client)).some((f) => f.key === 3 && f.error.includes('nowhere')));
+  check('go to a page the deck does not have marks the key', (await failedKeys(client)).some((f) => f.key === '3' && f.error.includes('nowhere')));
   const viaSocket = await client.request('action.run', { serial: 'XL1', action: { type: 'page', to: 'nowhere' } });
   check('over the socket it still answers ok, as the editor expects', viaSocket.ok === true);
 
   fake.press(4);
   fake.release(4);
   await settle();
-  check('a failed release marks the key', (await failedKeys(client)).some((f) => f.key === 4) && badged(fake, 4));
+  check('a failed release marks the key', (await failedKeys(client)).some((f) => f.key === '4') && badged(fake, 4));
 
   const before = (await failedKeys(client)).length;
   await client.request('action.run', { serial: 'XL1', action: { type: 'test.flaky' } });
@@ -162,18 +162,19 @@ console.log('editing a key clears its mark');
   await daemon.profiles.applyReload(next, daemon.sessions);
   await settle();
   const failed = await failedKeys(client);
-  check('the edited key is no longer marked, or badged', !failed.some((f) => f.key === 0) && !badged(fake, 0));
-  check('keys not edited keep theirs', failed.some((f) => f.key === 2) && failed.some((f) => f.key === 4));
+  check('the edited key is no longer marked, or badged', !failed.some((f) => f.key === '0') && !badged(fake, 0));
+  check('keys not edited keep theirs', failed.some((f) => f.key === '2') && failed.some((f) => f.key === '4'));
   check('the editor is told', stateEvents() > eventsBefore);
 }
 
 console.log('unplugged and plugged back in');
 {
   const kept = new KeyFailures();
-  kept.mark('XL1', { profile: 'home', page: 'main', key: 1, error: 'earlier' }, CONFIG.profiles.home.layouts.XL1.pages.main.buttons[1]);
+  kept.mark('XL1', { profile: 'home', page: 'main', key: '1', error: 'earlier' }, CONFIG.profiles.home.layouts.XL1.pages.main.buttons[1]);
   const { DeckSession } = await import(path.join(REPO, 'dist/deck.js'));
+  const { hidDevice } = await import(path.join(REPO, 'dist/drivers/hid.js'));
   const replug = new FakeDeck();
-  const second = new DeckSession(replug, {
+  const second = new DeckSession(hidDevice(replug, 'XL1'), {
     serial: 'XL1',
     hardware: {},
     layout: validateConfig(structuredClone(CONFIG)).profiles.home.layouts.XL1,

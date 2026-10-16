@@ -641,7 +641,7 @@ function Editor({
           bulk={bulk}
           at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
           button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
-          failure={selection.key === null ? undefined : failedKeysOn(daemon, { profile: selection.profile, serial: selection.serial, page: selection.page })[selection.key]}
+          failure={selection.key === null ? undefined : failedKeysOn(daemon, { profile: selection.profile, serial: selection.serial, page: selection.page })[String(selection.key)]}
           notSetUp={selection.key !== null && notSetUp(daemon, page?.buttons[String(selection.key)]?.action?.type)}
           editingBlocked={editingBlocked}
           pick={pick}

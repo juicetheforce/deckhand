@@ -22,10 +22,29 @@ export interface GeometrySource {
   CONTROLS?: ReadonlyArray<RawControl>;
 }
 
+/** The shapes a control can have. Stage 1 draws only squares; the rest come with custom layouts. */
+export type ControlShape = 'square';
+
 export interface KeyPosition {
+  /**
+   * The control's id: what the config's `buttons`, the socket and the session
+   * name it by. A Stream Deck's key 7 is "7" (src/devices.ts).
+   */
+  id: string;
+  /** A Stream Deck key's index in the library; a virtual deck's controls have none. */
   index: number;
   row: number;
   column: number;
+  /**
+   * Where the control sits and how big it is, in the geometry's `units`: for a
+   * Stream Deck, cells of its key grid (x is the column, y the row, 1 × 1).
+   * The editor's positioned grid draws from these.
+   */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shape: ControlShape;
   /** 'lcd' keys have a screen; 'rgb' and 'none' do not. */
   feedback: string;
   /** An 'lcd' key's screen in pixels, as the library gives it — not always square (a Studio's are 144×112). */
@@ -57,6 +76,8 @@ export interface DeckGeometry {
   /** e.g. "Stream Deck XL". */
   productName: string;
   keyCount: number;
+  /** What a control's x, y, w and h count: 'cells' of a key grid (a Stream Deck). */
+  units: 'cells';
   /** Width in pixels of the keys' screens, or null if no key has one. Each key's own size is in `keys`. */
   iconSize: number | null;
   /** Height in pixels of the keys' screens, or null: differs from iconSize where they are not square. */
@@ -87,7 +108,8 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
     if (control.type === 'button' && typeof control.index === 'number') {
       const feedback = control.feedbackType ?? 'none';
       const screen = feedback === 'lcd' && control.pixelSize && control.pixelSize.width > 0 && control.pixelSize.height > 0 ? control.pixelSize : null;
-      keys.push(screen ? { index: control.index, row, column, feedback, width: screen.width, height: screen.height } : { index: control.index, row, column, feedback });
+      const place = { id: String(control.index), index: control.index, row, column, x: column, y: row, w: 1, h: 1, shape: 'square' as const, feedback };
+      keys.push(screen ? { ...place, width: screen.width, height: screen.height } : place);
       if (iconSize === null && screen) {
         iconSize = screen.width;
         iconHeight = screen.height;
@@ -107,6 +129,7 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
     model: String(source.MODEL ?? 'unknown'),
     productName: productNameFor(String(source.MODEL ?? ''), source.PRODUCT_NAME),
     keyCount: keys.length > 0 ? keys[keys.length - 1].index + 1 : 0,
+    units: 'cells',
     iconSize,
     iconHeight,
     rows,

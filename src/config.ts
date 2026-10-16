@@ -54,6 +54,14 @@ function rejectDuplicateNames(
   }
 }
 
+/**
+ * What a `buttons` key may be: a control id (src/devices.ts). A Stream
+ * Deck's key 7 is "7", as every config has always said; a virtual deck's
+ * controls have ids of their own. No ":" — the socket's preview slots and the
+ * failure marks join ids with one.
+ */
+export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
 function validateLayout(layout: unknown, where: string): void {
   if (!isObject(layout)) throw new Error(`${where} must be an object`);
   if (!isObject(layout.pages)) throw new Error(`${where} is missing a "pages" object`);
@@ -65,8 +73,8 @@ function validateLayout(layout: unknown, where: string): void {
       throw new Error(`page "${pageId}" in ${where} is missing "buttons"`);
     }
     for (const key of Object.keys(page.buttons)) {
-      if (!/^\d+$/.test(key)) {
-        throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a numeric index`);
+      if (!CONTROL_ID.test(key)) {
+        throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a key id: a Stream Deck's key index ("0", "1", …), or up to 32 letters, digits, "-" and "_"`);
       }
     }
   }

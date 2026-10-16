@@ -142,11 +142,11 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.previewSet = await api.previewSet(serial, 3, { label: 'bridge preview', background: '#00ff00' });
   out.previewBadKey = await api.previewSet(serial, 999, { label: 'x' });
   const withPreview = await waitFor<DaemonView>(api.onDaemon, (await api.snapshot()).daemon, (v) =>
-    (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3),
+    (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3'),
   );
-  out.previewInState = (withPreview.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3);
+  out.previewInState = (withPreview.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3');
   out.daemonEventPushed = await eventually(() =>
-    daemonEvents.some((v) => (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3)),
+    daemonEvents.some((v) => (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3')),
   );
   out.storeEventPushed = await eventually(() => storeEvents.some((v) => v.open && !v.state.dirty));
 
@@ -685,7 +685,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('Flame_IV.png');
   out.selectSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
   out.gridAgrees = await until(() => decodeURIComponent(gridIcon(1)).includes('Flame_IV.png'));
-  out.previewClearedAfterSave = await until(async () => !(await previews()).includes(1));
+  out.previewClearedAfterSave = await until(async () => !(await previews()).includes('1'));
   out.noAssign = button('Assign') === undefined && button('Cancel') === undefined;
 
   // 5. Arrow keys move the selection, and so choose.
@@ -793,7 +793,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => names().includes('corrupt.png'));
 
   // 12. A file the deck cannot draw: refused by the daemon, marked, never saved; its thumbnail is the missing icon.
-  await until(async () => !(await previews()).includes(1)); // the previous choice has finished saving
+  await until(async () => !(await previews()).includes('1')); // the previous choice has finished saving
   await clickItem('corrupt.png');
   out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
   await sleep(700);
@@ -804,7 +804,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('back ground.png');
   await click('Key');
   out.tabLeftSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
-  out.tabClears = await until(async () => !(await previews()).includes(1));
+  out.tabClears = await until(async () => !(await previews()).includes('1'));
   out.keyTabShowsPath = document.querySelector('.inspector .path')?.textContent;
 
   // 14. Selecting another key straight after choosing: saved on the key it was chosen for; the picker stays in the same folder.
@@ -812,7 +812,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('fishing.png');
   await selectKey(0);
   out.keyChangeSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/fishing.png');
-  out.keyChangeClears = await until(async () => !(await previews()).includes(1));
+  out.keyChangeClears = await until(async () => !(await previews()).includes('1'));
   out.placeKept = await until(() => crumbs().endsWith('icons') && names().includes('fishing.png'));
 
   // 15. A page change ends the preview — even one still in flight: the thumbnail
@@ -822,7 +822,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   item('fishing.png')!.click();
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
   await sleep(500);
-  out.pageChangeClears = await until(async () => !(await previews()).includes(0));
+  out.pageChangeClears = await until(async () => !(await previews()).includes('0'));
   out.pageChangeSaved = await until(async () => (await iconOf('0')) === '~/Pictures/icons/fishing.png');
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
   await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
@@ -867,7 +867,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('mic-muted');
   out.builtinSaved = await until(async () => (await iconOf('1')) === 'builtin:mic-muted');
   out.builtinInGrid = await until(() => loadedDefault(1, 'mic-muted'));
-  out.builtinPreviewCleared = await until(async () => !(await previews()).includes(1));
+  out.builtinPreviewCleared = await until(async () => !(await previews()).includes('1'));
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
   out.builtinStartFolder = await api.iconStartFolder('builtin:mic-muted');
   await click('Key');

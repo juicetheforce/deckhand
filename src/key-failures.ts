@@ -24,7 +24,7 @@ interface Entry extends KeyFailure {
   button: string;
 }
 
-function slot(profile: string, page: string, key: number): string {
+function slot(profile: string, page: string, key: string): string {
   return `${profile}\u0000${page}\u0000${key}`;
 }
 
@@ -45,14 +45,14 @@ export class KeyFailures {
   }
 
   /** Clear a key's mark. Returns whether it had one. */
-  clear(serial: string, profile: string, page: string, key: number): boolean {
+  clear(serial: string, profile: string, page: string, key: string): boolean {
     const deck = this.byDeck.get(serial);
     if (!deck?.delete(slot(profile, page, key))) return false;
     if (deck.size === 0) this.byDeck.delete(serial);
     return true;
   }
 
-  has(serial: string, profile: string, page: string, key: number): boolean {
+  has(serial: string, profile: string, page: string, key: string): boolean {
     return this.byDeck.get(serial)?.has(slot(profile, page, key)) ?? false;
   }
 
@@ -72,7 +72,7 @@ export class KeyFailures {
     let changed = false;
     for (const [serial, deck] of this.byDeck) {
       for (const [key, entry] of deck) {
-        const button = config.profiles[entry.profile]?.layouts[serial]?.pages[entry.page]?.buttons[String(entry.key)];
+        const button = config.profiles[entry.profile]?.layouts[serial]?.pages[entry.page]?.buttons[entry.key];
         if (JSON.stringify(button ?? null) !== entry.button) {
           deck.delete(key);
           changed = true;
