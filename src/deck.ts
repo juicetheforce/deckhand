@@ -55,11 +55,11 @@ function clampBrightness(value: number): number {
 export class DeckSession implements DeckHandle {
   readonly serial: string;
   readonly model: string;
-  readonly keyCount: number;
+  keyCount: number;
   /** The first screen's width, for logs; null on a deck with no screens. Each key's own size is in `screens`. */
-  readonly iconSize: number | null;
-  /** Controls and their positions, as the control socket reports them. */
-  readonly geometry: DeckGeometry;
+  iconSize: number | null;
+  /** Controls and their positions, as the control socket reports them. A virtual deck's change with its layout (useGeometry). */
+  geometry: DeckGeometry;
 
   private device: DeckDevice;
   /** Each control's place in reading order, for "key 5" in logs and messages, and for sorting. */
@@ -82,7 +82,7 @@ export class DeckSession implements DeckHandle {
    * A key without one (a Neo's touch keys, every Pedal key) is pressed but
    * never written to — the library refuses an image for it.
    */
-  private screens: Map<string, { width: number; height: number }>;
+  private screens = new Map<string, { width: number; height: number }>();
   private lastSent = new Map<string, Buffer>();
   private lastRenderAt = new Map<string, number>();
   /** Keys told their face may have changed (invalidateByType), drawn on the next tick whatever their kind. */
@@ -127,19 +127,17 @@ export class DeckSession implements DeckHandle {
     // disagree about what a deck is called.
     this.geometry = device.geometry;
     this.model = this.geometry.productName;
-    this.order = new Map(this.geometry.keys.map((key, i) => [key.id, i]));
-
-    this.keyCount = this.geometry.keyCount;
-    this.iconSize = this.geometry.iconSize;
-    this.screens = new Map(
-      this.geometry.keys.flatMap((key) => (key.width && key.height ? [[key.id, { width: key.width, height: key.height }] as const] : [])),
-    );
+    this.order = new Map();
+    this.keyCount = 0;
+    this.iconSize = null;
+    this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
     this.page = startPageOf(this.layout);
     this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
   }
 
   async start(): Promise<void> {
     this.device.onInput((event) => this.onKey(event.control, event.edge));
+    this.device.onRedraw?.(() => void this.repaint());
     this.device.onError((err: unknown) => {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
@@ -157,6 +155,31 @@ export class DeckSession implements DeckHandle {
 
   private label(): string {
     return this.hardware.name ?? `${this.model} ${this.serial.slice(-4)}`;
+  }
+
+  /**
+   * Take a set of controls: the device's own, or — for a virtual deck — the
+   * ones its layout gives it. Anything kept per key for a control that is no
+   * longer there goes; a preview on a control that stays is kept.
+   */
+  private useGeometry(geometry: DeckGeometry): void {
+    this.geometry = geometry;
+    this.keyCount = geometry.keyCount;
+    this.iconSize = geometry.iconSize;
+    this.order = new Map(geometry.keys.map((key, i) => [key.id, i]));
+    this.screens = new Map(
+      geometry.keys.flatMap((key) => (key.width && key.height ? [[key.id, { width: key.width, height: key.height }] as const] : [])),
+    );
+    for (const id of [...this.previews.keys()]) if (!this.order.has(id)) this.previews.delete(id);
+    this.lastSent.clear();
+    this.lastRenderAt.clear();
+    this.stale.clear();
+    this.device.showGeometry?.(geometry);
+  }
+
+  /** A device whose controls its layout defines takes them from the layout now shown (src/devices.ts layoutFrom). */
+  private relayout(): void {
+    if (this.device.layoutFrom) this.useGeometry(this.device.layoutFrom(this.layout));
   }
 
   /** "key 5": a key as people count them, in reading order from 1. */
@@ -731,6 +754,7 @@ export class DeckSession implements DeckHandle {
     await this.fireHeldReleases('a profile switch');
     await this.releaseLatches('a profile switch');
     this.layout = layout;
+    this.relayout();
     this.page = startPageOf(layout);
     this.history = [];
     this.onStateChange();
@@ -752,8 +776,16 @@ export class DeckSession implements DeckHandle {
     keepPage: boolean,
   ): Promise<void> {
     this.hardware = hardware;
+    const controlsBefore = JSON.stringify(this.geometry.keys);
     this.layout = layout;
     this.defaults = { ...DEFAULTS, ...defaults };
+    // A virtual deck's panel may have changed with the layout: a key gone
+    // from under a finger is let go first, as on any way off a page.
+    if (this.device.layoutFrom && JSON.stringify(this.device.layoutFrom(layout).keys) !== controlsBefore) {
+      await this.fireHeldReleases('a panel change');
+      await this.releaseLatches('a panel change');
+      this.relayout();
+    }
     if (!keepPage || !layout.pages[this.page]) {
       await this.fireHeldReleases('a config reload');
       await this.releaseLatches('a config reload');

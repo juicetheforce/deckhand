@@ -46,6 +46,37 @@ export interface DeckDef {
   name?: string;
   /** 0-100. */
   brightness?: number;
+  /**
+   * Present on a virtual deck: what makes a screen one on this computer
+   * (src/drivers/virtual.ts). Its controls are the profile's layout's
+   * `panel`, not here, so one screen can show a different panel per profile.
+   */
+  virtual?: VirtualDeckDef;
+}
+
+export interface VirtualDeckDef {
+  /** The screen's connector, as the system names it ("DP-4"). */
+  output: string;
+}
+
+/** One control on a virtual deck's panel, at its place on the panel's canvas. */
+export interface PanelControlDef {
+  /** Its control id (src/devices.ts): what the pages' `buttons` key it by. Never reused in this panel. */
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shape?: 'square';
+}
+
+/** A virtual deck's controls for one profile: shared by every page of that layout. */
+export interface PanelDef {
+  /** The canvas, in pixels: the screen's size when it was laid out. Shown scaled to fit, centred, on any other. */
+  size: { width: number; height: number };
+  controls: PanelControlDef[];
+  /** What generated it ("small", "medium", "large") — information only. */
+  preset?: string;
 }
 
 /** An entry under a profile's "layouts", keyed by device serial: what one deck shows. */
@@ -53,6 +84,8 @@ export interface LayoutDef {
   /** Page ID or name. Defaults to the first page. */
   startPage?: string;
   pages: Record<string, PageDef>;
+  /** A virtual deck's controls, for this profile (types.ts PanelDef). Absent on a Stream Deck, whose controls are its own. */
+  panel?: PanelDef;
 }
 
 /** An entry under "profiles", keyed by profile ID. */

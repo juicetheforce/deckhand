@@ -1,4 +1,5 @@
 import type { DeckGeometry } from './geometry.js';
+import type { LayoutDef } from './types.js';
 
 /**
  * What the daemon needs from a deck, whatever drives it — the seam between
@@ -28,6 +29,18 @@ export interface DeckDevice {
   /** Optional: a device without a backlight to set has none. */
   setBrightness?(percent: number): Promise<void>;
   close(): Promise<void>;
+  /**
+   * Optional: a device whose controls the layout defines — a virtual deck,
+   * whose panel can differ per profile. Called with each layout it is given
+   * (attaching, a profile switch, a reload); returns its controls for that
+   * layout, which replace `geometry` for the session. Pure: it only answers.
+   * A Stream Deck has none: its controls are its own.
+   */
+  layoutFrom?(layout: LayoutDef): DeckGeometry;
+  /** With layoutFrom: the controls the session now uses. Its screen is cleared, and drawn again key by key. */
+  showGeometry?(geometry: DeckGeometry): void;
+  /** Optional: the device asks for every control to be drawn again (its screen was resized, say). */
+  onRedraw?(listener: () => void): void;
 }
 
 export interface ControlInput {

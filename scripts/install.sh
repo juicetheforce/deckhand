@@ -168,6 +168,8 @@ SERVICE_NODE=/usr/bin/node            # what systemd/deckhand.service runs
 UINPUT_NODE=/dev/uinput
 UINPUT_SYSFS=/sys/class/misc/uinput     # present only once the uinput module is loaded
 UINPUT_HEADER=/usr/include/linux/uinput.h
+# The virtual-deck display helper (panel/) is built against libwayland-client.
+WAYLAND_HEADER=/usr/include/wayland-client.h
 LOGIND_SEATS_DIR=/run/systemd/seats
 SYSCTL_DIR=/proc/sys
 OS_RELEASE=/etc/os-release
@@ -314,6 +316,8 @@ preflight_checks() {
     has_command cc   || missing cc "A C compiler (cc): install gcc, to build the key-injection helper."
     [ -f "$UINPUT_HEADER" ] \
       || missing uinput-header "$UINPUT_HEADER: the helper is built against the kernel's uinput header. Install your distribution's kernel headers for userspace (kernel-headers on Fedora, linux-libc-dev on Debian and Ubuntu)."
+    [ -f "$WAYLAND_HEADER" ] \
+      || missing wayland-header "$WAYLAND_HEADER: the virtual-deck display helper is built against libwayland-client. Install its development files (wayland-devel on Fedora, libwayland-dev on Debian and Ubuntu, wayland on Arch)."
   fi
 
   # The virtual keyboard. Whether it is writable is the udev rule's business,
@@ -495,6 +499,10 @@ pkg_candidates() {   # pkg_candidates <manager> <key> -> candidate names, best f
     dnf:uinput-header)     echo "kernel-headers" ;;            # checked: Fedora 44
     pacman:uinput-header)  echo "linux-api-headers" ;;
 
+    apt:wayland-header)    echo "libwayland-dev" ;;
+    dnf:wayland-header)    echo "wayland-devel" ;;             # checked: Fedora 44 (rpm -qf)
+    pacman:wayland-header) echo "wayland" ;;
+
     # Fedora has no unversioned nodejs package; /usr/bin/node comes from
     # nodejsNN-bin. Newest first, so the floor of 22.12 is cleared by whichever
     # of these the release still carries.
@@ -575,7 +583,7 @@ install_command() {   # install_command <manager> <package>...
 # them; the offer only the missing ones.
 package_keys() {
   if is_release; then echo "libusb curl xz pactl gio apparmor-parser"
-  else echo "node npm make cc uinput-header pactl gio apparmor-parser"
+  else echo "node npm make cc uinput-header wayland-header pactl gio apparmor-parser"
   fi
 }
 
@@ -821,6 +829,10 @@ build_and_stage() {
   cp "$REPO_DIR/tsconfig.json" "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" \
      "$REPO_DIR/README.md" "$STAGE_DIR/"
   cp "$REPO_DIR/helper/deckhand-input.c" "$REPO_DIR/helper/Makefile" "$STAGE_DIR/helper/"
+  # The virtual-deck display helper: its sources and the protocols' committed code.
+  mkdir -p "$STAGE_DIR/panel/protocol"
+  cp "$REPO_DIR"/panel/{panel.c,wayland.c,platform.h,Makefile} "$STAGE_DIR/panel/"
+  cp "$REPO_DIR"/panel/protocol/*.{c,h} "$STAGE_DIR/panel/protocol/"
   # Built-in icons: the daemon finds them beside dist/ and
   # draws them only as fallbacks; config.json never points here, since this
   # directory is replaced on every update.
@@ -833,6 +845,7 @@ build_and_stage() {
     npm ci                    # dev dependencies too: TypeScript is needed to build
     npm run build:ts
     make -C helper
+    make -C panel
   )
   # Before the daemon's dev dependencies and src/ go: the editor's build
   # bundles daemon source and resolves its packages from this node_modules.
@@ -848,6 +861,7 @@ build_and_stage() {
     rm -rf node_modules
     npm ci --omit=dev
     rm -rf src tsconfig.json helper/deckhand-input.c helper/Makefile
+    find panel -mindepth 1 ! -name deckhand-panel -delete
   )
   stage_install_files
   # The Node this install was built with. A release carries its own here

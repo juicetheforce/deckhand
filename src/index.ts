@@ -6,6 +6,7 @@ import { ControlServer, socketPath } from './control/server.js';
 import { DeckSession } from './deck.js';
 import type { DeckDriver, FoundDevice } from './devices.js';
 import { hidDriver, printHidDecks } from './drivers/hid.js';
+import { createVirtualDriver } from './drivers/virtual.js';
 import type { DeckGeometry } from './geometry.js';
 import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
@@ -28,11 +29,11 @@ import type { ActionDef, Config } from './types.js';
 const SAFETY_SCAN_INTERVAL_MS = 60000;
 
 /**
- * Where decks come from (src/devices.ts). Stream Decks only, for now; a scan
- * reconciles against every driver's list, and nothing else here asks which
- * kind of deck it has.
+ * Where decks come from (src/devices.ts): Stream Decks, and virtual decks on
+ * the screens the config names. A scan reconciles against every driver's
+ * list, and nothing else here asks which kind of deck it has.
  */
-const drivers: DeckDriver[] = [hidDriver];
+const drivers: DeckDriver[] = [hidDriver, createVirtualDriver(() => config)];
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
