@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "v0.7.1 held until Ryan reports step 5 (Twitch link alive a day after install) and the coming code audit is done; then one ship test and one release. Its docs wait on the branch release/v0.7.1-docs."
+next = "Plan the virtual decks milestone; code audit 2's seam decisions (docs/code-audit-2.md §2.2) are its starting point."
 category = "Gaming"
 paused = false
 focus = true
@@ -17,4 +17,5 @@ v0.6.0 (2026-10-03): VTube Studio keys (Trigger hotkey, Toggle expression, Model
 Twitch (2026-10-14): one public client ID for every user (no secret), owned by a dedicated account; an hourly validate-and-refresh timer while linked is an accepted exception to "no timers at rest", because Twitch requires it.
 Twitch sessions 1 and 2 confirmed live on real Twitch (2026-10-14): Marker, Clip, Chat message, Stream info, Settings.
 v0.7.0 (2026-10-14): Twitch and a reworked settings window (sidebar of pages, status dots); published before the day-later link check, at Ryan's word.
+v0.7.1 (2026-10-15): code audit 2's fixes (credentials write race, icon reads, Studio/Neo/Pedal, event-driven faces: a page of integration keys 0.85% -> 0.09% of a core); every failed press notifies, counted; Update available in About (reverses "no update check"). The Twitch link confirmed alive after 25 h.
 """
