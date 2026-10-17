@@ -21,7 +21,7 @@ const TOUCH_WORDS: Record<TouchState, string> = {
   'not-paired': 'not paired with a touchscreen: Tap again',
   missing: 'its touchscreen is not connected',
   opening: 'opening its touchscreen',
-  failed: 'its touchscreen could not be opened',
+  failed: 'touch is not available: Tap again restores access',
   locked: 'touch is off while the session is locked',
   inactive: 'touch is off while another session is active',
   unknown: 'touch is off: the lock state cannot be read',

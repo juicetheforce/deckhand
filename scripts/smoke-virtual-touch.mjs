@@ -386,10 +386,22 @@ await settle('states', async () => {
   check('no touchscreen in the config: not paired, nothing sent to read', device.touchState() === 'not-paired' && (await until(async () => (await frames()).filter((f) => f.type === 'T').at(-1)?.mode === 0)));
   await session.close();
   config = validateConfig({ decks: { 'GRA-6e4e': { virtual: { output: 'DP-4', touch: ILITEK } } }, profiles: config.profiles });
+  const saidBefore = said.length;
+  const errorsBefore = errors.length;
   process.env.FAKE_PANEL_TOUCH = 'fail';
   await startDeck();
   delete process.env.FAKE_PANEL_TOUCH;
   check('one that cannot be opened: failed', await until(() => device.touchState() === 'failed'), device.touchState());
+  check('…said as touch not available, with the way back (Tap again)',
+    await until(() => errors.slice(errorsBefore).some((l) => /GRA-6e4e: touch is not available: cannot open .*Permission denied\. Tap again in Settings › Decks/.test(l))), JSON.stringify(errors.slice(errorsBefore)));
+  // The order seen on the laptop after a reboot: the open fails, then logind
+  // says the session is unlocked.
+  logind.current.lock(true);
+  await until(() => said.slice(saidBefore).some((l) => /GRA-6e4e: the session is locked/.test(l)));
+  logind.current.lock(false);
+  check('…and an unlock after it says touch is not available, with the way back',
+    await until(() => said.slice(saidBefore).some((l) => /GRA-6e4e: the session is unlocked; touch is not available: its touchscreen could not be opened\. Tap again/.test(l))), JSON.stringify(said.slice(saidBefore)));
+  check('…never "touches work"', !said.slice(saidBefore).some((l) => /touches work/.test(l)), JSON.stringify(said.slice(saidBefore)));
   await session.close();
   session = null;
 });

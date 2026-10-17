@@ -42,6 +42,16 @@ const READY_MS = 5000;
 const QUIT_MS = 2000;
 /** After a helper failed, its deck is not listed again for this long, so a broken helper cannot respawn in a loop. */
 const RETRY_AFTER_MS = 30_000;
+/** What to do when the paired touchscreen cannot be opened: usually its access is missing. */
+const TAP_AGAIN = 'Tap again in Settings › Decks pairs it again, which restores its access';
+
+/** Why touch is not available, for the log (control/protocol.ts TouchState). */
+const TOUCH_UNAVAILABLE: Record<string, string> = {
+  failed: `its touchscreen could not be opened. ${TAP_AGAIN}`,
+  missing: 'its touchscreen is not connected',
+  'not-paired': 'it is not paired with a touchscreen: Tap again in Settings › Decks',
+};
+
 /** How long a pairing waits for the tap (DECKHAND_PAIR_MS for tests). */
 export const PAIR_MS = Number(process.env.DECKHAND_PAIR_MS) || 30_000;
 
@@ -117,7 +127,12 @@ class PanelDevice implements DeckDevice {
     this.stopLock = sessionLock.onLockChange((state) => {
       if (state === 'open') {
         this.refusedLogged = false;
-        console.log(`[virtual] ${this.id}: the session is unlocked; touches work`);
+        // "Touches work" only when they do: the touchscreen open, not just the session.
+        console.log(
+          this.touch === 'ready'
+            ? `[virtual] ${this.id}: the session is unlocked; touches work`
+            : `[virtual] ${this.id}: the session is unlocked; ${this.touch === 'opening' ? 'its touchscreen is being opened' : `touch is not available: ${TOUCH_UNAVAILABLE[this.touch]}`}`,
+        );
         return;
       }
       console.log(`[virtual] ${this.id}: the session is ${state === 'unknown' ? 'in an unknown state' : state}; touches do nothing`);
@@ -151,12 +166,16 @@ class PanelDevice implements DeckDevice {
       case 'touch-open':
         if (event.device === this.touchscreen) {
           this.touch = 'ready';
-          console.log(`[virtual] ${this.id}: reading touches from ${this.touchscreen}`);
+          console.log(`[virtual] ${this.id}: reading touches from ${this.touchscreen}${sessionLock.lockState() === 'open' ? '; touches work' : ''}`);
         }
         break;
       case 'touch-failed':
-        console.error(`[virtual] ${this.id}: ${String(event.message)}`);
-        if (event.device === this.touchscreen) this.touch = 'failed';
+        if (event.device === this.touchscreen) {
+          this.touch = 'failed';
+          console.error(`[virtual] ${this.id}: touch is not available: ${String(event.message)}. ${TAP_AGAIN}`);
+        } else {
+          console.error(`[virtual] ${this.id}: ${String(event.message)}`);
+        }
         break;
       case 'touch-gone':
         if (event.device === this.touchscreen) {
@@ -257,9 +276,9 @@ class PanelDevice implements DeckDevice {
       this.sendTouch('', []);
       return;
     }
-    // A sibling this process may not open is expected — the udev rule grants
-    // touchscreens only — so it is not sent to fail, and said once, not as an
-    // error on every attach.
+    // A sibling this process may not open is expected — access is given to the
+    // paired touchscreen alone — so it is not sent to fail, and said once, not
+    // as an error on every attach.
     const siblings = found.siblings.filter((sibling) => {
       if (readable(sibling)) return true;
       const said = `${this.id} ${sibling.devnode}`;
@@ -267,7 +286,7 @@ class PanelDevice implements DeckDevice {
         unreadSiblingsSaid.add(said);
         console.log(
           `[virtual] ${this.id}: not grabbing ${sibling.node} (${sibling.name}), another node of its touchscreen: Deckhand may not read it, ` +
-            `as the udev rule covers touchscreens only. ${sibling.absolute ? 'It can report positions, so any touch the panel sent through it would reach the desktop.' : 'It cannot report positions.'}`,
+            `as pairing gives access to the touchscreen itself only, for the user who paired it. ${sibling.absolute ? 'It can report positions, so any touch the panel sent through it would reach the desktop.' : 'It cannot report positions.'}`,
         );
       }
       return false;

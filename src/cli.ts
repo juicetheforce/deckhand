@@ -18,7 +18,7 @@ const TOUCH_WORDS: Record<string, string> = {
   'not-paired': 'not paired with a touchscreen',
   missing: 'its touchscreen is not connected',
   opening: 'opening its touchscreen',
-  failed: 'its touchscreen could not be opened (see the journal)',
+  failed: 'touch is not available: its touchscreen could not be opened (Tap again in Settings › Decks restores access; the journal says why)',
   locked: 'off while the session is locked',
   inactive: 'off while another session is active',
   unknown: 'off: the lock state cannot be read',
