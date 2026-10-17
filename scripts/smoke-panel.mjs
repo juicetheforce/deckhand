@@ -242,7 +242,14 @@ try {
     JSON.stringify(seen));
 
   mark = t.events.length;
+  // The new canvas is in place once an image after it is answered: a canvas
+  // frame has no answer of its own, and a touch read first would be mapped
+  // to the old one.
+  const drawnBefore = t.events.filter((e) => e.ev === 'drawn').length;
   t.proc.stdin.write(canvasFrame(1000, 360));
+  t.proc.stdin.write(imageFrame(0, 0, 1, 1, Buffer.from([0, 0, 0, 255])));
+  await until(() => t.events.filter((e) => e.ev === 'drawn').length > drawnBefore);
+  mark = t.events.length;
   send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, 11), ev(EV.ABS, C.MT_X, 500), ev(EV.ABS, C.MT_Y, 500), syn());
   await until(() => touches(t, mark).length >= 1);
   seen = touches(t, mark);

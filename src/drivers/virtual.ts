@@ -9,7 +9,7 @@ import { renderMessage } from '../render.js';
 import { findScreen, listScreens, type Screen } from '../screens.js';
 import * as sessionLock from '../services/session-lock.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
-import { findTouch, listInputNodes, touchIdentity, type InputNode } from '../touchscreens.js';
+import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { Config, LayoutDef, TouchDeviceDef } from '../types.js';
 import { canvasFrame, clearFrame, imageFrame, quitFrame, touchFrame } from './panel-frames.js';
 
@@ -43,6 +43,9 @@ const QUIT_MS = 2000;
 const RETRY_AFTER_MS = 30_000;
 /** How long a pairing waits for the tap. */
 export const PAIR_MS = 60_000;
+
+/** Siblings already said to be unreadable, by deck and node: once each per daemon run, not on every attach. */
+const unreadSiblingsSaid = new Set<string>();
 
 interface Ready {
   output: string;
@@ -239,7 +242,22 @@ class PanelDevice implements DeckDevice {
       this.sendTouch('', []);
       return;
     }
-    const entries: Array<['t' | 's', string]> = [['t', found.touchscreen.devnode], ...found.siblings.map((s) => ['s', s.devnode] as ['s', string])];
+    // A sibling this process may not open is expected — the udev rule grants
+    // touchscreens only — so it is not sent to fail, and said once, not as an
+    // error on every attach.
+    const siblings = found.siblings.filter((sibling) => {
+      if (readable(sibling)) return true;
+      const said = `${this.id} ${sibling.devnode}`;
+      if (!unreadSiblingsSaid.has(said)) {
+        unreadSiblingsSaid.add(said);
+        console.log(
+          `[virtual] ${this.id}: not grabbing ${sibling.node} (${sibling.name}), another node of its touchscreen: Deckhand may not read it, ` +
+            `as the udev rule covers touchscreens only. ${sibling.absolute ? 'It can report positions, so any touch the panel sent through it would reach the desktop.' : 'It cannot report positions.'}`,
+        );
+      }
+      return false;
+    });
+    const entries: Array<['t' | 's', string]> = [['t', found.touchscreen.devnode], ...siblings.map((s) => ['s', s.devnode] as ['s', string])];
     const before = this.touchSent;
     this.sendTouch(found.touchscreen.devnode, entries);
     // Until the helper says it opened it.

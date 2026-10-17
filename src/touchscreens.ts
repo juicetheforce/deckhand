@@ -22,6 +22,8 @@ import type { TouchDeviceDef } from './types.js';
 
 const INPUT_DIR = process.env.DECKHAND_INPUT_DIR ?? '/sys/class/input';
 const UDEV_DATA_DIR = process.env.DECKHAND_UDEV_DATA_DIR ?? '/run/udev/data';
+/** Where the device nodes are; a test points it at a scratch directory. */
+const DEV_DIR = process.env.DECKHAND_DEV_INPUT_DIR ?? '/dev/input';
 /** INPUT_PROP_DIRECT: the device's coordinates are the screen's — a touchscreen, not a touchpad. */
 const INPUT_PROP_DIRECT = 0x02;
 
@@ -30,6 +32,8 @@ export interface InputNode {
   node: string;
   /** "/dev/input/event15" */
   devnode: string;
+  /** It reports an absolute position (ABS_X and ABS_Y): a touchscreen's "mouse" twin that does could carry a touch as a click. */
+  absolute: boolean;
   name: string;
   touchscreen: boolean;
   /** Four hex digits, lower case. */
@@ -98,11 +102,15 @@ export function listInputNodes(inputDir = INPUT_DIR, udevDir = UDEV_DATA_DIR): I
     if (!dev || !vendor || !product) continue;
     const props = udevProperties(dev, udevDir);
     const direct = (parseInt(read(path.join(input, 'properties')) ?? '0', 16) & INPUT_PROP_DIRECT) !== 0;
+    // The lowest word of the absolute-axis bitmap, last in the file: bits 0 and 1 are ABS_X and ABS_Y.
+    const absWords = (read(path.join(input, 'capabilities', 'abs')) ?? '0').split(' ');
+    const absolute = (parseInt(absWords[absWords.length - 1], 16) & 0x3) === 0x3;
     const usb = ancestorWith(path.dirname(input), 'idVendor');
     const serial = (usb ? read(path.join(usb, 'serial')) : null) || read(path.join(input, 'uniq')) || undefined;
     nodes.push({
       node,
-      devnode: `/dev/input/${node}`,
+      devnode: path.join(DEV_DIR, node),
+      absolute,
       name: read(path.join(input, 'name')) ?? node,
       // udev's word when it has one; the kernel's "direct" property when its database is missing.
       touchscreen: props ? props.get('ID_INPUT_TOUCHSCREEN') === '1' : direct,
@@ -114,6 +122,16 @@ export function listInputNodes(inputDir = INPUT_DIR, udevDir = UDEV_DATA_DIR): I
     });
   }
   return nodes;
+}
+
+/** Whether this process may open the node for reading. */
+export function readable(node: InputNode): boolean {
+  try {
+    fs.accessSync(node.devnode, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** What a pairing remembers of a touchscreen: its serial when it has one, else its IDs and port. */

@@ -37,6 +37,7 @@ const { edid, fakeSysfs, ILITEK, ILITEK_NODES } = await import('./test/fake-sysf
 const sysfs = fakeSysfs(TMP);
 const { drm: DRM, input: INPUT, udev: UDEV } = sysfs;
 const { plug, usbDevice, inputNode, unplugNode } = sysfs;
+const DEVI = sysfs.dev;
 const LOG = path.join(TMP, 'panel.log');
 const SOCKS = path.join(TMP, 'socks');
 await fs.mkdir(SOCKS);
@@ -54,6 +55,7 @@ Object.assign(process.env, {
   DECKHAND_DRM_DIR: DRM,
   DECKHAND_INPUT_DIR: INPUT,
   DECKHAND_UDEV_DATA_DIR: UDEV,
+  DECKHAND_DEV_INPUT_DIR: DEVI,
   DECKHAND_PANEL_BIN: path.join(REPO, 'scripts/test/fake-panel.mjs'),
   FAKE_PANEL_LOG: LOG,
   FAKE_PANEL_INPUT_DIR: SOCKS,
@@ -76,6 +78,13 @@ const check = (name, ok, detail = '') => {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name}${!ok && detail ? ` — ${detail}` : ''}`);
 };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// What the daemon's code logs, to check what it says and at what level.
+const said = [];
+const errors = [];
+const realLog = console.log.bind(console);
+const realError = console.error.bind(console);
+console.log = (...a) => (said.push(a.join(' ')), realLog(...a));
+console.error = (...a) => (errors.push(a.join(' ')), realError(...a));
 async function until(fn, ms = 3000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
@@ -247,7 +256,8 @@ await settle('touch', async () => {
   check('a screen keyed by its EDID is listed as that deck', (await driver.list()).map((f) => f.id).join() === 'GRA-6e4e');
   await startDeck();
   const t = (await frames()).find((f) => f.type === 'T');
-  check('the helper is given the paired touchscreen to grab, and its sibling', t?.mode === 1 && JSON.stringify(t.entries) === JSON.stringify([['t', '/dev/input/event15'], ['s', '/dev/input/event16']]), JSON.stringify(t));
+  check('the helper is given the paired touchscreen to grab, and not the sibling it may not read', t?.mode === 1 && JSON.stringify(t.entries) === JSON.stringify([['t', `${DEVI}/event15`]]), JSON.stringify(t));
+  check('…which is said once, not as an error, saying it can report positions', said.filter((l) => /not grabbing event16 .*can report positions/.test(l)).length === 1 && !errors.some((l) => /event16/.test(l)), JSON.stringify([said, errors]));
   check('touch ready once the helper has it open and logind says unlocked', await until(() => device.touchState() === 'ready'), device.touchState());
   await helperSays('DP-4', down(0, 'k1'));
   check('a touch on a key presses it, and runs its action', inputs.join() === 'k1 down' && session.currentPage() === 'two', `${inputs} / ${session.currentPage()}`);
@@ -311,7 +321,7 @@ await settle('lock', async () => {
 
 console.log('the touchscreen coming and going');
 await settle('touchscreen', async () => {
-  await helperSays('DP-4', { ev: 'touch-gone', device: '/dev/input/event15' });
+  await helperSays('DP-4', { ev: 'touch-gone', device: `${DEVI}/event15` });
   check('unplugged: the panel stays, touch missing', device.touchState() === 'missing');
   const before = (await frames()).filter((f) => f.type === 'T').length;
   await driver.list();
@@ -326,13 +336,19 @@ await settle('touchscreen', async () => {
   await driver.list();
   await sleep(50);
   check('a scan with nothing changed sends nothing', (await frames()).filter((f) => f.type === 'T').length === sent);
+  check('…and says nothing again about the sibling', said.filter((l) => /not grabbing event16/.test(l)).length === 1);
+  await fs.chmod(path.join(DEVI, 'event16'), 0o600);
+  await driver.list();
+  check('a sibling it may read (another rule granted it) is grabbed with the touchscreen', await until(async () => JSON.stringify((await frames()).filter((f) => f.type === 'T').at(-1)?.entries) === JSON.stringify([['t', `${DEVI}/event15`], ['s', `${DEVI}/event16`]])));
+  await fs.chmod(path.join(DEVI, 'event16'), 0o000);
+  await driver.list();
 });
 
 console.log('pairing');
 await settle('pairing', async () => {
   await plug('DP-6', 'connected', edid({ maker: 'MSI', product: '3ba7', serial: 'BA7T162501350' }));
   const pairing = driver.pair('DP-6');
-  await helperSays('DP-6', { ev: 'tap', device: '/dev/input/event256' });
+  await helperSays('DP-6', { ev: 'tap', device: `${DEVI}/event256` });
   const result = await pairing;
   check('the screen tapped is named with its key, its touchscreen as the config keeps it', result.screen === 'MSI-3ba7-BA7T162501350' && JSON.stringify(result.touch) === JSON.stringify({ vendor: '27c0', product: '0859', serial: '9LQ0172005164' }) && result.touchName === 'wch.cn TouchScreen', JSON.stringify(result));
   const all = await frames();
@@ -340,7 +356,7 @@ await settle('pairing', async () => {
   const shown = all.slice(start);
   const t = shown.find((f) => f.type === 'T');
   check('"Tap this screen" on the whole screen', shown.some((f) => f.type === 'I' && f.x === 0 && f.y === 0 && f.w === 1920 && f.h === 720));
-  check('every touchscreen read without a grab (pairing mode), nothing else', t?.mode === 2 && t.entries.map((e) => e.join(':')).join() === 't:/dev/input/event7,t:/dev/input/event15,t:/dev/input/event20,t:/dev/input/event256', JSON.stringify(t));
+  check('every touchscreen read without a grab (pairing mode), nothing else', t?.mode === 2 && t.entries.map((e) => e.join(':')).join() === `t:${DEVI}/event7,t:${DEVI}/event15,t:${DEVI}/event20,t:${DEVI}/event256`, JSON.stringify(t));
   check('the helper is quit after', shown.some((f) => f.type === 'Q'));
 
   const abort = new AbortController();
@@ -358,7 +374,7 @@ await settle('pairing', async () => {
   // The deck's own screen: its session closes for the tap and comes back.
   const pairDeck = driver.pair('DP-4');
   check('pairing the deck\'s own screen closes the deck first (its grab would hide the tap)', await until(() => session === null), String(session));
-  await helperSays('DP-4', { ev: 'tap', device: '/dev/input/event15' });
+  await helperSays('DP-4', { ev: 'tap', device: `${DEVI}/event15` });
   check('…and pairs', JSON.stringify((await pairDeck).touch) === JSON.stringify(ILITEK));
   check('…and asks for a scan after, which lists the deck again', asked.at(-1)?.includes('finished') && (await driver.list()).some((f) => f.id === 'GRA-6e4e'));
 });

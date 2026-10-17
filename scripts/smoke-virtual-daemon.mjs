@@ -72,6 +72,7 @@ const { startFakeLogind } = await import('./test/fake-logind.mjs');
 const sysfs = fakeSysfs(TMP);
 const DRM = sysfs.drm;
 const SOCKS = path.join(TMP, 'socks');
+const DEVI = sysfs.dev;
 const PANEL_LOG = path.join(TMP, 'panel.log');
 
 const grid = (prefix, rows, columns, pitch) => {
@@ -134,6 +135,7 @@ const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test
     DECKHAND_DRM_DIR: DRM,
     DECKHAND_INPUT_DIR: sysfs.input,
     DECKHAND_UDEV_DATA_DIR: sysfs.udev,
+    DECKHAND_DEV_INPUT_DIR: DEVI,
     // The private bus is its system bus too: the fake logind is there.
     DBUS_SYSTEM_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
     FAKE_PANEL_INPUT_DIR: SOCKS,
@@ -171,14 +173,17 @@ try {
   check('status: connected, configured, on its page', status?.connected === true && status.configured === true && status.page === 'main');
 
   console.log('touch');
-  check('its touchscreen given to the helper, with its sibling', (await frames()).some((f) => f.type === 'T' && f.mode === 1 && f.entries.map((e) => e.join(':')).join() === 't:/dev/input/event15,s:/dev/input/event16'));
+  check('its touchscreen given to the helper; the sibling it may not read is not', (await frames()).some((f) => f.type === 'T' && f.mode === 1 && f.entries.map((e) => e.join(':')).join() === `t:${DEVI}/event15`));
   const touchOf = async () => (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.touch;
   check('status: touch ready', await until(async () => (await touchOf()) === 'ready'), String(await touchOf()));
+  const cliStatus = () => spawnSync(process.execPath, [path.join(REPO, 'dist/cli.js'), 'status'], { env: { ...process.env, DECKHAND_SOCKET: SOCKET } }).stdout.toString();
+  check('deckhand status says so in words', /GRA-6e4e .*\n    touch: ready\n/.test(cliStatus()), cliStatus());
   await helperSays('DP-4', { ev: 'touch', contact: 0, edge: 'down', x: 360, y: 120 }, { ev: 'touch', contact: 0, edge: 'up' });
   check('a touch on a key runs its action (k2: to page two)', await until(async () => (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page === 'two'));
   await client.request('action.run', { serial: KEY, action: { type: 'page', to: 'main' } });
   logind.lock(true);
   check('locked: status says so', await until(async () => (await touchOf()) === 'locked'), String(await touchOf()));
+  check('…and deckhand status', /touch: off while the session is locked/.test(cliStatus()), cliStatus());
   const pageNow = (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page;
   await helperSays('DP-4', { ev: 'touch', contact: 1, edge: 'down', x: 360, y: 120 }, { ev: 'touch', contact: 1, edge: 'up' });
   check('locked: a touch does nothing', (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page === pageNow);
@@ -188,12 +193,12 @@ try {
   console.log('screens and pairing');
   const screens = (await client.request('screens')).result;
   check('screens: each by its key, and which is a virtual deck', JSON.stringify(screens.screens.map((x) => [x.connector, x.key, x.deck])) === JSON.stringify([['DP-4', KEY, KEY], ['HDMI-A-1', 'HPN-3469-CNK8231CGN', null]]) && screens.screens[0].widthMm === 243 && screens.screens[0].name === 'HD Display', JSON.stringify(screens));
-  check('…and the touchscreens, not their siblings', JSON.stringify(screens.touchscreens.map((x) => x.device)) === JSON.stringify(['/dev/input/event15']) && screens.touchscreens[0].path === ILITEK.path);
+  check('…and the touchscreens, not their siblings', JSON.stringify(screens.touchscreens.map((x) => x.device)) === JSON.stringify([`${DEVI}/event15`]) && screens.touchscreens[0].path === ILITEK.path);
   const startsBefore = (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').length;
   const pairing = client.request('virtual.pair', { output: 'DP-4' });
   check('pairing the deck\'s screen: the deck is closed for it', await until(() => /deck GRA-6e4e disconnected/.test(log())), log().slice(-500));
   await until(async () => (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').length === startsBefore + 1);
-  await helperSays('DP-4', { ev: 'tap', device: '/dev/input/event15' });
+  await helperSays('DP-4', { ev: 'tap', device: `${DEVI}/event15` });
   const paired = await pairing;
   check('the reply names the screen and its touchscreen, as the config keeps them', paired.ok && paired.result.screen === KEY && JSON.stringify(paired.result.touch) === JSON.stringify(ILITEK), JSON.stringify(paired));
   check('…and the deck comes back', await until(() => (log().match(/attached Test panel/g) ?? []).length === 2), log().slice(-500));
@@ -224,6 +229,7 @@ try {
   await screen('connected');
   process.kill(child.pid, 'SIGUSR2');
   check('plugged in again, the next scan attaches it again', await until(() => (log().match(/attached Test panel/g) ?? []).length === 3), log().slice(-600));
+  check('three attaches, and the unread sibling said once, never as "cannot open"', (log().match(/not grabbing event16/g) ?? []).length === 1 && !/cannot open .*event16/.test(log()));
 
   client.close();
   const quitsBefore = (await frames()).filter((f) => f.type === 'Q').length;
