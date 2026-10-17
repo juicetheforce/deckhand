@@ -115,6 +115,7 @@ const custom = gridFor(PANEL, 'custom', { rows: 5 });
 check('Custom: the rows chosen, columns worked out so keys stay square', custom.rows === 5 && custom.columns === 13 && custom.pitch === 144, JSON.stringify(custom));
 const customBoth = gridFor(PANEL, 'custom', { rows: 2, columns: 12 });
 check('Custom with columns too: keys as large as fit both ways, still square', customBoth.rows === 2 && customBoth.columns === 12 && customBoth.pitch === 160, JSON.stringify(customBoth));
+check('Custom is capped: at most 12 rows and 24 columns', (() => { const g = gridFor(PANEL, 'custom', { rows: 40, columns: 99 }); return g.rows === 12 && g.columns === 24; })());
 check('very small keys are flagged, never refused', gridFor(PANEL, 'custom', { rows: 8 }).verySmall === true && gridFor(PANEL, 'small').verySmall === false && makePanel(PANEL, 'custom', { rows: 8 }).controls.length > 0);
 const medium = makePanel(PANEL, 'medium');
 check('a panel: k1… in reading order, a 12% gap, centred, every key on the canvas', medium.controls.length === 24 && medium.controls[0].id === 'k1' && medium.controls[8].y > medium.controls[7].y && medium.controls[0].w === 211 && medium.controls.every((c) => c.x >= 0 && c.y >= 0 && c.x + c.w <= 1920 && c.y + c.h <= 720), JSON.stringify(medium.controls.slice(0, 2)));

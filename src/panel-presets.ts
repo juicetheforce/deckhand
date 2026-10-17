@@ -10,8 +10,9 @@
  * × 720) that is 4 × 10, 3 × 8 and 2 × 5; on the Xeneon Edge (364 × 113 mm,
  * 2560 × 720) 5 × 17, 4 × 14 and 3 × 10. **A reported size is not trusted
  * blindly**: one that is implausible falls back to pixel pitches, 180, 240
- * and 360 px (the 10.3" panel's). **Custom**: the person chooses the rows,
- * and may set the columns; keys stay square either way.
+ * and 360 px (the 10.3" panel's). **Custom**: the person sets the rows and
+ * the columns, up to MAX_CUSTOM_ROWS × MAX_CUSTOM_COLUMNS; keys stay square,
+ * as large as fit both ways.
  *
  * Controls are named k1, k2, … in reading order. A panel's canvas is in the
  * screen's pixels, so keys are drawn at the screen's own resolution.
@@ -29,6 +30,9 @@ const GAP = 0.12;
 /** Keys smaller than this are "very small": the editor says so, and never refuses. */
 export const SMALL_KEY_MM = 15;
 export const SMALL_KEY_PX = 96;
+/** Custom's limits, along the short side and the long: past them a key on the 10.3" panel is under 5 mm. */
+export const MAX_CUSTOM_ROWS = 12;
+export const MAX_CUSTOM_COLUMNS = 24;
 
 export interface ScreenSize {
   /** The canvas: the screen's size in pixels. */
@@ -108,10 +112,10 @@ export function gridFor(screen: ScreenSize, size: PanelSize, custom?: { rows: nu
   let pitch: number;
   let columns: number;
   if (size === 'custom') {
-    rows = Math.max(1, Math.floor(custom?.rows ?? 1));
+    rows = Math.min(MAX_CUSTOM_ROWS, Math.max(1, Math.floor(custom?.rows ?? 1)));
     pitch = short / rows;
     if (custom?.columns !== undefined) {
-      const wanted = Math.max(1, Math.floor(custom.columns));
+      const wanted = Math.min(MAX_CUSTOM_COLUMNS, Math.max(1, Math.floor(custom.columns)));
       pitch = Math.min(pitch, long / wanted);
       columns = wanted;
     } else {

@@ -148,6 +148,15 @@ r.tapSent = await tapOn('DP-4', `${sysfs.dev}/event15`);
 r.sizeStep = await until(() => exists(editor, '[data-vd-step=size]'));
 r.sizes = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-size]')].map((l) => l.dataset.vdSize + ': ' + l.querySelector('.muted').textContent)");
 r.pairedLine = await inPage(editor, 'settings', "document.querySelector('[data-vd-step=size] .sp-row-title').textContent");
+// Custom: both fields, starting from the size picked before it; very small keys warned of.
+await inPage(editor, 'settings', clickIn('[data-vd-step=size] [data-vd-size=custom] input'));
+await sleep(100);
+r.customFields = await inPage(editor, 'settings', "[document.querySelector('[data-vd-field=rows]')?.value, document.querySelector('[data-vd-field=columns]')?.value]");
+await inPage(editor, 'settings', "(() => { const i = document.querySelector('[data-vd-field=rows]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '10'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()");
+await sleep(100);
+r.customWarned = await exists(editor, '[data-vd-warning=small]');
+await inPage(editor, 'settings', clickIn('[data-vd-step=size] [data-vd-size=medium] input'));
+await sleep(100);
 await inPage(editor, 'settings', clickIn('[data-vd=finish-add]'));
 r.written = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== undefined);
 r.config = await onDisk();
@@ -207,8 +216,12 @@ check('the tap is read in pairing mode, and answered', () => {
   assert.equal(r.sizeStep, true);
 });
 check('the sizes offered say what each gives on this screen (the 10.3" panel: 4 × 10, 3 × 8, 2 × 5; the key itself, 88% of the pitch)', () =>
-  assert.deepEqual(r.sizes, ['small: 4 × 10 keys, about 20 mm', 'medium: 3 × 8 keys, about 27 mm', 'large: 2 × 5 keys, about 40 mm', 'custom: choose the rows']));
+  assert.deepEqual(r.sizes, ['small: 4 × 10 keys, about 20 mm', 'medium: 3 × 8 keys, about 27 mm', 'large: 2 × 5 keys, about 40 mm', 'custom: set the rows and columns']));
 check('…and name the screen and the touchscreen tapped', () => assert.equal(r.pairedLine, 'HD Display, paired with ILITEK Multi-Touch-V3000. Key size?'));
+check('Custom sets both rows and columns, starting from the size before it, and warns of very small keys', () => {
+  assert.deepEqual(r.customFields, ['3', '8']);
+  assert.equal(r.customWarned, true);
+});
 check('Add writes the pairing, keyed by the screen, and a Medium panel in the active profile only', () => {
   assert.equal(r.written, true);
   assert.deepEqual(r.config.decks[KEY], { virtual: { output: 'DP-4', touch: ILITEK } });

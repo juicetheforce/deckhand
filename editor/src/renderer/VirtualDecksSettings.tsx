@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PairReply, ScreensReply, TouchState } from '../../../src/control/protocol.js';
-import { gridFor, makePanel, PRESET_SIZES, type Grid, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
+import { gridFor, makePanel, MAX_CUSTOM_COLUMNS, MAX_CUSTOM_ROWS, PRESET_SIZES, type Grid, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
 import type { VirtualDeckRow, VirtualDecksView } from '../shared/bridge.js';
 import { Banner, Divider, Group, InfoTip, Row, StatusDot } from './settings-ui.js';
 
@@ -47,22 +47,30 @@ function SizePicker({ screen, size, rows, columns, onChange }: {
     <div className="vd-sizes" role="radiogroup" aria-label="Key size">
       {[...PRESET_SIZES, 'custom' as const].map((s) => (
         <label key={s} className="vd-size" data-vd-size={s}>
-          <input type="radio" name="vd-size" checked={size === s} onChange={() => onChange({ size: s })} />
+          <input
+            type="radio"
+            name="vd-size"
+            checked={size === s}
+            // Custom starts from the size picked before it, so its fields are never empty.
+            onChange={() => onChange(s === 'custom' ? { size: s, rows: String(grid.rows), columns: String(grid.columns) } : { size: s })}
+          />
           <span className="vd-size-name">{SIZE_NAMES[s]}</span>
-          <span className="muted small">{s === 'custom' ? 'choose the rows' : describeGrid(gridFor(screen, s))}</span>
+          <span className="muted small">{s === 'custom' ? 'set the rows and columns' : describeGrid(gridFor(screen, s))}</span>
         </label>
       ))}
       {size === 'custom' && (
         <div className="sp-fields">
           <label className="sp-field sp-field-port">
             <span className="sp-field-label">Rows</span>
-            <input className="sp-input" inputMode="numeric" value={rows} onChange={(e) => onChange({ rows: e.target.value })} data-vd-field="rows" />
+            <input className="sp-input" type="number" min={1} max={MAX_CUSTOM_ROWS} value={rows} onChange={(e) => onChange({ rows: e.target.value })} data-vd-field="rows" />
           </label>
           <label className="sp-field sp-field-port">
             <span className="sp-field-label">Columns</span>
-            <input className="sp-input" inputMode="numeric" placeholder="as fit" value={columns} onChange={(e) => onChange({ columns: e.target.value })} data-vd-field="columns" />
+            <input className="sp-input" type="number" min={1} max={MAX_CUSTOM_COLUMNS} value={columns} onChange={(e) => onChange({ columns: e.target.value })} data-vd-field="columns" />
           </label>
-          <span className="muted small vd-custom-result">{describeGrid(grid)}</span>
+          <span className="muted small vd-custom-result">
+            {describeGrid(grid)} · at most {MAX_CUSTOM_ROWS} × {MAX_CUSTOM_COLUMNS}
+          </span>
         </div>
       )}
       {grid.verySmall && (
@@ -74,11 +82,9 @@ function SizePicker({ screen, size, rows, columns, onChange }: {
   );
 }
 
-/** Custom's rows and columns from their fields; whole numbers from 1, columns optional. */
-function customOf(rows: string, columns: string): { rows: number; columns?: number } {
-  const r = Math.max(1, Math.floor(Number(rows)) || 1);
-  const c = Math.floor(Number(columns));
-  return columns.trim() !== '' && c >= 1 ? { rows: r, columns: c } : { rows: r };
+/** Custom's rows and columns from their fields: whole numbers, from 1 to the maximum (panel-presets clamps). */
+function customOf(rows: string, columns: string): { rows: number; columns: number } {
+  return { rows: Math.max(1, Math.floor(Number(rows)) || 1), columns: Math.max(1, Math.floor(Number(columns)) || 1) };
 }
 
 type AddStep =
