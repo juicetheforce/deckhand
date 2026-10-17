@@ -13,8 +13,8 @@
  *
  * - '@elgato-stream-deck/node' → scripts/test/fake-deck-device.mjs, whose
  *   decks come from `FAKE_DECKS_FILE` and which logs every open and close.
- * - the daemon's own `services/hotplug.js` → a `watchHotplug` that fires on
- *   **SIGUSR2**. That is how a test forces `requestScan()` without waiting out
+ * - the daemon's own `services/hotplug.js` → a `watchHotplug` and a
+ *   `watchScreensAndTouch` that fire on **SIGUSR2**. That is how a test forces `requestScan()` without waiting out
  *   the 60 s safety-net interval and without a test-only switch in the daemon:
  *   a hotplug event and the safety-net poll run the very same scan().
  *
@@ -49,6 +49,11 @@ export async function load(url, context, next) {
       // scan path without a 60 s wait.
       export function watchHotplug(onChange) {
         const fire = () => onChange('add', '/fake/hotplug/hidraw0');
+        process.on('SIGUSR2', fire);
+        return () => process.off('SIGUSR2', fire);
+      }
+      export function watchScreensAndTouch(onChange) {
+        const fire = () => onChange('change', '/fake/hotplug/drm/card1');
         process.on('SIGUSR2', fire);
         return () => process.off('SIGUSR2', fire);
       }

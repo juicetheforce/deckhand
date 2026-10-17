@@ -4,7 +4,7 @@ import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
 import type { KeyFailures } from './key-failures.js';
-import type { DeckDevice } from './devices.js';
+import type { DeckDevice, TouchState } from './devices.js';
 import type { DeckGeometry } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
@@ -138,6 +138,7 @@ export class DeckSession implements DeckHandle {
   async start(): Promise<void> {
     this.device.onInput((event) => this.onKey(event.control, event.edge));
     this.device.onRedraw?.(() => void this.repaint());
+    this.device.onLetGo?.((reason) => void this.letGo(reason));
     this.device.onError((err: unknown) => {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
@@ -341,6 +342,18 @@ export class DeckSession implements DeckHandle {
         console.error(`[${this.label()}] releasing ${this.keyName(index)} on ${reason} failed: ${(err as Error).message}`);
       }
     }
+  }
+
+  /** Everything held let go, at the device's asking (DeckDevice.onLetGo): a locked session. */
+  private async letGo(reason: string): Promise<void> {
+    if (this.closed) return;
+    await this.fireHeldReleases(reason);
+    await this.releaseLatches(reason);
+  }
+
+  /** Whether a virtual deck's touches work now (DeckDevice.touchState); undefined for a Stream Deck. */
+  touchState(): TouchState | undefined {
+    return this.device.touchState?.();
   }
 
   /**

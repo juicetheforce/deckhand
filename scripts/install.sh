@@ -1030,6 +1030,19 @@ elgato_hidraw_nodes() {
   done
 }
 
+touchscreen_nodes() {
+  # Prints /dev/input/eventN for every touchscreen udev knows of (virtual
+  # decks read them; udev/60-deckhand.rules grants them).
+  local dev nums
+  for dev in /sys/class/input/event*; do
+    [ -e "$dev/dev" ] || continue
+    nums="$(cat "$dev/dev" 2>/dev/null)" || continue
+    if grep -qx 'E:ID_INPUT_TOUCHSCREEN=1' "/run/udev/data/c$nums" 2>/dev/null; then
+      echo "/dev/input/$(basename "$dev")"
+    fi
+  done
+}
+
 retrigger_udev() {
   # Re-apply rules to devices that are already present, so a rule change takes
   # effect now rather than at the next replug or reboot. Reports failure
@@ -1048,6 +1061,7 @@ retrigger_udev() {
     say "uinput is a module that is not loaded yet; it loads when Deckhand first opens it, and the rule applies then"
   fi
   for node in $(elgato_hidraw_nodes); do targets+=("/sys/class/hidraw/${node#/dev/}"); done
+  for node in $(touchscreen_nodes); do targets+=("/sys/class/input/${node#/dev/input/}"); done
   [ "${#targets[@]}" -gt 0 ] || return 0
   if output="$(sudo udevadm trigger --action=change --settle "${targets[@]}" 2>&1)"; then
     say "udev re-applied to: ${targets[*]}"
@@ -1069,6 +1083,11 @@ report_device_access() {
     if [ -w "$node" ]; then say "access ok: $node (Stream Deck)"; else warn "NO ACCESS: $node (Stream Deck)"; fi
   done
   [ "$found" = yes ] || say "no Stream Deck connected, so deck access was not checked"
+  # A touchscreen not readable is not a failure of the install: it matters
+  # only for a virtual deck, and other rules may cover it.
+  for node in $(touchscreen_nodes); do
+    if [ -r "$node" ]; then say "access ok: $node (touchscreen)"; else say "no access to $node (touchscreen): a virtual deck cannot use it"; fi
+  done
 }
 
 install_udev_rule() {

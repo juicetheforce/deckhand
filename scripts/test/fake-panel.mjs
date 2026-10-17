@@ -10,10 +10,19 @@
  *   FAKE_PANEL_FAIL      "no-output": exits 2 at once, as the real one does for
  *                        an output it cannot find
  *
+ *   FAKE_PANEL_INPUT_DIR directory: the fake listens on <dir>/<output>.sock,
+ *                        and every line a test writes there it says on
+ *                        stdout, as the real helper reports touches
+ *                        ({"ev":"touch",…}, {"ev":"tap",…}, {"ev":"touch-gone",…})
+ *   FAKE_PANEL_TOUCH     "open" (default): answers a touch frame with
+ *                        "touch-open" for each device; "fail": "touch-failed"
+ *
  * SIGUSR1: report a resize (ready again). SIGUSR2: exit 3, as when the output
  * goes away.
  */
 import fs from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
 
 const log = process.env.FAKE_PANEL_LOG;
 const record = (entry) => {
@@ -33,6 +42,25 @@ const ready = () => say({ ev: 'ready', output, width, height, scale: 1, transfor
 ready();
 
 process.on('SIGUSR1', ready);
+
+let server = null;
+if (process.env.FAKE_PANEL_INPUT_DIR) {
+  const sock = path.join(process.env.FAKE_PANEL_INPUT_DIR, `${output}.sock`);
+  fs.rmSync(sock, { force: true });
+  server = net.createServer((conn) => {
+    let text = '';
+    conn.on('data', (chunk) => {
+      text += chunk;
+      let nl;
+      while ((nl = text.indexOf('\n')) >= 0) {
+        process.stdout.write(text.slice(0, nl + 1));
+        text = text.slice(nl + 1);
+      }
+    });
+  });
+  server.listen(sock);
+  server.unref();
+}
 process.on('SIGUSR2', () => {
   say({ ev: 'error', message: 'the output went away' });
   process.exit(3);
@@ -57,6 +85,21 @@ process.stdin.on('data', (chunk) => {
       // The first pixel, for checking what was drawn without logging megabytes.
       record({ type, x: body.readInt32LE(0), y: body.readInt32LE(4), w, h, bytes: px.length, first: [...px.subarray(0, 4)] });
       acks = acks.then(() => new Promise((resolve) => setTimeout(resolve, ackMs))).then(() => say({ ev: 'drawn' }));
+    } else if (type === 'T') {
+      const entries = [];
+      let at = 1;
+      while (at < body.length) {
+        const role = String.fromCharCode(body[at]);
+        const end = body.indexOf(0, at + 1);
+        entries.push([role, body.subarray(at + 1, end).toString()]);
+        at = end + 1;
+      }
+      record({ type, mode: body[0], entries });
+      for (const [role, device] of entries) {
+        if (body[0] === 2 && role !== 't') continue;
+        if (process.env.FAKE_PANEL_TOUCH === 'fail') say({ ev: 'touch-failed', device, message: `cannot open ${device}: Permission denied` });
+        else say({ ev: 'touch-open', device });
+      }
     } else if (type === 'C') {
       record({ type });
     } else if (type === 'Q') {

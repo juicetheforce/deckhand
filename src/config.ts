@@ -133,6 +133,14 @@ export function validateConfig(config: unknown): Config {
         if (!isObject(deck.virtual) || typeof deck.virtual.output !== 'string' || !/^[A-Za-z0-9_.-]{1,64}$/.test(deck.virtual.output)) {
           throw new Error(`deck "${serial}": "virtual.output" must name a screen's connector, such as "DP-4"`);
         }
+        const touch = deck.virtual.touch;
+        if (touch !== undefined) {
+          const hex4 = (v: unknown) => typeof v === 'string' && /^[0-9a-fA-F]{4}$/.test(v);
+          const text = (v: unknown) => v === undefined || (typeof v === 'string' && v.length > 0 && v.length <= 256);
+          if (!isObject(touch) || !hex4(touch.vendor) || !hex4(touch.product) || !text(touch.serial) || !text(touch.path)) {
+            throw new Error(`deck "${serial}": "virtual.touch" must be { "vendor", "product" } (four hex digits each) and a "serial" or "path"`);
+          }
+        }
       }
     }
   }

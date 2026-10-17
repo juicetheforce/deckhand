@@ -1,3 +1,4 @@
+import type { TouchState } from './control/protocol.js';
 import type { DeckGeometry } from './geometry.js';
 import type { LayoutDef } from './types.js';
 
@@ -41,7 +42,18 @@ export interface DeckDevice {
   showGeometry?(geometry: DeckGeometry): void;
   /** Optional: the device asks for every control to be drawn again (its screen was resized, say). */
   onRedraw?(listener: () => void): void;
+  /**
+   * Optional: the device asks that everything held be let go now, without a
+   * release from it — a virtual deck when the session locks. The session lets
+   * go as on any way off a page: pending releases fired, latches released,
+   * holds dropped (so a Stream key held through the lock does not stop the
+   * stream).
+   */
+  onLetGo?(listener: (reason: string) => void): void;
+  /** Optional: whether its touches work now, for the control socket (a virtual deck: TouchState). */
+  touchState?(): TouchState;
 }
+
 
 export interface ControlInput {
   control: string;
@@ -63,3 +75,5 @@ export interface DeckDriver {
   /** Optional: call back when a device may have come or gone, so the daemon rescans at once. Returns a stop function. */
   watch?(onChange: (why: string) => void): () => void;
 }
+
+export type { TouchState };

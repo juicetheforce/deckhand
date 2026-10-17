@@ -14,6 +14,7 @@ import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
+import * as sessionLock from './services/session-lock.js';
 import * as obsService from './services/obs.js';
 import * as twitchService from './services/twitch.js';
 import * as vtsService from './services/vts.js';
@@ -33,7 +34,8 @@ const SAFETY_SCAN_INTERVAL_MS = 60000;
  * the screens the config names. A scan reconciles against every driver's
  * list, and nothing else here asks which kind of deck it has.
  */
-const drivers: DeckDriver[] = [hidDriver, createVirtualDriver(() => config)];
+const virtualDriver = createVirtualDriver(() => config);
+const drivers: DeckDriver[] = [hidDriver, virtualDriver];
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
@@ -484,16 +486,21 @@ async function main(): Promise<void> {
   );
 
   await requestScan();
-  // The same tick retries a lost session bus (mpris.ts retryLostBus), and an
+  // The same tick retries a lost session bus (mpris.ts retryLostBus), an
   // OBS or a VTube Studio that was not there while a key wanted it (obs.ts,
-  // vts.ts retry), so none needs a timer of its own; each does nothing while
-  // there is nothing to retry.
+  // vts.ts retry), and logind for a virtual deck's lock state
+  // (session-lock.ts), so none needs a timer of its own; each does nothing
+  // while there is nothing to retry.
   const scanner = setInterval(() => {
     void requestScan();
     mprisService.retryLostBus();
     obsService.retry();
     vtsService.retry();
+    sessionLock.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
+  // A virtual deck's touch state is in the socket's "state": a lock or an
+  // unlock changes it.
+  const stopLock = sessionLock.onLockChange(() => events?.state());
 
   // After the decks, and not awaited by anything they need: the socket must
   // never be able to hold up or take down the decks.
@@ -510,6 +517,7 @@ async function main(): Promise<void> {
       unattachedDecks: () => unattached,
       releaseSocketKeys: () => input.releaseAllHeldBy('socket'),
       audioState: () => audioService.cachedState(),
+      virtual: virtualDriver,
     };
     control = new ControlServer(createHandlers(deps));
     events = eventNotifiers(control, deps);
@@ -519,6 +527,7 @@ async function main(): Promise<void> {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       clearInterval(scanner);
+      stopLock();
       for (const stop of stopWatchers) stop();
       stopWatching();
       stopAudio();

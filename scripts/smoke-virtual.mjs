@@ -27,8 +27,12 @@ const LOG = path.join(TMP, 'panel.log');
 process.env.DECKHAND_DRM_DIR = DRM;
 process.env.DECKHAND_PANEL_BIN = path.join(REPO, 'scripts/test/fake-panel.mjs');
 process.env.FAKE_PANEL_LOG = LOG;
+// No logind here: the lock state is unknown, as it must be for a test that
+// reads nothing of this machine (smoke-virtual-touch.mjs has a fake one).
+process.env.DBUS_SYSTEM_BUS_ADDRESS = `unix:path=${path.join(TMP, 'no-bus')}`;
 
-const { createVirtualDriver, outputConnected } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
+const { createVirtualDriver } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
+const { listScreens } = await import(path.join(REPO, 'dist/screens.js'));
 const { canvasFrame, imageFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 const { geometryOfPanel } = await import(path.join(REPO, 'dist/geometry.js'));
 const { validateConfig } = await import(path.join(REPO, 'dist/config.js'));
@@ -112,21 +116,21 @@ check('an image whose pixels do not match its size is refused', threw);
 
 console.log('listing');
 let config = validateConfig({
-  decks: { PANEL: { name: 'Panel', virtual: { output: 'DP-4' } }, XL: {} },
+  decks: { 'output-DP-4': { name: 'Panel', virtual: { output: 'DP-4' } }, XL: {} },
   profiles: {
-    one: { layouts: { PANEL: { panel: grid('k', 2, 3, 240), pages: { main: { buttons: { k1: { label: 'one' }, k5: { label: 'five' } } } } } } },
-    two: { layouts: { PANEL: { panel: grid('t', 1, 2, 360), pages: { main: { buttons: { t2: { label: 'two' } } } } } } },
+    one: { layouts: { 'output-DP-4': { panel: grid('k', 2, 3, 240), pages: { main: { buttons: { k1: { label: 'one' }, k5: { label: 'five' } } } } } } },
+    two: { layouts: { 'output-DP-4': { panel: grid('t', 1, 2, 360), pages: { main: { buttons: { t2: { label: 'two' } } } } } } },
   },
 });
 const asked = [];
 const driver = createVirtualDriver(() => config);
 driver.watch((why) => asked.push(why));
-check('no such connector: not listed', (await driver.list()).length === 0 && !outputConnected('DP-4', DRM));
+check('no such connector: not listed', (await driver.list()).length === 0 && listScreens(DRM).length === 0);
 await plug('DP-4', 'disconnected');
 check('connector disconnected: not listed', (await driver.list()).length === 0);
 await plug('DP-4', 'connected');
 let found = await driver.list();
-check('connected: listed by its id, without opening it', found.length === 1 && found[0].id === 'PANEL', JSON.stringify(found.map((f) => f.id)));
+check('connected: listed by its screen\'s key — with no EDID, its connector — without opening it', found.length === 1 && found[0].id === 'output-DP-4', JSON.stringify(found.map((f) => f.id)));
 
 let session;
 let device;
@@ -134,9 +138,9 @@ await settle('opening', async () => {
   device = await found[0].open();
   check('opening starts the helper on that output', device !== null && (await frames()).some((f) => f.type === 'start' && f.output === 'DP-4'));
   session = new DeckSession(device, {
-    serial: 'PANEL',
-    hardware: config.decks.PANEL,
-    layout: config.profiles.one.layouts.PANEL,
+    serial: 'output-DP-4',
+    hardware: config.decks['output-DP-4'],
+    layout: config.profiles.one.layouts['output-DP-4'],
     defaults: {},
     switchProfile: async () => {},
     failures: new KeyFailures(),
@@ -157,10 +161,10 @@ console.log('drawing');
 await settle('newest wins', async () => {
   // A helper slow to answer, and one key drawn five times while its first
   // image is still on its way: only the first and the newest are sent.
-  config.decks.SLOW = { virtual: { output: 'DP-5' } };
+  config.decks['output-DP-5'] = { virtual: { output: 'DP-5' } };
   await plug('DP-5', 'connected');
   process.env.FAKE_PANEL_ACK_MS = '300';
-  const slow = await (await driver.list()).find((f) => f.id === 'SLOW').open();
+  const slow = await (await driver.list()).find((f) => f.id === 'output-DP-5').open();
   delete process.env.FAKE_PANEL_ACK_MS;
   slow.showGeometry(geometryOfPanel(grid('s', 1, 1, 100), 'Slow'));
   const before = (await frames()).filter((f) => f.type === 'I').length;
@@ -169,14 +173,14 @@ await settle('newest wins', async () => {
   const sent = (await frames()).filter((f) => f.type === 'I').slice(before);
   check(`five draws of one key while the helper is busy: two sent, the first and the newest (${sent.map((f) => f.first[0]).join()})`, sent.length === 2 && sent[0].first[0] === 1 && sent[1].first[0] === 5);
   await slow.close();
-  delete config.decks.SLOW;
+  delete config.decks['output-DP-5'];
   await plug('DP-5', 'disconnected');
 });
 
 console.log('a profile with another panel');
 await settle('relayout', async () => {
   const before = (await frames()).length;
-  await session.setLayout(config.profiles.two.layouts.PANEL);
+  await session.setLayout(config.profiles.two.layouts['output-DP-4']);
   await until(async () => (await frames()).slice(before).filter((f) => f.type === 'I').length >= 2);
   const after = (await frames()).slice(before);
   check('the deck takes the other panel\'s two keys', session.keyCount === 2 && session.hasKey('t2') && !session.hasKey('k1'));
@@ -215,7 +219,7 @@ await settle('failing', async () => {
 
 console.log('closing');
 await settle('quit', async () => {
-  config = validateConfig({ decks: { PANEL2: { virtual: { output: 'HDMI-A-1' } } }, profiles: { p: { layouts: { PANEL2: { panel: grid('k', 1, 1, 200), pages: { main: { buttons: {} } } } } } } });
+  config = validateConfig({ decks: { 'output-HDMI-A-1': { virtual: { output: 'HDMI-A-1' } } }, profiles: { p: { layouts: { 'output-HDMI-A-1': { panel: grid('k', 1, 1, 200), pages: { main: { buttons: {} } } } } } } });
   await plug('HDMI-A-1', 'connected');
   const [d] = await driver.list();
   const dev = await d.open();

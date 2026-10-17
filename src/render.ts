@@ -223,3 +223,19 @@ export function clearRenderCache(): void {
   warnedBuiltin.clear();
   clearLabelWidths();
 }
+
+/**
+ * A whole screen of text, white on black, centred: what a virtual deck's
+ * screen shows while it is being paired ("Tap this screen"). Raw RGBA,
+ * `width` × `height`. Not cached: it is drawn once per pairing.
+ */
+export async function renderMessage(lines: string[], width: number, height: number): Promise<Buffer> {
+  const size = Math.max(12, Math.round(Math.min(height / 6, width / 16)));
+  const lineHeight = Math.round(size * 1.3);
+  const top = Math.round(height / 2 - (lineHeight * (lines.length - 1)) / 2);
+  const text = lines
+    .map((line, i) => `<text x="50%" y="${top + i * lineHeight}" font-size="${i === 0 ? size : Math.round(size * 0.6)}" text-anchor="middle" dominant-baseline="middle">${escapeXml(line)}</text>`)
+    .join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#000"/><g fill="#fff" font-family="sans-serif">${text}</g></svg>`;
+  return sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer();
+}

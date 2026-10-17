@@ -54,9 +54,26 @@ export interface DeckDef {
   virtual?: VirtualDeckDef;
 }
 
+/**
+ * A virtual deck: a screen, keyed under "decks" by what recognises it
+ * (src/screens.ts — `GRA-6e4e`, `HPN-3469-CNK8231CGN`), and the touchscreen
+ * paired with it by a tap.
+ */
 export interface VirtualDeckDef {
-  /** The screen's connector, as the system names it ("DP-4"). */
+  /** The connector it was set up on ("DP-4"): tells identical screens apart (src/screens.ts findScreen). */
   output: string;
+  /** Its touchscreen, from the pairing tap. Absent: the panel shows, and takes no touches. */
+  touch?: TouchDeviceDef;
+}
+
+/** A touchscreen, as a pairing remembers it (src/touchscreens.ts): its serial when it has one, else its IDs and the port it hangs from. */
+export interface TouchDeviceDef {
+  /** USB (or other bus) vendor and product IDs, four hex digits each. */
+  vendor: string;
+  product: string;
+  serial?: string;
+  /** udev's ID_PATH, when the device has no serial. */
+  path?: string;
 }
 
 /** One control on a virtual deck's panel, at its place on the panel's canvas. */

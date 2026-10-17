@@ -55,6 +55,34 @@ export interface DeckStatus {
   latched?: string[];
   /** Keys whose last press failed, on any page or profile. */
   failed?: KeyFailure[];
+  /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */
+  touch?: TouchState;
+}
+
+/**
+ * A virtual deck's touch: `ready`; `not-paired` (no touchscreen in its
+ * config); `missing` (its touchscreen is not connected); `opening` (being
+ * opened); `failed` (it could not be opened or grabbed); `locked`,
+ * `inactive` or `unknown` (the session is locked, not the active one, or its
+ * state cannot be read — touches are refused, services/session-lock.ts).
+ */
+export type TouchState = 'ready' | 'not-paired' | 'missing' | 'opening' | 'failed' | 'locked' | 'inactive' | 'unknown';
+
+/** `screens`: the connected screens, by what recognises each (src/screens.ts), and the touchscreens. */
+export interface ScreensReply {
+  screens: Array<{
+    connector: string;
+    key: string;
+    maker?: string;
+    product?: string;
+    name?: string;
+    serial?: string;
+    widthMm?: number;
+    heightMm?: number;
+    /** The virtual deck on it, by its key in "decks", if it is one. */
+    deck: string | null;
+  }>;
+  touchscreens: Array<{ device: string; name: string; vendor: string; product: string; serial?: string; path?: string }>;
 }
 
 /** A key whose last press failed. It stays so until a press of it succeeds, or it is edited. */

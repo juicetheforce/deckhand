@@ -3,9 +3,15 @@
  * the driver registry, scan() and reload() with a second driver beside the
  * Stream Decks:
  *
- * - a screen the config names a virtual deck, connected, is attached at
- *   start: its helper started on that output, the panel's canvas and keys
- *   drawn, the socket's `decks` and `status` listing it;
+ * - a screen the config names a virtual deck, by its EDID's key, connected,
+ *   is attached at start: its helper started on that output, the panel's
+ *   canvas and keys drawn, the socket's `decks` and `status` listing it;
+ * - its touchscreen given to the helper; a touch on a key runs its action;
+ *   `status` gives the touch state, `locked` while a fake logind says so,
+ *   when a touch does nothing;
+ * - `screens` lists the screens by key and the touchscreens; `virtual.pair`
+ *   closes the deck, shows the tap screen, replies with the touchscreen
+ *   tapped, and the deck comes back; a client that goes away cancels it;
  * - a reload that changes the panel redraws it with the new controls;
  * - the screen going away (the helper exits 3) disconnects the deck;
  * - plugged in again, the next scan attaches it again;
@@ -13,14 +19,17 @@
  *
  * The child gets scripts/test/fake-decks.mjs with no Stream Decks plugged in
  * (SIGUSR2 forces its scan), scripts/test/fake-panel.mjs as the helper, a
- * scratch /sys/class/drm, the fake input helper and a private D-Bus. Every
- * path it writes is inside a scratch directory.
+ * scratch /sys/class/drm, /sys/class/input and udev database, the fake input
+ * helper, and a private D-Bus that is its session bus and its system bus,
+ * where scripts/test/fake-logind.mjs answers. Every path it writes is inside
+ * a scratch directory.
  *
  *   npm run build:ts && node scripts/smoke-virtual-daemon.mjs
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 
 if (!process.env.DECKHAND_SMOKE_PRIVATE_BUS) {
@@ -58,7 +67,11 @@ const CONFIG_DIR = path.join(TMP, 'config');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const SOCKET = path.join(TMP, 'c.sock');
 const DECKS_FILE = path.join(TMP, 'decks.json');
-const DRM = path.join(TMP, 'drm');
+const { edid, fakeSysfs, ILITEK, ILITEK_NODES } = await import('./test/fake-sysfs.mjs');
+const { startFakeLogind } = await import('./test/fake-logind.mjs');
+const sysfs = fakeSysfs(TMP);
+const DRM = sysfs.drm;
+const SOCKS = path.join(TMP, 'socks');
 const PANEL_LOG = path.join(TMP, 'panel.log');
 
 const grid = (prefix, rows, columns, pitch) => {
@@ -66,9 +79,15 @@ const grid = (prefix, rows, columns, pitch) => {
   for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) controls.push({ id: `${prefix}${r * columns + c + 1}`, x: c * pitch, y: r * pitch, w: pitch, h: pitch });
   return { size: { width: 1920, height: 720 }, controls };
 };
+const KEY = 'GRA-6e4e';
 const configWith = (panel) => ({
-  decks: { 'GRA-6e4e-01000000': { name: 'Test panel', virtual: { output: 'DP-4' } } },
-  profiles: { default: { name: 'Default', layouts: { 'GRA-6e4e-01000000': { panel, pages: { main: { buttons: { k1: { label: 'One' } } } } } } } },
+  decks: { [KEY]: { name: 'Test panel', virtual: { output: 'DP-4', touch: ILITEK } } },
+  profiles: {
+    default: {
+      name: 'Default',
+      layouts: { [KEY]: { panel, startPage: 'main', pages: { main: { buttons: { k1: { label: 'One' }, k2: { action: { type: 'page', to: 'two' } } } }, two: { buttons: {} } } } },
+    },
+  },
   startProfile: 'default',
 });
 const writeConfig = async (config) => {
@@ -76,16 +95,31 @@ const writeConfig = async (config) => {
   await fs.writeFile(temp, JSON.stringify(config, null, 2) + '\n');
   await fs.rename(temp, CONFIG_PATH);
 };
-const screen = async (status) => {
-  await fs.mkdir(path.join(DRM, 'card1-DP-4'), { recursive: true });
-  await fs.writeFile(path.join(DRM, 'card1-DP-4', 'status'), `${status}\n`);
-};
+const screen = (status) => sysfs.plug('DP-4', status, edid({ maker: 'GRA', product: '6e4e', numeric: 1, name: 'HD Display', widthMm: 243, heightMm: 91 }));
+/** Lines the fake helper on a connector says, as the real one reports touches. */
+async function helperSays(connector, ...events) {
+  const sock = path.join(SOCKS, `${connector}.sock`);
+  const said = await until(
+    () =>
+      new Promise((resolve) => {
+        const c = net.connect(sock, () => c.end(events.map((e) => JSON.stringify(e)).join('\n') + '\n', () => resolve(true)));
+        c.on('error', () => resolve(false));
+      }),
+  );
+  if (!said) throw new Error(`no fake helper listening on ${connector}`);
+  await sleep(100);
+}
 const frames = async () => (await fs.readFile(PANEL_LOG, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
 
 await fs.mkdir(CONFIG_DIR, { recursive: true });
 await writeConfig(configWith(grid('k', 2, 3, 240)));
 await fs.writeFile(DECKS_FILE, '[]');
 await screen('connected');
+await sysfs.plug('HDMI-A-1', 'connected', edid({ maker: 'HPN', product: '3469', serial: 'CNK8231CGN', name: 'HP E243' }));
+await sysfs.usbDevice('pci0/usb3/3-2.3', '222a');
+for (const node of ILITEK_NODES) await sysfs.inputNode(node);
+await fs.mkdir(SOCKS);
+const logind = await startFakeLogind(process.env.DBUS_SESSION_BUS_ADDRESS);
 
 const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], {
   env: {
@@ -98,6 +132,11 @@ const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test
     FAKE_DECKS_FILE: DECKS_FILE,
     FAKE_DECKS_LOG: path.join(TMP, 'opens.log'),
     DECKHAND_DRM_DIR: DRM,
+    DECKHAND_INPUT_DIR: sysfs.input,
+    DECKHAND_UDEV_DATA_DIR: sysfs.udev,
+    // The private bus is its system bus too: the fake logind is there.
+    DBUS_SYSTEM_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS,
+    FAKE_PANEL_INPUT_DIR: SOCKS,
     DECKHAND_PANEL_BIN: path.join(REPO, 'scripts/test/fake-panel.mjs'),
     FAKE_PANEL_LOG: PANEL_LOG,
   },
@@ -120,31 +159,71 @@ async function until(fn, ms = 6000) {
 }
 
 try {
-  check('the daemon attaches the virtual deck at start', await until(() => /attached Test panel \(GRA-6e4e-01000000\) — 6 keys/.test(log())), log().slice(-800));
+  check('the daemon attaches the virtual deck at start', await until(() => /attached Test panel \(GRA-6e4e\) — 6 keys/.test(log())), log().slice(-800));
   check('its helper was started on DP-4', (await frames()).some((f) => f.type === 'start' && f.output === 'DP-4'));
   check('the canvas, then six keys drawn', await until(async () => (await frames()).filter((f) => f.type === 'I').length >= 6) && (await frames()).find((f) => f.type === 'K')?.width === 1920);
 
   const client = await connect(SOCKET);
   const decks = (await client.request('decks')).result;
-  const panel = decks.find((d) => d.serial === 'GRA-6e4e-01000000');
+  const panel = decks.find((d) => d.serial === 'GRA-6e4e');
   check('the socket lists it, in pixels, with its keys by id', panel?.units === 'pixels' && panel.keyCount === 6 && panel.keys[0].id === 'k1' && panel.canvas.width === 1920, JSON.stringify(panel));
-  const status = (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e-01000000');
+  const status = (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e');
   check('status: connected, configured, on its page', status?.connected === true && status.configured === true && status.page === 'main');
+
+  console.log('touch');
+  check('its touchscreen given to the helper, with its sibling', (await frames()).some((f) => f.type === 'T' && f.mode === 1 && f.entries.map((e) => e.join(':')).join() === 't:/dev/input/event15,s:/dev/input/event16'));
+  const touchOf = async () => (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.touch;
+  check('status: touch ready', await until(async () => (await touchOf()) === 'ready'), String(await touchOf()));
+  await helperSays('DP-4', { ev: 'touch', contact: 0, edge: 'down', x: 360, y: 120 }, { ev: 'touch', contact: 0, edge: 'up' });
+  check('a touch on a key runs its action (k2: to page two)', await until(async () => (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page === 'two'));
+  await client.request('action.run', { serial: KEY, action: { type: 'page', to: 'main' } });
+  logind.lock(true);
+  check('locked: status says so', await until(async () => (await touchOf()) === 'locked'), String(await touchOf()));
+  const pageNow = (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page;
+  await helperSays('DP-4', { ev: 'touch', contact: 1, edge: 'down', x: 360, y: 120 }, { ev: 'touch', contact: 1, edge: 'up' });
+  check('locked: a touch does nothing', (await client.request('status')).result.decks.find((d) => d.serial === KEY)?.page === pageNow);
+  logind.lock(false);
+  check('unlocked: ready again', await until(async () => (await touchOf()) === 'ready'));
+
+  console.log('screens and pairing');
+  const screens = (await client.request('screens')).result;
+  check('screens: each by its key, and which is a virtual deck', JSON.stringify(screens.screens.map((x) => [x.connector, x.key, x.deck])) === JSON.stringify([['DP-4', KEY, KEY], ['HDMI-A-1', 'HPN-3469-CNK8231CGN', null]]) && screens.screens[0].widthMm === 243 && screens.screens[0].name === 'HD Display', JSON.stringify(screens));
+  check('…and the touchscreens, not their siblings', JSON.stringify(screens.touchscreens.map((x) => x.device)) === JSON.stringify(['/dev/input/event15']) && screens.touchscreens[0].path === ILITEK.path);
+  const startsBefore = (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').length;
+  const pairing = client.request('virtual.pair', { output: 'DP-4' });
+  check('pairing the deck\'s screen: the deck is closed for it', await until(() => /deck GRA-6e4e disconnected/.test(log())), log().slice(-500));
+  await until(async () => (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').length === startsBefore + 1);
+  await helperSays('DP-4', { ev: 'tap', device: '/dev/input/event15' });
+  const paired = await pairing;
+  check('the reply names the screen and its touchscreen, as the config keeps them', paired.ok && paired.result.screen === KEY && JSON.stringify(paired.result.touch) === JSON.stringify(ILITEK), JSON.stringify(paired));
+  check('…and the deck comes back', await until(() => (log().match(/attached Test panel/g) ?? []).length === 2), log().slice(-500));
+
+  const other = await connect(SOCKET);
+  const abandoned = other.request('virtual.pair', { output: 'HDMI-A-1' }).catch(() => undefined);
+  await until(async () => (await frames()).some((f) => f.type === 'start' && f.output === 'HDMI-A-1'));
+  const quits = (await frames()).filter((f) => f.type === 'Q').length;
+  other.close();
+  void abandoned;
+  check('a client that goes away cancels its pairing: the helper is quit', await until(async () => (await frames()).filter((f) => f.type === 'Q').length > quits));
+  const refused = await client.request('virtual.pair', { output: 'DP-9' });
+  check('pairing a connector with no screen: not found', refused.ok === false && refused.error.code === 'not_found', JSON.stringify(refused));
 
   const before = (await frames()).length;
   await writeConfig(configWith(grid('t', 1, 2, 360)));
   check('a reload with another panel redraws it with the new controls', await until(async () => (await frames()).slice(before).filter((f) => f.type === 'I' && f.w === 360).length >= 2));
-  check('…and the socket says so', await until(async () => (await client.request('decks')).result.find((d) => d.serial === 'GRA-6e4e-01000000')?.keyCount === 2));
+  check('…and the socket says so', await until(async () => (await client.request('decks')).result.find((d) => d.serial === 'GRA-6e4e')?.keyCount === 2));
 
-  const start = (await frames()).find((f) => f.type === 'start');
+  const start = (await frames()).findLast((f) => f.type === 'start' && f.output === 'DP-4');
+  const disconnects = () => (log().match(/deck GRA-6e4e disconnected/g) ?? []).length;
+  const disconnectsBefore = disconnects();
   await screen('disconnected');
   process.kill(start.pid, 'SIGUSR2');
-  check('the screen going away disconnects the deck', await until(() => /deck GRA-6e4e-01000000 disconnected/.test(log())));
-  check('…and status says it is not connected', await until(async () => (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e-01000000')?.connected === false));
+  check('the screen going away disconnects the deck', await until(() => disconnects() === disconnectsBefore + 1));
+  check('…and status says it is not connected', await until(async () => (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e')?.connected === false));
 
   await screen('connected');
   process.kill(child.pid, 'SIGUSR2');
-  check('plugged in again, the next scan attaches it again', await until(() => (log().match(/attached Test panel/g) ?? []).length === 2), log().slice(-600));
+  check('plugged in again, the next scan attaches it again', await until(() => (log().match(/attached Test panel/g) ?? []).length === 3), log().slice(-600));
 
   client.close();
   const quitsBefore = (await frames()).filter((f) => f.type === 'Q').length;
@@ -153,6 +232,7 @@ try {
   check('stopping the daemon quits the helper', code === 0 && (await until(async () => (await frames()).filter((f) => f.type === 'Q').length > quitsBefore)));
 } finally {
   child.kill('SIGKILL');
+  await logind.stop().catch(() => undefined);
   await fs.rm(TMP, { recursive: true, force: true });
 }
 

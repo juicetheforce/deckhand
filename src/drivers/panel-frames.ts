@@ -35,3 +35,15 @@ export function imageFrame(x: number, y: number, width: number, height: number, 
 
 export const clearFrame = (): Buffer => frame('C', Buffer.alloc(0));
 export const quitFrame = (): Buffer => frame('Q', Buffer.alloc(0));
+
+/**
+ * The touch devices to read: mode 1 a deck (each grabbed; 't' the
+ * touchscreen, whose contacts are reported, 's' a sibling only grabbed),
+ * mode 2 pairing (each 't' read without a grab, the first touched named), 0
+ * none. Replaces whatever was read before.
+ */
+export function touchFrame(mode: 0 | 1 | 2, entries: ReadonlyArray<readonly ['t' | 's', string]>): Buffer {
+  const parts = [Buffer.from([mode])];
+  for (const [role, path] of entries) parts.push(Buffer.from(role, 'latin1'), Buffer.from(path, 'utf8'), Buffer.from([0]));
+  return frame('T', Buffer.concat(parts));
+}

@@ -7,7 +7,16 @@
  *   lands where it was sent, scaled with the canvas; a half-transparent one
  *   is blended over the background; every image is answered "drawn";
  * - an output that does not exist is refused, exit 2, with the reason;
- * - at rest it uses no CPU at all.
+ * - at rest it uses no CPU at all;
+ * - **touch, from recorded evdev frames** (FIFOs, read with
+ *   --touch-test-range): multitouch contacts reported down at their place on
+ *   the canvas — through its scale and, letterboxed, its origin — and up when
+ *   lifted; a lift never seen down, and movement, report nothing; after
+ *   SYN_DROPPED every contact is lifted and a slot needs a new contact; a
+ *   sibling is read and says nothing; pairing names the first touchscreen
+ *   touched, single-touch, once; a device going away says so; a path that is
+ *   not an input device is refused without the test flag. The grab itself is
+ *   checked only on hardware.
  *
  * KWin runs with `--virtual` (no screen, no input devices), on its own
  * Wayland socket and **a D-Bus of its own that can start no services** — a
@@ -27,7 +36,8 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { canvasFrame, imageFrame, quitFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { canvasFrame, imageFrame, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -170,6 +180,103 @@ try {
     JSON.stringify([at(200, 100), at(219, 119), at(199, 110), at(220, 110)]));
   const [rr, gg, bb] = at(602, 202);
   check(`a half-transparent image blended over the background (${rr},${gg},${bb} ≈ 5,138,15)`, Math.abs(rr - 5) <= 1 && Math.abs(gg - 138) <= 1 && Math.abs(bb - 15) <= 1);
+
+  console.log('touch, from recorded frames');
+  // struct input_event on x86_64: two longs of time, u16 type, u16 code, s32 value.
+  const EV = { SYN: 0, KEY: 1, ABS: 3 };
+  const C = { REPORT: 0, DROPPED: 3, BTN_TOUCH: 0x14a, ABS_X: 0, ABS_Y: 1, SLOT: 0x2f, MT_X: 0x35, MT_Y: 0x36, TRACKING: 0x39 };
+  const ev = (type, code, value) => {
+    const b = Buffer.alloc(24);
+    b.writeUInt16LE(type, 16);
+    b.writeUInt16LE(code, 18);
+    b.writeInt32LE(value, 20);
+    return b;
+  };
+  const syn = () => ev(EV.SYN, C.REPORT, 0);
+  const fifo = (name) => {
+    const p = path.join(TMP, name);
+    execFileSync('mkfifo', [p]);
+    // Read and write, so the FIFO has a writer before the helper opens it,
+    // and its end of input comes only when this closes it.
+    return { path: p, fd: openSync(p, 'r+') };
+  };
+  const send = (f, ...events) => writeSync(f.fd, Buffer.concat(events));
+  const touches = (t, from) => t.events.slice(from).filter((e) => e.ev === 'touch');
+
+  const touch = fifo('touch');
+  const sibling = fifo('sibling');
+  const t = helper(['--output', 'Virtual-1', '--touch-test-range', '1000']);
+  await until(() => t.events.some((e) => e.ev === 'ready'));
+  t.proc.stdin.write(canvasFrame(960, 360));
+  t.proc.stdin.write(touchFrame(1, [['t', touch.path], ['s', sibling.path]]));
+  check('both devices opened', await until(() => t.events.filter((e) => e.ev === 'touch-open').length === 2), JSON.stringify(t.events));
+
+  let mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 0), ev(EV.ABS, C.TRACKING, 5), ev(EV.ABS, C.MT_X, 500), ev(EV.ABS, C.MT_Y, 250), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 1), ev(EV.ABS, C.TRACKING, 6), ev(EV.ABS, C.MT_X, 100), ev(EV.ABS, C.MT_Y, 900), syn());
+  await until(() => touches(t, mark).length === 2);
+  let seen = touches(t, mark);
+  check('two fingers: each down at its place on the canvas (scale 2: 0.5,0.25 → 480,90; 0.1,0.9 → 96,324)',
+    seen.length === 2 && seen[0].contact === 0 && seen[0].edge === 'down' && seen[0].x === 480 && seen[0].y === 90 && seen[1].contact === 1 && seen[1].x === 96 && seen[1].y === 324,
+    JSON.stringify(seen));
+  mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 1), ev(EV.ABS, C.MT_X, 300), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 3), ev(EV.ABS, C.TRACKING, -1), syn());
+  send(sibling, ev(EV.KEY, C.BTN_TOUCH, 1), ev(EV.ABS, C.ABS_X, 10), ev(EV.ABS, C.ABS_Y, 10), syn(), ev(EV.KEY, C.BTN_TOUCH, 0), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 0), ev(EV.ABS, C.TRACKING, -1), syn());
+  await until(() => touches(t, mark).length >= 1);
+  await sleep(150);
+  seen = touches(t, mark);
+  check('a finger moving, a lift never seen down and a sibling\'s touch report nothing; a lift reports up', seen.length === 1 && seen[0].contact === 0 && seen[0].edge === 'up', JSON.stringify(seen));
+
+  mark = t.events.length;
+  send(touch, ev(EV.SYN, C.DROPPED, 0), ev(EV.ABS, C.SLOT, 2), ev(EV.ABS, C.TRACKING, 9), syn());
+  await until(() => touches(t, mark).length >= 1);
+  send(touch, ev(EV.ABS, C.SLOT, 1), ev(EV.ABS, C.MT_Y, 100), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 1), ev(EV.ABS, C.TRACKING, -1), syn(), ev(EV.ABS, C.TRACKING, 7), ev(EV.ABS, C.MT_X, 0), ev(EV.ABS, C.MT_Y, 0), syn());
+  await until(() => touches(t, mark).length >= 2);
+  await sleep(150);
+  seen = touches(t, mark);
+  check('SYN_DROPPED: the finger still down is lifted, what came with the drop ignored, and its slot down again only with a new contact',
+    seen.length === 2 && seen[0].contact === 1 && seen[0].edge === 'up' && seen[1].contact === 1 && seen[1].edge === 'down' && seen[1].x === 0 && seen[1].y === 0,
+    JSON.stringify(seen));
+
+  mark = t.events.length;
+  t.proc.stdin.write(canvasFrame(1000, 360));
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, 11), ev(EV.ABS, C.MT_X, 500), ev(EV.ABS, C.MT_Y, 500), syn());
+  await until(() => touches(t, mark).length >= 1);
+  seen = touches(t, mark);
+  check('letterboxed (1000 × 360 on 1920 × 720: scale 1.92, 14 px down): the middle of the screen is 500, 180.2', seen[0]?.x === 500 && seen[0]?.y === 180.2, JSON.stringify(seen));
+
+  mark = t.events.length;
+  closeSync(touch.fd);
+  check('the touchscreen going away: its contacts lifted, and said', await until(() => t.events.slice(mark).some((e) => e.ev === 'touch-gone' && e.device === touch.path)) && touches(t, mark).some((e) => e.contact === 4 && e.edge === 'up'), JSON.stringify(t.events.slice(mark)));
+  check('…the panel stays', t.proc.exitCode === null);
+
+  console.log('pairing');
+  const a = fifo('pair-a');
+  const b = fifo('pair-b');
+  mark = t.events.length;
+  t.proc.stdin.write(touchFrame(2, [['t', a.path], ['t', b.path]]));
+  await until(() => t.events.slice(mark).filter((e) => e.ev === 'touch-open').length === 2);
+  send(b, ev(EV.KEY, C.BTN_TOUCH, 1), ev(EV.ABS, C.ABS_X, 400), ev(EV.ABS, C.ABS_Y, 400), syn());
+  await until(() => t.events.slice(mark).some((e) => e.ev === 'tap'));
+  send(a, ev(EV.KEY, C.BTN_TOUCH, 1), ev(EV.ABS, C.ABS_X, 400), ev(EV.ABS, C.ABS_Y, 400), syn());
+  await sleep(150);
+  const taps = t.events.slice(mark).filter((e) => e.ev === 'tap');
+  check('the first touchscreen touched is named, once, and no touch is reported', taps.length === 1 && taps[0].device === b.path && touches(t, mark).length === 0, JSON.stringify(t.events.slice(mark)));
+  t.proc.stdin.write(quitFrame());
+  check('quit: exit 0', (await t.exited) === 0);
+  for (const f of [sibling, a, b]) closeSync(f.fd);
+
+  const strict = helper(['--output', 'Virtual-1']);
+  await until(() => strict.events.some((e) => e.ev === 'ready'));
+  const notDevice = fifo('not-a-device');
+  strict.proc.stdin.write(touchFrame(1, [['t', notDevice.path]]));
+  check('without the test flag, a path that is not an input device is refused', await until(() => strict.events.some((e) => e.ev === 'touch-failed' && /not an input device/.test(e.message))), JSON.stringify(strict.events));
+  strict.proc.stdin.write(quitFrame());
+  await strict.exited;
+  closeSync(notDevice.fd);
 } finally {
   await cleanup();
 }
