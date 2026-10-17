@@ -176,13 +176,14 @@ if (r && !r.error) {
     assert.deepEqual(r.untickFocused.tabs, ['Main', 'Extra']);
     assert.equal(r.untickFocused.selectedTab, 'Extra');
   });
-  check('a shown deck with no layout in the profile keeps its panel, with the "Add a layout" card', () => {
+  check('a shown deck with no keys in the profile keeps its panel and gets a blank page at once: an empty grid, no card', () => {
+    assert.equal(r.layoutAdded, true);
     assert.deepEqual(r.noLayout.panels, [XL, V2]);
-    assert.equal(r.noLayout.grids, 1);
-    assert.equal(r.noLayout.kind, 'no-layout');
-    assert.equal(r.noLayout.button, 'Add a layout for Little deck');
+    assert.equal(r.noLayout.grids, 2);
+    assert.equal(r.noLayout.card, false);
+    assert.equal(r.noLayout.v2Keys > 0, true, 'drawn at its usual size');
   });
-  check('its "Add a layout" button gives that deck a layout, drawn in its panel', () => assert.equal(r.layoutAdded, true));
+  check('…and the editor stays in the profile chosen', () => assert.equal(r.noLayout.profile, 'solo'));
 
   // The canvas. canvas.ts: a key is 88 px and a pitch 98 px at
   // 100%; a butted deck is a 16 px gutter away.

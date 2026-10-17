@@ -1,6 +1,8 @@
 import { isKnownAction } from '../actions/index.js';
+import { CONTROL_ID } from '../config.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
+import { PairingError, type VirtualDriver } from '../drivers/virtual.js';
 import { ProfileNotFoundError, type Profiles } from '../profiles.js';
 import { obsCredentials, removeObsCredentials, removeVtsCredentials, setObsCredentials, vtsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
@@ -10,7 +12,7 @@ import * as vtsService from '../services/vts.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
-import type { AppListing, AudioList, BackupStatus, DeckStatus, ObsStatus, ReloadResult, StateSnapshot, VtsStatus } from './protocol.js';
+import type { AppListing, AudioList, BackupStatus, DeckStatus, ObsStatus, ReloadResult, ScreensReply, StateSnapshot, VtsStatus } from './protocol.js';
 import {
   ControlError,
   EVENT_NAMES,
@@ -49,6 +51,8 @@ export interface ControlDeps {
   releaseSocketKeys: () => Promise<number[]>;
   /** The audio cache (services/audio.ts cachedState), or null before its first refresh. */
   audioState: () => AudioState | null;
+  /** Virtual decks' screens and pairing; absent in tests that have none. */
+  virtual?: Pick<VirtualDriver, 'screens' | 'pair'>;
 }
 
 /**
@@ -125,6 +129,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.previews = session.previewKeys();
       entry.latched = session.latchedKeys();
       entry.failed = session.failedKeys();
+      const touch = session.touchState();
+      if (touch !== undefined) entry.touch = touch;
     }
     return entry;
   });
@@ -159,7 +165,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       previewOwners.delete(slot);
       const separator = slot.lastIndexOf(':');
       const session = deps.sessions.get(slot.slice(0, separator));
-      void session?.clearPreview(Number(slot.slice(separator + 1)));
+      void session?.clearPreview(slot.slice(separator + 1));
     }
   };
 
@@ -180,6 +186,45 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
         if (!deps.sessions.has(serial)) result.push({ serial, ...geometry });
       }
       return result.sort((a, b) => a.serial.localeCompare(b.serial));
+    },
+
+    /**
+     * The connected screens and touchscreens, for setting up a virtual deck:
+     * each screen's key is what its entry under "decks" is called.
+     */
+    async screens(): Promise<ScreensReply> {
+      const found = deps.virtual?.screens() ?? { screens: [], touchscreens: [] };
+      const decks = deps.profiles()?.virtualDecks() ?? new Set<string>();
+      return {
+        screens: found.screens.map((s) => ({
+          connector: s.connector,
+          key: s.key,
+          ...(s.edid
+            ? { maker: s.edid.maker, product: s.edid.product, name: s.edid.name, serial: s.edid.serial, widthMm: s.edid.widthMm, heightMm: s.edid.heightMm }
+            : {}),
+          deck: decks.has(s.key) ? s.key : null,
+        })),
+        touchscreens: found.touchscreens.map((n) => ({ device: n.devnode, name: n.name, vendor: n.vendor, product: n.product, serial: n.serial, path: n.idPath })),
+      };
+    },
+
+    /**
+     * Pair a screen with its touchscreen: "Tap this screen" on `output`, and
+     * the reply names the touchscreen touched, as `decks[key].virtual.touch`
+     * keeps it. Waits for the tap (up to a minute); cancelled if this
+     * connection closes. The daemon writes nothing — the caller saves it.
+     */
+    async 'virtual.pair'(args, connection) {
+      const output = requireString(args, 'output');
+      if (!deps.virtual) throw new ControlError('not_found', 'virtual decks are not available');
+      const abort = new AbortController();
+      connection.onClose(() => abort.abort());
+      try {
+        return await deps.virtual.pair(output, abort.signal);
+      } catch (err) {
+        if (err instanceof PairingError) throw new ControlError(err.code, err.message);
+        throw err;
+      }
     },
 
     async repaint(args) {
@@ -529,12 +574,16 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function requireKey(args: Record<string, unknown>, name: string): number {
+/**
+ * A key, by control id (src/devices.ts). A whole number is taken as the
+ * Stream Deck key it always named — 7 is "7" — so scripts written for
+ * protocol 1 keep working.
+ */
+function requireKey(args: Record<string, unknown>, name: string): string {
   const value = args[name];
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new ControlError('bad_request', `"${name}" must be a key index (a whole number, 0 or more)`);
-  }
-  return value;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return String(value);
+  if (typeof value === 'string' && CONTROL_ID.test(value)) return value;
+  throw new ControlError('bad_request', `"${name}" must be a key id ("7", or a whole number for a Stream Deck's key)`);
 }
 
 /** An action as the socket accepts it: an object whose type is registered. */

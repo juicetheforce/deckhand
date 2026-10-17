@@ -73,7 +73,7 @@ const stopWatching = await reloadLikeTheDaemon(daemon, { applyDelayMs: RELOAD_AP
 // and signals with a preview on key 0, move the deck to Main.
 let pressed = false;
 const presser = setInterval(() => {
-  if (!pressed && session.currentPage().startsWith('pg_') && session.previewKeys().includes(0)) {
+  if (!pressed && session.currentPage().startsWith('pg_') && session.previewKeys().includes('0')) {
     pressed = true;
     void session.goToPage('main');
   }

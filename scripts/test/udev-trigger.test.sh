@@ -36,6 +36,7 @@ run() {
     set +e
     export PATH="$S/bin:$PATH" UDEVADM_LOG="$S/udevadm.log"
     elgato_hidraw_nodes() { :; }   # no decks unless a setup says so
+    touchscreen_nodes() { :; }     # nor touchscreens
     eval "$1"
     retrigger_udev
   ) 2>&1
@@ -54,6 +55,14 @@ if ! grep -q 'uinput' "$S/udevadm.log" && grep -q '/sys/class/hidraw/hidraw9' "$
   ok "uinput not loaded, a deck present: only the deck is re-triggered"
 else
   no "not loaded, deck — got: $out; log: $(cat "$S/udevadm.log")"
+fi
+
+# A touchscreen present: re-triggered by its sysfs node, as a deck is.
+out="$(run 'UINPUT_SYSFS="$S/sys/not-loaded"; touchscreen_nodes() { echo /dev/input/event15; }')"
+if grep -q '/sys/class/input/event15' "$S/udevadm.log" && ! grep -q 'hidraw' "$S/udevadm.log"; then
+  ok "a touchscreen present: it is re-triggered"
+else
+  no "touchscreen — got: $out; log: $(cat "$S/udevadm.log")"
 fi
 
 out="$(run 'UINPUT_SYSFS="$S/sys/uinput"')"

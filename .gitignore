@@ -1,6 +1,7 @@
 node_modules/
 dist/
 helper/deckhand-input
+panel/deckhand-panel
 *.log
 # scripts/release.sh's builds and its download cache.
 /release/

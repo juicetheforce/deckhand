@@ -273,7 +273,7 @@ await check('ConfigStore.replace: the replaced text is kept first, the new confi
   await fs.writeFile(file, before);
   const store = await ConfigStore.open({ configPath: file, debounceMs: 10_000 });
   try {
-    const at = { profile: 'ffxiv', serial: 'SERIAL', page: 'main', index: 1 };
+    const at = { profile: 'ffxiv', serial: 'SERIAL', page: 'main', key: '1' };
     assert.equal(store.apply({ kind: 'setLabel', at, label: 'unsaved' }).ok, true);
     let kept: string | null = 'not called';
     const next = configWith({ 0: { label: 'imported' } });

@@ -12,6 +12,18 @@ import { socketPath } from './control/server.js';
  * 2 usage error, 3 the daemon could not be reached or did not answer.
  */
 
+/** A virtual deck's touch state (control/protocol.ts TouchState), as `status` says it. */
+const TOUCH_WORDS: Record<string, string> = {
+  ready: 'ready',
+  'not-paired': 'not paired with a touchscreen',
+  missing: 'its touchscreen is not connected',
+  opening: 'opening its touchscreen',
+  failed: 'its touchscreen could not be opened (see the journal)',
+  locked: 'off while the session is locked',
+  inactive: 'off while another session is active',
+  unknown: 'off: the lock state cannot be read',
+};
+
 const USAGE = `usage: deckhand <command> [--json]
 
   status                              what the daemon is doing
@@ -364,6 +376,7 @@ async function main(argv: string[]): Promise<void> {
             const flags = [d.connected ? 'connected' : 'not connected', d.configured ? '' : 'no layout'].filter(Boolean).join(', ');
             const previews = d.previews?.length ? `, previewing keys ${d.previews.join(' ')}` : '';
             lines.push(`  ${d.serial}  ${flags}${where ? ` — ${where}` : ''}${previews}`);
+            if (d.touch !== undefined) lines.push(`    touch: ${TOUCH_WORDS[d.touch] ?? d.touch}`);
             for (const f of d.failed ?? []) lines.push(`    key ${f.key} failed (profile ${f.profile}, page ${f.page}): ${f.error}`);
           }
           return lines.join('\n');

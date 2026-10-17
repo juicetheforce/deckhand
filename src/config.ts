@@ -1,13 +1,13 @@
 import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolvePage, resolveProfile } from './config-common.js';
+import { CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
 import type { Config, LayoutDef } from './types.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
 // daemon code keeps importing from config.js.
-export { DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
+export { CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
 
 export const CONFIG_DIR =
   process.env.DECKHAND_CONFIG_DIR ??
@@ -54,6 +54,41 @@ function rejectDuplicateNames(
   }
 }
 
+
+/** A panel's canvas may be at most this many pixels on a side. */
+const MAX_PANEL_SIDE = 16384;
+
+/** A virtual deck's controls (types.ts PanelDef): ids unique, every control on the canvas. */
+function validatePanel(panel: unknown, where: string): void {
+  if (!isObject(panel)) throw new Error(`${where}: "panel" must be an object`);
+  const size = panel.size;
+  const side = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= MAX_PANEL_SIDE;
+  if (!isObject(size) || !side(size.width) || !side(size.height)) {
+    throw new Error(`${where}: "panel.size" must be { "width", "height" }, whole numbers of pixels from 1 to ${MAX_PANEL_SIDE}`);
+  }
+  if (!Array.isArray(panel.controls)) throw new Error(`${where}: "panel.controls" must be a list`);
+  const seen = new Set<string>();
+  for (const control of panel.controls) {
+    if (!isObject(control) || typeof control.id !== 'string' || !CONTROL_ID.test(control.id)) {
+      throw new Error(`${where}: every panel control needs an "id": up to 32 letters, digits, "-" and "_"`);
+    }
+    if (seen.has(control.id)) throw new Error(`${where}: two panel controls have the id "${control.id}"`);
+    seen.add(control.id);
+    const n = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+    if (!n(control.x) || !n(control.y) || !n(control.w) || !n(control.h)) {
+      throw new Error(`${where}: panel control "${control.id}" needs numbers "x", "y", "w" and "h"`);
+    }
+    const [x, y, w, h] = [control.x, control.y, control.w, control.h] as number[];
+    if (w < 1 || h < 1 || x < 0 || y < 0 || x + w > (size.width as number) || y + h > (size.height as number)) {
+      throw new Error(`${where}: panel control "${control.id}" must be at least 1 × 1 and lie on the canvas`);
+    }
+    if (control.shape !== undefined && control.shape !== 'square') {
+      throw new Error(`${where}: panel control "${control.id}": "shape" can only be "square" for now`);
+    }
+  }
+  if (panel.preset !== undefined && typeof panel.preset !== 'string') throw new Error(`${where}: "panel.preset" must be a string`);
+}
+
 function validateLayout(layout: unknown, where: string): void {
   if (!isObject(layout)) throw new Error(`${where} must be an object`);
   if (!isObject(layout.pages)) throw new Error(`${where} is missing a "pages" object`);
@@ -65,11 +100,13 @@ function validateLayout(layout: unknown, where: string): void {
       throw new Error(`page "${pageId}" in ${where} is missing "buttons"`);
     }
     for (const key of Object.keys(page.buttons)) {
-      if (!/^\d+$/.test(key)) {
-        throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a numeric index`);
+      if (!CONTROL_ID.test(key)) {
+        throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a key id: a Stream Deck's key index ("0", "1", …), or up to 32 letters, digits, "-" and "_"`);
       }
     }
   }
+
+  if (layout.panel !== undefined) validatePanel(layout.panel, where);
 
   if (layout.startPage !== undefined) {
     if (typeof layout.startPage !== 'string' || resolvePage(layout as unknown as LayoutDef, layout.startPage) === null) {
@@ -85,6 +122,19 @@ export function validateConfig(config: unknown): Config {
     if (!isObject(config.decks)) throw new Error('"decks" must be an object');
     for (const [serial, deck] of Object.entries(config.decks)) {
       if (!isObject(deck)) throw new Error(`deck "${serial}" must be an object`);
+      if (deck.virtual !== undefined) {
+        if (!isObject(deck.virtual) || typeof deck.virtual.output !== 'string' || !/^[A-Za-z0-9_.-]{1,64}$/.test(deck.virtual.output)) {
+          throw new Error(`deck "${serial}": "virtual.output" must name a screen's connector, such as "DP-4"`);
+        }
+        const touch = deck.virtual.touch;
+        if (touch !== undefined) {
+          const hex4 = (v: unknown) => typeof v === 'string' && /^[0-9a-fA-F]{4}$/.test(v);
+          const text = (v: unknown) => v === undefined || (typeof v === 'string' && v.length > 0 && v.length <= 256);
+          if (!isObject(touch) || !hex4(touch.vendor) || !hex4(touch.product) || !text(touch.serial) || !text(touch.path)) {
+            throw new Error(`deck "${serial}": "virtual.touch" must be { "vendor", "product" } (four hex digits each) and a "serial" or "path"`);
+          }
+        }
+      }
     }
   }
 

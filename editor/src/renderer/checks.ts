@@ -133,20 +133,20 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const added = await api.apply({ kind: 'addPage', profile, serial, name: 'Bridge page' });
   out.addPage = added;
   const page = added.ok ? added.result.pageId! : '';
-  out.setAction = await api.apply({ kind: 'setAction', at: { profile, serial, page, index: 2 }, action: { type: 'hotkey', keys: 'ctrl+2' } });
-  out.badEdit = await api.apply({ kind: 'setAction', at: { profile, serial, page: 'no-such-page', index: 0 }, action: { type: 'noop' } });
+  out.setAction = await api.apply({ kind: 'setAction', at: { profile, serial, page, key: '2' }, action: { type: 'hotkey', keys: 'ctrl+2' } });
+  out.badEdit = await api.apply({ kind: 'setAction', at: { profile, serial, page: 'no-such-page', key: '0' }, action: { type: 'noop' } });
 
   const saved = await waitFor<StoreView>(api.onStore, (await api.snapshot()).store, (v) => v.open && !v.state.dirty);
   out.savedThroughAutosave = saved.open && !saved.state.dirty;
 
-  out.previewSet = await api.previewSet(serial, 3, { label: 'bridge preview', background: '#00ff00' });
-  out.previewBadKey = await api.previewSet(serial, 999, { label: 'x' });
+  out.previewSet = await api.previewSet(serial, '3', { label: 'bridge preview', background: '#00ff00' });
+  out.previewBadKey = await api.previewSet(serial, '999', { label: 'x' });
   const withPreview = await waitFor<DaemonView>(api.onDaemon, (await api.snapshot()).daemon, (v) =>
-    (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3),
+    (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3'),
   );
-  out.previewInState = (withPreview.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3);
+  out.previewInState = (withPreview.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3');
   out.daemonEventPushed = await eventually(() =>
-    daemonEvents.some((v) => (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes(3)),
+    daemonEvents.some((v) => (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3')),
   );
   out.storeEventPushed = await eventually(() => storeEvents.some((v) => v.open && !v.state.dirty));
 
@@ -173,7 +173,7 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   }
 
   // Left for the quit: an edit made just before quitting must still be written.
-  out.lastEdit = await api.apply({ kind: 'setLabel', at: { profile, serial, page, index: 2 }, label: 'written on quit' });
+  out.lastEdit = await api.apply({ kind: 'setLabel', at: { profile, serial, page, key: '2' }, label: 'written on quit' });
   return out;
 }
 
@@ -368,9 +368,9 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
       });
       committed.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
     });
-    void api.previewSet(serialForRace, 1, { label: 'race' });
+    void api.previewSet(serialForRace, '1', { label: 'race' });
   });
-  await api.previewClear(serialForRace, 1);
+  await api.previewClear(serialForRace, '1');
   await until(async () => (await deck())?.page === 'main');
   tab('Second')!.click();
   await until(async () => (await deck())?.page === 'second' && selectedTab() === 'Second');
@@ -410,9 +410,9 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   //    the deck to Main by itself; the breadcrumb must follow.
   const serial = (await deck())!.serial;
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial, 0, { label: 'press now' });
+  await api.previewSet(serial, '0', { label: 'press now' });
   out.followsDeck = await until(() => selectedTab() === 'Main', 10_000);
-  await api.previewClear(serial, 0);
+  await api.previewClear(serial, '0');
 
   // 5. Leave the deck on Second, then quit: closing must not change it.
   tab('Second')!.click();
@@ -617,7 +617,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   /** A handshake with the script: a preview on `key`. Refused, it is recorded, so the check says why rather than "never signalled". */
   const signalErrors: string[] = [];
   const signal = async (key: number, label: string) => {
-    const result = await api.previewSet(serial, key, { label });
+    const result = await api.previewSet(serial, String(key), { label });
     if (!result.ok) signalErrors.push(`key ${key}: ${result.error}`);
   };
   out.signalErrors = signalErrors;
@@ -685,7 +685,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('Flame_IV.png');
   out.selectSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/FFXIV/BEAR/Flame_IV.png');
   out.gridAgrees = await until(() => decodeURIComponent(gridIcon(1)).includes('Flame_IV.png'));
-  out.previewClearedAfterSave = await until(async () => !(await previews()).includes(1));
+  out.previewClearedAfterSave = await until(async () => !(await previews()).includes('1'));
   out.noAssign = button('Assign') === undefined && button('Cancel') === undefined;
 
   // 5. Arrow keys move the selection, and so choose.
@@ -713,7 +713,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.newFileAbsentBefore = !names().includes('Frost.png');
   await signal(31, 'WRITE-FILE');
   out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
-  await api.previewClear(serial, 31);
+  await api.previewClear(serial, '31');
 
   // 8b. Back, forward and up, and the count on a folder tile.
   const crumbNow = () => document.querySelector('.picker-crumb-here')?.textContent;
@@ -793,7 +793,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => names().includes('corrupt.png'));
 
   // 12. A file the deck cannot draw: refused by the daemon, marked, never saved; its thumbnail is the missing icon.
-  await until(async () => !(await previews()).includes(1)); // the previous choice has finished saving
+  await until(async () => !(await previews()).includes('1')); // the previous choice has finished saving
   await clickItem('corrupt.png');
   out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
   await sleep(700);
@@ -804,7 +804,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('back ground.png');
   await click('Key');
   out.tabLeftSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/back ground.png');
-  out.tabClears = await until(async () => !(await previews()).includes(1));
+  out.tabClears = await until(async () => !(await previews()).includes('1'));
   out.keyTabShowsPath = document.querySelector('.inspector .path')?.textContent;
 
   // 14. Selecting another key straight after choosing: saved on the key it was chosen for; the picker stays in the same folder.
@@ -812,7 +812,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('fishing.png');
   await selectKey(0);
   out.keyChangeSaved = await until(async () => (await iconOf('1')) === '~/Pictures/icons/fishing.png');
-  out.keyChangeClears = await until(async () => !(await previews()).includes(1));
+  out.keyChangeClears = await until(async () => !(await previews()).includes('1'));
   out.placeKept = await until(() => crumbs().endsWith('icons') && names().includes('fishing.png'));
 
   // 15. A page change ends the preview — even one still in flight: the thumbnail
@@ -822,7 +822,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   item('fishing.png')!.click();
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
   await sleep(500);
-  out.pageChangeClears = await until(async () => !(await previews()).includes(0));
+  out.pageChangeClears = await until(async () => !(await previews()).includes('0'));
   out.pageChangeSaved = await until(async () => (await iconOf('0')) === '~/Pictures/icons/fishing.png');
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
   await until(async () => (await api.snapshot()).daemon.status?.decks.find((d) => d.serial === serial)?.page === 'main');
@@ -844,10 +844,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
   await signal(30, 'RENAME-AWAY');
   out.renameAwayShowsMissing = await until(() => iconIsMissing(), 10_000);
-  await api.previewClear(serial, 30);
+  await api.previewClear(serial, '30');
   await signal(29, 'RENAME-BACK');
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
-  await api.previewClear(serial, 29);
+  await api.previewClear(serial, '29');
 
   // 16b. The pinned Built-in section: the first chip, then the same
   //      grid, filter and history as any folder; choosing writes builtin:<name>.
@@ -867,7 +867,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await clickItem('mic-muted');
   out.builtinSaved = await until(async () => (await iconOf('1')) === 'builtin:mic-muted');
   out.builtinInGrid = await until(() => loadedDefault(1, 'mic-muted'));
-  out.builtinPreviewCleared = await until(async () => !(await previews()).includes(1));
+  out.builtinPreviewCleared = await until(async () => !(await previews()).includes('1'));
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
   out.builtinStartFolder = await api.iconStartFolder('builtin:mic-muted');
   await click('Key');
@@ -1033,8 +1033,15 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
   const devices = await deviceList();
   const notices = [...document.querySelectorAll('.notice')].map((n) => n.textContent ?? '');
 
+  // A connected deck with no keys in the profile is given a blank page: wait for its grid.
+  await until(() => document.querySelector('.grid .key') !== null || document.querySelector('[data-empty-state]') === null, 3000);
+  await sleep(300);
+  const grid = document.querySelector<HTMLElement>('.grid');
   return {
-    kind: card?.getAttribute('data-empty-state') ?? null,
+    gridDeck: grid?.dataset.deck ?? null,
+    gridKeys: grid ? grid.querySelectorAll('.key').length : 0,
+    profileCrumb: document.querySelector<HTMLSelectElement>('select[data-crumb="profile"]')?.value ?? null,
+    kind: document.querySelector('[data-empty-state]')?.getAttribute('data-empty-state') ?? null,
     title: card?.querySelector('.empty-title')?.textContent ?? null,
     detail: card?.querySelector('.muted')?.textContent ?? null,
     // Null when there is no button, which is the point in four of the five.
@@ -1127,9 +1134,9 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   tab('Second')!.click();
   out.onSecond = await until(async () => (await deckAt(serial))?.page === 'second');
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial, 0, { label: 'move it' });
+  await api.previewSet(serial, '0', { label: 'move it' });
   out.followsDeck = await until(() => selectedTab() === 'Main');
-  await api.previewClear(serial, 0);
+  await api.previewClear(serial, '0');
 
   // 6. Deleting a page clears the key that navigated to it.
   tab('Second')!.click();
@@ -1324,9 +1331,9 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // 6. Hand back to the script: it presses the keys on the fake deck.
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial(), 31, { label: 'press now' });
+  await api.previewSet(serial(), '31', { label: 'press now' });
   out.deckFollowedTheProfileKey = await until(async () => (await deck())?.profile === 'other');
-  await api.previewClear(serial(), 31);
+  await api.previewClear(serial(), '31');
   out.finalTab = selectedTab();
   await sleep(300);
   return out;
@@ -1711,7 +1718,7 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
     deviceOptions: device instanceof HTMLSelectElement ? [...device.options].map((o) => ({ value: o.value, label: o.textContent })) : null,
     deviceValue: device instanceof HTMLSelectElement ? device.value : null,
     crumbs,
-    profileSelect: document.querySelector('.toolbar .crumb select:not([data-crumb])') !== null,
+    profileSelect: document.querySelector('.toolbar .crumb select[data-crumb="profile"]') !== null,
     deckRename: document.querySelector('.toolbar button[aria-label^="Rename \\"Little deck\\""]') !== null,
     tabs: [...document.querySelectorAll('.tabs .tab:not(.tab-add)')].map((t) => t.textContent),
     selectedTab: document.querySelector('.tab-selected')?.textContent ?? null,
@@ -1804,9 +1811,9 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     return false;
   };
   const panel = (serial: string) => document.querySelector<HTMLElement>(`[data-deck-panel="${serial}"]`);
-  const keyOn = (serial: string, index: number) => document.querySelector<HTMLButtonElement>(`.key[data-deck="${serial}"][data-key-index="${index}"]`)!;
+  const keyOn = (serial: string, index: number) => document.querySelector<HTMLButtonElement>(`.key[data-deck="${serial}"][data-key="${index}"]`)!;
   const selectedOn = (serial: string) =>
-    [...document.querySelectorAll<HTMLElement>(`.key[data-deck="${serial}"]`)].flatMap((k) => (k.classList.contains('key-selected') ? [Number(k.dataset.keyIndex)] : []));
+    [...document.querySelectorAll<HTMLElement>(`.key[data-deck="${serial}"]`)].flatMap((k) => (k.classList.contains('key-selected') ? [Number(k.dataset.key)] : []));
   const click = (el: Element, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mods }));
   const buttons = async (serial: string, page = 'main', profile = 'default') => {
@@ -1926,7 +1933,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   // 8. A key dragged onto the other deck is copied there: the
   // original stays, an occupied key is replaced, that deck takes the focus
   // with the copy selected, and the status line says what happened there.
-  const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.keyIndex}`);
+  const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.key}`);
   const bulkMessage = () => document.querySelector('.bulk-message')?.firstChild?.textContent ?? null;
   const setPageMenu = async (serial: string, pageId: string) => {
     const select = panel(serial)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
@@ -2044,24 +2051,24 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   await sleep(100);
   out.untickFocused = { ...layout(), tabs: tabs(), selectedTab: selectedTab() };
 
-  // 12. A profile with no V2 layout, both shown: the V2 keeps its panel, with the "Add a layout" card.
+  // 12. A profile with no V2 layout, both shown: the V2 keeps its panel and
+  //     gets a blank page at once — an empty grid, no card, no click — and the
+  //     profile stays the one chosen.
   await tick(XL);
   await until(() => document.querySelectorAll('.grid').length === 2);
   click(keyOn(XL, 0));
   await until(() => layout().focused === XL);
-  const profile = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+  const profile = document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')!;
   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(profile, 'solo');
   profile.dispatchEvent(new Event('change', { bubbles: true }));
-  await until(() => panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined);
+  out.layoutAdded = await until(() => !!panel(V2)?.querySelector('.grid .key'));
   await sleep(200);
-  const card = panel(V2)?.querySelector('[data-empty-state]');
   out.noLayout = {
     ...layout(),
-    kind: card?.getAttribute('data-empty-state') ?? null,
-    button: card?.querySelector('button.primary')?.textContent ?? null,
+    card: panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined,
+    v2Keys: panel(V2)?.querySelectorAll('.grid .key').length ?? 0,
+    profile: document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')?.value ?? null,
   };
-  card?.querySelector<HTMLButtonElement>('button.primary')?.click();
-  out.layoutAdded = await until(() => panel(V2)?.querySelector('.grid') !== null && panel(V2)?.querySelector('.grid') !== undefined);
   await sleep(700); // past the autosave
 
   // The canvas. Both decks shown, never dragged: stacked, fitted.
@@ -2262,7 +2269,7 @@ async function multiDeckReopen(): Promise<Record<string, unknown>> {
   }
   await new Promise((r) => setTimeout(r, 500));
   const zoom = Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
-  const key0 = (serial: string) => document.querySelector(`.key[data-deck="${serial}"][data-key-index="0"]`)?.getBoundingClientRect();
+  const key0 = (serial: string) => document.querySelector(`.key[data-deck="${serial}"][data-key="0"]`)?.getBoundingClientRect();
   const xl = key0('MULTI-XL');
   const v2 = key0('MULTI-V2');
   return {
@@ -2441,7 +2448,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.toggleIcons = { toggleSlots, toggleOn, toggleBoth };
   // Every pair field on the list gets past main's guard; only the key's action
   // may refuse one it does not have. A field not on the list is refused by main.
-  const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', index: 30 };
+  const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', key: '30' };
   const again = { iconOn: 'builtin:headset', iconOff: 'builtin:mic' } as Record<string, string>;
   const pairGuard: Record<string, string> = {};
   for (const field of [...PAIR_ICON_FIELDS, 'iconBogus']) {
@@ -2492,11 +2499,11 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => device('alsa_input.pci-0000_00_1f.3.HiFi__Mic__source')?.classList.contains('target-selected') === true);
   const before = document.querySelector('.inspector .target-selected')?.getAttribute('data-node');
   const serial = (await api.snapshot()).daemon.decks?.[0]?.serial ?? '';
-  await api.previewSet(serial, 31, { label: 'unplug' });
+  await api.previewSet(serial, '31', { label: 'unplug' });
   const missingShown = await until(
     () => (document.querySelector('.inspector .target-selected .target-note')?.textContent?.includes('not present now') ?? false) && (document.querySelector('.inspector .warning-text')?.textContent?.includes('not present now') ?? false),
   );
-  await api.previewClear(serial, 31);
+  await api.previewClear(serial, '31');
   device('alsa_input.usb-Example_Headset-00.mono-fallback')!.click();
   const picked = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' });
   // Input device moves recording streams, as Output device moves playing

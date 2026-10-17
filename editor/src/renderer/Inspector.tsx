@@ -18,6 +18,8 @@ interface Props {
   selectedCount: number;
   bulk: Bulk;
   at: ButtonLocation | null;
+  /** The key's number as people count them ("5"), for the title: bulk.ts keyNumber. */
+  keyNumber: string;
   button: ButtonDef | undefined;
   /** Why this key's last press on the deck failed, if it did (model.ts failedKeysOn): what its badge means, said plainly. */
   failure: string | undefined;
@@ -61,7 +63,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -86,8 +88,9 @@ export function Inspector({ selectedCount, bulk, at, button, failure, notSetUp, 
   // Keyed by location so every piece of state resets when another key is selected.
   return (
     <KeyInspector
-      key={`${at.profile}/${at.serial}/${at.page}/${at.index}`}
+      key={`${at.profile}/${at.serial}/${at.page}/${at.key}`}
       at={at}
+      keyNumber={keyNumber}
       button={button}
       failure={failure}
       notSetUp={notSetUp}
@@ -156,7 +159,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -209,7 +212,7 @@ function KeyInspector({ at, button, failure, notSetUp, editingBlocked, pick, pag
 
   return (
     <aside className="inspector glass" aria-label="Inspector">
-      <h2 className="inspector-title">Key {at.index + 1}</h2>
+      <h2 className="inspector-title">Key {keyNumber}</h2>
       {notSetUp && integration && (
         <div className="key-callout key-unset-callout" role="status" data-not-set-up={integration}>
           <p className="key-callout-text">

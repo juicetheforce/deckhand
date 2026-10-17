@@ -1,10 +1,11 @@
 import path from 'node:path';
-import { resolvePage, resolveProfile } from '../../../src/config-common.js';
+import { CONTROL_ID, resolvePage, resolveProfile } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 import { deleteProfile } from '../shared/profile-deletion.js';
+import { resizePanel } from '../shared/panel-size.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -87,13 +88,12 @@ function pageAt(config: Config, at: ButtonLocation): PageDef {
   const layout = layoutAt(config, at.profile, at.serial);
   const page = Object.prototype.hasOwnProperty.call(layout.pages, at.page) ? layout.pages[at.page] : undefined;
   if (!page) throw new EditError(`no page with ID "${at.page}" in profile "${at.profile}" for deck "${at.serial}"`);
-  if (!Number.isInteger(at.index) || at.index < 0) throw new EditError(`key index ${at.index} is not a valid index`);
+  if (!CONTROL_ID.test(at.key)) throw new EditError(`"${at.key}" is not a key`);
   return page;
 }
 
 /** Remove a key from a button; a button left with nothing on it is removed, since {} is an empty slot anyway. */
-function removeField(page: PageDef, index: number, field: keyof ButtonDef): void {
-  const key = String(index);
+function removeField(page: PageDef, key: string, field: keyof ButtonDef): void {
   const button = page.buttons[key];
   if (!button || !(field in button)) return;
   delete button[field];
@@ -112,8 +112,7 @@ function storedIcon(iconPath: string, env: EditEnvironment): string {
 }
 
 /** The button at a location, created empty if the slot is empty. */
-function buttonFor(page: PageDef, index: number): ButtonDef {
-  const key = String(index);
+function buttonFor(page: PageDef, key: string): ButtonDef {
   page.buttons[key] ??= {};
   return page.buttons[key];
 }
@@ -127,16 +126,16 @@ function buttonFor(page: PageDef, index: number): ButtonDef {
 function clearPageLinks(layout: LayoutDef, pageId: string): void {
   for (const link of pageLinks(layout, pageId)) {
     const page = layout.pages[link.page];
-    const button = page.buttons[String(link.index)];
+    const button = page.buttons[link.key];
     const action = button?.[link.where];
     if (!action) continue;
     const steps = link.inMulti ? multiSteps(action) : null;
     if (steps) {
       const kept = steps.filter((step) => !targetsPage(step, layout, pageId));
-      if (kept.length === 0) removeField(page, link.index, link.where);
+      if (kept.length === 0) removeField(page, link.key, link.where);
       else action.steps = kept;
     } else {
-      removeField(page, link.index, link.where);
+      removeField(page, link.key, link.where);
     }
   }
 }
@@ -206,12 +205,12 @@ function followProfileName(config: Config, profileId: string, name: string): voi
 export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): EditResult {
   switch (edit.kind) {
     case 'setAction': {
-      buttonFor(pageAt(config, edit.at), edit.at.index).action = edit.action;
+      buttonFor(pageAt(config, edit.at), edit.at.key).action = edit.action;
       return {};
     }
     case 'assignAction': {
       const page = pageAt(config, edit.at);
-      const button = buttonFor(page, edit.at.index);
+      const button = buttonFor(page, edit.at.key);
       button.action = edit.action;
       delete button.onRelease;
       delete button.icon;
@@ -221,18 +220,18 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
     case 'setPressRelease': {
       const page = pageAt(config, edit.at);
       if (edit.keys === null) {
-        removeField(page, edit.at.index, 'action');
-        removeField(page, edit.at.index, 'onRelease');
+        removeField(page, edit.at.key, 'action');
+        removeField(page, edit.at.key, 'onRelease');
         return {};
       }
       if (edit.keys.trim() === '') throw new EditError('Press/Release needs a key');
-      const button = buttonFor(page, edit.at.index);
+      const button = buttonFor(page, edit.at.key);
       button.action = { type: 'keyHold', keys: edit.keys, state: 'down' };
       button.onRelease = { type: 'keyHold', keys: edit.keys, state: 'up' };
       return {};
     }
     case 'removeAction': {
-      removeField(pageAt(config, edit.at), edit.at.index, 'action');
+      removeField(pageAt(config, edit.at), edit.at.key, 'action');
       return {};
     }
     case 'setIcon': {
@@ -240,20 +239,20 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       switch (edit.icon.kind) {
         // Removing the key is what makes the action's default render.
         case 'default':
-          removeField(page, edit.at.index, 'icon');
+          removeField(page, edit.at.key, 'icon');
           break;
         // An explicit null, which the default resolution must not override.
         case 'none':
-          buttonFor(page, edit.at.index).icon = null;
+          buttonFor(page, edit.at.key).icon = null;
           break;
         case 'file':
-          buttonFor(page, edit.at.index).icon = storedIcon(edit.icon.path, env);
+          buttonFor(page, edit.at.key).icon = storedIcon(edit.icon.path, env);
           break;
       }
       return {};
     }
     case 'setActionIcon': {
-      const action = pageAt(config, edit.at).buttons[String(edit.at.index)]?.action;
+      const action = pageAt(config, edit.at).buttons[edit.at.key]?.action;
       if (!action || !pairIconFields(action).includes(edit.field)) throw new EditError(`this key's action has no ${edit.field}`);
       if (edit.icon.kind === 'none') throw new EditError('a state icon is a file, a built-in, or the default — not "none"');
       if (edit.icon.kind === 'default') delete action[edit.field];
@@ -262,17 +261,17 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
     }
     case 'setLabel': {
       const page = pageAt(config, edit.at);
-      if (edit.label === null || edit.label === '') removeField(page, edit.at.index, 'label');
-      else buttonFor(page, edit.at.index).label = edit.label;
+      if (edit.label === null || edit.label === '') removeField(page, edit.at.key, 'label');
+      else buttonFor(page, edit.at.key).label = edit.label;
       return {};
     }
     case 'setLabelStyle': {
       const page = pageAt(config, edit.at);
       if (edit.value === null) {
-        removeField(page, edit.at.index, edit.field);
+        removeField(page, edit.at.key, edit.field);
         return {};
       }
-      const button = buttonFor(page, edit.at.index);
+      const button = buttonFor(page, edit.at.key);
       if (edit.field === 'labelSize') {
         if (typeof edit.value !== 'number' || !Number.isFinite(edit.value) || edit.value <= 0) {
           throw new EditError('label size must be a positive number of pixels');
@@ -290,20 +289,20 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       return {};
     }
     case 'clearButton': {
-      delete pageAt(config, edit.at).buttons[String(edit.at.index)];
+      delete pageAt(config, edit.at).buttons[edit.at.key];
       return {};
     }
     case 'putButtons': {
-      const page = pageAt(config, { profile: edit.profile, serial: edit.serial, page: edit.page, index: 0 });
-      const seen = new Set<number>();
-      for (const { index, button } of edit.writes) {
-        if (!Number.isInteger(index) || index < 0) throw new EditError(`key index ${index} is not a valid index`);
+      const page = pageAt(config, { profile: edit.profile, serial: edit.serial, page: edit.page, key: '0' });
+      const seen = new Set<string>();
+      for (const { key, button } of edit.writes) {
+        if (typeof key !== 'string' || !CONTROL_ID.test(key)) throw new EditError(`"${String(key)}" is not a key`);
         // Two writes to one slot would make the result depend on their order.
-        if (seen.has(index)) throw new EditError(`key ${index + 1} is written twice in one edit`);
-        seen.add(index);
+        if (seen.has(key)) throw new EditError(`key "${key}" is written twice in one edit`);
+        seen.add(key);
         // {} is an empty slot anyway, so it is written as one — as removeField does.
-        if (button === null || Object.keys(button).length === 0) delete page.buttons[String(index)];
-        else page.buttons[String(index)] = structuredClone(button);
+        if (button === null || Object.keys(button).length === 0) delete page.buttons[key];
+        else page.buttons[key] = structuredClone(button);
       }
       return {};
     }
@@ -413,7 +412,36 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (Object.prototype.hasOwnProperty.call(profile.layouts, edit.serial)) {
         throw new EditError(`this profile already has a layout for deck "${edit.serial}"`);
       }
-      profile.layouts[edit.serial] = newLayout(edit.pageName, env);
+      profile.layouts[edit.serial] = edit.panel ? { panel: structuredClone(edit.panel), ...newLayout(edit.pageName, env) } : newLayout(edit.pageName, env);
+      return {};
+    }
+    case 'addVirtualDeck': {
+      const profile = profileAt(config, edit.profile);
+      config.decks ??= {};
+      // A name kept from an earlier pairing stays.
+      config.decks[edit.key] = { ...config.decks[edit.key], virtual: { output: edit.output, touch: structuredClone(edit.touch) } };
+      if (!Object.prototype.hasOwnProperty.call(profile.layouts, edit.key)) {
+        profile.layouts[edit.key] = { panel: structuredClone(edit.panel), ...newLayout(edit.pageName, env) };
+      }
+      return {};
+    }
+    case 'repairVirtualDeck': {
+      const deck = config.decks?.[edit.key];
+      if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
+      deck.virtual = { output: edit.output, touch: structuredClone(edit.touch) };
+      return {};
+    }
+    case 'removeVirtualDeck': {
+      const deck = config.decks?.[edit.key];
+      if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
+      delete deck.virtual;
+      return {};
+    }
+    case 'setPanel': {
+      const profile = profileAt(config, edit.profile);
+      const layout = layoutAt(config, edit.profile, edit.serial);
+      if (!layout.panel) throw new EditError(`deck "${edit.serial}" has no panel to resize`);
+      profile.layouts[edit.serial] = resizePanel(layout, edit.panel).layout;
       return {};
     }
     default: {

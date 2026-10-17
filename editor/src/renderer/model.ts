@@ -11,7 +11,7 @@ import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { builtinRef, pairIconFields } from '../shared/icons.js';
-import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
+import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
 export type DeckGeometryWithSerial = DecksResult[number];
@@ -73,9 +73,10 @@ export function settingsSectionOf(type: string | undefined): SettingsSection | n
   return integrationOf(type);
 }
 
-export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<number, string> {
+/** By control id, as the daemon names keys ("7" for a Stream Deck's key 7). */
+export function failedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<string, string> {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
-  const failed: Record<number, string> = {};
+  const failed: Record<string, string> = {};
   for (const f of deck?.failed ?? []) if (f.profile === selection.profile && f.page === selection.page) failed[f.key] = f.error;
   return failed;
 }
@@ -88,12 +89,12 @@ export interface Selection {
    * The key the inspector shows, or null. With several keys selected it is
    * the anchor: the last key clicked, where a Shift+click range starts.
    */
-  key: number | null;
+  key: string | null;
   /**
    * Every selected key, `key` included. Empty
    * exactly when `key` is null.
    */
-  keys: number[];
+  keys: string[];
   /**
    * The other decks shown in the editor, each with the page it shows; empty
    * when one deck is shown, which is today's editor exactly. `serial` is the
@@ -399,7 +400,13 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
   const status = (serial: string) => (daemon.connected ? daemon.status?.decks.find((d) => d.serial === serial) : undefined);
   const deck = status(settled.serial);
   let focused = settled;
-  if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
+  // Followed into another profile only when it is the active one — a key on
+  // the deck switched profile. A deck the editor's profile has no keys for
+  // shows an older profile's; following it there would take the editor out of
+  // the profile being worked on, so it stays, on a page of its own (App.tsx
+  // gives it a blank one). Choosing a deck never changes the profile.
+  const active = daemon.status?.activeProfile?.id;
+  if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile) && (deck.profile === settled.profile || deck.profile === active)) {
     const moved = deck.profile !== settled.profile || deck.page !== settled.page;
     // A profile change takes the other decks' pages with it: they were pages
     // of the old profile, so each goes back to its start page before following.
@@ -421,13 +428,14 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
 }
 
 /**
- * The deck to edit after choosing a profile: the current one if the profile
- * has a layout for it, otherwise the first connected deck it covers, otherwise
+ * The deck to edit after choosing a profile: the current one if it is
+ * connected or the profile has a layout for it, otherwise the first connected deck it covers, otherwise
  * the first deck it has a layout for. Keeps the breadcrumb on a deck the new
  * profile actually shows, so following does not bounce it back.
  */
 export function deckForProfile(config: Config, daemon: DaemonView, profile: string, preferred: string): string {
-  if (layoutFor(config, profile, preferred)) return preferred;
+  // A connected deck stays: a profile with no keys for it gets a blank page (App.tsx).
+  if (layoutFor(config, profile, preferred) || geometryFor(daemon, preferred) !== null) return preferred;
   const choices = deckChoices(config, profile, daemon);
   return (choices.find((d) => d.connected && d.hasLayout) ?? choices.find((d) => d.hasLayout))?.id ?? preferred;
 }
@@ -444,23 +452,23 @@ export function deckForProfile(config: Config, daemon: DaemonView, profile: stri
 export function clickKeys(
   grid: KeyGrid,
   current: Pick<Selection, 'key' | 'keys'>,
-  index: number,
+  key: string,
   modifiers: { ctrl: boolean; shift: boolean },
 ): Pick<Selection, 'key' | 'keys'> {
   if (modifiers.shift && current.key !== null) {
-    return { key: current.key, keys: rangeSelection(grid, current.key, index) };
+    return { key: current.key, keys: rangeSelection(grid, current.key, key) };
   }
   if (modifiers.ctrl) {
-    if (!current.keys.includes(index)) return { key: index, keys: [...current.keys, index] };
-    const keys = current.keys.filter((k) => k !== index);
-    return { key: current.key === index ? (keys[keys.length - 1] ?? null) : current.key, keys };
+    if (!current.keys.includes(key)) return { key, keys: [...current.keys, key] };
+    const keys = current.keys.filter((k) => k !== key);
+    return { key: current.key === key ? (keys[keys.length - 1] ?? null) : current.key, keys };
   }
-  return { key: index, keys: [index] };
+  return { key, keys: [key] };
 }
 
 /** "3 keys (“Jump”, “Sprint” and key 7)" — what the clipboard holds, for the line under the grid. */
 export function clipboardSummary(clip: Clipboard): string {
-  const names = clip.keys.map((k) => keyName(k.button, k.sourceIndex));
+  const names = clip.keys.map((k) => keyNamed(k.button, k.sourceNumber));
   const count = clip.keys.length === 1 ? '1 key' : `${clip.keys.length} keys`;
   const shown = names.length <= 3 ? joinNames(names) : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
   return `${count} (${shown})`;
@@ -481,11 +489,11 @@ export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement
   if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
   else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
   if (written > 0 && placement.skipped.length > 0) {
-    const names = joinNames(placement.skipped.map((k) => keyName(k.button, k.sourceIndex)));
+    const names = joinNames(placement.skipped.map((k) => keyNamed(k.button, k.sourceNumber)));
     parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} no place on that deck.`);
   }
   if (placement.lostNavigation.length > 0) {
-    const names = joinNames(placement.lostNavigation.map((l) => keyName(l.key.button, l.index)));
+    const names = joinNames(placement.lostNavigation.map((l) => keyNamed(l.clip.button, l.clip.sourceNumber)));
     const one = placement.lostNavigation.length === 1;
     parts.push(`${names} lost ${one ? 'its' : 'their'} Go to page: that page is not on this deck, so ${one ? 'it needs' : 'they need'} a new target.`);
   }
@@ -594,7 +602,7 @@ export function faceIcon(button: ButtonDef | undefined, latched = false, appIcon
  * when the deck leaves the page, so a latch on another page cannot exist, and
  * drawing one would be a lie. The deck is the truth.
  */
-export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): number[] {
+export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): string[] {
   const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
   if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return [];
   return deck.latched ?? [];

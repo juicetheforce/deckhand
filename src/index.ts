@@ -1,18 +1,20 @@
-import { listStreamDecks, openStreamDeck } from '@elgato-stream-deck/node';
 import { ConfigBackups } from './backups.js';
 import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
 import { createHandlers, eventNotifiers, type ControlDeps } from './control/commands.js';
 import type { ReloadResult } from './control/protocol.js';
 import { ControlServer, socketPath } from './control/server.js';
 import { DeckSession } from './deck.js';
-import { geometryOf, type DeckGeometry } from './geometry.js';
+import type { DeckDriver, FoundDevice } from './devices.js';
+import { hidDriver, printHidDecks } from './drivers/hid.js';
+import { createVirtualDriver } from './drivers/virtual.js';
+import type { DeckGeometry } from './geometry.js';
 import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
-import { watchHotplug } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
+import * as sessionLock from './services/session-lock.js';
 import * as obsService from './services/obs.js';
 import * as twitchService from './services/twitch.js';
 import * as vtsService from './services/vts.js';
@@ -26,6 +28,14 @@ import type { ActionDef, Config } from './types.js';
  * scan), so it runs once a minute.
  */
 const SAFETY_SCAN_INTERVAL_MS = 60000;
+
+/**
+ * Where decks come from (src/devices.ts): Stream Decks, and virtual decks on
+ * the screens the config names. A scan reconciles against every driver's
+ * list, and nothing else here asks which kind of deck it has.
+ */
+const virtualDriver = createVirtualDriver(() => config);
+const drivers: DeckDriver[] = [hidDriver, virtualDriver];
 
 const sessions = new Map<string, DeckSession>();
 let config: Config | null = null;
@@ -99,20 +109,18 @@ const notifyState = () => {
 /** Keys whose last press failed, for every deck, kept across unplugging (src/key-failures.ts). */
 const keyFailures = new KeyFailures();
 
-/** `npm run decks` — print serials so you can paste them into config.json. */
-async function printDecks(): Promise<void> {
-  const devices = await listStreamDecks();
-  if (devices.length === 0) {
-    console.log('No Stream Decks found.');
-    console.log('If one is plugged in, install udev/60-deckhand.rules and re-plug it.');
-    return;
+/** Every driver's devices, as one list. A driver whose listing fails is logged and left out of this scan. */
+async function listDevices(): Promise<FoundDevice[] | null> {
+  const found: FoundDevice[] = [];
+  for (const driver of drivers) {
+    try {
+      found.push(...(await driver.list()));
+    } catch (err) {
+      console.error(`[main] device scan failed (${driver.name}): ${(err as Error).message}`);
+      return null;
+    }
   }
-  console.log('Connected Stream Decks:\n');
-  for (const device of devices) {
-    console.log(`  serial: ${device.serialNumber ?? '(unavailable)'}`);
-    console.log(`  model:  ${device.model}`);
-    console.log(`  path:   ${device.path}\n`);
-  }
+  return found;
 }
 
 /**
@@ -155,7 +163,7 @@ function emptyConfig(): Config {
  * lands in `unattached`, where the editor can see it and configure it.
  */
 async function bootstrapConfig(): Promise<boolean> {
-  const devices = await listStreamDecks();
+  const devices = (await listDevices()) ?? [];
   if (devices.length === 0) {
     console.log('[main] no config.json and no Stream Decks connected — starting on an empty configuration');
     console.log('[main] plug a deck in and add it in the editor; the daemon picks it up without a restart');
@@ -166,17 +174,15 @@ async function bootstrapConfig(): Promise<boolean> {
   const decks: NonNullable<Config['decks']> = {};
   const layouts: Config['profiles'][string]['layouts'] = {};
 
-  for (const device of devices) {
-    // Read the serial the same way attach() does, so the config key matches.
-    let raw: Awaited<ReturnType<typeof openStreamDeck>>;
+  for (const found of devices) {
+    // Opened the same way attach() opens it, so the config key matches.
+    const device = await found.open();
+    if (!device) continue;
     try {
-      raw = await openStreamDeck(device.path);
-    } catch (err) {
-      console.error(`[main] bootstrap: cannot open ${device.path}: ${(err as Error).message}`);
-      continue;
-    }
-    try {
-      const serial = (await raw.getSerialNumber()).trim();
+      const serial = device.id;
+      // The starter key goes on the first key, in reading order: "0" on a
+      // Stream Deck, as it always was.
+      const first = device.geometry.keys[0]?.id ?? '0';
       // No `name`: with none set the editor and logs show the model name, which
       // stays right if the library's naming improves. Writing one here would
       // freeze the library's name, which is ambiguous for some models: it
@@ -186,15 +192,13 @@ async function bootstrapConfig(): Promise<boolean> {
         startPage: 'main',
         pages: {
           main: {
-            buttons: { '0': structuredClone(STARTER_BUTTON) },
+            buttons: { [first]: structuredClone(STARTER_BUTTON) },
           },
         },
       };
-      console.log(`[main] bootstrap: ${raw.PRODUCT_NAME} (${serial})`);
-    } catch (err) {
-      console.error(`[main] bootstrap: cannot read serial for ${device.path}: ${(err as Error).message}`);
+      console.log(`[main] bootstrap: ${device.geometry.productName} (${serial})`);
     } finally {
-      await raw.close().catch(() => undefined);
+      await device.close().catch(() => undefined);
     }
   }
 
@@ -213,26 +217,13 @@ async function bootstrapConfig(): Promise<boolean> {
   return true;
 }
 
-async function attach(devicePath: string): Promise<void> {
-  let raw: Awaited<ReturnType<typeof openStreamDeck>>;
-  try {
-    raw = await openStreamDeck(devicePath);
-  } catch (err) {
-    console.error(`[main] cannot open ${devicePath}: ${(err as Error).message}`);
-    return;
-  }
-
-  let serial: string;
-  try {
-    serial = (await raw.getSerialNumber()).trim();
-  } catch {
-    console.error(`[main] cannot read serial for ${devicePath}, skipping`);
-    await raw.close().catch(() => undefined);
-    return;
-  }
+async function attach(found: FoundDevice): Promise<void> {
+  const device = await found.open();
+  if (!device) return;
+  const serial = device.id;
 
   if (sessions.has(serial)) {
-    await raw.close().catch(() => undefined);
+    await device.close().catch(() => undefined);
     return;
   }
 
@@ -240,12 +231,12 @@ async function attach(devicePath: string): Promise<void> {
   if (!config || !profiles || profileId === null) {
     // "not in config" is matched by scripts/install.sh; keep the phrase.
     console.warn(
-      `[main] deck ${serial} (${raw.MODEL}) is connected but not in config — ` +
+      `[main] deck ${serial} (${device.geometry.model}) is connected but not in config — ` +
         `no profile has a layout for it; add one under a profile's "layouts" to use it`,
     );
-    unattached.set(serial, geometryOf(raw as unknown as Parameters<typeof geometryOf>[0]));
+    unattached.set(serial, device.geometry);
     notifyState();
-    await raw.close().catch(() => undefined);
+    await device.close().catch(() => undefined);
     return;
   }
 
@@ -254,7 +245,7 @@ async function attach(devicePath: string): Promise<void> {
   // It never does after main() sets it.
   const profileState = profiles;
   const hardware = config.decks?.[serial] ?? {};
-  const session = new DeckSession(raw as unknown as ConstructorParameters<typeof DeckSession>[0], {
+  const session = new DeckSession(device, {
     serial,
     hardware,
     layout: profileState.layoutFor(profileId, serial),
@@ -267,8 +258,8 @@ async function attach(devicePath: string): Promise<void> {
     // unless notifications are off in the config (read now, so a reload counts).
     onActionNeeded: (failure) => {
       if (config?.notifications === false) return;
-      const deck = config?.decks?.[serial]?.name ?? raw.PRODUCT_NAME;
-      void notifications.notify(failure.slot, `${deck}: ${failure.label ?? `key ${failure.key + 1}`}`, failure.message);
+      const deck = config?.decks?.[serial]?.name ?? device.geometry.productName;
+      void notifications.notify(failure.slot, `${deck}: ${failure.label ?? failure.keyName}`, failure.message);
     },
     onFailureCleared: (slot) => notifications.forget(slot),
     failures: keyFailures,
@@ -307,15 +298,10 @@ async function scan(): Promise<void> {
   // is running sets it again, and requestScan() then runs one more scan for it.
   const reevaluate = reevaluateUnattached;
   reevaluateUnattached = false;
-  let devices: Awaited<ReturnType<typeof listStreamDecks>>;
-  try {
-    devices = await listStreamDecks();
-  } catch (err) {
-    console.error(`[main] device scan failed: ${(err as Error).message}`);
-    return;
-  }
+  const devices = await listDevices();
+  if (devices === null) return;
 
-  const seen = new Set(devices.map((d) => d.serialNumber?.trim()).filter(Boolean) as string[]);
+  const seen = new Set(devices.map((d) => d.id).filter((id): id is string => id !== undefined));
 
   for (const serial of unattached.keys()) {
     if (!seen.has(serial)) {
@@ -334,7 +320,7 @@ async function scan(): Promise<void> {
   }
 
   for (const device of devices) {
-    const serial = device.serialNumber?.trim();
+    const serial = device.id;
     if (serial && sessions.has(serial)) continue;
     // Already known to have no layout: opening it again would read the same
     // serial, log the same warning and close it again, every 60 s for ever
@@ -344,7 +330,7 @@ async function scan(): Promise<void> {
     // An enumeration entry with no serial cannot be matched and is opened as
     // before: the serial is optional in the library's types.
     if (serial && !reevaluate && unattached.has(serial)) continue;
-    await attach(device.path);
+    await attach(device);
   }
 }
 
@@ -431,7 +417,7 @@ async function shutdown(signal: string): Promise<void> {
 
 async function main(): Promise<void> {
   if (process.argv.includes('--list') || process.argv.includes('--decks')) {
-    await printDecks();
+    await printHidDecks();
     return;
   }
 
@@ -488,22 +474,33 @@ async function main(): Promise<void> {
   // recurring timer Twitch has, and only while it is linked (ARCHITECTURE).
   void twitchService.start();
 
-  const stopHotplug = watchHotplug((action, devpath) => {
-    console.log(`[hotplug] ${action} ${devpath.split('/').pop()}, rescanning`);
-    void requestScan();
-  });
+  const stopWatchers = drivers.flatMap((driver) =>
+    driver.watch
+      ? [
+          driver.watch((why) => {
+            console.log(`[hotplug] ${why}, rescanning`);
+            void requestScan();
+          }),
+        ]
+      : [],
+  );
 
   await requestScan();
-  // The same tick retries a lost session bus (mpris.ts retryLostBus), and an
+  // The same tick retries a lost session bus (mpris.ts retryLostBus), an
   // OBS or a VTube Studio that was not there while a key wanted it (obs.ts,
-  // vts.ts retry), so none needs a timer of its own; each does nothing while
-  // there is nothing to retry.
+  // vts.ts retry), and logind for a virtual deck's lock state
+  // (session-lock.ts), so none needs a timer of its own; each does nothing
+  // while there is nothing to retry.
   const scanner = setInterval(() => {
     void requestScan();
     mprisService.retryLostBus();
     obsService.retry();
     vtsService.retry();
+    sessionLock.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
+  // A virtual deck's touch state is in the socket's "state": a lock or an
+  // unlock changes it.
+  const stopLock = sessionLock.onLockChange(() => events?.state());
 
   // After the decks, and not awaited by anything they need: the socket must
   // never be able to hold up or take down the decks.
@@ -520,6 +517,7 @@ async function main(): Promise<void> {
       unattachedDecks: () => unattached,
       releaseSocketKeys: () => input.releaseAllHeldBy('socket'),
       audioState: () => audioService.cachedState(),
+      virtual: virtualDriver,
     };
     control = new ControlServer(createHandlers(deps));
     events = eventNotifiers(control, deps);
@@ -529,7 +527,8 @@ async function main(): Promise<void> {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       clearInterval(scanner);
-      stopHotplug();
+      stopLock();
+      for (const stop of stopWatchers) stop();
       stopWatching();
       stopAudio();
       stopMpris();

@@ -78,7 +78,7 @@ run() {
   rm -rf "$S/stubs" "$S/sys" "$S/seats" "$S/installed.apparmor"
   cp -a "$S/stubs.orig" "$S/stubs"
   mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"
-  touch "$S/uinput.h"
+  touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
   (
     # Sourced with the real PATH (it resolves REPO_DIR with dirname), then
@@ -89,7 +89,7 @@ run() {
     export PATH="$S/stubs:$S/base" HOME="$S/home"
     REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"   # fns.sh would resolve them from $S
     SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null   # a character device
-    UINPUT_HEADER="$S/uinput.h"; LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"
+    UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"; LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"
     UDEV_RULE_DST="$S/installed.rules"
     APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"
     APPARMOR_PROFILE_DST="$S/installed.apparmor"   # absent unless a setup puts it there
@@ -154,6 +154,7 @@ expect_missing "no npm"                      'rm "$S/stubs/npm"'                
 expect_missing "no make"                     'rm "$S/stubs/make"'                      'make: needed'
 expect_missing "no C compiler"               'rm "$S/stubs/cc"'                        'A C compiler'
 expect_missing "no uinput header"            'rm "$S/uinput.h"'                        'uinput.h: the helper'
+expect_missing "no wayland header"           'rm "$S/wayland-client.h"'                'wayland-client.h: the virtual-deck display helper'
 expect_missing "no /dev/uinput"              'UINPUT_NODE="$S/no-such-node"'           'does not exist, so keystrokes'
 expect_missing "/dev/uinput is a plain file" 'UINPUT_NODE="$S/uinput.h"'               'does not exist, so keystrokes'
 expect_missing "no pactl"                    'rm "$S/stubs/pactl"'                     'pactl: install'
@@ -205,13 +206,13 @@ completed "$out" && ! grep -q '^W: ' <<<"$out" && ok "no bus: no tray or shortcu
 
 # The two entry points: what stops an install, and check's exit status.
 entry() {  # entry '<setup>' '<function>' — prints its output, then "rc=N"
-  rm -rf "$S/stubs"; cp -a "$S/stubs.orig" "$S/stubs"; mkdir -p "$S/seats/seat0"; touch "$S/uinput.h"
+  rm -rf "$S/stubs"; cp -a "$S/stubs.orig" "$S/stubs"; mkdir -p "$S/seats/seat0"; touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
   (
     source "$S/fns.sh"
     export PATH="$S/stubs:$S/base" HOME="$S/home"
     REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"   # fns.sh would resolve them from $S
-    SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"
+    SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"
     LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"
     eval "$1"
     "$2"
@@ -391,9 +392,9 @@ fi
 # check's header names the manager and what every cell resolves to here —
 # with nothing missing. That is the case it exists for: on a machine that
 # already has everything, the header is the only place the table's answers show.
-out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers nodejs22-bin nodejs24-npm-bin glib2' cmd_check)"
+out="$(entry 'pm_stub dnf pulseaudio-utils gcc make kernel-headers wayland-devel nodejs22-bin nodejs24-npm-bin glib2' cmd_check)"
 if grep -q 'rc=0$' <<<"$out" \
-   && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers pactl=pulseaudio-utils gio=glib2' <<<"$out"; then
+   && grep -qx '  packages  dnf: node=nodejs22-bin npm=nodejs24-npm-bin make=make cc=gcc uinput-header=kernel-headers wayland-header=wayland-devel pactl=pulseaudio-utils gio=glib2' <<<"$out"; then
   ok "check header: every name, though nothing is missing"
 else
   no "check header with nothing missing — got: $out"
@@ -439,7 +440,7 @@ EOS
 
 pty_run() {   # pty_run '<setup>' '<answer>' '<function>' — over a real pty
   rm -rf "$S/stubs" "$S/sys"; cp -a "$S/stubs.orig" "$S/stubs"
-  mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"; touch "$S/uinput.h"
+  mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"; touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
   rm -f "$S/pm.log"
   cat > "$S/pty-run.sh" <<EOS
@@ -448,7 +449,7 @@ source "$S/pm-stub.sh"
 source "$S/fns.sh"
 export PATH="$S/stubs:$S/base" HOME="$S/home"
 REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"
-SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"
+SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"
 LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"
 APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"; APPARMOR_PROFILE_DST="$S/installed.apparmor"
 $1

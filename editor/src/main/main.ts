@@ -13,7 +13,7 @@ import { parseCombo } from '../../../src/keymap.js';
 import type { ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
-import { MAX_SHOWN_DECKS } from '../shared/bridge.js';
+import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
@@ -22,7 +22,12 @@ import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/ed
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
-import { DaemonClient, DaemonError } from './daemon-client.js';
+import { DaemonClient, DaemonError, pairScreen } from './daemon-client.js';
+import { geometryOfPanel } from '../../../src/geometry.js';
+import type { ScreenSize } from '../../../src/panel-presets.js';
+import { resizePanel } from '../shared/panel-size.js';
+import { keyNamed } from '../shared/bulk.js';
+import type { PanelDef } from '../../../src/types.js';
 import { buildExport, suggestedExportName, writeExport } from './export-bundle.js';
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
@@ -147,8 +152,58 @@ const daemon = new DaemonClient({
       sentTwitch = twitch;
       settings?.webContents.send('twitchStatus', view.twitch ?? null);
     }
+    sendVirtualDecks();
   },
 });
+
+/**
+ * Settings › Decks' virtual decks: each from config.json's `decks` (those
+ * with `virtual`), what the daemon says of it, and its panel in each profile.
+ */
+function virtualDecksView(): VirtualDecksView {
+  const config = store?.state().config ?? null;
+  const view = daemon.view();
+  const active = view.status?.activeProfile ?? null;
+  const decks = Object.entries(config?.decks ?? {}).flatMap(([key, deck]) => {
+    if (!deck.virtual || !config) return [];
+    const status = view.status?.decks.find((d) => d.serial === key);
+    const geometry = view.decks?.find((d) => d.serial === key);
+    const layouts = Object.entries(config.profiles).flatMap(([profile, def]) => {
+      const panel = def.layouts[key]?.panel;
+      if (!panel) return [];
+      const g = geometryOfPanel(panel, '');
+      return [{ profile, profileName: def.name ?? profile, preset: panel.preset ?? null, rows: g.rows, columns: g.columns }];
+    });
+    return [{
+      key,
+      label: deck.name ?? geometry?.productName ?? key,
+      output: deck.virtual.output,
+      connected: status?.connected === true,
+      touch: status?.touch ?? null,
+      paired: deck.virtual.touch !== undefined,
+      layouts,
+    }];
+  });
+  const activeLayouts = active ? (config?.profiles[active.id]?.layouts ?? {}) : {};
+  const keptLayouts = Object.entries(activeLayouts).flatMap(([key, layout]) => (layout.panel && !config?.decks?.[key]?.virtual ? [key] : []));
+  return { decks, keptLayouts, activeProfile: active ? { id: active.id, name: active.name ?? active.id } : null };
+}
+
+let sentVirtual = '';
+/** Tell the settings window, when it is open and something it lists changed. */
+function sendVirtualDecks(): void {
+  if (!settingsWindow || settingsWindow.isDestroyed()) return;
+  const view = virtualDecksView();
+  const text = JSON.stringify(view);
+  if (text === sentVirtual) return;
+  sentVirtual = text;
+  settingsWindow.webContents.send('virtualDecks', view);
+}
+
+/** The one pairing in progress, from Settings › Decks: aborting it closes its connection, which ends it in the daemon too. */
+let pairing: AbortController | null = null;
+/** The only edits Settings › Decks may make. */
+const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck', 'setPanel']);
 
 /**
  * The settings window's OBS form, from the page: only the fields it may set,
@@ -174,7 +229,10 @@ async function openStore(): Promise<StoreView> {
   try {
     store = await ConfigStore.open({
       configPath: CONFIG_PATH,
-      onChange: () => window?.webContents.send('store', storeView()),
+      onChange: () => {
+        window?.webContents.send('store', storeView());
+        sendVirtualDecks();
+      },
     });
     storeError = null;
   } catch (err) {
@@ -309,7 +367,7 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
 async function commitIcon(
   at: ButtonLocation,
   icon: IconChoice,
-  preview: { serial: string; key: number } | null,
+  preview: { serial: string; key: string } | null,
   slot: PairIconField | null,
 ): Promise<ApplyResult> {
   if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
@@ -331,7 +389,7 @@ function isIconChoice(value: unknown): value is IconChoice {
 
 function isLocation(value: unknown): value is ButtonLocation {
   const v = value as ButtonLocation;
-  return typeof v === 'object' && v !== null && typeof v.profile === 'string' && typeof v.serial === 'string' && typeof v.page === 'string' && Number.isInteger(v.index);
+  return typeof v === 'object' && v !== null && typeof v.profile === 'string' && typeof v.serial === 'string' && typeof v.page === 'string' && typeof v.key === 'string' && v.key !== '';
 }
 
 /** Only this window's own page may call in. */
@@ -466,6 +524,9 @@ function openSettings(section?: SettingsSection): void {
   created.on('blur', () => (settingsLeft = true));
   created.on('closed', () => {
     if (settingsWindow === created) settingsWindow = null;
+    // A pairing it started would otherwise leave "Tap this screen" up for its full minute.
+    pairing?.abort();
+    sentVirtual = '';
   });
   reportWindowState(created);
   sentObs = JSON.stringify(daemon.view().obs ?? null);
@@ -716,6 +777,67 @@ function registerIpc(): void {
     store.apply({ kind: 'setNotifications', on });
     return notificationsOn();
   });
+  // --- Virtual decks (Settings › Decks) ---
+  ipcMain.handle('virtualDecks', (event) => {
+    if (!fromSettingsWindow(event)) return { decks: [], keptLayouts: [], activeProfile: null };
+    const view = virtualDecksView();
+    sentVirtual = JSON.stringify(view);
+    return view;
+  });
+  ipcMain.handle('virtualScreens', async (event) => {
+    if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
+    try {
+      return { ok: true, result: await daemon.screens() };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+  ipcMain.handle('pairScreen', async (event, output: unknown) => {
+    if (!fromSettingsWindow(event) || typeof output !== 'string' || output === '') return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    const path = socketPath();
+    if (path === null) return { ok: false, code: 'not_connected', error: 'XDG_RUNTIME_DIR is not set, so the daemon cannot be reached.' };
+    pairing?.abort();
+    const mine = new AbortController();
+    pairing = mine;
+    try {
+      return { ok: true, result: await pairScreen(path, output, mine.signal) };
+    } catch (err) {
+      return { ok: false, code: err instanceof DaemonError ? err.code : 'internal', error: (err as Error).message };
+    } finally {
+      if (pairing === mine) pairing = null;
+    }
+  });
+  ipcMain.handle('cancelPairing', (event) => {
+    if (fromSettingsWindow(event)) pairing?.abort();
+  });
+  // A virtual deck's screen, for sizing a panel: its pixels from a panel it
+  // already has, its millimetres from the daemon's read of the EDID.
+  ipcMain.handle('virtualScreenSize', async (event, key: unknown): Promise<ScreenSize | null> => {
+    if ((!fromOurWindow(event) && !fromSettingsWindow(event)) || typeof key !== 'string') return null;
+    const config = store?.state().config;
+    const panel = Object.values(config?.profiles ?? {}).map((p) => p.layouts[key]?.panel).find((p) => p !== undefined);
+    if (!panel) return null;
+    const screen = await daemon.screens().then((r) => r.screens.find((x) => x.key === key), () => undefined);
+    return { width: panel.size.width, height: panel.size.height, widthMm: screen?.widthMm ?? 0, heightMm: screen?.heightMm ?? 0 };
+  });
+  // What a new size would drop, named, before it is asked for.
+  ipcMain.handle('virtualPanelPreview', (event, profile: unknown, key: unknown, panel: unknown) => {
+    if (!fromSettingsWindow(event) || typeof profile !== 'string' || typeof key !== 'string' || typeof panel !== 'object' || panel === null) return null;
+    const def = store?.state().config.profiles[profile];
+    const layout = def?.layouts[key];
+    if (!layout?.panel) return null;
+    const { dropped } = resizePanel(layout, panel as PanelDef);
+    return dropped.map((d) => {
+      const at = geometryOfPanel(layout.panel, '').keys.findIndex((k) => k.id === d.key);
+      return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on “${layout.pages[d.page]?.name ?? d.page}”`;
+    });
+  });
+  ipcMain.handle('virtualDeckEdit', (event, edit: unknown) => {
+    const kind = (edit as { kind?: unknown } | null)?.kind;
+    if (!fromSettingsWindow(event) || !store || typeof kind !== 'string' || !VIRTUAL_DECK_EDITS.has(kind)) return { ok: false, error: 'not allowed' };
+    const result = store.apply(edit as Edit);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
+  });
   ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
     if (!fromSettingsWindow(event)) return [];
     return deckOptions(store?.state().config ?? null, daemon.view().decks);
@@ -897,10 +1019,10 @@ function registerIpc(): void {
     if (fromOurWindow(event) && (choice === 'file' || choice === 'mine')) await store?.resolveConflict(choice);
   });
   ipcMain.handle('reopenConfig', async (event) => (fromOurWindow(event) ? openStore() : storeView()));
-  ipcMain.handle('previewSet', (event, serial: string, key: number, button: ButtonDef) =>
+  ipcMain.handle('previewSet', (event, serial: string, key: string, button: ButtonDef) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewSet(serial, key, button)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
-  ipcMain.handle('previewClear', (event, serial: string, key?: number) =>
+  ipcMain.handle('previewClear', (event, serial: string, key?: string) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewClear(serial, key)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('testRun', (event, serial: unknown, action: unknown) => {
@@ -949,11 +1071,8 @@ function registerIpc(): void {
     fromOurWindow(event) ? deckAction(() => switchProfile(to)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('clearFailure', (event, at: unknown) => {
-    const a = at as { profile?: unknown; serial?: unknown; page?: unknown; index?: unknown } | null;
-    if (!fromOurWindow(event) || !a || typeof a.serial !== 'string' || typeof a.profile !== 'string' || typeof a.page !== 'string' || typeof a.index !== 'number') {
-      return { ok: false, code: 'not_allowed', error: 'not allowed' };
-    }
-    return daemonCall(() => daemon.clearFailure(a.serial as string, a.profile as string, a.page as string, a.index as number));
+    if (!fromOurWindow(event) || !isLocation(at)) return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    return daemonCall(() => daemon.clearFailure(at.serial, at.profile, at.page, at.key));
   });
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? deckAction(() => showPage(serial, page)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
@@ -1040,7 +1159,7 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
     if (slot !== null && !isPairIconField(slot)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
-    const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
+    const target = p && typeof p.serial === 'string' && typeof p.key === 'string' ? { serial: p.serial, key: p.key } : null;
     return commitIcon(at, icon, target, slot);
   });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {

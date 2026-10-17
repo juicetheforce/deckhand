@@ -49,19 +49,65 @@ export interface DeckStatus {
   profile?: string;
   page?: string;
   brightness?: number;
-  /** Keys showing a preview. */
-  previews?: number[];
-  /** Keys latched down by a toggle, so the editor's grid can show it. */
-  latched?: number[];
+  /** Keys showing a preview, by control id. */
+  previews?: string[];
+  /** Keys latched down by a toggle, by control id, so the editor's grid can show it. */
+  latched?: string[];
   /** Keys whose last press failed, on any page or profile. */
   failed?: KeyFailure[];
+  /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */
+  touch?: TouchState;
+}
+
+/**
+ * A virtual deck's touch: `ready`; `not-paired` (no touchscreen in its
+ * config); `missing` (its touchscreen is not connected); `opening` (being
+ * opened); `failed` (it could not be opened or grabbed); `locked`,
+ * `inactive` or `unknown` (the session is locked, not the active one, or its
+ * state cannot be read — touches are refused, services/session-lock.ts).
+ */
+export type TouchState = 'ready' | 'not-paired' | 'missing' | 'opening' | 'failed' | 'locked' | 'inactive' | 'unknown';
+
+/** `virtual.pair`: the screen tapped, and its touchscreen as the config remembers it (`decks[screen].virtual.touch`). */
+export interface PairReply {
+  connector: string;
+  screen: string;
+  touch: { vendor: string; product: string; serial?: string; path?: string };
+  /** The touchscreen's name, for saying which was found. */
+  touchName: string;
+  /** The screen in pixels, as the helper found it on that output (rotation applied): a panel's canvas is laid out at this size. */
+  width: number;
+  height: number;
+  /** Its physical size from the EDID, 0 when it gives none — trusted only when plausible (src/panel-presets.ts). */
+  widthMm: number;
+  heightMm: number;
+  /** Its EDID name, when it has one. */
+  name?: string;
+}
+
+/** `screens`: the connected screens, by what recognises each (src/screens.ts), and the touchscreens. */
+export interface ScreensReply {
+  screens: Array<{
+    connector: string;
+    key: string;
+    maker?: string;
+    product?: string;
+    name?: string;
+    serial?: string;
+    widthMm?: number;
+    heightMm?: number;
+    /** The virtual deck on it, by its key in "decks", if it is one. */
+    deck: string | null;
+  }>;
+  touchscreens: Array<{ device: string; name: string; vendor: string; product: string; serial?: string; path?: string }>;
 }
 
 /** A key whose last press failed. It stays so until a press of it succeeds, or it is edited. */
 export interface KeyFailure {
   profile: string;
   page: string;
-  key: number;
+  /** The key, by control id. */
+  key: string;
   /** The failed action's error message, as logged. */
   error: string;
 }

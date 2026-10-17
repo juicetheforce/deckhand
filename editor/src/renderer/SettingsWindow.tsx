@@ -6,6 +6,7 @@ import type { SettingsSection } from '../shared/bridge.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { NO_UPDATE_STATE, type UpdateState } from '../shared/updates.js';
 import { importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
+import { VirtualDecks } from './VirtualDecksSettings.js';
 import { ObsSettings } from './ObsSettings.js';
 import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, StatusDot, Switch } from './settings-ui.js';
 import { TwitchSettings } from './TwitchSettings.js';
@@ -175,6 +176,7 @@ export function SettingsWindow() {
                   </select>
                 </Row>
               </Group>
+              <VirtualDecks />
             </div>
           )}
           {page === 'obs' && <ObsSettings focus={focus} />}

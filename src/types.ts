@@ -46,6 +46,54 @@ export interface DeckDef {
   name?: string;
   /** 0-100. */
   brightness?: number;
+  /**
+   * Present on a virtual deck: what makes a screen one on this computer
+   * (src/drivers/virtual.ts). Its controls are the profile's layout's
+   * `panel`, not here, so one screen can show a different panel per profile.
+   */
+  virtual?: VirtualDeckDef;
+}
+
+/**
+ * A virtual deck: a screen, keyed under "decks" by what recognises it
+ * (src/screens.ts — `GRA-6e4e`, `HPN-3469-CNK8231CGN`), and the touchscreen
+ * paired with it by a tap.
+ */
+export interface VirtualDeckDef {
+  /** The connector it was set up on ("DP-4"): tells identical screens apart (src/screens.ts findScreen). */
+  output: string;
+  /** Its touchscreen, from the pairing tap. Absent: the panel shows, and takes no touches. */
+  touch?: TouchDeviceDef;
+}
+
+/** A touchscreen, as a pairing remembers it (src/touchscreens.ts): its serial when it has one, else its IDs and the port it hangs from. */
+export interface TouchDeviceDef {
+  /** USB (or other bus) vendor and product IDs, four hex digits each. */
+  vendor: string;
+  product: string;
+  serial?: string;
+  /** udev's ID_PATH, when the device has no serial. */
+  path?: string;
+}
+
+/** One control on a virtual deck's panel, at its place on the panel's canvas. */
+export interface PanelControlDef {
+  /** Its control id (src/devices.ts): what the pages' `buttons` key it by. Never reused in this panel. */
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shape?: 'square';
+}
+
+/** A virtual deck's controls for one profile: shared by every page of that layout. */
+export interface PanelDef {
+  /** The canvas, in pixels: the screen's size when it was laid out. Shown scaled to fit, centred, on any other. */
+  size: { width: number; height: number };
+  controls: PanelControlDef[];
+  /** What generated it ("small", "medium", "large") — information only. */
+  preset?: string;
 }
 
 /** An entry under a profile's "layouts", keyed by device serial: what one deck shows. */
@@ -53,6 +101,8 @@ export interface LayoutDef {
   /** Page ID or name. Defaults to the first page. */
   startPage?: string;
   pages: Record<string, PageDef>;
+  /** A virtual deck's controls, for this profile (types.ts PanelDef). Absent on a Stream Deck, whose controls are its own. */
+  panel?: PanelDef;
 }
 
 /** An entry under "profiles", keyed by profile ID. */
@@ -145,14 +195,15 @@ export interface DeckHandle {
    * restarting all have to release it, and nothing may leave a key held.
    * Throws if another key on this deck already latches an overlapping combo.
    */
-  toggleLatch(index: number, combo: string): Promise<void>;
+  toggleLatch(key: string, combo: string): Promise<void>;
   /** Whether this key is latched down, for its face. */
-  isLatched(index: number): boolean;
+  isLatched(key: string | null): boolean;
 }
 
 export interface ActionContext {
   deck: DeckHandle;
-  buttonIndex: number;
+  /** The key pressed, by control id (src/devices.ts); null for an action run over the control socket, which belongs to no key. */
+  key: string | null;
   /** A deck key press, or an action run over the control socket. Keys held are tracked per source. */
   source: 'deck' | 'socket';
   /** Switch the active profile on every connected deck, by ID or name. */

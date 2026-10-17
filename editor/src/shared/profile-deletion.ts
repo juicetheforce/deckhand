@@ -32,7 +32,8 @@ export interface ProfileLink {
   profile: string;
   serial: string;
   page: string;
-  index: number;
+  /** The key, by control id. */
+  key: string;
   /** Which of the button's two actions it is. */
   where: 'action' | 'onRelease';
   /** The switch is one step of a multi action, not the whole action. */
@@ -78,9 +79,9 @@ export function profileLinks(config: Config, profileId: string): ProfileLink[] {
           for (const where of ['action', 'onRelease'] as const) {
             const action = button[where];
             if (targetsProfile(action, config, profileId)) {
-              found.push({ profile, serial, page, index: Number(key), where, inMulti: false });
+              found.push({ profile, serial, page, key, where, inMulti: false });
             } else if (multiSteps(action)?.some((step) => targetsProfile(step, config, profileId))) {
-              found.push({ profile, serial, page, index: Number(key), where, inMulti: true });
+              found.push({ profile, serial, page, key, where, inMulti: true });
             }
           }
         }
@@ -91,8 +92,7 @@ export function profileLinks(config: Config, profileId: string): ProfileLink[] {
 }
 
 /** Take one action off a key; a key left with nothing on it is removed, since {} is an empty slot anyway. */
-function removeFromButton(page: PageDef, index: number, where: 'action' | 'onRelease'): void {
-  const key = String(index);
+function removeFromButton(page: PageDef, key: string, where: 'action' | 'onRelease'): void {
   const button = page.buttons[key];
   if (!button) return;
   delete button[where];
@@ -112,15 +112,15 @@ export function deleteProfile(config: Config, profileId: string, newLayout: () =
   // Before the delete, while a link written as the name still resolves.
   for (const link of profileLinks(config, profileId)) {
     const page = config.profiles[link.profile].layouts[link.serial].pages[link.page];
-    const action = page.buttons[String(link.index)]?.[link.where] as ActionDef | undefined;
+    const action = page.buttons[link.key]?.[link.where] as ActionDef | undefined;
     if (!action) continue;
     const steps = link.inMulti ? multiSteps(action) : null;
     if (steps) {
       const kept = steps.filter((step) => !targetsProfile(step, config, profileId));
-      if (kept.length === 0) removeFromButton(page, link.index, link.where);
+      if (kept.length === 0) removeFromButton(page, link.key, link.where);
       else action.steps = kept;
     } else {
-      removeFromButton(page, link.index, link.where);
+      removeFromButton(page, link.key, link.where);
     }
   }
 

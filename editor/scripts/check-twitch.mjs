@@ -119,7 +119,7 @@ const editorFace = () =>
     'editor',
     `(() => {
       const rows = ${JSON.stringify(TYPES)}.map((t) => document.querySelector('.library-entry[data-action-type="' + t + '"]'));
-      const key0 = document.querySelector('.key[data-key-index="0"]');
+      const key0 = document.querySelector('.key[data-key="0"]');
       const callout = document.querySelector('.inspector [data-not-set-up=twitch]');
       return {
         group: [...document.querySelectorAll('.library-group')].some((g) => /Twitch/.test(g.textContent ?? '')),
@@ -141,7 +141,7 @@ await until(async () => (await inPage(editor, 'editor', "document.querySelector(
 
 // --- Not linked ---------------------------------------------------------------------
 await until(async () => (await editorFace()).blocked[2] === 'true');
-await inPage(editor, 'editor', clickIn('.key[data-key-index="0"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="0"]'));
 await until(async () => (await editorFace()).callout !== null);
 r.notLinked = await editorFace();
 
@@ -188,7 +188,7 @@ const picker = () =>
     }; })()`,
   );
 // Stream info: a category from Twitch's search, then a title.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="3"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="3"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="twitch.streamInfo"]'));
 await until(async () => (await inPage(editor, 'editor', "document.querySelector('[data-twitch-field=category-search]') !== null")) === true);
@@ -205,7 +205,7 @@ r.streamInfo = (await buttonsNow())['3']?.action ?? null;
 r.chosenShown = (await picker()).chosen;
 
 // Chat message: over Twitch's 500, shown and never saved; then saved.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="2"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="2"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="twitch.chat"]'));
 await until(async () => (await inPage(editor, 'editor', "document.querySelector('.inspector textarea[aria-label=\"Chat message\"]') !== null")) === true);
@@ -217,7 +217,7 @@ await inPage(editor, 'editor', typeInto('.inspector textarea[aria-label="Chat me
 r.chatSaved = await until(async () => (await buttonsNow())['2']?.action?.message === 'Thanks for watching!');
 
 // Stream marker: needs nothing, so a library pick writes it at once.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="4"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="4"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="twitch.marker"]'));
 r.markerWritten = await until(async () => (await buttonsNow())['4']?.action?.type === 'twitch.marker');

@@ -167,7 +167,7 @@ console.log('transport');
 console.log('status and decks');
 {
   const s = (await client.request('status')).result;
-  check('status: protocol, pid, config', s.protocol === 1 && s.pid === process.pid && s.config.path === '/test/config.json');
+  check('status: protocol, pid, config', s.protocol === 2 && s.pid === process.pid && s.config.path === '/test/config.json');
   check('status: active profile id and name', s.activeProfile.id === 'home' && s.activeProfile.name === 'Home');
   const deck = (serial) => s.decks.find((d) => d.serial === serial);
   check('attached deck carries profile, page, brightness, previews, latched keys', JSON.stringify(deck('XL1')) === JSON.stringify({ serial: 'XL1', connected: true, configured: true, profile: 'home', page: 'main', brightness: 60, previews: [], latched: [], failed: [] }));
@@ -180,6 +180,9 @@ console.log('status and decks');
   const xlGeo = decks.find((d) => d.serial === 'XL1');
   check('decks: attached and unconfigured, sorted', decks.map((d) => d.serial).join() === 'NEW9,V21,XL1');
   check('decks: XL geometry with row/column per key', xlGeo.keyCount === 32 && xlGeo.iconSize === 96 && xlGeo.rows === 4 && xlGeo.columns === 8 && xlGeo.keys[9].row === 1 && xlGeo.keys[9].column === 1);
+  check('decks: every key named by control id, placed in cells (id "9" is row 1, column 1, 1 × 1, square)',
+    xlGeo.units === 'cells' && xlGeo.keys.every((k) => k.id === String(k.index) && k.x === k.column && k.y === k.row && k.w === 1 && k.h === 1 && k.shape === 'square')
+    && xlGeo.keys[9].id === '9' && xlGeo.keys[9].x === 1 && xlGeo.keys[9].y === 1);
   check('decks: the unconfigured deck geometry comes from the cache', decks.find((d) => d.serial === 'NEW9').keyCount === 15);
 
   const plus = geometryOf({ MODEL: 'plus', PRODUCT_NAME: 'Plus', CONTROLS: [
@@ -236,7 +239,7 @@ console.log('preview.set and preview.clear');
 
   check('a good icon renders', (await client.request('preview.set', { serial: 'XL1', key: 5, button: { icon: good } })).ok);
   const bad = await client.request('preview.set', { serial: 'XL1', key: 6, button: { icon: path.join(TMP, 'bad.png') } });
-  check('a corrupt icon -> render_failed, preview not kept', bad.error?.code === 'render_failed' && !xl.previewKeys().includes(6));
+  check('a corrupt icon -> render_failed, preview not kept', bad.error?.code === 'render_failed' && !xl.previewKeys().includes('6'));
   check('a missing icon -> render_failed', (await client.request('preview.set', { serial: 'XL1', key: 6, button: { icon: path.join(TMP, 'missing.png') } })).error?.code === 'render_failed');
 
   liveDescribes = 0;
@@ -249,6 +252,13 @@ console.log('preview.set and preview.clear');
   const latest = await renderButton({ label: 'b19', iconFit: 'cover', labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: '#101014' }, 96);
   check(`20 overlapping previews on one key: at most 2 renders (${(xlFake.writes.get(8) ?? 0) - before}), latest shown`, burst.every((r) => r.ok) && (xlFake.writes.get(8) ?? 0) - before <= 2 && Buffer.compare(xlFake.images.get(8), latest) === 0);
 
+  // Protocol 2: a key is a control id, a string; a whole number still names a Stream Deck key.
+  check('a key given as a control id string previews it, and is reported as one', (await client.request('preview.set', { serial: 'XL1', key: '9', button: { label: 'by id' } })).ok && xl.previewKeys().includes('9')
+    && ((await client.request('status')).result.decks.find((d) => d.serial === 'XL1').previews ?? []).includes('9'));
+  check('a key that is not a control id -> bad_request; an unknown id -> not_found',
+    (await client.request('preview.set', { serial: 'XL1', key: 'a:b', button: {} })).error?.code === 'bad_request'
+    && (await client.request('preview.set', { serial: 'XL1', key: 'k1', button: {} })).error?.code === 'not_found');
+  await client.request('preview.clear', { serial: 'XL1', key: '9' });
   check('argument errors', (await client.request('preview.set', { serial: 'XL1', key: 32, button: {} })).error.code === 'not_found'
     && (await client.request('preview.set', { serial: 'XL1', key: 1.5, button: {} })).error.code === 'bad_request'
     && (await client.request('preview.set', { serial: 'XL1', key: 0, button: { action: { type: 'nope' } } })).error.code === 'bad_request');
@@ -258,7 +268,7 @@ console.log('preview.set and preview.clear');
   await other.request('preview.set', { serial: 'XL1', key: 21, button: { label: 'taken over' } });
   await client.request('preview.set', { serial: 'XL1', key: 21, button: { label: 'mine now' } });
   other.close(); await other.closed; await sleep(200);
-  check('a closing connection clears only the previews it still owns', !xl.previewKeys().includes(20) && xl.previewKeys().includes(21));
+  check('a closing connection clears only the previews it still owns', !xl.previewKeys().includes('20') && xl.previewKeys().includes('21'));
   await client.request('preview.clear', { serial: 'XL1' });
 }
 
@@ -443,7 +453,7 @@ console.log('CLI');
   check('no command -> usage, exit 2', (await cli([])).code === 2);
   let r = await cli(['status']);
   check('status -> readable, exit 0', r.code === 0 && /active profile: Home \(home\)/.test(r.stdout));
-  check('status --json parses', JSON.parse((await cli(['status', '--json'])).stdout).protocol === 1);
+  check('status --json parses', JSON.parse((await cli(['status', '--json'])).stdout).protocol === 2);
   check('decks -> geometry line', /XL1\s+Fake XL \(xl\) — 32 keys, 4×8, 96 px/.test((await cli(['decks'])).stdout));
   r = await cli(['profile', 'FFXIV Raid']);
   check('profile with a space in the name', r.code === 0 && /switched to FFXIV Raid/.test(r.stdout) && daemon.profiles.activeProfile() === 'raid');

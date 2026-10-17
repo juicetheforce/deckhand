@@ -6,6 +6,7 @@
  *   npm run build && npm run smoke
  */
 import { DeckSession } from '../dist/deck.js';
+import { hidDevice } from '../dist/drivers/hid.js';
 import { registry } from '../dist/actions/index.js';
 import { startProfileOf, validateConfig } from '../dist/config.js';
 import { Profiles } from '../dist/profiles.js';
@@ -87,8 +88,8 @@ function check(name, condition) {
 
 /** A session outside any Profiles, for tests that do not switch profile. */
 function standaloneSession(fake, serial, sessionLayout, hardware = {}) {
-  return new DeckSession(fake, {
-    serial,
+  return new DeckSession(hidDevice(fake, serial), {
+    serial: serial,
     hardware,
     layout: sessionLayout,
     defaults: {},
@@ -281,7 +282,12 @@ check(
     validateConfig({ profiles: { a: { layouts: {} }, prof_9: { name: 'FFXIV', layouts: {} } }, startProfile: 'FFXIV' }),
   ) === 'prof_9',
 );
-check('non-numeric button key refused', rejection({ profiles: { p: { layouts: { S: { pages: { main: { buttons: { x: {} } } } } } } } }) !== null);
+// Keys are control ids (src/devices.ts): a Stream Deck's "7", or a virtual
+// deck's own ids — never a ":" (the socket's preview slots and the failure
+// marks join ids with one), a space, or longer than 32.
+const withKey = (key) => ({ profiles: { p: { layouts: { S: { pages: { main: { buttons: { [key]: {} } } } } } } } });
+check('a button key that is not a control id refused (":", a space, empty, 33 long)', ['a:b', 'k 1', '', 'k'.repeat(33)].every((key) => rejection(withKey(key)) !== null));
+check('a control id button key accepted ("k1", "panel_2-b")', rejection(withKey('k1')) === null && rejection(withKey('panel_2-b')) === null);
 
 console.log('attach order');
 // a covers X; b (startProfile) covers X, Y, Z; c covers Y, W.
@@ -350,8 +356,8 @@ const fakes = { XL: new FakeDeck(), V2: new FakeDeck() };
 /** Attach a fake deck the way index.ts attach() does. */
 async function attachFake(serial) {
   const profileId = profiles.chooseProfileFor(serial);
-  const deckSession = new DeckSession(fakes[serial], {
-    serial,
+  const deckSession = new DeckSession(hidDevice(fakes[serial], serial), {
+    serial: serial,
     hardware: {},
     layout: profiles.layoutFor(profileId, serial),
     defaults: {},

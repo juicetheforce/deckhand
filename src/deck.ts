@@ -4,7 +4,8 @@ import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure } from './control/protocol.js';
 import type { KeyFailures } from './key-failures.js';
-import { productNameFor, geometryOf, type DeckGeometry, type RawControl } from './geometry.js';
+import type { DeckDevice, TouchState } from './devices.js';
+import type { DeckGeometry } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
 import { fillScreen, renderButton } from './render.js';
@@ -18,22 +19,6 @@ import type {
   Display,
   LayoutDef,
 } from './types.js';
-
-/**
- * The minimal surface needed from the streamdeck library. Deliberately narrow.
- * What a deck has — its keys, which have screens, and each screen's size —
- * comes from CONTROLS alone, through geometryOf(): no model is known here.
- */
-interface RawDeck {
-  MODEL?: string;
-  PRODUCT_NAME?: string;
-  CONTROLS?: ReadonlyArray<RawControl>;
-  on(event: string, cb: (...args: unknown[]) => void): void;
-  fillKeyBuffer(index: number, buffer: Buffer, options: { format: string }): Promise<void>;
-  clearPanel(): Promise<void>;
-  setBrightness(percent: number): Promise<void>;
-  close(): Promise<void>;
-}
 
 const TICK_MS = 500;
 
@@ -53,7 +38,7 @@ export interface DeckSessionOptions {
    * to do (src/action-error.ts) — not again while the same message stands.
    * The daemon shows it as a desktop notification, unless turned off.
    */
-  onActionNeeded?: (failure: { slot: string; key: number; label: string | undefined; message: string; notSetUp?: boolean }) => void;
+  onActionNeeded?: (failure: { slot: string; key: string; keyName: string; label: string | undefined; message: string; notSetUp?: boolean }) => void;
   /** Keys whose last press failed, held for the daemon (src/key-failures.ts). */
   failures: KeyFailures;
   /** The profile this deck is showing, which the failed keys are keyed by. */
@@ -70,13 +55,15 @@ function clampBrightness(value: number): number {
 export class DeckSession implements DeckHandle {
   readonly serial: string;
   readonly model: string;
-  readonly keyCount: number;
+  keyCount: number;
   /** The first screen's width, for logs; null on a deck with no screens. Each key's own size is in `screens`. */
-  readonly iconSize: number | null;
-  /** Controls and their positions, as the control socket reports them. */
-  readonly geometry: DeckGeometry;
+  iconSize: number | null;
+  /** Controls and their positions, as the control socket reports them. A virtual deck's change with its layout (useGeometry). */
+  geometry: DeckGeometry;
 
-  private raw: RawDeck;
+  private device: DeckDevice;
+  /** Each control's place in reading order, for "key 5" in logs and messages, and for sorting. */
+  private order: Map<string, number>;
   private hardware: DeckDef;
   private layout: LayoutDef;
   private defaults: Required<Defaults>;
@@ -95,36 +82,36 @@ export class DeckSession implements DeckHandle {
    * A key without one (a Neo's touch keys, every Pedal key) is pressed but
    * never written to — the library refuses an image for it.
    */
-  private screens: Map<number, { width: number; height: number }>;
-  private lastSent: Array<Buffer | null>;
-  private lastRenderAt: number[];
+  private screens = new Map<string, { width: number; height: number }>();
+  private lastSent = new Map<string, Buffer>();
+  private lastRenderAt = new Map<string, number>();
   /** Keys told their face may have changed (invalidateByType), drawn on the next tick whatever their kind. */
-  private stale: boolean[];
+  private stale = new Set<string>();
   private ticker: NodeJS.Timeout | null = null;
   /** True while tick() is running, so a slow render can't start a second pass. */
   private ticking = false;
   private closed = false;
-  private heldRelease = new Map<number, ActionDef>();
+  private heldRelease = new Map<string, ActionDef>();
   /**
    * Keys down whose action acts on its release (ActionHandler.release), and
    * when they went down: how long a key was held is two timestamps, not a
    * timer. Dropped on every way off the page (fireHeldReleases) — a hold
    * holds nothing at the evdev layer, so dropping it leaves nothing down.
    */
-  private holds = new Map<number, { at: number; action: ActionDef }>();
+  private holds = new Map<string, { at: number; action: ActionDef }>();
   /**
-   * Latching toggles: key index → the combo it holds
+   * Latching toggles: key → the combo it holds
    * down. Memory only, like failure marks — a restart starts with the helper's
    * virtual keyboard new, so nothing is held.
    */
-  private latched = new Map<number, string>();
+  private latched = new Map<string, string>();
   /** Unsubscribe from input's keyboard-lost notice. */
   private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
   private brightness: number;
 
-  constructor(raw: RawDeck, options: DeckSessionOptions) {
-    this.raw = raw;
+  constructor(device: DeckDevice, options: DeckSessionOptions) {
+    this.device = device;
     this.serial = options.serial;
     this.hardware = options.hardware;
     this.layout = options.layout;
@@ -136,28 +123,23 @@ export class DeckSession implements DeckHandle {
     this.failures = options.failures;
     this.profileOf = options.profileOf;
 
-    // Through the same correction the geometry uses, so the logs and the
-    // `decks` command cannot disagree about what a deck is called.
-    this.model = productNameFor(raw.MODEL ? String(raw.MODEL) : '', raw.PRODUCT_NAME);
-    this.geometry = geometryOf(raw);
-
-    this.keyCount = this.geometry.keyCount;
-    this.iconSize = this.geometry.iconSize;
-    this.screens = new Map(
-      this.geometry.keys.flatMap((key) => (key.width && key.height ? [[key.index, { width: key.width, height: key.height }] as const] : [])),
-    );
-
-    this.lastSent = new Array(this.keyCount).fill(null);
-    this.lastRenderAt = new Array(this.keyCount).fill(0);
-    this.stale = new Array(this.keyCount).fill(false);
+    // The geometry's name, so the logs and the `decks` command cannot
+    // disagree about what a deck is called.
+    this.geometry = device.geometry;
+    this.model = this.geometry.productName;
+    this.order = new Map();
+    this.keyCount = 0;
+    this.iconSize = null;
+    this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
     this.page = startPageOf(this.layout);
     this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
   }
 
   async start(): Promise<void> {
-    this.raw.on('down', (arg: unknown) => this.onKey(arg, 'down'));
-    this.raw.on('up', (arg: unknown) => this.onKey(arg, 'up'));
-    this.raw.on('error', (err: unknown) => {
+    this.device.onInput((event) => this.onKey(event.control, event.edge));
+    this.device.onRedraw?.(() => void this.repaint());
+    this.device.onLetGo?.((reason) => void this.letGo(reason));
+    this.device.onError((err: unknown) => {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
 
@@ -166,7 +148,7 @@ export class DeckSession implements DeckHandle {
     this.stopWatchingKeyboard = input.onKeyboardLost(() => this.forgetLatches());
 
     await this.setBrightness(this.brightness);
-    await this.raw.clearPanel();
+    await this.device.clear?.();
     await this.renderPage(true);
 
     this.ticker = setInterval(() => void this.tick(), TICK_MS);
@@ -177,25 +159,46 @@ export class DeckSession implements DeckHandle {
   }
 
   /**
-   * Library versions differ on whether key events carry a plain index or a
-   * control object. Normalise both, and ignore non-button controls such as
-   * the dials on a Plus.
+   * Take a set of controls: the device's own, or — for a virtual deck — the
+   * ones its layout gives it. Anything kept per key for a control that is no
+   * longer there goes; a preview on a control that stays is kept.
    */
-  private keyIndexOf(arg: unknown): number | null {
-    if (typeof arg === 'number') return arg;
-    if (arg && typeof arg === 'object') {
-      const obj = arg as { index?: number; type?: string };
-      if (obj.type && obj.type !== 'button') return null;
-      if (typeof obj.index === 'number') return obj.index;
-    }
-    return null;
+  private useGeometry(geometry: DeckGeometry): void {
+    this.geometry = geometry;
+    this.keyCount = geometry.keyCount;
+    this.iconSize = geometry.iconSize;
+    this.order = new Map(geometry.keys.map((key, i) => [key.id, i]));
+    this.screens = new Map(
+      geometry.keys.flatMap((key) => (key.width && key.height ? [[key.id, { width: key.width, height: key.height }] as const] : [])),
+    );
+    for (const id of [...this.previews.keys()]) if (!this.order.has(id)) this.previews.delete(id);
+    this.lastSent.clear();
+    this.lastRenderAt.clear();
+    this.stale.clear();
+    this.device.showGeometry?.(geometry);
   }
 
-  private onKey(arg: unknown, edge: 'down' | 'up'): void {
-    const index = this.keyIndexOf(arg);
-    if (index === null || this.closed) return;
+  /** A device whose controls its layout defines takes them from the layout now shown (src/devices.ts layoutFrom). */
+  private relayout(): void {
+    if (this.device.layoutFrom) this.useGeometry(this.device.layoutFrom(this.layout));
+  }
 
-    const button = this.currentButtons()[String(index)];
+  /** "key 5": a key as people count them, in reading order from 1. */
+  keyName(key: string): string {
+    const at = this.order.get(key);
+    return at === undefined ? `key "${key}"` : `key ${at + 1}`;
+  }
+
+  /** Keys in reading order, for the lists the control socket reports. */
+  private sorted(keys: Iterable<string>): string[] {
+    const at = (key: string) => this.order.get(key) ?? Number.MAX_SAFE_INTEGER;
+    return [...keys].sort((a, b) => at(a) - at(b) || a.localeCompare(b));
+  }
+
+  private onKey(index: string, edge: 'down' | 'up'): void {
+    if (this.closed || !this.order.has(index)) return;
+
+    const button = this.currentButtons()[index];
 
     if (edge === 'down') {
       // A previewed key does nothing when pressed: it shows something unsaved,
@@ -230,7 +233,7 @@ export class DeckSession implements DeckHandle {
    * would lift the other's key while its face still said it was down. The
    * refusal fails the press, which badges the key.
    */
-  async toggleLatch(index: number, combo: string): Promise<void> {
+  async toggleLatch(index: string, combo: string): Promise<void> {
     const held = this.latched.get(index);
     if (held !== undefined) {
       this.latched.delete(index);
@@ -244,7 +247,7 @@ export class DeckSession implements DeckHandle {
     const wanted = new Set(parseCombo(combo));
     for (const [other, otherCombo] of this.latched) {
       if (parseCombo(otherCombo).some((code) => wanted.has(code))) {
-        throw new Error(`"${combo}" overlaps "${otherCombo}", which key ${other + 1} is holding down`);
+        throw new Error(`"${combo}" overlaps "${otherCombo}", which ${this.keyName(other)} is holding down`);
       }
     }
     await input.down(combo, 'deck');
@@ -252,13 +255,13 @@ export class DeckSession implements DeckHandle {
     this.onStateChange();
   }
 
-  isLatched(index: number): boolean {
-    return this.latched.has(index);
+  isLatched(index: string | null): boolean {
+    return index !== null && this.latched.has(index);
   }
 
   /** The keys latched down on this deck, for the control socket's status. */
-  latchedKeys(): number[] {
-    return [...this.latched.keys()].sort((a, b) => a - b);
+  latchedKeys(): string[] {
+    return this.sorted(this.latched.keys());
   }
 
   /**
@@ -274,7 +277,7 @@ export class DeckSession implements DeckHandle {
       try {
         await input.up(combo, 'deck');
       } catch (err) {
-        console.error(`[${this.label()}] releasing latched key ${index + 1} on ${reason} failed: ${(err as Error).message}`);
+        console.error(`[${this.label()}] releasing latched ${this.keyName(index)} on ${reason} failed: ${(err as Error).message}`);
       }
     }
     this.onStateChange();
@@ -290,13 +293,13 @@ export class DeckSession implements DeckHandle {
   private async releaseLatchesOnChangedKeys(): Promise<void> {
     const buttons = this.currentButtons();
     for (const [index, combo] of [...this.latched]) {
-      const action = buttons[String(index)]?.action;
+      const action = buttons[index]?.action;
       if (action?.type === 'toggle' && String(action.keys ?? '') === combo) continue;
       this.latched.delete(index);
       try {
         await input.up(combo, 'deck');
       } catch (err) {
-        console.error(`[${this.label()}] releasing latched key ${index + 1} on a config reload failed: ${(err as Error).message}`);
+        console.error(`[${this.label()}] releasing latched ${this.keyName(index)} on a config reload failed: ${(err as Error).message}`);
       }
       this.onStateChange();
       void this.renderButtonAt(index, true);
@@ -336,9 +339,21 @@ export class DeckSession implements DeckHandle {
       try {
         await runActionOrThrow(this.context(index), action);
       } catch (err) {
-        console.error(`[${this.label()}] releasing key ${index + 1} on ${reason} failed: ${(err as Error).message}`);
+        console.error(`[${this.label()}] releasing ${this.keyName(index)} on ${reason} failed: ${(err as Error).message}`);
       }
     }
+  }
+
+  /** Everything held let go, at the device's asking (DeckDevice.onLetGo): a locked session. */
+  private async letGo(reason: string): Promise<void> {
+    if (this.closed) return;
+    await this.fireHeldReleases(reason);
+    await this.releaseLatches(reason);
+  }
+
+  /** Whether a virtual deck's touches work now (DeckDevice.touchState); undefined for a Stream Deck. */
+  touchState(): TouchState | undefined {
+    return this.device.touchState?.();
   }
 
   /**
@@ -348,7 +363,7 @@ export class DeckSession implements DeckHandle {
    */
   async runFromSocket(action: ActionDef): Promise<void> {
     if (this.closed) throw new Error('the deck has disconnected');
-    await runActionOrThrow(this.context(-1, 'socket'), action);
+    await runActionOrThrow(this.context(null, 'socket'), action);
   }
 
   /**
@@ -358,7 +373,7 @@ export class DeckSession implements DeckHandle {
    * deck. The repaint after every press draws or removes the badge: no extra
    * write, no timer.
    */
-  private dispatch(index: number, action: ActionDef): Promise<void> {
+  private dispatch(index: string, action: ActionDef): Promise<void> {
     // A press that armed a release (a hold: Stream, live) is judged by the
     // release: its success alone must not clear a mark the release will set
     // again, or every short press would flicker the badge and notify afresh.
@@ -369,7 +384,7 @@ export class DeckSession implements DeckHandle {
   }
 
   /** A hold's release: judged only if it acted — one with nothing to do leaves the press's mark alone. */
-  private async settleRelease(index: number, action: ActionDef, heldMs: number): Promise<void> {
+  private async settleRelease(index: string, action: ActionDef, heldMs: number): Promise<void> {
     let acted = false;
     const run = async (ctx: ActionContext) => {
       const outcome = await runRelease(ctx, action, heldMs);
@@ -381,21 +396,21 @@ export class DeckSession implements DeckHandle {
 
   /** Run a key's press or release and mark or clear its failure (dispatch, above). */
   private async settle(
-    index: number,
+    index: string,
     run: (ctx: ActionContext) => Promise<ActionFailure | null>,
     clearOnSuccess: () => boolean = () => true,
     judged: () => boolean = () => true,
   ): Promise<void> {
     const profile = this.profileOf();
     const page = this.page;
-    const button = this.currentButtons()[String(index)];
+    const button = this.currentButtons()[index];
     const failure = await run(this.context(index));
     if (!judged()) return;
     const slot = this.slotOf(profile, page, index);
     if (failure?.notSetUp) {
       // Not this key's failure: its face says the integration is not set up,
       // and a mark would outlast the setup. Notified as any failed press is.
-      this.onActionNeeded({ slot, key: index, label: button?.label, message: failure.message, notSetUp: true });
+      this.onActionNeeded({ slot, key: index, keyName: this.keyName(index), label: button?.label, message: failure.message, notSetUp: true });
       return;
     }
     const cleared = failure === null && clearOnSuccess() && this.failures.clear(this.serial, profile, page, index);
@@ -405,7 +420,7 @@ export class DeckSession implements DeckHandle {
     // Every failed press whose message says what to do, not only a new mark:
     // a repeat is counted on the key's one notification (services/notifications.ts).
     if (failure?.actionNeeded) {
-      this.onActionNeeded({ slot, key: index, label: button?.label, message: failure.message });
+      this.onActionNeeded({ slot, key: index, keyName: this.keyName(index), label: button?.label, message: failure.message });
     }
     // Most actions change something visible; a cheap targeted repaint beats
     // waiting up to a full tick for the button to catch up.
@@ -417,7 +432,7 @@ export class DeckSession implements DeckHandle {
    * Clear) — the one way besides a press that works or an edit. Repaints the
    * key when its page is the one shown. Returns whether it had a mark.
    */
-  clearFailure(profile: string, page: string, key: number): boolean {
+  clearFailure(profile: string, page: string, key: string): boolean {
     const changed = this.failures.clear(this.serial, profile, page, key);
     if (!changed) return false;
     this.onStateChange();
@@ -427,7 +442,7 @@ export class DeckSession implements DeckHandle {
   }
 
   /** A key's notification slot: one per key, on its page and profile. */
-  private slotOf(profile: string, page: string, key: number): string {
+  private slotOf(profile: string, page: string, key: string): string {
     return `${this.serial}:${profile}:${page}:${key}`;
   }
 
@@ -436,10 +451,10 @@ export class DeckSession implements DeckHandle {
     return this.failures.forDeck(this.serial);
   }
 
-  private context(index: number, source: ActionContext['source'] = 'deck'): ActionContext {
+  private context(index: string | null, source: ActionContext['source'] = 'deck'): ActionContext {
     return {
       deck: this,
-      buttonIndex: index,
+      key: index,
       source,
       switchProfile: (profile) => this.switchProfile(profile),
       invalidateByType: (types) => this.invalidateByType(types),
@@ -452,8 +467,8 @@ export class DeckSession implements DeckHandle {
   }
 
   /** What a key shows: its preview if it has one, otherwise the current page's button. */
-  private buttonAt(index: number): ButtonDef | undefined {
-    return this.previews.get(index) ?? this.currentButtons()[String(index)];
+  private buttonAt(index: string): ButtonDef | undefined {
+    return this.previews.get(index) ?? this.currentButtons()[index];
   }
 
   private baseDisplay(button: ButtonDef | undefined): Display {
@@ -470,11 +485,11 @@ export class DeckSession implements DeckHandle {
     };
   }
 
-  private async renderButtonAt(index: number, force = false): Promise<void> {
+  private async renderButtonAt(index: string, force = false): Promise<void> {
     try {
       await this.drawKey(index, force, false);
     } catch (err) {
-      console.error(`[${this.label()}] render of key ${index} failed: ${(err as Error).message}`);
+      console.error(`[${this.label()}] render of ${this.keyName(index)} failed: ${(err as Error).message}`);
     }
   }
 
@@ -483,12 +498,12 @@ export class DeckSession implements DeckHandle {
    * caller decides whether to log it or report it); a USB write failure is
    * logged here. strictIcon: see renderButton().
    */
-  private async drawKey(index: number, force: boolean, strictIcon: boolean): Promise<void> {
+  private async drawKey(index: string, force: boolean, strictIcon: boolean): Promise<void> {
     if (this.closed) return;
     const screen = this.screens.get(index);
     if (!screen) return;
     // Drawn now, from the state as it is now: anything that changes it after this marks it again.
-    this.stale[index] = false;
+    this.stale.delete(index);
     // Drawn square at the shorter side, then filled out to the screen in the
     // key's background: the same face as on a square key, never stretched.
     const side = Math.min(screen.width, screen.height);
@@ -515,18 +530,18 @@ export class DeckSession implements DeckHandle {
     const square = await renderButton(display, side, strictIcon);
     const buffer = await fillScreen(square, side, screen.width, screen.height, display.background);
 
-    this.lastRenderAt[index] = Date.now();
+    this.lastRenderAt.set(index, Date.now());
 
     // renderButton caches, so identical output is the same Buffer instance.
     // Skipping the USB write keeps the deck responsive under a 2 Hz refresh.
-    if (!force && this.lastSent[index] === buffer) return;
+    if (!force && this.lastSent.get(index) === buffer) return;
 
     try {
-      await this.raw.fillKeyBuffer(index, buffer, { format: 'rgba' });
-      this.lastSent[index] = buffer;
+      await this.device.draw(index, buffer);
+      this.lastSent.set(index, buffer);
     } catch (err) {
-      console.error(`[${this.label()}] write to key ${index} failed: ${(err as Error).message}`);
-      this.lastSent[index] = null;
+      console.error(`[${this.label()}] write to ${this.keyName(index)} failed: ${(err as Error).message}`);
+      this.lastSent.delete(index);
     }
   }
 
@@ -550,7 +565,7 @@ export class DeckSession implements DeckHandle {
 
       for (const i of this.screens.keys()) {
         // Told it changed: drawn once, whatever kind of key it is.
-        if (this.stale[i]) {
+        if (this.stale.has(i)) {
           await this.renderButtonAt(i);
           continue;
         }
@@ -560,7 +575,7 @@ export class DeckSession implements DeckHandle {
         const button = this.buttonAt(i);
         if (!isDynamic(button?.action)) continue;
         const interval = button?.refreshMs ?? this.defaults.refreshMs;
-        if (now - this.lastRenderAt[i] >= interval) {
+        if (now - (this.lastRenderAt.get(i) ?? 0) >= interval) {
           await this.renderButtonAt(i);
         }
       }
@@ -572,7 +587,7 @@ export class DeckSession implements DeckHandle {
   invalidateByType(types: string[]): void {
     for (const i of this.screens.keys()) {
       const type = this.buttonAt(i)?.action?.type;
-      if (type && types.includes(type)) this.stale[i] = true;
+      if (type && types.includes(type)) this.stale.add(i);
     }
   }
 
@@ -581,9 +596,9 @@ export class DeckSession implements DeckHandle {
   // -------------------------------------------------------------------------
 
   /** Keys showing a preview, by index. Survives page changes, profile switches and reloads. */
-  private previews = new Map<number, ButtonDef>();
+  private previews = new Map<string, ButtonDef>();
   /** One preview render per key at a time, plus at most one follow-up. */
-  private previewRenders = new Map<number, { running: Promise<void>; followUp: Promise<void> | null }>();
+  private previewRenders = new Map<string, { running: Promise<void>; followUp: Promise<void> | null }>();
 
   /**
    * Whether the page shown has a key whose action type starts with `prefix`
@@ -602,13 +617,13 @@ export class DeckSession implements DeckHandle {
     );
   }
 
-  /** True if `index` is one of this deck's keys. */
-  hasKey(index: number): boolean {
-    return this.geometry.keys.some((key) => key.index === index);
+  /** True if `key` is one of this deck's keys. */
+  hasKey(key: string): boolean {
+    return this.order.has(key);
   }
 
-  previewKeys(): number[] {
-    return [...this.previews.keys()].sort((a, b) => a - b);
+  previewKeys(): string[] {
+    return this.sorted(this.previews.keys());
   }
 
   /**
@@ -616,7 +631,7 @@ export class DeckSession implements DeckHandle {
    * rejects if it cannot be drawn (e.g. an unreadable icon), in which case the
    * preview is removed again and the key goes back to what it showed.
    */
-  async setPreview(index: number, button: ButtonDef): Promise<void> {
+  async setPreview(index: string, button: ButtonDef): Promise<void> {
     // A previewed key does nothing when pressed (onKey), so a latch under one
     // could not be released by pressing it.
     if (this.latched.has(index)) await this.releaseLatches('a preview on the key');
@@ -636,7 +651,7 @@ export class DeckSession implements DeckHandle {
   }
 
   /** Remove previews — one key, or all — and redraw those keys. Returns the keys cleared. */
-  async clearPreview(index?: number): Promise<number[]> {
+  async clearPreview(index?: string): Promise<string[]> {
     const cleared = index === undefined ? this.previewKeys() : this.previews.has(index) ? [index] : [];
     for (const key of cleared) this.previews.delete(key);
     if (cleared.length > 0) this.onStateChange();
@@ -649,7 +664,7 @@ export class DeckSession implements DeckHandle {
    * key renders only the latest: requests that arrive while a render runs
    * share one follow-up render of whatever the key holds by then.
    */
-  private renderPreviewKey(index: number): Promise<void> {
+  private renderPreviewKey(index: string): Promise<void> {
     const ignore = () => undefined;
     const current = this.previewRenders.get(index);
     if (current) {
@@ -686,7 +701,7 @@ export class DeckSession implements DeckHandle {
     }
     this.repaintRunning = (async () => {
       try {
-        this.lastRenderAt.fill(0);
+        this.lastRenderAt.clear();
         await this.renderPage(true);
       } finally {
         this.repaintRunning = null;
@@ -734,7 +749,8 @@ export class DeckSession implements DeckHandle {
 
   async setBrightness(value: number): Promise<void> {
     const level = clampBrightness(value);
-    await this.raw.setBrightness(level);
+    // A device without a backlight keeps the number, so the socket still reports what was asked.
+    await this.device.setBrightness?.(level);
     this.brightness = level;
     this.onStateChange();
   }
@@ -751,6 +767,7 @@ export class DeckSession implements DeckHandle {
     await this.fireHeldReleases('a profile switch');
     await this.releaseLatches('a profile switch');
     this.layout = layout;
+    this.relayout();
     this.page = startPageOf(layout);
     this.history = [];
     this.onStateChange();
@@ -772,8 +789,16 @@ export class DeckSession implements DeckHandle {
     keepPage: boolean,
   ): Promise<void> {
     this.hardware = hardware;
+    const controlsBefore = JSON.stringify(this.geometry.keys);
     this.layout = layout;
     this.defaults = { ...DEFAULTS, ...defaults };
+    // A virtual deck's panel may have changed with the layout: a key gone
+    // from under a finger is let go first, as on any way off a page.
+    if (this.device.layoutFrom && JSON.stringify(this.device.layoutFrom(layout).keys) !== controlsBefore) {
+      await this.fireHeldReleases('a panel change');
+      await this.releaseLatches('a panel change');
+      this.relayout();
+    }
     if (!keepPage || !layout.pages[this.page]) {
       await this.fireHeldReleases('a config reload');
       await this.releaseLatches('a config reload');
@@ -784,7 +809,7 @@ export class DeckSession implements DeckHandle {
       await this.releaseLatchesOnChangedKeys();
     }
     await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
-    this.lastSent.fill(null);
+    this.lastSent.clear();
     await this.renderPage(true);
   }
 
@@ -799,8 +824,8 @@ export class DeckSession implements DeckHandle {
     if (this.ticker) clearInterval(this.ticker);
     this.ticker = null;
     try {
-      await this.raw.clearPanel();
-      await this.raw.close();
+      await this.device.clear?.();
+      await this.device.close();
     } catch {
       // device may already be gone
     }

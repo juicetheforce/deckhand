@@ -139,7 +139,7 @@ const editorFace = () =>
     'editor',
     `(() => {
       const row = (t) => document.querySelector('.library-entry[data-action-type="' + t + '"]');
-      const key0 = document.querySelector('.key[data-key-index="0"]');
+      const key0 = document.querySelector('.key[data-key="0"]');
       return {
         obsRows: ['obs.stream', 'obs.record', 'obs.recordPause'].map((t) => row(t)?.dataset.notSetUp === 'true'),
         obsTitle: row('obs.record')?.title ?? null,
@@ -171,7 +171,7 @@ const dragRow = (type, to) =>
       const a = centre(row);
       const pressed = document.elementFromPoint(a.x, a.y)?.closest('[data-action-type]')?.dataset.actionType;
       if (pressed !== '${type}') return 'the press would land on ' + pressed + ', not the ${type} row';
-      const b = centre(document.querySelector('.key[data-key-index="${to}"]'));
+      const b = centre(document.querySelector('.key[data-key="${to}"]'));
       pointer('pointerdown', a.x, a.y);
       pointer('pointermove', a.x + 10, a.y + 10);
       pointer('pointermove', b.x, b.y);
@@ -182,7 +182,7 @@ const dragRow = (type, to) =>
   );
 
 await until(async () => (await editorFace()).obsRows.every(Boolean));
-await inPage(editor, 'editor', clickIn('.key[data-key-index="0"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="0"]'));
 await until(async () => (await editorFace()).callout !== null);
 r.notSetUpFace = await editorFace();
 // A drag of an OBS action places nothing; a Hotkey dragged the same way does — the control.
@@ -192,7 +192,7 @@ r.obsDragged = (await buttonsNow())['2'] ?? null;
 r.hotkeyDragStarted = await dragRow('hotkey', 3);
 r.hotkeyDragged = await until(async () => (await buttonsNow())['3']?.action?.type === 'hotkey');
 // A click on it, with a key selected, does not retarget the key: it opens Settings at OBS.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="1"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="obs.record"]'));
 r.clickOpensSettings = await until(async () => (await stateOf(editor)).settingsOpen);
@@ -284,7 +284,7 @@ const picker = (what) =>
   );
 const pickName = (what, name) => inPage(editor, 'editor', clickIn(`.inspector [data-obs-picker=${what}] [data-obs-name="${name}"]`));
 const pickFor = async (key, type) => {
-  await inPage(editor, 'editor', clickIn(`.key[data-key-index="${key}"]`));
+  await inPage(editor, 'editor', clickIn(`.key[data-key="${key}"]`));
   await sleep(200);
   await inPage(editor, 'editor', clickIn(`.library-entry[data-action-type="${type}"]`));
 };
@@ -307,13 +307,13 @@ await pickName('source', 'Webcam');
 r.sourceSaved = await until(async () => JSON.stringify((await buttonsNow())['6']?.action) === JSON.stringify({ type: 'obs.source', scene: 'Gameplay', source: 'Webcam' }));
 // Renamed in OBS: the saved name is kept, first, and marked.
 fake.renameInput('Mic/Aux', 'Mic');
-await inPage(editor, 'editor', clickIn('.key[data-key-index="5"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="5"]'));
 await until(async () => (await picker('input'))?.names.includes('Mic'));
 r.renamedPicker = await picker('input');
 fake.renameInput('Mic', 'Mic/Aux');
 // OBS closed: nothing to pick from, and the saved choice still shown.
 await fake.stop();
-await inPage(editor, 'editor', clickIn('.key[data-key-index="4"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="4"]'));
 await until(async () => (await picker('scene'))?.unavailable !== null);
 r.closedPicker = await picker('scene');
 r.sceneKeptAfterClose = (await buttonsNow())['4']?.action?.scene;

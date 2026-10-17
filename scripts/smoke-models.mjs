@@ -21,6 +21,7 @@ import path from 'node:path';
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const { DEVICE_MODELS2 } = await import(path.join(REPO, 'node_modules/@elgato-stream-deck/core/dist/index.js'));
 const { DeckSession } = await import(path.join(REPO, 'dist/deck.js'));
+const { hidDevice } = await import(path.join(REPO, 'dist/drivers/hid.js'));
 const { KeyFailures } = await import(path.join(REPO, 'dist/key-failures.js'));
 
 let failures = 0;
@@ -82,7 +83,7 @@ for (const [model, spec] of Object.entries(DEVICE_MODELS2)) {
   const logged = [];
   const realError = console.error;
   console.error = (...a) => logged.push(a.join(' '));
-  const session = new DeckSession(deck, {
+  const session = new DeckSession(hidDevice(deck, `FAKE-${model}`), {
     serial: `FAKE-${model}`,
     hardware: {},
     layout,

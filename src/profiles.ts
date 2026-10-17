@@ -65,6 +65,11 @@ export class Profiles {
     return serials;
   }
 
+  /** The decks the config makes virtual decks, by their key under "decks" (src/screens.ts). */
+  virtualDecks(): Set<string> {
+    return new Set(Object.entries(this.config.decks ?? {}).flatMap(([id, deck]) => (deck.virtual ? [id] : [])));
+  }
+
   /** "name (id)", or just the ID when the profile has no name. For logs. */
   private describe(id: string): string {
     const name = this.config.profiles[id]?.name;

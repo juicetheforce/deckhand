@@ -129,7 +129,7 @@ const editorFace = () =>
     'editor',
     `(() => {
       const row = document.querySelector('.library-entry[data-action-type="vts.hotkey"]');
-      const key0 = document.querySelector('.key[data-key-index="0"]');
+      const key0 = document.querySelector('.key[data-key="0"]');
       const callout = document.querySelector('.inspector [data-not-set-up=vts]');
       return {
         rowBlocked: row?.dataset.notSetUp ?? null,
@@ -159,7 +159,7 @@ const dragRow = (type, to) =>
       const a = centre(row);
       const pressed = document.elementFromPoint(a.x, a.y)?.closest('[data-action-type]')?.dataset.actionType;
       if (pressed !== '${type}') return 'the press would land on ' + pressed + ', not the ${type} row';
-      const b = centre(document.querySelector('.key[data-key-index="${to}"]'));
+      const b = centre(document.querySelector('.key[data-key="${to}"]'));
       pointer('pointerdown', a.x, a.y);
       pointer('pointermove', a.x + 10, a.y + 10);
       pointer('pointermove', b.x, b.y);
@@ -171,13 +171,13 @@ const dragRow = (type, to) =>
 
 // --- Not set up -------------------------------------------------------------------
 await until(async () => (await editorFace()).rowBlocked === 'true');
-await inPage(editor, 'editor', clickIn('.key[data-key-index="0"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="0"]'));
 await until(async () => (await editorFace()).callout !== null);
 r.notSetUp = await editorFace();
 r.dragStarted = await dragRow('vts.hotkey', 2);
 await sleep(600);
 r.dragged = (await buttonsNow())['2'] ?? null;
-await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="1"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.hotkey"]'));
 r.clickOpensSettings = await until(async () => (await stateOf(editor)).settingsOpen);
@@ -236,7 +236,7 @@ const picker = (what) =>
     }; })()`,
   );
 const pick = (what, id) => inPage(editor, 'editor', clickIn(`.inspector [data-vts-picker=${what}] [data-vts-id="${id}"]`));
-await inPage(editor, 'editor', clickIn('.key[data-key-index="3"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="3"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.hotkey"]'));
 await until(async () => (await picker('model'))?.ids.length > 0);
@@ -251,7 +251,7 @@ r.saved = await until(async () => JSON.stringify((await buttonsNow())['3']?.acti
 r.savedAction = (await buttonsNow())['3']?.action ?? null;
 
 // The Model key: one picker, VTS's models.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="4"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="4"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.model"]'));
 await until(async () => (await picker('model'))?.ids.length > 0);
@@ -262,7 +262,7 @@ r.modelSaved = await until(async () => JSON.stringify((await buttonsNow())['4']?
 r.modelSavedAction = (await buttonsNow())['4']?.action ?? null;
 
 // The Toggle expression key: the model, then the loaded model's expressions — another model's, never.
-await inPage(editor, 'editor', clickIn('.key[data-key-index="5"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="5"]'));
 await sleep(200);
 await inPage(editor, 'editor', clickIn('.library-entry[data-action-type="vts.expression"]'));
 await until(async () => (await picker('model'))?.ids.length > 0);
@@ -284,18 +284,18 @@ r.expressionSavedAction = (await buttonsNow())['5']?.action ?? null;
 // Deleted in VTS: the saved hotkey is kept, first, and marked.
 const wave = fake.hotkeys.m2;
 fake.hotkeys.m2 = [];
-await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="1"]'));
 await sleep(200);
-await inPage(editor, 'editor', clickIn('.key[data-key-index="3"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="3"]'));
 await until(async () => (await picker('hotkey'))?.notes.includes('not in VTube Studio now'));
 r.deletedPicker = await picker('hotkey');
 fake.hotkeys.m2 = wave;
 
 // VTS closed: nothing to pick from, and the saved choice still shown.
 await fake.stop();
-await inPage(editor, 'editor', clickIn('.key[data-key-index="1"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="1"]'));
 await sleep(200);
-await inPage(editor, 'editor', clickIn('.key[data-key-index="3"]'));
+await inPage(editor, 'editor', clickIn('.key[data-key="3"]'));
 await until(async () => (await picker('model'))?.unavailable !== null && (await picker('model'))?.unavailable !== undefined);
 r.closedPicker = await picker('model');
 r.keptAfterClose = (await buttonsNow())['3']?.action?.hotkey ?? null;

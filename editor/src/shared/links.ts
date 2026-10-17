@@ -17,7 +17,8 @@ import type { ActionDef, Config, LayoutDef } from '../../../src/types.js';
 export interface PageLink {
   /** The page holding the key, by ID. */
   page: string;
-  index: number;
+  /** The key, by control id. */
+  key: string;
   /** Which of the button's two actions it is. */
   where: 'action' | 'onRelease';
   /** The pointer is one step of a multi action, not the whole action. */
@@ -62,9 +63,9 @@ export function pageLinks(layout: LayoutDef, pageId: string): PageLink[] {
       for (const where of ['action', 'onRelease'] as const) {
         const action = button[where];
         if (targetsPage(action, layout, pageId)) {
-          found.push({ page, index: Number(key), where, inMulti: false });
+          found.push({ page, key, where, inMulti: false });
         } else if (multiSteps(action)?.some((step) => targetsPage(step, layout, pageId))) {
-          found.push({ page, index: Number(key), where, inMulti: true });
+          found.push({ page, key, where, inMulti: true });
         }
       }
     }

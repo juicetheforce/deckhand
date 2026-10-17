@@ -90,7 +90,7 @@ const badges = (editor) =>
     'editor',
     "Object.fromEntries([...document.querySelectorAll('.grid .key')].map((k, i) => [i, k.querySelector('.key-failed')?.getAttribute('title') ?? null]).filter(([, t]) => t !== null))",
   );
-const at = (index) => ({ profile: 'default', serial: XL, page: 'main', index });
+const at = (index) => ({ profile: 'default', serial: XL, page: 'main', key: String(index) });
 
 const r = {};
 const editor = startEditorAt(electronPath, editorRoot, env);
@@ -149,7 +149,7 @@ try {
     const b = await badges(editor);
     return b[3] === undefined && b[0] !== undefined;
   }, 5000);
-  r.clearedInDaemon = !daemon.failures.forDeck(XL).some((f) => f.key === 3) && daemon.failures.forDeck(XL).some((f) => f.key === 0);
+  r.clearedInDaemon = !daemon.failures.forDeck(XL).some((f) => f.key === '3') && daemon.failures.forDeck(XL).some((f) => f.key === '0');
   fake.press(3);
   r.failsAgain = await until(async () => (await badges(editor))[3] !== undefined, 5000);
 
@@ -166,9 +166,9 @@ try {
   const laterSaved = () => Object.values(daemon.state.config.profiles.default.layouts[XL].pages).some((p) => p.name === 'Later');
   if (!(await until(laterSaved, 8000))) throw new Error('the page "Later" never reached the daemon');
   await sleep(500);
-  r.stillMarkedAfterUnrelatedEdit = daemon.failures.forDeck(XL).some((f) => f.key === 0);
+  r.stillMarkedAfterUnrelatedEdit = daemon.failures.forDeck(XL).some((f) => f.key === '0');
   fake.press(0);
-  r.successClears = await until(() => !daemon.failures.forDeck(XL).some((f) => f.key === 0), 5000);
+  r.successClears = await until(() => !daemon.failures.forDeck(XL).some((f) => f.key === '0'), 5000);
   await daemon.sessions.get(XL).goToPage('main');
   r.cleanOnMain = await until(async () => Object.keys(await badges(editor)).length === 0, 5000);
   r.calloutAfterSuccess = await calloutOf(0);

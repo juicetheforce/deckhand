@@ -17,6 +17,7 @@ import path from 'node:path';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const { DeckSession } = await import(path.join(REPO, 'dist/deck.js'));
+const { hidDevice } = await import(path.join(REPO, 'dist/drivers/hid.js'));
 const { KeyFailures } = await import(path.join(REPO, 'dist/key-failures.js'));
 const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
 
@@ -71,7 +72,7 @@ const layout = {
     },
   },
 };
-const session = new DeckSession(raw, {
+const session = new DeckSession(hidDevice(raw, 'FAKE'), {
   serial: 'FAKE',
   hardware: {},
   layout,

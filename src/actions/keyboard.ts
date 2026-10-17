@@ -83,17 +83,17 @@ export const toggle: ActionHandler = {
     // A latch is a deck key's state: it is released by pressing that key
     // again. Over the socket there is no key to press, and the socket's own
     // rule is that an action it runs never leaves a key held.
-    if (ctx.source !== 'deck' || ctx.buttonIndex < 0) {
+    if (ctx.source !== 'deck' || ctx.key === null) {
       throw new Error('a toggle latches a deck key, so it cannot be run from the control socket');
     }
-    await ctx.deck.toggleLatch(ctx.buttonIndex, combo);
+    await ctx.deck.toggleLatch(ctx.key, combo);
   },
 
   // Reads the session's own state; no I/O, so it costs nothing per render.
-  iconState: (_params: ActionDef, ctx) => ({ latched: ctx ? ctx.deck.isLatched(ctx.buttonIndex) : false }),
+  iconState: (_params: ActionDef, ctx) => ({ latched: ctx ? ctx.deck.isLatched(ctx.key) : false }),
 
   async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    const latched = ctx.deck.isLatched(ctx.buttonIndex);
+    const latched = ctx.deck.isLatched(ctx.key);
     const patch: DisplayPatch = {};
     // The same shape as audio.micMute: an icon or label for each state is used
     // when it is set, and the background says which state it is in either way.

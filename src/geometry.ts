@@ -22,10 +22,29 @@ export interface GeometrySource {
   CONTROLS?: ReadonlyArray<RawControl>;
 }
 
+/** The shapes a control can have. Stage 1 draws only squares; the rest come with custom layouts. */
+export type ControlShape = 'square';
+
 export interface KeyPosition {
+  /**
+   * The control's id: what the config's `buttons`, the socket and the session
+   * name it by. A Stream Deck's key 7 is "7" (src/devices.ts).
+   */
+  id: string;
+  /** A Stream Deck key's index in the library; a virtual deck's controls have none. */
   index: number;
   row: number;
   column: number;
+  /**
+   * Where the control sits and how big it is, in the geometry's `units`: for a
+   * Stream Deck, cells of its key grid (x is the column, y the row, 1 × 1).
+   * The editor's positioned grid draws from these.
+   */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shape: ControlShape;
   /** 'lcd' keys have a screen; 'rgb' and 'none' do not. */
   feedback: string;
   /** An 'lcd' key's screen in pixels, as the library gives it — not always square (a Studio's are 144×112). */
@@ -57,6 +76,10 @@ export interface DeckGeometry {
   /** e.g. "Stream Deck XL". */
   productName: string;
   keyCount: number;
+  /** What a control's x, y, w and h count: 'cells' of a key grid (a Stream Deck), or 'pixels' of a virtual deck's canvas. */
+  units: 'cells' | 'pixels';
+  /** A virtual deck's canvas, in pixels; absent on a Stream Deck. */
+  canvas?: { width: number; height: number };
   /** Width in pixels of the keys' screens, or null if no key has one. Each key's own size is in `keys`. */
   iconSize: number | null;
   /** Height in pixels of the keys' screens, or null: differs from iconSize where they are not square. */
@@ -87,7 +110,8 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
     if (control.type === 'button' && typeof control.index === 'number') {
       const feedback = control.feedbackType ?? 'none';
       const screen = feedback === 'lcd' && control.pixelSize && control.pixelSize.width > 0 && control.pixelSize.height > 0 ? control.pixelSize : null;
-      keys.push(screen ? { index: control.index, row, column, feedback, width: screen.width, height: screen.height } : { index: control.index, row, column, feedback });
+      const place = { id: String(control.index), index: control.index, row, column, x: column, y: row, w: 1, h: 1, shape: 'square' as const, feedback };
+      keys.push(screen ? { ...place, width: screen.width, height: screen.height } : place);
       if (iconSize === null && screen) {
         iconSize = screen.width;
         iconHeight = screen.height;
@@ -107,11 +131,58 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
     model: String(source.MODEL ?? 'unknown'),
     productName: productNameFor(String(source.MODEL ?? ''), source.PRODUCT_NAME),
     keyCount: keys.length > 0 ? keys[keys.length - 1].index + 1 : 0,
+    units: 'cells',
     iconSize,
     iconHeight,
     rows,
     columns,
     keys,
     unsupported,
+  };
+}
+
+/**
+ * A virtual deck's geometry, from its panel (types.ts PanelDef): the controls
+ * are what the layout says, in reading order — top to bottom, then left to
+ * right — and each has a screen of its own size. Rows and columns are the
+ * distinct tops and lefts, so a preset's grid reads as one; the editor's
+ * grid uses them until it draws positioned controls (stage 1, S4).
+ */
+export interface PanelSource {
+  size: { width: number; height: number };
+  controls: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number; shape?: 'square' }>;
+}
+
+export function geometryOfPanel(panel: PanelSource | undefined, productName: string): DeckGeometry {
+  const controls = [...(panel?.controls ?? [])].sort((a, b) => a.y - b.y || a.x - b.x);
+  const tops = [...new Set(controls.map((c) => c.y))].sort((a, b) => a - b);
+  const lefts = [...new Set(controls.map((c) => c.x))].sort((a, b) => a - b);
+  const keys: KeyPosition[] = controls.map((c, index) => ({
+    id: c.id,
+    index,
+    row: tops.indexOf(c.y),
+    column: lefts.indexOf(c.x),
+    x: c.x,
+    y: c.y,
+    w: c.w,
+    h: c.h,
+    shape: c.shape ?? 'square',
+    feedback: 'lcd',
+    width: Math.max(1, Math.round(c.w)),
+    height: Math.max(1, Math.round(c.h)),
+  }));
+  const first = keys[0];
+  return {
+    model: 'virtual',
+    productName,
+    keyCount: keys.length,
+    units: 'pixels',
+    canvas: panel ? { width: panel.size.width, height: panel.size.height } : { width: 0, height: 0 },
+    iconSize: first?.width ?? null,
+    iconHeight: first?.height ?? null,
+    rows: tops.length,
+    columns: lefts.length,
+    keys,
+    unsupported: [],
   };
 }

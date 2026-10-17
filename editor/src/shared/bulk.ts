@@ -19,12 +19,13 @@ import { keepResolvableNavigation } from './links.js';
 
 /** The part of a deck's geometry (the socket's `decks`) placement needs. */
 export interface KeyGrid {
-  keys: ReadonlyArray<{ index: number; row: number; column: number }>;
+  keys: ReadonlyArray<{ id: string; row: number; column: number }>;
 }
 
 /** One slot to write. `null` empties it. */
 export interface ButtonWrite {
-  index: number;
+  /** The key, by control id. */
+  key: string;
   button: ButtonDef | null;
 }
 
@@ -33,8 +34,9 @@ export interface ClipKey {
   /** Rows and columns below and right of the copied block's top-left corner. */
   rowOffset: number;
   columnOffset: number;
-  /** Where it was copied from, to name it when it cannot be placed. */
-  sourceIndex: number;
+  /** Where it was copied from, and its number there ("7" for key 7), to name it when it cannot be placed. */
+  sourceKey: string;
+  sourceNumber: string;
   button: ButtonDef;
 }
 
@@ -53,33 +55,33 @@ export interface Placement {
   /** Copied keys with no position on the target deck, which were not written. */
   skipped: ClipKey[];
   /** Keys that were written but lost a Go to page whose target is not in the target layout. */
-  lostNavigation: Array<{ index: number; key: ClipKey }>;
+  lostNavigation: Array<{ key: string; clip: ClipKey }>;
 }
 
-function positionOf(grid: KeyGrid, index: number): { row: number; column: number } | null {
-  const key = grid.keys.find((k) => k.index === index);
-  return key ? { row: key.row, column: key.column } : null;
+function positionOf(grid: KeyGrid, key: string): { row: number; column: number } | null {
+  const found = grid.keys.find((k) => k.id === key);
+  return found ? { row: found.row, column: found.column } : null;
 }
 
-function indexAt(grid: KeyGrid, row: number, column: number): number | null {
-  return grid.keys.find((k) => k.row === row && k.column === column)?.index ?? null;
+function keyAt(grid: KeyGrid, row: number, column: number): string | null {
+  return grid.keys.find((k) => k.row === row && k.column === column)?.id ?? null;
 }
 
-/** Key indices sorted into reading order: row by row, left to right. Indices not on the deck are dropped. */
-export function readingOrder(grid: KeyGrid, indices: Iterable<number>): number[] {
-  const wanted = new Set(indices);
+/** Keys sorted into reading order: row by row, left to right. Keys not on the deck are dropped. */
+export function readingOrder(grid: KeyGrid, keys: Iterable<string>): string[] {
+  const wanted = new Set(keys);
   return grid.keys
-    .filter((k) => wanted.has(k.index))
+    .filter((k) => wanted.has(k.id))
     .sort((a, b) => a.row - b.row || a.column - b.column)
-    .map((k) => k.index);
+    .map((k) => k.id);
 }
 
 /**
  * Shift+click: every key from `from` to `to` in reading order, inclusive, the
  * way a file manager selects a run of icons.
  */
-export function rangeSelection(grid: KeyGrid, from: number, to: number): number[] {
-  const all = readingOrder(grid, grid.keys.map((k) => k.index));
+export function rangeSelection(grid: KeyGrid, from: string, to: string): string[] {
+  const all = readingOrder(grid, grid.keys.map((k) => k.id));
   const a = all.indexOf(from);
   const b = all.indexOf(to);
   if (a === -1 || b === -1) return b === -1 ? [] : [to];
@@ -92,13 +94,13 @@ export function rangeSelection(grid: KeyGrid, from: number, to: number): number[
  * page afterwards does not change what is on the clipboard. Null when nothing
  * selected holds a button.
  */
-export function copyKeys(page: PageDef, grid: KeyGrid, indices: Iterable<number>): Clipboard | null {
-  const found: Array<{ index: number; row: number; column: number; button: ButtonDef }> = [];
-  for (const index of readingOrder(grid, indices)) {
-    const button = page.buttons[String(index)];
-    const at = positionOf(grid, index);
+export function copyKeys(page: PageDef, grid: KeyGrid, keys: Iterable<string>): Clipboard | null {
+  const found: Array<{ key: string; row: number; column: number; button: ButtonDef }> = [];
+  for (const key of readingOrder(grid, keys)) {
+    const button = page.buttons[key];
+    const at = positionOf(grid, key);
     if (!button || Object.keys(button).length === 0 || !at) continue;
-    found.push({ index, ...at, button });
+    found.push({ key, ...at, button });
   }
   if (found.length === 0) return null;
   const origin = { row: Math.min(...found.map((f) => f.row)), column: Math.min(...found.map((f) => f.column)) };
@@ -107,7 +109,8 @@ export function copyKeys(page: PageDef, grid: KeyGrid, indices: Iterable<number>
     keys: found.map((f) => ({
       rowOffset: f.row - origin.row,
       columnOffset: f.column - origin.column,
-      sourceIndex: f.index,
+      sourceKey: f.key,
+      sourceNumber: keyNumber(f.key, grid),
       button: structuredClone(f.button),
     })),
   };
@@ -122,13 +125,13 @@ export function copyKeys(page: PageDef, grid: KeyGrid, indices: Iterable<number>
  */
 export function placeClipboard(clip: Clipboard, anchor: { row: number; column: number }, grid: KeyGrid, layout: LayoutDef): Placement {
   const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
-  for (const key of clip.keys) {
-    const index = indexAt(grid, anchor.row + key.rowOffset, anchor.column + key.columnOffset);
-    if (index === null) {
-      placement.skipped.push(key);
+  for (const clipped of clip.keys) {
+    const key = keyAt(grid, anchor.row + clipped.rowOffset, anchor.column + clipped.columnOffset);
+    if (key === null) {
+      placement.skipped.push(clipped);
       continue;
     }
-    const button = structuredClone(key.button);
+    const button = structuredClone(clipped.button);
     let dropped = false;
     for (const where of ['action', 'onRelease'] as const) {
       const action = button[where] as ActionDef | undefined;
@@ -139,9 +142,9 @@ export function placeClipboard(clip: Clipboard, anchor: { row: number; column: n
       if (kept.action) button[where] = kept.action;
       else delete button[where];
     }
-    if (dropped) placement.lostNavigation.push({ index, key });
+    if (dropped) placement.lostNavigation.push({ key, clip: clipped });
     // A button left with nothing on it is an empty slot, written as one.
-    placement.writes.push({ index, button: Object.keys(button).length === 0 ? null : button });
+    placement.writes.push({ key, button: Object.keys(button).length === 0 ? null : button });
   }
   return placement;
 }
@@ -150,12 +153,12 @@ export function placeClipboard(clip: Clipboard, anchor: { row: number; column: n
  * Where a paste's top-left corner goes: the first selected key in reading
  * order, or — with nothing selected — where the keys were copied from.
  */
-export function pasteAnchor(grid: KeyGrid, selected: Iterable<number>, clip: Clipboard): { row: number; column: number } {
+export function pasteAnchor(grid: KeyGrid, selected: Iterable<string>, clip: Clipboard): { row: number; column: number } {
   const first = readingOrder(grid, selected)[0];
   return (first !== undefined ? positionOf(grid, first) : null) ?? clip.origin;
 }
 
-export type Duplication = { ok: true; writes: ButtonWrite[]; created: number[] } | { ok: false; error: string };
+export type Duplication = { ok: true; writes: ButtonWrite[]; created: string[] } | { ok: false; error: string };
 
 /**
  * Duplicate the selected keys onto the same page. Each copy goes into the next
@@ -166,20 +169,20 @@ export type Duplication = { ok: true; writes: ButtonWrite[]; created: number[] }
  * Same page, so navigation needs no fixing. `created` is where the copies went,
  * in the order of their originals, for the editor to select them.
  */
-export function duplicateKeys(page: PageDef, grid: KeyGrid, indices: Iterable<number>): Duplication {
-  const order = readingOrder(grid, grid.keys.map((k) => k.index));
-  const occupied = new Set(order.filter((i) => {
-    const button = page.buttons[String(i)];
+export function duplicateKeys(page: PageDef, grid: KeyGrid, keys: Iterable<string>): Duplication {
+  const order = readingOrder(grid, grid.keys.map((k) => k.id));
+  const occupied = new Set(order.filter((k) => {
+    const button = page.buttons[k];
     return button !== undefined && Object.keys(button).length > 0;
   }));
-  const sources = readingOrder(grid, indices).filter((i) => occupied.has(i));
+  const sources = readingOrder(grid, keys).filter((k) => occupied.has(k));
   if (sources.length === 0) return { ok: false, error: 'Nothing to duplicate: the selected keys are empty.' };
 
   const writes: ButtonWrite[] = [];
-  const created: number[] = [];
+  const created: string[] = [];
   for (const source of sources) {
     const start = order.indexOf(source);
-    let target: number | undefined;
+    let target: string | undefined;
     for (let step = 1; step < order.length; step++) {
       const candidate = order[(start + step) % order.length];
       if (!occupied.has(candidate)) {
@@ -199,31 +202,50 @@ export function duplicateKeys(page: PageDef, grid: KeyGrid, indices: Iterable<nu
     }
     occupied.add(target);
     created.push(target);
-    writes.push({ index: target, button: structuredClone(page.buttons[String(source)]) });
+    writes.push({ key: target, button: structuredClone(page.buttons[source]) });
   }
   return { ok: true, writes, created };
 }
 
 /** Clear button, for every selected key: an empty, dark slot. No confirmation, however many. */
-export function clearKeys(page: PageDef, indices: Iterable<number>): ButtonWrite[] {
-  return [...new Set(indices)].filter((i) => page.buttons[String(i)] !== undefined).map((index) => ({ index, button: null }));
+export function clearKeys(page: PageDef, keys: Iterable<string>): ButtonWrite[] {
+  return [...new Set(keys)].filter((k) => page.buttons[k] !== undefined).map((key) => ({ key, button: null }));
 }
 
 /**
  * Key onto key: the whole button moves, and dropping onto an
  * occupied key swaps the two. Nothing is cleared or defaulted.
  */
-export function swapKeys(page: PageDef, from: number, to: number): ButtonWrite[] {
+export function swapKeys(page: PageDef, from: string, to: string): ButtonWrite[] {
   if (from === to) return [];
-  const a = page.buttons[String(from)];
-  const b = page.buttons[String(to)];
+  const a = page.buttons[from];
+  const b = page.buttons[to];
   return [
-    { index: to, button: a ? structuredClone(a) : null },
-    { index: from, button: b ? structuredClone(b) : null },
+    { key: to, button: a ? structuredClone(a) : null },
+    { key: from, button: b ? structuredClone(b) : null },
   ];
 }
 
+/**
+ * Where a key is as people count them: from 1, in reading order on its deck
+ * — "key 5". A Stream Deck's key "4" is key 5, as it always was. Without a
+ * grid, or for a key not on it, its id.
+ */
+export function keyNumber(key: string, grid?: KeyGrid): string {
+  if (grid) {
+    const at = readingOrder(grid, grid.keys.map((k) => k.id)).indexOf(key);
+    if (at >= 0) return String(at + 1);
+  }
+  return /^\d+$/.test(key) ? String(Number(key) + 1) : `"${key}"`;
+}
+
 /** A key named for a message: its label if it has one, and its position as the deck numbers keys (from 1). */
-export function keyName(button: ButtonDef | undefined, index: number): string {
-  return button?.label ? `“${button.label}” (key ${index + 1})` : `key ${index + 1}`;
+export function keyName(button: ButtonDef | undefined, key: string, grid?: KeyGrid): string {
+  return keyNamed(button, keyNumber(key, grid));
+}
+
+/** keyName, given the key's number already ("7"). */
+export function keyNamed(button: ButtonDef | undefined, number: string): string {
+  const where = `key ${number}`;
+  return button?.label ? `“${button.label}” (${where})` : where;
 }

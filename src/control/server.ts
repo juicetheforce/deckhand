@@ -12,7 +12,11 @@ import path from 'node:path';
  * way a client could delay a press.
  */
 
-export const PROTOCOL_VERSION = 1;
+/**
+ * 2: keys are named by control id, a string ("7" for a Stream Deck's key 7),
+ * in requests and replies alike; a request may still give a whole number.
+ */
+export const PROTOCOL_VERSION = 2;
 
 /**
  * Bounds the JSON.parse work per line, and what a client that sends half a

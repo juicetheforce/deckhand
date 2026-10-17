@@ -6,3 +6,13 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 
 # /dev/uinput for the key-injection helper.
 KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
+
+# Touchscreens, for virtual decks: the daemon reads the one paired with a
+# virtual deck's screen directly and grabs it, so the desktop never sees its
+# touches. Touchscreens only — not keyboards, mice or anything else; a
+# touchscreen's other nodes (the "mouse" twin some have) are plain mice to
+# udev, so they are not granted. Read only by the daemon's display helper,
+# and only the paired one, except while a screen is being paired. This file
+# sorts before 60-input-id.rules, so it asks for the input properties itself.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT}=="", IMPORT{builtin}="input_id"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", TAG+="uaccess"

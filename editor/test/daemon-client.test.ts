@@ -74,7 +74,7 @@ await check('connects, subscribes, and reads status and geometry', async () => {
   const v = await until(client, (x) => x.connected);
   assert.equal(v.problem, null);
   assert.equal(v.status?.activeProfile?.id, 'default');
-  assert.equal(v.status?.protocol, 1);
+  assert.equal(v.status?.protocol, 2);
   const deck = v.decks?.find((d) => d.serial === XL);
   assert.ok(deck, 'XL geometry missing');
   assert.equal(deck.keyCount, 32);
@@ -92,6 +92,60 @@ await check('a deck attaching is picked up from the state event, with its geomet
   assert.equal(v2.iconSize, 72);
 });
 
+/**
+ * A daemon of the test's own: one deck, whose geometry the test changes while
+ * the set of decks stays the same — as a virtual deck's does on a resize or
+ * a profile switch. Counts the decks requests.
+ */
+async function fakeDaemon(file: string, units: 'pixels' | 'cells') {
+  let keys = 24;
+  let decksAsked = 0;
+  const clients: net.Socket[] = [];
+  const server = net.createServer((c) => {
+    clients.push(c);
+    let buf = '';
+    c.on('data', (chunk) => {
+      buf += chunk;
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const req = JSON.parse(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+        const reply = (result: unknown) => c.write(JSON.stringify({ id: req.id, ok: true, result }) + '\n');
+        if (req.cmd === 'subscribe') reply({ events: req.args.events });
+        else if (req.cmd === 'status') reply({ protocol: 2, pid: 1, config: { path: '/x', lastReload: { ok: true, at: 'x' }, backups: { dir: '/x', count: 0, newest: null } }, activeProfile: { id: 'p', name: 'P' }, decks: [{ serial: 'D', connected: true, configured: true }] });
+        else if (req.cmd === 'decks') {
+          decksAsked++;
+          reply([{ serial: 'D', model: 'virtual', productName: 'Panel', keyCount: keys, units, iconSize: 100, rows: 1, columns: keys, keys: [], unsupported: [] }]);
+        } else c.write(JSON.stringify({ id: req.id, ok: false, error: { code: 'internal', message: 'no' } }) + '\n');
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(file, resolve));
+  const send = (name: string, data: unknown) => clients.forEach((c) => c.write(JSON.stringify({ event: name, data }) + '\n'));
+  return { setKeys: (n: number) => (keys = n), asked: () => decksAsked, send, close: () => new Promise((r) => server.close(r)) };
+}
+
+await check('a virtual deck\'s new size reaches the editor on the config event, with no re-pairing; a Stream Deck asks nothing more', async () => {
+  for (const units of ['pixels', 'cells'] as const) {
+    const file = path.join(await scratchDir(), 'fake.sock');
+    const fake = await fakeDaemon(file, units);
+    let view = null as DaemonView | null;
+    const client = new DaemonClient({ socketPath: file, onChange: (v) => (view = v), replyTimeoutMs: 1000 });
+    client.start();
+    for (let i = 0; i < 100 && !(view as DaemonView | null)?.connected; i++) await sleep(20);
+    const askedBefore = fake.asked();
+    fake.setKeys(10);
+    fake.send('config', { ok: true, at: 'later' });
+    fake.send('state', { activeProfile: { id: 'p', name: 'P' }, decks: [{ serial: 'D', connected: true, configured: true }] });
+    await sleep(200);
+    const keys = (view as DaemonView | null)?.decks?.[0]?.keyCount;
+    client.stop();
+    await fake.close();
+    if (units === 'pixels') assert.equal(keys, 10, 'the virtual deck shows its new size');
+    else assert.equal(fake.asked(), askedBefore, 'a Stream Deck: no decks request without a deck coming or going');
+  }
+});
+
 await check('a config event updates lastReload', async () => {
   daemon.state.lastReload = { ok: false, at: 'later', error: 'refused for the test' };
   daemon.events.config();
@@ -104,26 +158,26 @@ console.log('previews');
 await check('previewSet renders on the fake deck and shows in state; previewClear restores it', async () => {
   const before = xl.writes.get(3) ?? 0;
   const savedImage = xl.images.get(3);
-  await client.previewSet(XL, 3, { label: 'previewed', background: '#ff0000' });
+  await client.previewSet(XL, '3', { label: 'previewed', background: '#ff0000' });
   assert.ok((xl.writes.get(3) ?? 0) > before, 'nothing written to key 3');
-  await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
-  await client.previewClear(XL, 3);
-  await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes(3));
+  await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
+  await client.previewClear(XL, '3');
+  await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
   assert.ok(xl.images.get(3)?.equals(savedImage), 'key 3 not restored to its saved image');
 });
 
 await check('an error reply rejects with the daemon error code', async () => {
-  await assert.rejects(client.previewSet('NO-SUCH-DECK', 0, { label: 'x' }), (err: unknown) => err instanceof DaemonError && (err.code === 'not_found' || err.code === 'deck_not_connected'));
-  await assert.rejects(client.previewSet(XL, 99, { label: 'x' }), (err: unknown) => err instanceof DaemonError && err.code === 'not_found');
+  await assert.rejects(client.previewSet('NO-SUCH-DECK', '0', { label: 'x' }), (err: unknown) => err instanceof DaemonError && (err.code === 'not_found' || err.code === 'deck_not_connected'));
+  await assert.rejects(client.previewSet(XL, '99', { label: 'x' }), (err: unknown) => err instanceof DaemonError && err.code === 'not_found');
   assert.equal(client.view().connected, true, 'an error reply must not drop the connection');
 });
 
 await check('a burst of 30 previews on one key all resolve, and the last one is shown', async () => {
   const writesBefore = xl.writes.get(5) ?? 0;
-  await Promise.all(Array.from({ length: 30 }, (_, i) => client.previewSet(XL, 5, { label: `burst ${i}` })));
+  await Promise.all(Array.from({ length: 30 }, (_, i) => client.previewSet(XL, '5', { label: `burst ${i}` })));
   const writes = (xl.writes.get(5) ?? 0) - writesBefore;
   const lastOnly = xl.images.get(5);
-  await client.previewSet(XL, 5, { label: 'burst 29' });
+  await client.previewSet(XL, '5', { label: 'burst 29' });
   assert.ok(xl.images.get(5)?.equals(lastOnly), 'the image shown is not the last preview');
   console.log(`       (${writes} key writes for 30 previews)`);
   await client.previewClear(XL);
@@ -132,7 +186,7 @@ await check('a burst of 30 previews on one key all resolve, and the last one is 
 console.log('the daemon going away and coming back');
 
 await check('a daemon stopping is reported, pending requests reject, and the client reconnects when it returns', async () => {
-  const pending = client.previewSet(XL, 6, { label: 'in flight' }).catch((err) => err);
+  const pending = client.previewSet(XL, '6', { label: 'in flight' }).catch((err) => err);
   await daemon.stop();
   const down = await until(client, (x) => !x.connected);
   assert.ok(down.problem, 'no problem reported');
@@ -152,8 +206,8 @@ await check('a daemon stopping is reported, pending requests reject, and the cli
 
 await check("stopping the client clears the previews it set (the daemon's rule, through this client)", async () => {
   const session = daemon.sessions.get(XL);
-  await client.previewSet(XL, 7, { label: 'mine' });
-  assert.deepEqual(session.previewKeys(), [7]);
+  await client.previewSet(XL, '7', { label: 'mine' });
+  assert.deepEqual(session.previewKeys(), ['7']);
   client.stop();
   const started = Date.now();
   while (session.previewKeys().length > 0 && Date.now() - started < 2000) await sleep(20);

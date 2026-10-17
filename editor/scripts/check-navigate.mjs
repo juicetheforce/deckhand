@@ -74,7 +74,7 @@ const presser = setInterval(() => {
   const session = daemon.sessions.get(SERIAL);
   const bound =
     daemon.state.config?.profiles?.default?.layouts?.[SERIAL]?.pages?.main?.buttons?.['2']?.action?.type === 'profile';
-  if (!pressedProfileKey && bound && session?.previewKeys().includes(31)) {
+  if (!pressedProfileKey && bound && session?.previewKeys().includes('31')) {
     pressedProfileKey = true;
     fake.press(2);
   }

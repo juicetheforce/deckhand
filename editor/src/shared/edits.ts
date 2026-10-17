@@ -4,7 +4,7 @@
  *
  * Types only, importing nothing that touches Node: the renderer imports this.
  */
-import type { ActionDef } from '../../../src/types.js';
+import type { ActionDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
 import type { ButtonWrite } from './bulk.js';
 import type { PairIconField } from './icons.js';
 
@@ -12,7 +12,8 @@ export interface ButtonLocation {
   profile: string;
   serial: string;
   page: string;
-  index: number;
+  /** The key, by control id ("7" on a Stream Deck, "k7" on a virtual deck). */
+  key: string;
 }
 
 export type Edit =
@@ -71,8 +72,20 @@ export type Edit =
    * page named `pageName`, and starts on it.
    */
   | { kind: 'addProfile'; name: string; serials: string[]; pageName: string }
-  /** Give an existing profile a layout for a deck it does not cover, on the same terms. */
-  | { kind: 'addLayout'; profile: string; serial: string; pageName: string }
+  /** Give an existing profile a layout for a deck it does not cover, on the same terms. A virtual deck's comes with its panel. */
+  | { kind: 'addLayout'; profile: string; serial: string; pageName: string; panel?: PanelDef }
+  /**
+   * A screen made a virtual deck (Settings › Decks): its pairing under
+   * `decks[key]`, and — when `profile` has no layout for it — one with `panel`
+   * and an empty page. A layout kept from an earlier pairing is used as it is.
+   */
+  | { kind: 'addVirtualDeck'; key: string; output: string; touch: TouchDeviceDef; profile: string; panel: PanelDef; pageName: string }
+  /** Tap again: a new touchscreen pairing, or the connector it is now on. */
+  | { kind: 'repairVirtualDeck'; key: string; output: string; touch: TouchDeviceDef }
+  /** Remove a virtual deck: only its pairing goes; its name and layouts stay, used again if the same screen is set up later. */
+  | { kind: 'removeVirtualDeck'; key: string }
+  /** A virtual deck's panel at a new size, in one profile: keys keep their row and column (shared/panel-size.ts), the rest are dropped. */
+  | { kind: 'setPanel'; profile: string; serial: string; panel: PanelDef }
   /**
    * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a
