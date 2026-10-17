@@ -80,6 +80,8 @@ class PanelDevice implements DeckDevice {
   private inputListeners: Array<(event: ControlInput) => void> = [];
   private letGoListeners: Array<(reason: string) => void> = [];
   private exited = false;
+  /** The helper's output went away with the screen still plugged in (a wake, on KWin); "ready" says it is back. */
+  private outputLost = false;
   private closing = false;
   readonly gone: Promise<void>;
   /** Each contact down, and the control it started on (null: it started on none). */
@@ -132,7 +134,11 @@ class PanelDevice implements DeckDevice {
         this.sendNext();
         break;
       case 'ready':
-        // A resize: the helper's canvas is new and blank. Everything again.
+        // A resize, or the output back: the helper's canvas is new and blank. Everything again.
+        if (this.outputLost) {
+          this.outputLost = false;
+          console.log(`[virtual] ${this.id}: its output is back; drawing the panel again`);
+        }
         this.ready = event as unknown as Ready;
         this.pending.clear();
         this.inFlight = false;
@@ -159,6 +165,14 @@ class PanelDevice implements DeckDevice {
           // Sent again when a scan finds it back.
           this.touchSent = '';
         }
+        break;
+      case 'output-lost':
+        // The screen is still plugged in (the daemon quits the helper when it
+        // is not): it is asleep, waking, or turned off in the display
+        // settings. The helper waits for the output; nothing held stays held.
+        this.outputLost = true;
+        console.log(`[virtual] ${this.id}: its output went away, the screen still plugged in; waiting for it`);
+        this.letGoAll('its output going away');
         break;
       case 'error':
         console.error(`[virtual] ${this.id}: ${String(event.message)}`);
@@ -430,6 +444,7 @@ export interface VirtualDriver extends DeckDriver {
 export function createVirtualDriver(config: () => Config | null): VirtualDriver {
   const failedAt = new Map<string, number>();
   const open = new Map<string, PanelDevice>();
+
   /** Connectors being paired: no virtual deck is shown on them meanwhile. */
   const pairing = new Set<string>();
   const warnedAmbiguous = new Set<string>();
@@ -476,12 +491,15 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
             const device = new PanelDevice(id, screen.connector, started.proc, name, started.ready, (expected, code) => {
               if (open.get(id) === device) open.delete(id);
               if (expected) return;
-              // The screen went (exit 3), or the helper died: the scan this
-              // asks for closes the session, letting every key go. A helper
-              // that failed is not restarted for a while; a screen unplugged
-              // comes back as soon as it is plugged in again.
-              if (code !== 3) failedAt.set(id, Date.now());
-              rescan?.(`virtual deck ${id}'s panel stopped`);
+              // The helper stopped unasked — the compositor would not show
+              // it, or went away. Losing the output is not a stop: the helper
+              // waits for it. Every such stop counts as a failure: the scan
+              // this asks for then leaves the deck out even with its screen
+              // connected, so the session closes and lets every key go,
+              // instead of staying open around a helper that is gone; and a
+              // broken helper cannot loop.
+              failedAt.set(id, Date.now());
+              rescan?.(`virtual deck ${id}'s panel stopped (${code})`);
             });
             open.set(id, device);
             device.syncTouch(touch, inputNodes);

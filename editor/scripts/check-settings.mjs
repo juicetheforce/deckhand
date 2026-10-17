@@ -111,6 +111,13 @@ const setSelect = (value) =>
 const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
 const clickButton = (text) =>
   `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) throw new Error('no button ' + ${JSON.stringify(text)}); b.click(); return true; })()`;
+/**
+ * Click a button that closes the settings window. The click waits until the
+ * page has answered: closing the window first can lose the answer, and the
+ * check then fails with "no answer" (seen once in a full run).
+ */
+const clickClosing = (text) =>
+  `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) throw new Error('no button ' + ${JSON.stringify(text)}); setTimeout(() => b.click(), 0); return true; })()`;
 /** Show one page of the settings window, by its sidebar entry. */
 const nav = (editor, page) => inPage(editor, 'settings', clickIn(`[data-settings-nav=${page}]`)).then(() => sleep(100));
 async function openSettings(editor) {
@@ -251,7 +258,7 @@ r.unpluggedShown = await inPage(
   `({ options: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent), value: document.querySelector('#settings-default-deck').value })`,
 );
 r.unpluggedStillSaved = (await prefs()).defaultDeck;
-await inPage(editor, 'settings', clickButton('Done'));
+await inPage(editor, 'settings', clickClosing('Done'));
 await until(async () => !(await stateOf(editor)).settingsOpen);
 editor.send('close');
 await until(async () => !(await stateOf(editor)).windowOpen);
@@ -302,7 +309,7 @@ r.resetShown = [
 ];
 
 // Done closes the settings window and leaves the editor open.
-await inPage(editor, 'settings', clickButton('Done'));
+await inPage(editor, 'settings', clickClosing('Done'));
 r.doneCloses = await until(async () => {
   const s = await stateOf(editor);
   return !s.settingsOpen && s.windowOpen;

@@ -69,6 +69,9 @@ while read -r image prep; do
   else
     no "$image: ${result:-no result} — $(grep -v '^RESULT' <<<"$out" | tail -3 | tr '\n' ' ')"
   fi
+# Arch's packages are installed with a full upgrade (-Syu): a partial one
+# (-Sy) can fail outright on a version conflict, installing nothing, and was
+# hidden until a library absent from the base image was checked.
 done <<'IMAGES'
 quay.io/almalinux/almalinux:8 rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux && dnf -y install libusb systemd-libs libwayland-client
 docker.io/library/debian:11 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
@@ -77,7 +80,7 @@ docker.io/library/ubuntu:22.04 apt-get update && apt-get install -y libusb-1.0-0
 docker.io/library/ubuntu:24.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
 docker.io/library/ubuntu:26.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
 registry.fedoraproject.org/fedora:44 dnf -y install libusb1 systemd-libs libwayland-client
-docker.io/library/archlinux:latest pacman -Sy --noconfirm libusb systemd-libs wayland
+docker.io/library/archlinux:latest pacman -Syu --noconfirm libusb systemd-libs wayland
 IMAGES
 
 # --- 3. The shipped installer, piped ------------------------------------------------

@@ -30,9 +30,11 @@ int platform_open(const char *output, struct panel_output *info, char *err, size
 int platform_fd(void);
 
 /* Read and handle pending events. Returns 0, or an exit code when the
- * output went away (3) or the connection was lost (4). Sets *resized when the
- * surface's size changed: the canvas is then new and blank. */
-int platform_dispatch(int *resized);
+ * surface cannot be shown (3) or the connection was lost (4). Sets *resized
+ * when the surface's size changed, or it was shown again: the canvas is then
+ * new and blank. Sets *lost when the output went away: nothing is shown until
+ * an output of the same name comes back, and *resized says when it has. */
+int platform_dispatch(int *resized, int *lost);
 
 /* Flush outgoing requests; call before poll(). */
 void platform_prepare(void);

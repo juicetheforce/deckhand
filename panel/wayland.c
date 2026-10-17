@@ -15,6 +15,14 @@
  * Buffers: two shared-memory buffers the size of the surface in pixels. The
  * canvas is drawn in memory of its own; presenting copies it into a buffer the
  * compositor has let go of, and commits only when the last frame was shown.
+ *
+ * The output can go away while its screen is still plugged in: KWin removes
+ * a screen's output when it wakes from power saving, and adds it back a
+ * moment later. So losing the output does not end the helper: the surface is
+ * taken down, the canvas kept, and the surface made again when an output of
+ * the same name is announced — an event, no timer. Whether the screen is
+ * still plugged in is the daemon's to judge, from the kernel; it quits this
+ * helper when it is not.
  */
 
 #define _GNU_SOURCE
@@ -57,9 +65,15 @@ static struct wl_shm *shm;
 static struct zwlr_layer_shell_v1 *layer_shell;
 static struct xdg_wm_base *wm_base;
 static struct zxdg_output_manager_v1 *output_manager;
+/* A slot is free when wl is NULL: outputs come and go with every wake. */
 static struct output outputs[MAX_OUTPUTS];
-static int output_count;
 static struct output *target;
+static char target_name[64];
+/* The output went away; waiting for one of the same name. */
+static int waiting;
+static struct output *announced;
+/* The compositor closed the surface while the output stayed: made again, a few times. */
+static int reopened;
 
 static struct wl_surface *surface;
 static struct zwlr_layer_surface_v1 *layer_surface;
@@ -67,7 +81,7 @@ static struct xdg_surface *xdg_surface;
 static struct xdg_toplevel *toplevel;
 
 static int logical_w, logical_h;
-static int configured, size_changed, closed_by_compositor, target_removed;
+static int configured, size_changed, closed_by_compositor, target_removed, surface_new;
 static struct buffer buffers[2];
 static uint32_t *canvas;
 static int canvas_w, canvas_h;
@@ -97,7 +111,9 @@ static void xdg_output_size(void *data, struct zxdg_output_v1 *x, int32_t a, int
 static void xdg_output_done(void *data, struct zxdg_output_v1 *x) { (void)data; (void)x; }
 static void xdg_output_name(void *data, struct zxdg_output_v1 *x, const char *name) {
   (void)x;
-  snprintf(((struct output *)data)->name, sizeof ((struct output *)data)->name, "%s", name);
+  struct output *o = data;
+  snprintf(o->name, sizeof o->name, "%s", name);
+  if (waiting && !strcmp(o->name, target_name)) announced = o;
 }
 static void xdg_output_description(void *data, struct zxdg_output_v1 *x, const char *d) { (void)data; (void)x; (void)d; }
 static const struct zxdg_output_v1_listener xdg_output_listener = {
@@ -121,18 +137,38 @@ static void registry_global(void *data, struct wl_registry *r, uint32_t name, co
     wm_base = wl_registry_bind(r, name, &xdg_wm_base_interface, 1);
   } else if (!strcmp(interface, zxdg_output_manager_v1_interface.name)) {
     output_manager = wl_registry_bind(r, name, &zxdg_output_manager_v1_interface, min_u32(version, 3));
-  } else if (!strcmp(interface, wl_output_interface.name) && output_count < MAX_OUTPUTS) {
-    struct output *o = &outputs[output_count++];
+  } else if (!strcmp(interface, wl_output_interface.name)) {
+    struct output *o = NULL;
+    for (int i = 0; i < MAX_OUTPUTS && !o; i++)
+      if (!outputs[i].wl) o = &outputs[i];
+    if (!o) return;
     o->global = name;
     o->scale = 1;
+    o->name[0] = 0;
     o->wl = wl_registry_bind(r, name, &wl_output_interface, min_u32(version, 2));
     wl_output_add_listener(o->wl, &output_listener, o);
+    /* After start-up, its name is asked for at once (at start-up, platform_open asks for all). */
+    if (output_manager && target_name[0]) {
+      o->xdg = zxdg_output_manager_v1_get_xdg_output(output_manager, o->wl);
+      zxdg_output_v1_add_listener(o->xdg, &xdg_output_listener, o);
+    }
   }
 }
 
 static void registry_global_remove(void *data, struct wl_registry *r, uint32_t name) {
   (void)data; (void)r;
-  if (target && target->global == name) target_removed = 1;
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
+    struct output *o = &outputs[i];
+    if (!o->wl || o->global != name) continue;
+    if (o == target) {
+      target_removed = 1;
+      target = NULL;
+    }
+    if (o == announced) announced = NULL;
+    if (o->xdg) zxdg_output_v1_destroy(o->xdg);
+    wl_output_destroy(o->wl);
+    memset(o, 0, sizeof *o);
+  }
 }
 static const struct wl_registry_listener registry_listener = { registry_global, registry_global_remove };
 
@@ -190,12 +226,16 @@ static void buffer_release(void *data, struct wl_buffer *b) {
 }
 static const struct wl_buffer_listener buffer_listener = { buffer_release };
 
-static void free_buffers(void) {
+static void free_shm_buffers(void) {
   for (int i = 0; i < 2; i++) {
     if (buffers[i].wl) wl_buffer_destroy(buffers[i].wl);
     if (buffers[i].pixels) munmap(buffers[i].pixels, buffers[i].size);
     memset(&buffers[i], 0, sizeof buffers[i]);
   }
+}
+
+static void free_buffers(void) {
+  free_shm_buffers();
   free(canvas);
   canvas = NULL;
 }
@@ -240,6 +280,7 @@ static int fit_surface(struct panel_output *info, char *err, size_t errlen) {
 /* ---- platform.h ---- */
 
 static struct panel_output *current;
+static void make_surface(struct panel_output *info);
 
 int platform_open(const char *name, struct panel_output *info, char *err, size_t errlen) {
   display = wl_display_connect(NULL);
@@ -249,15 +290,36 @@ int platform_open(const char *name, struct panel_output *info, char *err, size_t
   wl_display_roundtrip(display);
   if (!compositor || !shm) { snprintf(err, errlen, "the compositor lacks wl_compositor or wl_shm"); return 4; }
   if (!output_manager) { snprintf(err, errlen, "the compositor has no xdg-output, so outputs cannot be found by name"); return 4; }
-  for (int i = 0; i < output_count; i++) {
+  snprintf(target_name, sizeof target_name, "%s", name);
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
+    if (!outputs[i].wl) continue;
     outputs[i].xdg = zxdg_output_manager_v1_get_xdg_output(output_manager, outputs[i].wl);
     zxdg_output_v1_add_listener(outputs[i].xdg, &xdg_output_listener, &outputs[i]);
   }
   wl_display_roundtrip(display);
-  for (int i = 0; i < output_count; i++)
-    if (!strcmp(outputs[i].name, name)) target = &outputs[i];
+  for (int i = 0; i < MAX_OUTPUTS; i++)
+    if (outputs[i].wl && !strcmp(outputs[i].name, name)) target = &outputs[i];
   if (!target) { snprintf(err, errlen, "no output named %s", name); return 2; }
 
+  if (!layer_shell && !wm_base) { snprintf(err, errlen, "the compositor has neither layer-shell nor xdg-shell"); return 4; }
+  if (wm_base) xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
+  make_surface(info);
+  while (!configured && !closed_by_compositor) {
+    if (wl_display_dispatch(display) < 0) { snprintf(err, errlen, "lost the Wayland connection"); return 4; }
+  }
+  if (closed_by_compositor || logical_w <= 0 || logical_h <= 0) { snprintf(err, errlen, "the compositor would not show the surface"); return 3; }
+  size_changed = 0;
+  surface_new = 0;
+  snprintf(info->name, sizeof info->name, "%s", name);
+  current = info;
+  return fit_surface(info, err, errlen);
+}
+
+/* The surface on the target output, committed with no buffer: its size comes
+ * with the compositor's configure. */
+static void make_surface(struct panel_output *info) {
+  configured = 0;
+  surface_new = 1;
   surface = wl_compositor_create_surface(compositor);
   if (layer_shell) {
     layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, surface, target->wl, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "deckhand-panel");
@@ -268,8 +330,7 @@ int platform_open(const char *name, struct panel_output *info, char *err, size_t
     zwlr_layer_surface_v1_set_keyboard_interactivity(layer_surface, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     zwlr_layer_surface_v1_set_size(layer_surface, 0, 0);
     info->surface_kind = "layer-shell";
-  } else if (wm_base) {
-    xdg_wm_base_add_listener(wm_base, &wm_listener, NULL);
+  } else {
     xdg_surface = xdg_wm_base_get_xdg_surface(wm_base, surface);
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
     toplevel = xdg_surface_get_toplevel(xdg_surface);
@@ -278,29 +339,63 @@ int platform_open(const char *name, struct panel_output *info, char *err, size_t
     xdg_toplevel_set_app_id(toplevel, "io.github.juicetheforce.Deckhand.panel");
     xdg_toplevel_set_fullscreen(toplevel, target->wl);
     info->surface_kind = "fullscreen-window";
-  } else {
-    snprintf(err, errlen, "the compositor has neither layer-shell nor xdg-shell");
-    return 4;
   }
   wl_surface_commit(surface);
-  while (!configured && !closed_by_compositor) {
-    if (wl_display_dispatch(display) < 0) { snprintf(err, errlen, "lost the Wayland connection"); return 4; }
-  }
-  if (closed_by_compositor || logical_w <= 0 || logical_h <= 0) { snprintf(err, errlen, "the compositor would not show the surface"); return 3; }
-  size_changed = 0;
-  snprintf(info->name, sizeof info->name, "%s", name);
-  current = info;
-  return fit_surface(info, err, errlen);
+}
+
+/* Takes the surface down; the canvas stays, so drawing goes on meanwhile. */
+static void drop_surface(void) {
+  if (frame_pending) wl_callback_destroy(frame_pending);
+  frame_pending = NULL;
+  free_shm_buffers();
+  if (layer_surface) zwlr_layer_surface_v1_destroy(layer_surface);
+  if (toplevel) xdg_toplevel_destroy(toplevel);
+  if (xdg_surface) xdg_surface_destroy(xdg_surface);
+  if (surface) wl_surface_destroy(surface);
+  layer_surface = NULL;
+  toplevel = NULL;
+  xdg_surface = NULL;
+  surface = NULL;
+  configured = 0;
+  surface_new = 0;
 }
 
 int platform_fd(void) { return wl_display_get_fd(display); }
 
 void platform_prepare(void) { wl_display_flush(display); }
 
-int platform_dispatch(int *resized) {
+int platform_dispatch(int *resized, int *lost) {
   if (wl_display_dispatch(display) < 0) return 4;
-  if (target_removed || closed_by_compositor) return 3;
-  if (size_changed) {
+  if (target_removed) {
+    /* The output went away: wait for it to be announced again. */
+    target_removed = closed_by_compositor = 0;
+    drop_surface();
+    reopened = 0;
+    waiting = 1;
+    *lost = 1;
+  } else if (closed_by_compositor) {
+    /* Closed with the output still there: made again, but not forever. */
+    closed_by_compositor = 0;
+    drop_surface();
+    if (++reopened > 3) return 3;
+    make_surface(current);
+  }
+  if (waiting && announced) {
+    target = announced;
+    announced = NULL;
+    waiting = 0;
+    make_surface(current);
+  }
+  if (surface_new && configured) {
+    char err[128];
+    surface_new = 0;
+    size_changed = 0;
+    if (logical_w <= 0 || logical_h <= 0) return 3;
+    if (fit_surface(current, err, sizeof err)) return 4;
+    *resized = 1;
+    return 0;
+  }
+  if (size_changed && surface) {
     char err[128];
     size_changed = 0;
     if (fit_surface(current, err, sizeof err)) return 4;
@@ -338,7 +433,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 static const struct wl_callback_listener frame_listener = { frame_done };
 
 void platform_present(void) {
-  if (!damaged || frame_pending) return;
+  if (!damaged || frame_pending || !surface || surface_new) return;
   struct buffer *b = !buffers[0].busy ? &buffers[0] : !buffers[1].busy ? &buffers[1] : NULL;
   if (!b) return; /* shown when a buffer comes back: its release is an event, and dispatch presents again */
   memcpy(b->pixels, canvas, b->size);

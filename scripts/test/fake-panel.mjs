@@ -17,8 +17,9 @@
  *   FAKE_PANEL_TOUCH     "open" (default): answers a touch frame with
  *                        "touch-open" for each device; "fail": "touch-failed"
  *
- * SIGUSR1: report a resize (ready again). SIGUSR2: exit 3, as when the output
- * goes away.
+ * SIGUSR1: report a resize (ready again). SIGUSR2: the output goes away
+ * ("output-lost"), as KWin does when a screen wakes; SIGHUP: it is back
+ * (ready again). The real helper waits for its output rather than exiting.
  */
 import fs from 'node:fs';
 import net from 'node:net';
@@ -61,10 +62,8 @@ if (process.env.FAKE_PANEL_INPUT_DIR) {
   server.listen(sock);
   server.unref();
 }
-process.on('SIGUSR2', () => {
-  say({ ev: 'error', message: 'the output went away' });
-  process.exit(3);
-});
+process.on('SIGUSR2', () => say({ ev: 'output-lost' }));
+process.on('SIGHUP', () => ready());
 
 let buffer = Buffer.alloc(0);
 let acks = Promise.resolve();

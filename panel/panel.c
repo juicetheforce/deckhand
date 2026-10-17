@@ -30,8 +30,13 @@
  *
  * stdout, to the daemon — one JSON object per line:
  *   {"ev":"ready","output":…,"width":…,"height":…,"scale":…,"transform":…,"surface":…}
- *        once the surface is shown, and again after a resize: the canvas is
- *        then blank, and the daemon draws everything again.
+ *        once the surface is shown, and again after a resize or once the
+ *        output is back: the canvas is then blank, and the daemon draws
+ *        everything again.
+ *   {"ev":"output-lost"}  the output went away with its screen still plugged
+ *        in (KWin does so when a screen wakes): nothing is shown, touches are
+ *        still read, and "ready" follows when an output of the same name is
+ *        announced again. The daemon quits the helper if the screen is gone.
  *   {"ev":"drawn"}       one per image, once it is on the canvas
  *   {"ev":"touch-open","device":…}             a device is being read
  *   {"ev":"touch-failed","device":…,"message":…}  it could not be opened or grabbed
@@ -48,7 +53,8 @@
  * it; the daemon finds no control there.
  *
  * Exit: 0 asked to (Q, or stdin closed), 2 bad arguments or no such output,
- * 3 the output went away, 4 the windowing system went away, 5 a bad frame.
+ * 3 the compositor would not show the panel, 4 the windowing system went away,
+ * 5 a bad frame. Losing the output is not an exit ("output-lost").
  *
  * --dump FILE writes the screen's buffer as a binary PPM on exit, for tests.
  * --touch-test-range MAX lets a touch path that is not an input device (a
@@ -402,9 +408,10 @@ int main(int argc, char **argv) {
       break;
     }
     if (fds[1].revents) {
-      int resized = 0;
-      int c = platform_dispatch(&resized);
-      if (c) { exit_code = c; emit_error(c == 3 ? "the output went away" : "lost the windowing system"); break; }
+      int resized = 0, lost = 0;
+      int c = platform_dispatch(&resized, &lost);
+      if (c) { exit_code = c; emit_error(c == 3 ? "the compositor would not show the panel" : "lost the windowing system"); break; }
+      if (lost) emit("{\"ev\":\"output-lost\"}");
       if (resized) {
         place_canvas();
         fill_background();

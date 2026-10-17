@@ -27,7 +27,7 @@
  *
  *   make -C panel && node scripts/smoke-panel.mjs
  */
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -180,6 +180,48 @@ try {
     JSON.stringify([at(200, 100), at(219, 119), at(199, 110), at(220, 110)]));
   const [rr, gg, bb] = at(602, 202);
   check(`a half-transparent image blended over the background (${rr},${gg},${bb} ≈ 5,138,15)`, Math.abs(rr - 5) <= 1 && Math.abs(gg - 138) <= 1 && Math.abs(bb - 15) <= 1);
+
+  console.log('the output going away and coming back');
+  // KWin removes a screen's output when it wakes from power saving and adds it
+  // back; the helper waits for it rather than exiting. kscreen-doctor disables
+  // and enables the headless KWin's output, which does the same to the
+  // output's global.
+  if (!which('kscreen-doctor')) {
+    console.log('  not checked here: no kscreen-doctor on this machine');
+  } else {
+    const kd = (what) => new Promise((resolve) => execFile('kscreen-doctor', [`output.Virtual-1.${what}`], { env: { ...helperEnv, QT_QPA_PLATFORM: 'wayland' }, timeout: 15000 }, (err) => resolve(!err)));
+    const dump2 = path.join(TMP, 'back.ppm');
+    const w = helper(['--output', 'Virtual-1', '--dump', dump2]);
+    await until(() => w.events.some((e) => e.ev === 'ready'));
+    const count = (ev) => w.events.filter((e) => e.ev === ev).length;
+    const pid = w.proc.pid;
+    const ticks = async () => {
+      const stat = (await fs.readFile(`/proc/${pid}/stat`, 'utf8')).split(') ')[1].split(' ');
+      return Number(stat[11]) + Number(stat[12]);
+    };
+    for (const round of [1, 2]) {
+      check(`round ${round}: the output disabled: "output-lost", and the helper stays`, (await kd('disable')) && (await until(() => count('output-lost') === round)) && w.proc.exitCode === null, JSON.stringify(w.events));
+      w.proc.stdin.write(imageFrame(0, 0, 4, 4, Buffer.alloc(4 * 4 * 4, 255)));
+      check(`round ${round}: drawing goes on meanwhile, answered "drawn"`, await until(() => count('drawn') === round));
+      if (round === 1) {
+        await sleep(300);
+        const t0 = await ticks();
+        await sleep(2000);
+        const t1 = await ticks();
+        check(`waiting for the output for 2 s: no CPU time used (${t1 - t0} ticks)`, t1 === t0);
+      }
+      check(`round ${round}: enabled again: "ready" again, on the same output`, (await kd('enable')) && (await until(() => count('ready') === round + 1)) && w.events.filter((e) => e.ev === 'ready').at(-1).output === 'Virtual-1', JSON.stringify(w.events));
+    }
+    w.proc.stdin.write(canvasFrame(1920, 720, [1, 2, 3]));
+    w.proc.stdin.write(imageFrame(500, 300, 8, 8, Buffer.alloc(8 * 8 * 4).fill(Buffer.from([0, 0, 255, 255]))));
+    await until(() => count('drawn') === 3);
+    w.proc.stdin.write(quitFrame());
+    check('quit after: exit 0', (await w.exited) === 0);
+    const back = await fs.readFile(dump2);
+    const head2 = back.subarray(0, 20).toString('latin1').match(/^P6\n(\d+) (\d+)\n255\n/);
+    const px = (x, y) => JSON.stringify([...back.subarray(head2[0].length + (y * 1920 + x) * 3, head2[0].length + (y * 1920 + x) * 3 + 3)]);
+    check('what is drawn once it is back is on the screen', px(503, 303) === '[0,0,255]' && px(10, 10) === '[1,2,3]', JSON.stringify([px(503, 303), px(10, 10)]));
+  }
 
   console.log('touch, from recorded frames');
   // struct input_event on x86_64: two longs of time, u16 type, u16 code, s32 value.

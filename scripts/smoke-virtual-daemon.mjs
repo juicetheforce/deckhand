@@ -13,8 +13,10 @@
  *   closes the deck, shows the tap screen, replies with the touchscreen
  *   tapped, and the deck comes back; a client that goes away cancels it;
  * - a reload that changes the panel redraws it with the new controls;
- * - the screen going away (the helper exits 3) disconnects the deck;
- * - plugged in again, the next scan attaches it again;
+ * - its output going away with the screen still plugged in (a wake) keeps the
+ *   deck, and its coming back draws the panel again;
+ * - the screen unplugged: the next scan disconnects the deck and quits the
+ *   helper; plugged in again, the next scan attaches it again;
  * - stopping the daemon quits the helper.
  *
  * The child gets scripts/test/fake-decks.mjs with no Stream Decks plugged in
@@ -222,9 +224,20 @@ try {
   const start = (await frames()).findLast((f) => f.type === 'start' && f.output === 'DP-4');
   const disconnects = () => (log().match(/deck GRA-6e4e disconnected/g) ?? []).length;
   const disconnectsBefore = disconnects();
-  await screen('disconnected');
   process.kill(start.pid, 'SIGUSR2');
-  check('the screen going away disconnects the deck', await until(() => disconnects() === disconnectsBefore + 1));
+  check('its output going, the screen still plugged in (a wake): said, and the deck stays', await until(() => /GRA-6e4e: its output went away/.test(log())));
+  process.kill(child.pid, 'SIGUSR2');
+  await sleep(500);
+  check('…a scan meanwhile keeps it', disconnects() === disconnectsBefore && (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e')?.connected === true);
+  const drawnBefore = (await frames()).length;
+  process.kill(start.pid, 'SIGHUP');
+  check('…and its output back: said, and the panel drawn again', await until(async () => /GRA-6e4e: its output is back/.test(log()) && (await frames()).slice(drawnBefore).filter((f) => f.type === 'I').length >= 2));
+
+  const quitsAtUnplug = (await frames()).filter((f) => f.type === 'Q').length;
+  await screen('disconnected');
+  process.kill(child.pid, 'SIGUSR2');
+  check('the screen unplugged: the next scan disconnects the deck', await until(() => disconnects() === disconnectsBefore + 1));
+  check('…and quits its helper', await until(async () => (await frames()).filter((f) => f.type === 'Q').length > quitsAtUnplug));
   check('…and status says it is not connected', await until(async () => (await client.request('status')).result.decks.find((d) => d.serial === 'GRA-6e4e')?.connected === false));
 
   await screen('connected');

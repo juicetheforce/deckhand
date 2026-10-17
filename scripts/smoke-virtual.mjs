@@ -233,13 +233,24 @@ await settle('resize', async () => {
   const after = (await frames()).slice(before);
   check('a resize: the canvas again, and every key drawn again', after[0]?.type === 'K' && after.filter((f) => f.type === 'I').length >= 2);
 });
-await settle('screen gone', async () => {
+await settle('output lost and back', async () => {
   const start = (await frames()).find((f) => f.type === 'start' && f.output === 'DP-4');
   process.kill(start.pid, 'SIGUSR2');
-  check('the screen going asks the daemon to scan', await until(async () => asked.length === 1));
+  await sleep(300);
+  check('the output going, the screen still plugged in (a wake): no scan asked, the deck stays', asked.length === 0 && (await driver.list()).length === 1);
+  const before = (await frames()).length;
+  process.kill(start.pid, 'SIGHUP');
+  check('…and when it is back, the canvas again and every key drawn again', await until(async () => {
+    const after = (await frames()).slice(before);
+    return after[0]?.type === 'K' && after.filter((f) => f.type === 'I').length >= 2;
+  }));
+});
+await settle('screen unplugged', async () => {
   await plug('DP-4', 'disconnected');
-  check('…which finds it gone', (await driver.list()).length === 0);
+  check('a scan finds the screen gone', (await driver.list()).length === 0);
+  const before = (await frames()).length;
   await session.close();
+  check('…the session closing quits the helper, which is not a failure: no scan asked', (await frames()).slice(before).some((f) => f.type === 'Q') && asked.length === 0);
   await plug('DP-4', 'connected');
   check('plugged back in: listed again at once', (await driver.list()).length === 1);
 });
@@ -253,6 +264,21 @@ await settle('failing', async () => {
   check('…and the deck is not listed again straight away, so it cannot respawn in a loop', (await driver.list()).length === 0);
 });
 
+console.log('a helper that stops unasked, its screen still connected');
+await settle('stopped', async () => {
+  config = validateConfig({ decks: { 'output-HDMI-A-2': { virtual: { output: 'HDMI-A-2' } } }, profiles: { p: { layouts: { 'output-HDMI-A-2': { panel: grid('k', 1, 1, 200), pages: { main: { buttons: {} } } } } } } });
+  await plug('HDMI-A-2', 'connected');
+  const [d] = await driver.list();
+  const dev = await d.open();
+  const askedBefore = asked.length;
+  const start = (await frames()).findLast((f) => f.type === 'start' && f.output === 'HDMI-A-2');
+  process.kill(start.pid, 'SIGKILL');
+  check('a scan is asked', await until(async () => asked.length === askedBefore + 1));
+  check('…which leaves the deck out, so its session closes rather than keep a helper that is gone', (await driver.list()).length === 0);
+  check('…and not straight back either, so a broken helper cannot loop', (await driver.list()).length === 0);
+  void dev;
+});
+
 console.log('closing');
 await settle('quit', async () => {
   config = validateConfig({ decks: { 'output-HDMI-A-1': { virtual: { output: 'HDMI-A-1' } } }, profiles: { p: { layouts: { 'output-HDMI-A-1': { panel: grid('k', 1, 1, 200), pages: { main: { buttons: {} } } } } } } });
@@ -260,9 +286,11 @@ await settle('quit', async () => {
   const [d] = await driver.list();
   const dev = await d.open();
   const before = (await frames()).length;
+  const askedBefore = asked.length;
   await dev.close();
   check('closing sends quit and the helper exits', (await frames()).slice(before).some((f) => f.type === 'Q'));
-  check('a close the daemon asked for is not a failure: no scan asked', asked.length === 1);
+  await sleep(200);
+  check('a close the daemon asked for is not a failure: no scan asked', asked.length === askedBefore);
 });
 
 await fs.rm(TMP, { recursive: true, force: true });
