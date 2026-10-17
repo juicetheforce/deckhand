@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Run the virtual-deck touch probe on the laptop panel and the Xeneon Edge, then take the stage 1 decisions."
+next = "Ryan runs the S3 check list on the 10.3\" panel (install, pair by a tap, touch keys, lock); then S4, adding a virtual deck in the editor."
 category = "Gaming"
 paused = false
 focus = true
@@ -19,4 +19,5 @@ Twitch sessions 1 and 2 confirmed live on real Twitch (2026-10-14): Marker, Clip
 v0.7.0 (2026-10-14): Twitch and a reworked settings window (sidebar of pages, status dots); published before the day-later link check, at Ryan's word.
 v0.7.1 (2026-10-15): code audit 2's fixes (credentials write race, icon reads, Studio/Neo/Pedal, event-driven faces: a page of integration keys 0.85% -> 0.09% of a core); every failed press notifies, counted; Update available in About (reverses "no update check"). The Twitch link confirmed alive after 25 h.
 Virtual decks planned (2026-10-15): a touchscreen as a deck, layouts keyed by the screen; six stages from a probe to custom panels; the plan (not yet decided) reads the touchscreen directly, grabbed, so no focus stealing and no KDE mapping. Twitch app renamed "Deckhand App".
+Virtual decks stage 1 (2026-10-16): S1 (the device seam) and S2 (the display helper) confirmed on the laptop; S3 built: touch read directly and grabbed, screens keyed by EDID, pairing by one tap, no touch while the session is locked or inactive (failing closed). The udev rule grants touchscreens only; the clock key stays as it is.
 """
