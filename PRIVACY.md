@@ -52,7 +52,7 @@ on its keys, so it stores nothing it reads from Twitch.
 
 **Remove** in the editor's **Settings › Integrations › Twitch** deletes the
 link from your computer and ends it at Twitch. You can also end it at
-twitch.tv/settings/connections, where Twitch lists it as "DeckHandApp";
+twitch.tv/settings/connections, where Twitch lists it as "Deckhand App";
 Deckhand then stops using it, and Remove deletes what is left.
 Uninstalling Deckhand with `deckhand-uninstall` ends the link at Twitch
 first, then deletes that file with the rest of Deckhand's state. If Twitch

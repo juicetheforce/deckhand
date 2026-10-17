@@ -21,10 +21,17 @@ usually within a few days. Only the latest release is supported.
   anything that lets another user reach it, or a client make the daemon do
   more than its commands allow.
 - **The udev rule** (`/etc/udev/rules.d/60-deckhand.rules`), which gives the
-  logged-in user access to the decks and to `/dev/uinput`. Its breadth is
-  deliberate — any process of that user can then synthesise keystrokes, which
-  is why uninstalling always removes it — but a way to widen it further is in
-  scope.
+  logged-in user access to the decks and to `/dev/uinput`, and the rules
+  for paired touchscreens (below). Its breadth is deliberate — any process
+  of that user can then
+  synthesise keystrokes, which is why uninstalling always removes it — but a
+  way to widen it further is in scope.
+- **Virtual decks**: anything that lets a touch run an action while the
+  session is locked or not the active one; that gives access to a
+  touchscreen that was not paired, or keeps the temporary access after
+  pairing ends; that makes the root pairing helper do anything but write
+  its own rule file and set access on touchscreens; or that leaves a
+  touchscreen grabbed after Deckhand lets go of it.
 - **The install script** (`scripts/install.sh`), which runs `sudo` for the
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
@@ -35,6 +42,53 @@ usually within a few days. Only the latest release is supported.
 - **Twitch**: anything that sends a Twitch token anywhere but `id.twitch.tv`
   and `api.twitch.tv`, or makes Deckhand act on Twitch without a key press,
   beyond the hourly check Twitch requires and linking you started.
+
+## Device access
+
+The udev rule Deckhand installs uses `uaccess`: access goes to the user at
+the active local session, and is taken back on a user switch. It covers
+Stream Decks (by Elgato's USB vendor) and `/dev/uinput`, which lets any
+program you run type as you.
+
+**It covers no touchscreen.** Wayland keeps programs from reading each other's
+input: normally only your desktop sees a touchscreen's touches. A rule that
+gives you access to a touchscreen opts that device out of the protection, so
+any program running as you could read its touches — on a touchscreen laptop,
+including what you type on its on-screen keyboard. So Deckhand gives access
+**only to touchscreens you pair as virtual decks, never to any other, and
+only from the moment you pair them**:
+
+- Pairing a touchscreen in Settings › Decks asks for your password once. A
+  small helper, `/usr/local/libexec/deckhand-touch-access`, installed
+  root-owned, then gives you temporary read access to the connected
+  touchscreens, so Deckhand can see which one you tap; writes a rule for that
+  one touchscreen alone, by its vendor and product IDs and its serial number
+  when it has one, to `/etc/udev/rules.d/61-deckhand-touchscreens-<your user
+  ID>.rules`; and takes the temporary access away. It is taken away too if
+  you cancel, if nothing is tapped, if the editor closes, and after 5
+  minutes at most.
+- **The access belongs to you, the user who paired the touchscreen, not to
+  whoever is logged in.** The rule gives your user read access by a file ACL
+  each time the touchscreen appears. Unlike the Stream Decks', it is not
+  handed to the person at the seat: if someone else logs in on the same
+  computer, they cannot read it, and your programs still can, even while
+  their session is the active one. Read access only: nothing can write to it.
+- Why not `uaccess`, as for the decks: udev keeps that tag on a device until
+  it is unplugged or the computer restarts, and gives the access back every
+  time the device's rules are re-applied — which other software does too. A
+  touchscreen granted that way could not be taken back on Remove. A file ACL
+  is gone once removed.
+- A touchscreen with no serial number is covered by its model: an identical
+  touchscreen plugged in later is covered too.
+- Removing a virtual deck removes its touchscreen's entry and its ACL at
+  once, and asks for your password to do it. Uninstalling removes every
+  user's entries and the helper, and takes your access off each touchscreen
+  at once; another user's paired access lasts until the computer restarts.
+
+Deckhand grabs the paired touchscreen, so the desktop sees none of its
+touches. Reading the device directly bypasses the lock screen, so **touches
+do nothing while the session is locked or not the active one**, as logind
+reports it, and nothing while Deckhand cannot tell.
 
 ## Secrets
 
@@ -83,7 +137,7 @@ from anywhere**. Anything that can read the credentials file can act as you
 on Twitch, within what the link allows (your title, category and markers;
 clips; chat messages), until the link is ended. End it with **Remove** in
 Deckhand's Settings, which revokes it at Twitch, or at
-twitch.tv/settings/connections, where Twitch lists it as "DeckHandApp".
+twitch.tv/settings/connections, where Twitch lists it as "Deckhand App".
 Changing your Twitch password ends it too.
 
 Deckhand talks to Twitch only at `id.twitch.tv` and `api.twitch.tv`, over
