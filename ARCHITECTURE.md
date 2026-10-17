@@ -146,9 +146,20 @@ different profiles.
   gives temporary read access to the touchscreens while the daemon waits for
   the tap, then writes a rule for the touchscreen tapped alone (its vendor
   and product IDs, and its serial when it has one) and drops the temporary
-  access. Removing the deck removes its entry (the password again);
-  uninstalling removes them all. A touchscreen with no serial is covered by
-  model, so identical ones share an entry.
+  access. Removing the deck removes its entry and its access (the password
+  again); uninstalling removes them all. A touchscreen with no serial is
+  covered by model, so identical ones share an entry.
+- **That access is a file ACL for the user who paired the touchscreen, not
+  the `uaccess` tag**, so it belongs to that user rather than to whoever is
+  at the seat. udev keeps a device's tags until it is unplugged or the
+  machine restarts, and its seat rule re-grants `uaccess` access on every
+  re-trigger of a device that ever had the tag — measured: a touchscreen
+  granted that way got its access back the moment it was taken away. A
+  rule that runs `setfacl` for one user on one device has nothing sticky:
+  removing it is deleting the rule and the ACL, with no re-trigger, and
+  neither change nor add events bring it back (measured on the panel and
+  the laptop's own touchscreen). Read access only: writing to an input
+  device can inject events into it. One rule file per user.
 - **The daemon hit-tests**, not the helper, in a module the editor shares,
   so shapes never reach C. A touch belongs to the key it started on until it
   lifts, as a held Stream Deck key does.
@@ -383,7 +394,7 @@ is here so the test is not "fixed" instead.
 | `panel/wayland.c`, `src/drivers/virtual.ts`'s helper exit | **losing the output is not losing the screen**: the helper waits for its output to be announced again (no timer) and the daemon draws everything on its next `ready`; only the kernel's connector state ends a virtual deck. **A helper that stops unasked closes its deck's session** — listed again with its screen still connected, the session would stay open around a helper that is gone, showing nothing and reported connected. Held by `smoke-panel` (a headless KWin's output disabled and enabled) and `smoke-virtual` |
 | `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |
 | `src/services/hotplug.ts` | **a display event rescans only when the connected screens or their keys changed**, and is ignored with no virtual deck configured: `drm` change events have arrived every few seconds at rest with nothing plugged in |
-| `udev/60-deckhand.rules`, `udev/deckhand-touch-access`, `editor/src/main/touch-access.ts` | **no touchscreen is readable unless it is paired as a virtual deck, and only from its pairing** (Ryan's decision, 2026-10-17). A rule granting a touchscreen opts it out of Wayland's separation of programs' input: any program the user runs could read it, a laptop's on-screen keyboard included. So no rule at install, no rule for every touchscreen, and one entry per paired touchscreen — its IDs, and its serial when it has one — written by the root helper at pairing, removed with its deck and at uninstall. The temporary access for the tap is dropped on every path: a deck added, a cancel, no tap, the editor gone, a kill, 5 minutes. The helper takes no paths or user from its caller and refuses any serial udev would read as a pattern. Never the "mouse" twin either, a plain mouse to udev. Held by `touch-access.test.sh` and `check:virtual` |
+| `udev/60-deckhand.rules`, `udev/deckhand-touch-access`, `editor/src/main/touch-access.ts` | **no touchscreen is readable unless it is paired as a virtual deck, and only from its pairing** (Ryan's decision, 2026-10-17). A rule granting a touchscreen opts it out of Wayland's separation of programs' input: any program the user runs could read it, a laptop's on-screen keyboard included. So no rule at install, no rule for every touchscreen, and one entry per paired touchscreen — its IDs, and its serial when it has one — written by the root helper at pairing, removed with its deck and at uninstall. **The grant is a file ACL for the user who paired it, read only, never `TAG+="uaccess"`**: udev's tags are sticky until the device goes, and its seat rule re-grants on every re-trigger, so a uaccess grant cannot be taken back (measured). **Nothing re-triggers a touchscreen**: access is set and taken off directly. The temporary access for the tap is dropped on every path: a deck added, a cancel, no tap, the editor gone, a kill, 5 minutes. The helper takes no paths or user from its caller and refuses any serial udev would read as a pattern. Never the "mouse" twin either, a plain mouse to udev. Held by `touch-access.test.sh`, `udev-trigger.test.sh` and `check:virtual` |
 
 ## The control socket
 

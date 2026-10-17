@@ -63,13 +63,27 @@ only from the moment you pair them**:
   root-owned, then gives you temporary read access to the connected
   touchscreens, so Deckhand can see which one you tap; writes a rule for that
   one touchscreen alone, by its vendor and product IDs and its serial number
-  when it has one, to `/etc/udev/rules.d/61-deckhand-touchscreens.rules`; and
-  takes the temporary access away. It is taken away too if you cancel, if
-  nothing is tapped, if the editor closes, and after 5 minutes at most.
+  when it has one, to `/etc/udev/rules.d/61-deckhand-touchscreens-<your user
+  ID>.rules`; and takes the temporary access away. It is taken away too if
+  you cancel, if nothing is tapped, if the editor closes, and after 5
+  minutes at most.
+- **The access belongs to you, the user who paired the touchscreen, not to
+  whoever is logged in.** The rule gives your user read access by a file ACL
+  each time the touchscreen appears. Unlike the Stream Decks', it is not
+  handed to the person at the seat: if someone else logs in on the same
+  computer, they cannot read it, and your programs still can, even while
+  their session is the active one. Read access only: nothing can write to it.
+- Why not `uaccess`, as for the decks: udev keeps that tag on a device until
+  it is unplugged or the computer restarts, and gives the access back every
+  time the device's rules are re-applied — which other software does too. A
+  touchscreen granted that way could not be taken back on Remove. A file ACL
+  is gone once removed.
 - A touchscreen with no serial number is covered by its model: an identical
   touchscreen plugged in later is covered too.
-- Removing a virtual deck removes its touchscreen's entry, and asks for your
-  password to do it. Uninstalling removes them all, and the helper.
+- Removing a virtual deck removes its touchscreen's entry and its ACL at
+  once, and asks for your password to do it. Uninstalling removes every
+  user's entries and the helper, and takes your access off each touchscreen
+  at once; another user's paired access lasts until the computer restarts.
 
 Deckhand grabs the paired touchscreen, so the desktop sees none of its
 touches. Reading the device directly bypasses the lock screen, so **touches

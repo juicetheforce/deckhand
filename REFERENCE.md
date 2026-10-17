@@ -215,7 +215,8 @@ shows "Tap this screen" (within 30 seconds; with no touch it says so, and
 you can choose another screen), and choose a key size. **Only a touchscreen
 you pair is readable by Deckhand, or by any program you run**, and only from
 the moment you pair it ([SECURITY.md](SECURITY.md#device-access)): the
-password lets a small root helper grant access to that touchscreen alone. Small, Medium and Large aim at keys
+password lets a small root helper grant access to that touchscreen alone,
+and to your user alone — not to whoever else logs in on the computer. Small, Medium and Large aim at keys
 about 23, 30 and 45 mm apart, from the screen's own reported size, or from
 its pixels when that size is implausible; **Custom** sets the rows and
 columns, up to 12 × 24, and says when the keys get very small. The new deck
