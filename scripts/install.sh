@@ -829,9 +829,10 @@ build_and_stage() {
   cp "$REPO_DIR/tsconfig.json" "$REPO_DIR/package.json" "$REPO_DIR/package-lock.json" \
      "$REPO_DIR/README.md" "$STAGE_DIR/"
   cp "$REPO_DIR/helper/deckhand-input.c" "$REPO_DIR/helper/Makefile" "$STAGE_DIR/helper/"
-  # The virtual-deck display helper: its sources and the protocols' committed code.
+  # The virtual-deck display helper: its sources and the protocols' committed
+  # code. Every .c and .h, so a new source file cannot be left behind (one was).
   mkdir -p "$STAGE_DIR/panel/protocol"
-  cp "$REPO_DIR"/panel/{panel.c,wayland.c,platform.h,Makefile} "$STAGE_DIR/panel/"
+  cp "$REPO_DIR"/panel/*.c "$REPO_DIR"/panel/*.h "$REPO_DIR/panel/Makefile" "$STAGE_DIR/panel/"
   cp "$REPO_DIR"/panel/protocol/*.{c,h} "$STAGE_DIR/panel/protocol/"
   # Built-in icons: the daemon finds them beside dist/ and
   # draws them only as fallbacks; config.json never points here, since this
