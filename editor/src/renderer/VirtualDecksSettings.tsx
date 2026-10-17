@@ -88,7 +88,7 @@ type AddStep =
   | { step: 'size'; pairing: PairReply; size: PanelSize; rows: string; columns: string; error: string | null };
 
 export function VirtualDecks() {
-  const [view, setView] = useState<VirtualDecksView>({ decks: [], activeProfile: null });
+  const [view, setView] = useState<VirtualDecksView>({ decks: [], keptLayouts: [], activeProfile: null });
   const [add, setAdd] = useState<AddStep>({ step: 'closed' });
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [tapping, setTapping] = useState<string | null>(null);
@@ -114,11 +114,13 @@ export function VirtualDecks() {
       else setAdd({ step: 'screen', screens: (await window.deckhand.virtualScreens().then((r) => (r.ok ? r.result : null))) ?? null, error: reply.error });
       return;
     }
-    // A screen set up before and removed keeps its layouts: adding it again uses them, at their size.
-    setAdd({ step: 'size', pairing: reply.result, size: 'medium', rows: '3', columns: '', error: null });
+    const sizeStep = { step: 'size' as const, pairing: reply.result, size: 'medium' as PanelSize, rows: '3', columns: '8', error: null };
+    // Set up before and removed: its layout is kept and used as it is, so no size is asked.
+    if (view.keptLayouts.includes(reply.result.screen)) void finishAdd(sizeStep, true);
+    else setAdd(sizeStep);
   };
 
-  const finishAdd = async (step: Extract<AddStep, { step: 'size' }>) => {
+  const finishAdd = async (step: Extract<AddStep, { step: 'size' }>, kept = false) => {
     const profile = view.activeProfile;
     if (!profile) {
       setAdd({ ...step, error: 'The daemon is not reporting which profile is active, so there is nowhere to put the new layout. Is it running?' });
@@ -133,7 +135,12 @@ export function VirtualDecks() {
       return;
     }
     setAdd({ step: 'closed' });
-    setNotice({ kind: 'ok', text: `${p.name ?? p.screen} is a virtual deck, paired with ${p.touchName}. Its keys are in the editor, in “${profile.name}”.` });
+    setNotice({
+      kind: 'ok',
+      text: kept
+        ? `${p.name ?? p.screen} is a virtual deck again, paired with ${p.touchName}. Its previous layout in “${profile.name}” is kept, at the size it had.`
+        : `${p.name ?? p.screen} is a virtual deck, paired with ${p.touchName}. Its keys are in the editor, in “${profile.name}”.`,
+    });
   };
 
   const tapAgain = async (deck: VirtualDeckRow) => {
@@ -226,18 +233,24 @@ export function VirtualDecks() {
           {add.screens && add.screens.touchscreens.length === 0 && <p className="muted small">No touchscreen is connected. Plug the screen's USB cable in, then try again.</p>}
           {add.screens && add.screens.touchscreens.length > 0 && (
             <ul className="vd-screens">
-              {add.screens.screens.map((s) => (
+              {add.screens.screens.map((s) => {
+                // Judged from the editor's own list, not the daemon's flag:
+                // the daemon learns of a Remove only after the autosave and
+                // its reload, a moment later.
+                const taken = view.decks.some((d) => d.key === s.key);
+                return (
                 <li key={s.connector} data-vd-screen={s.connector}>
-                  <button className="sp-button" disabled={s.deck !== null} onClick={() => void tap(s.connector)}>
+                  <button className="sp-button" disabled={taken} onClick={() => void tap(s.connector)}>
                     {s.name ?? s.key}
                   </button>
                   <span className="muted small">
                     {s.connector}
                     {s.widthMm ? ` · ${s.widthMm} × ${s.heightMm} mm` : ''}
-                    {s.deck !== null ? ' · already a virtual deck' : ''}
+                    {taken ? ' · already a virtual deck' : ''}
                   </span>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
           <div className="button-row">

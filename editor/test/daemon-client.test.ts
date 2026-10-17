@@ -129,10 +129,10 @@ await check('a virtual deck\'s new size reaches the editor on the config event, 
   for (const units of ['pixels', 'cells'] as const) {
     const file = path.join(await scratchDir(), 'fake.sock');
     const fake = await fakeDaemon(file, units);
-    let view: DaemonView | null = null;
+    let view = null as DaemonView | null;
     const client = new DaemonClient({ socketPath: file, onChange: (v) => (view = v), replyTimeoutMs: 1000 });
     client.start();
-    for (let i = 0; i < 100 && !view?.connected; i++) await sleep(20);
+    for (let i = 0; i < 100 && !(view as DaemonView | null)?.connected; i++) await sleep(20);
     const askedBefore = fake.asked();
     fake.setKeys(10);
     fake.send('config', { ok: true, at: 'later' });

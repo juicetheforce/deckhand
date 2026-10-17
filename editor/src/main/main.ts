@@ -184,7 +184,9 @@ function virtualDecksView(): VirtualDecksView {
       layouts,
     }];
   });
-  return { decks, activeProfile: active ? { id: active.id, name: active.name ?? active.id } : null };
+  const activeLayouts = active ? (config?.profiles[active.id]?.layouts ?? {}) : {};
+  const keptLayouts = Object.entries(activeLayouts).flatMap(([key, layout]) => (layout.panel && !config?.decks?.[key]?.virtual ? [key] : []));
+  return { decks, keptLayouts, activeProfile: active ? { id: active.id, name: active.name ?? active.id } : null };
 }
 
 let sentVirtual = '';
@@ -777,7 +779,7 @@ function registerIpc(): void {
   });
   // --- Virtual decks (Settings › Decks) ---
   ipcMain.handle('virtualDecks', (event) => {
-    if (!fromSettingsWindow(event)) return { decks: [], activeProfile: null };
+    if (!fromSettingsWindow(event)) return { decks: [], keptLayouts: [], activeProfile: null };
     const view = virtualDecksView();
     sentVirtual = JSON.stringify(view);
     return view;

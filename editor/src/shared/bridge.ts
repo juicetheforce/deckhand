@@ -435,6 +435,12 @@ export interface VirtualDeckRow {
 
 export interface VirtualDecksView {
   decks: VirtualDeckRow[];
+  /**
+   * Screens that were virtual decks and were removed, whose layout in the
+   * active profile is kept, by key: set up again, they use it as it is, and no
+   * size is asked.
+   */
+  keptLayouts: string[];
   /** Where a new virtual deck gets its layout: the profile the decks show now. */
   activeProfile: { id: string; name: string } | null;
 }

@@ -186,6 +186,18 @@ r.removed = await until(async () => (await onDisk()).decks?.[KEY]?.virtual === u
 r.afterRemove = await onDisk();
 r.rowGone = await until(async () => !(await exists(editor, `[data-vd-deck="${KEY}"]`)));
 
+// ADD AGAIN: its layout was kept, so no size is asked, and it says so.
+await inPage(editor, 'settings', clickIn('[data-vd=add]'));
+await until(() => exists(editor, '[data-vd-screen=DP-4] button:not([disabled])'));
+const startsAgain = (await frames()).filter((f) => f.type === 'start').length;
+await inPage(editor, 'settings', clickIn('[data-vd-screen=DP-4] button'));
+await until(async () => (await frames()).filter((f) => f.type === 'start').length > startsAgain);
+await tapOn('DP-4', `${sysfs.dev}/event15`);
+r.readded = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== undefined);
+r.readdedNotice = await until(async () => /previous layout/.test((await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? ''")) ?? ''));
+r.readdedAskedSize = await exists(editor, '[data-vd-step=size]');
+r.readdedControls = (await onDisk()).profiles.default.layouts[KEY].panel.controls.length;
+
 check('Settings › Decks has a Virtual decks group: none yet, and Add', () => assert.deepEqual(r.empty, { group: true, rows: 0, add: true }));
 check('Add lists the connected screens by name', () => assert.deepEqual(r.screens, ['DP-4 HD Display', 'HDMI-A-1 HP E243']));
 check('Cancel during the tap closes the flow and quits the helper', () => assert.deepEqual(r.cancelled, { closed: true, quit: true }));
@@ -226,6 +238,13 @@ check('Remove takes away the pairing only: the layouts stay', () => {
   assert.equal(r.removed, true);
   assert.equal(r.afterRemove.profiles.default.layouts[KEY]?.panel?.controls.length, 10);
   assert.equal(r.rowGone, true);
+});
+
+check('added again after Remove: no size asked, its kept layout used, and said so', () => {
+  assert.equal(r.readded, true);
+  assert.equal(r.readdedAskedSize, false);
+  assert.equal(r.readdedNotice, true);
+  assert.equal(r.readdedControls, 10, 'the 2 × 5 it had');
 });
 
 editor.child.kill();
