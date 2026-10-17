@@ -43,6 +43,15 @@ export interface Screen {
   /** What recognises it: see the top of this file. */
   key: string;
   edid: Edid | null;
+  /** Its preferred mode, the first in the connector's list: the screen's native resolution. Absent when unread. */
+  mode?: { width: number; height: number };
+  /** A laptop's own screen: its connector is eDP, LVDS or DSI. */
+  builtIn: boolean;
+}
+
+/** A connector a laptop's own screen hangs from. */
+export function isBuiltIn(connector: string): boolean {
+  return /^(eDP|LVDS|DSI)-/.test(connector);
 }
 
 /** Bytes 5–17 of a display descriptor: text ending at a newline, padded with spaces. Every byte that is not printable is dropped (the Xeneon Edge's serial carries a NUL), and the ends trimmed. */
@@ -117,7 +126,14 @@ export function listScreens(drmDir = DRM_DIR): Screen[] {
     } catch {
       // no EDID file: keyed by connector
     }
-    screens.push({ connector: match[1], key: screenKey(edid, match[1]), edid });
+    let mode: Screen['mode'];
+    try {
+      const first = /^(\d+)x(\d+)/.exec(fs.readFileSync(path.join(dir, 'modes'), 'utf8'));
+      if (first) mode = { width: Number(first[1]), height: Number(first[2]) };
+    } catch {
+      // no modes file: no resolution to show
+    }
+    screens.push({ connector: match[1], key: screenKey(edid, match[1]), edid, mode, builtIn: isBuiltIn(match[1]) });
   }
   return screens;
 }

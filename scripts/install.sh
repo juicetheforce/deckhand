@@ -62,6 +62,13 @@ RELEASE_GLIBC_FLOOR=2.28
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." && pwd)"
 UDEV_RULE_SRC="$REPO_DIR/udev/60-deckhand.rules"
 UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
+# The root helper that grants a touchscreen when it is paired as a virtual deck
+# (udev/deckhand-touch-access), installed root-owned outside anything the user
+# can write, since the editor runs it as root through pkexec; and the rules it
+# writes, one entry per paired touchscreen.
+TOUCH_ACCESS_SRC="$REPO_DIR/udev/deckhand-touch-access"
+TOUCH_ACCESS_DST="/usr/local/libexec/deckhand-touch-access"
+TOUCH_RULES_DST="/etc/udev/rules.d/61-deckhand-touchscreens.rules"
 # The AppArmor profile that lets the editor's Electron have a user namespace.
 # Installed only where the kernel is restricting them; see apparmor_needed().
 APPARMOR_PROFILE_SRC="$REPO_DIR/apparmor/deckhand-editor"
@@ -71,6 +78,7 @@ APPARMOR_PROFILE_DST="/etc/apparmor.d/deckhand-editor"
 # then they name nothing, which the preflight treats as "may need sudo".
 if [ -n "$RELEASE_VERSION" ]; then
   UDEV_RULE_SRC=""
+  TOUCH_ACCESS_SRC=""
   APPARMOR_PROFILE_SRC=""
 fi
 
@@ -337,10 +345,16 @@ preflight_checks() {
     || missing gio "gio: app keys open applications with it. Install the package that provides GLib's gio command — libglib2.0-bin on Debian and Ubuntu, glib2 on Fedora and Arch."
 
   # Root is needed only when the udev rule is new or changed.
-  if ! cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
+  if ! cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST" || ! cmp -s "$TOUCH_ACCESS_SRC" "$TOUCH_ACCESS_DST"; then
     has_command sudo    || missing - "sudo: needed once, to install the udev rule at $UDEV_RULE_DST."
     has_command udevadm || missing - "udevadm: needed to load the udev rule."
   fi
+
+  # Pairing a touchscreen as a virtual deck asks for the password through
+  # polkit's pkexec, and the helper it runs sets access with setfacl. Only
+  # virtual decks need them, so their absence is said, never refused.
+  has_command pkexec  || caution "pkexec (polkit) is not installed: pairing a touchscreen as a virtual deck needs it to ask for your password. Stream Decks are not affected."
+  has_command setfacl || caution "setfacl (the acl package) is not installed: pairing a touchscreen as a virtual deck needs it. Stream Decks are not affected."
 
   # Same, for the AppArmor profile the editor needs on this kind of machine.
   if apparmor_needed; then
@@ -882,6 +896,7 @@ stage_install_files() {
   install -m 644 "$REPO_DIR/LICENSE" "$STAGE_DIR/LICENSE"
   cp -r "$REPO_DIR/licenses" "$STAGE_DIR/licenses"
   install -D -m 644 "$REPO_DIR/udev/60-deckhand.rules" "$STAGE_DIR/udev/60-deckhand.rules"
+  install -D -m 755 "$REPO_DIR/udev/deckhand-touch-access" "$STAGE_DIR/udev/deckhand-touch-access"
   install -D -m 644 "$REPO_DIR/apparmor/deckhand-editor" "$STAGE_DIR/apparmor/deckhand-editor"
   install -D -m 644 "$REPO_DIR/systemd/deckhand.service" "$STAGE_DIR/systemd/deckhand.service"
 }
@@ -942,7 +957,7 @@ check_release_stage() {
   # Each looked for by name: ldd on a file that is not there reports no missing
   # library, so the Electron check below would pass a package without Electron.
   local part
-  for part in runtime/node helper/deckhand-input panel/deckhand-panel editor/electron/electron; do
+  for part in runtime/node helper/deckhand-input panel/deckhand-panel udev/deckhand-touch-access editor/electron/electron; do
     [ -x "$STAGE_DIR/$part" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete ($part missing); nothing was changed."; }
   done
   [ -f "$STAGE_DIR/dist/index.js" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete (dist/index.js missing); nothing was changed."; }
@@ -1074,7 +1089,13 @@ retrigger_udev() {
     say "uinput is a module that is not loaded yet; it loads when Deckhand first opens it, and the rule applies then"
   fi
   for node in $(elgato_hidraw_nodes); do targets+=("/sys/class/hidraw/${node#/dev/}"); done
-  for node in $(touchscreen_nodes); do targets+=("/sys/class/input/${node#/dev/input/}"); done
+  # Touchscreens: the user's access taken away from each first, so the trigger
+  # leaves it only where a rule grants it — re-applying a rule adds access but
+  # never removes it, and an older install granted every touchscreen.
+  for node in $(touchscreen_nodes); do
+    sudo setfacl -x "u:$(id -u)" "$node" 2>/dev/null || true
+    targets+=("/sys/class/input/${node#/dev/input/}")
+  done
   [ "${#targets[@]}" -gt 0 ] || return 0
   if output="$(sudo udevadm trigger --action=change --settle "${targets[@]}" 2>&1)"; then
     say "udev re-applied to: ${targets[*]}"
@@ -1096,19 +1117,21 @@ report_device_access() {
     if [ -w "$node" ]; then say "access ok: $node (Stream Deck)"; else warn "NO ACCESS: $node (Stream Deck)"; fi
   done
   [ "$found" = yes ] || say "no Stream Deck connected, so deck access was not checked"
-  # A touchscreen not readable is not a failure of the install: it matters
-  # only for a virtual deck, and other rules may cover it.
+  # Touchscreens are readable only once paired as a virtual deck (Settings ›
+  # Decks asks for the password then), so an unreadable one is as intended.
   for node in $(touchscreen_nodes); do
-    if [ -r "$node" ]; then say "access ok: $node (touchscreen)"; else say "no access to $node (touchscreen): a virtual deck cannot use it"; fi
+    if [ -r "$node" ]; then say "touchscreen readable: $node — paired as a virtual deck, or granted by another rule"
+    else say "touchscreen not readable: $node — Deckhand reads a touchscreen only once it is paired as a virtual deck"; fi
   done
 }
 
 install_udev_rule() {
-  if cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST"; then
+  if cmp -s "$UDEV_RULE_SRC" "$UDEV_RULE_DST" && cmp -s "$TOUCH_ACCESS_SRC" "$TOUCH_ACCESS_DST"; then
     say "udev rule already up to date"
   else
-    say "Installing udev rule to $UDEV_RULE_DST (needs sudo)"
+    say "Installing udev rule to $UDEV_RULE_DST and the touchscreen pairing helper to $TOUCH_ACCESS_DST (needs sudo)"
     sudo install -m 644 "$UDEV_RULE_SRC" "$UDEV_RULE_DST"
+    sudo install -D -o root -g root -m 755 "$TOUCH_ACCESS_SRC" "$TOUCH_ACCESS_DST"
     sudo udevadm control --reload
     retrigger_udev
   fi
@@ -1191,6 +1214,7 @@ cmd_install() {
     fi
     download_and_stage
     UDEV_RULE_SRC="$STAGE_DIR/udev/60-deckhand.rules"
+    TOUCH_ACCESS_SRC="$STAGE_DIR/udev/deckhand-touch-access"
     APPARMOR_PROFILE_SRC="$STAGE_DIR/apparmor/deckhand-editor"
   else
     check_clean_checkout "$allow_dirty"
@@ -1534,9 +1558,9 @@ remove_apparmor_profile() {
 }
 
 remove_udev_rule() {
-  [ -e "$UDEV_RULE_DST" ] || { say "No udev rule to remove"; return; }
-  say "Removing udev rule $UDEV_RULE_DST (needs sudo)"
-  if sudo rm -f "$UDEV_RULE_DST" && sudo udevadm control --reload; then
+  [ -e "$UDEV_RULE_DST" ] || [ -e "$TOUCH_RULES_DST" ] || [ -e "$TOUCH_ACCESS_DST" ] || { say "No udev rule to remove"; return; }
+  say "Removing udev rules $UDEV_RULE_DST and $TOUCH_RULES_DST, and $TOUCH_ACCESS_DST (needs sudo)"
+  if sudo rm -f "$UDEV_RULE_DST" "$TOUCH_RULES_DST" "$TOUCH_ACCESS_DST" && sudo udevadm control --reload; then
     # Re-apply rules so the access this rule granted is withdrawn now, not
     # at the next reboot or replug.
     retrigger_udev

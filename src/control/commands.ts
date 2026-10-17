@@ -202,6 +202,8 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
           ...(s.edid
             ? { maker: s.edid.maker, product: s.edid.product, name: s.edid.name, serial: s.edid.serial, widthMm: s.edid.widthMm, heightMm: s.edid.heightMm }
             : {}),
+          ...(s.mode ? { width: s.mode.width, height: s.mode.height } : {}),
+          builtIn: s.builtIn,
           deck: decks.has(s.key) ? s.key : null,
         })),
         touchscreens: found.touchscreens.map((n) => ({ device: n.devnode, name: n.name, vendor: n.vendor, product: n.product, serial: n.serial, path: n.idPath })),

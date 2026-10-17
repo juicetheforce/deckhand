@@ -29,6 +29,7 @@ make_package() {
   [ -n "$nohelper" ] || { printf '#!/bin/sh\n' > "$app/helper/deckhand-input"; chmod 755 "$app/helper/deckhand-input"; }
   cp "$(type -P true)" "$app/editor/electron/electron"   # a real ELF whose libraries are all here
   cp "$(type -P true)" "$app/panel/deckhand-panel"
+  mkdir -p "$app/udev" && printf '#!/bin/sh\n' > "$app/udev/deckhand-touch-access" && chmod 755 "$app/udev/deckhand-touch-access"
   for mod in sharp node-hid @elgato-stream-deck/node; do
     mkdir -p "$app/node_modules/$mod"
     if [ "$mod" = "$broken" ]; then echo 'throw new Error("cannot load")' > "$app/node_modules/$mod/index.js"

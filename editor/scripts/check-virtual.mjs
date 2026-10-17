@@ -15,6 +15,15 @@
 // - A new size keeps keys by row and column; one with no place is named,
 //   and dropped only once confirmed; nothing is added to the kept configurations.
 // - Remove takes the pairing only; the layouts stay.
+// - Touchscreen access (touch-access.ts): the real root helper,
+//   udev/deckhand-touch-access, run by a stand-in pkexec in its test mode
+//   against a scratch /dev with ACLs kept as files — the password refused
+//   (nothing paired), the temporary access dropped on a cancel and on a timed
+//   out tap, the rule written for the paired touchscreen at Add, and
+//   rewritten without it at Remove.
+// - The screen list: name, size and resolution, the laptop's own screen
+//   marked built-in, a screen already a deck left out; no touch on the screen
+//   chosen says so.
 //
 // Usage: npm run check:virtual   (builds first)
 
@@ -40,8 +49,9 @@ await fs.mkdir(socks);
 
 const { edid, fakeSysfs, ILITEK, ILITEK_NODES } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-sysfs.mjs')).href);
 const sysfs = fakeSysfs(scratch);
-await sysfs.plug('DP-4', 'connected', edid({ maker: 'GRA', product: '6e4e', numeric: 1, name: 'HD Display', widthMm: 243, heightMm: 91 }));
-await sysfs.plug('HDMI-A-1', 'connected', edid({ maker: 'HPN', product: '3469', serial: 'CNK8231CGN', name: 'HP E243', widthMm: 527, heightMm: 296 }));
+await sysfs.plug('DP-4', 'connected', edid({ maker: 'GRA', product: '6e4e', numeric: 1, name: 'HD Display', widthMm: 243, heightMm: 91 }), ['1920x720']);
+await sysfs.plug('HDMI-A-1', 'connected', edid({ maker: 'HPN', product: '3469', serial: 'CNK8231CGN', name: 'HP E243', widthMm: 527, heightMm: 296 }), ['1920x1080', '1280x720']);
+await sysfs.plug('eDP-1', 'connected', edid({ maker: 'SHP', product: '1515', numeric: 0, widthMm: 290, heightMm: 180 }), ['3840x2400']);
 await sysfs.usbDevice('pci0/usb3/3-2.3', '222a');
 for (const node of ILITEK_NODES) await sysfs.inputNode(node);
 
@@ -56,6 +66,8 @@ Object.assign(process.env, {
   DECKHAND_PANEL_BIN: path.join(repoRoot, 'scripts/test/fake-panel.mjs'),
   FAKE_PANEL_LOG: panelLog,
   FAKE_PANEL_INPUT_DIR: socks,
+  // A tap not made within 5 s gives up, as the real one does after 30.
+  DECKHAND_PAIR_MS: '5000',
   // No logind: a virtual deck's touch would be "unknown". Nothing here touches.
   DBUS_SYSTEM_BUS_ADDRESS: `unix:path=${path.join(scratch, 'no-bus')}`,
 });
@@ -97,6 +109,28 @@ const env = {
 };
 delete env.ELECTRON_RUN_AS_NODE;
 
+// The root helper's world: a panel touchscreen (event15) and a keyboard
+// (event3), stand-ins for udevadm and the ACL tools, and a pkexec that runs
+// the real helper as this user, or refuses as a dismissed password does.
+const ht = path.join(scratch, 'touch-access');
+for (const d of ['sys/class/input/event15', 'sys/class/input/event3', 'dev/input', 'bin', 'acl', 'props', 'rules']) await fs.mkdir(path.join(ht, d), { recursive: true });
+for (const n of ['event15', 'event3']) await fs.writeFile(path.join(ht, 'dev/input', n), '');
+await fs.writeFile(path.join(ht, 'props/event15'), 'ID_INPUT_TOUCHSCREEN=1\n');
+await fs.writeFile(path.join(ht, 'props/event3'), 'ID_INPUT_KEYBOARD=1\n');
+const script = (body) => `#!/bin/bash\n${body}\n`;
+await fs.writeFile(path.join(ht, 'bin/udevadm'), script(`[ "$1" = info ] && cat "${ht}/props/$(basename "\${@: -1}")"; exit 0`), { mode: 0o755 });
+await fs.writeFile(path.join(ht, 'bin/setfacl'), script(`f="${ht}/acl/$(basename "$3")"; case "$1" in -m) echo "user:\${2#u:}" >> "$f" ;; -x) [ -f "$f" ] && sed -i "/^user:\${2#u:}:/d" "$f" ;; esac; exit 0`), { mode: 0o755 });
+await fs.writeFile(path.join(ht, 'bin/getfacl'), script(`cat "${ht}/acl/$(basename "\${@: -1}")" 2>/dev/null; exit 0`), { mode: 0o755 });
+const pkexecLog = path.join(ht, 'pkexec.log');
+const refuse = path.join(ht, 'refuse');
+await fs.writeFile(path.join(ht, 'pkexec'), script(`echo "\${@:2}" >> "${pkexecLog}"; [ -e "${refuse}" ] && exit 126; exec env PKEXEC_UID="$(id -u)" DECKHAND_TOUCH_ACCESS_TEST="${ht}" bash "$@"`), { mode: 0o755 });
+env.DECKHAND_TOUCH_ACCESS = path.join(repoRoot, 'udev/deckhand-touch-access');
+env.DECKHAND_PKEXEC = path.join(ht, 'pkexec');
+const rules = path.join(ht, 'rules/61-deckhand-touchscreens.rules');
+const panelAcl = () => fs.readFile(path.join(ht, 'acl/event15'), 'utf8').catch(() => '');
+const pkexecRuns = async () => (await fs.readFile(pkexecLog, 'utf8').catch(() => '')).split('\n').filter(Boolean);
+const bannerText = () => inPage(editor, 'settings', "document.querySelector('[data-vd-step=screen] .sp-banner, [data-vd-step=screen] [class*=banner]')?.textContent ?? ''");
+
 const onDisk = async () => JSON.parse(await fs.readFile(configFile, 'utf8'));
 const frames = async () => (await fs.readFile(panelLog, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
@@ -127,14 +161,34 @@ r.empty = { group: await exists(editor, '[data-settings-group=virtual-decks]'), 
 // ADD — the screens.
 await inPage(editor, 'settings', clickIn('[data-vd=add]'));
 await until(() => exists(editor, '[data-vd-screen=DP-4] button'));
-r.screens = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-screen]')].map((li) => li.dataset.vdScreen + ' ' + li.querySelector('button').textContent + (li.querySelector('button').disabled ? ' disabled' : ''))");
+r.screens = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-screen]')].map((li) => li.dataset.vdScreen + ' ' + li.querySelector('button').textContent + ' — ' + li.querySelector('[data-vd-screen-detail]').textContent)");
+
+// The password refused: nothing is shown on the screen, nothing paired.
+await fs.writeFile(refuse, '');
+const startsRefused = (await frames()).filter((f) => f.type === 'start').length;
+await inPage(editor, 'settings', clickIn('[data-vd-screen=DP-4] button'));
+r.refused = await until(async () => /needs your password/.test(await bannerText()));
+r.refusedNoPanel = (await frames()).filter((f) => f.type === 'start').length === startsRefused;
+await fs.rm(refuse);
 
 // Cancelled: the helper is quit, and the flow closes.
 await inPage(editor, 'settings', clickIn('[data-vd-screen=DP-4] button'));
 await until(() => exists(editor, '[data-vd-step=tap]'));
 await until(async () => (await frames()).some((f) => f.type === 'T' && f.mode === 2));
+r.accessDuringTap = await panelAcl();
 await inPage(editor, 'settings', clickIn('[data-vd=cancel-tap]'));
 r.cancelled = { closed: await until(() => exists(editor, '[data-vd=add]')), quit: await until(async () => (await frames()).some((f) => f.type === 'Q')) };
+r.accessAfterCancel = (await until(async () => (await panelAcl()) === '')) && !(await fs.stat(rules).catch(() => null));
+
+// No tap on the screen chosen: said, and another can be chosen.
+await inPage(editor, 'settings', clickIn('[data-vd=add]'));
+await until(() => exists(editor, '[data-vd-screen=HDMI-A-1] button'));
+await inPage(editor, 'settings', clickIn('[data-vd-screen=HDMI-A-1] button'));
+r.noTouch = await until(async () => /No touch was detected on HP E243\. It may not be the screen with the touchscreen: choose another\./.test(await bannerText()), 20_000);
+r.noTouchBackToList = await exists(editor, '[data-vd-screen=DP-4] button');
+r.accessAfterNoTouch = (await until(async () => (await panelAcl()) === '')) && !(await fs.stat(rules).catch(() => null));
+await inPage(editor, 'settings', clickIn('[data-vd-step=screen] .sp-button-quiet'));
+await until(() => exists(editor, '[data-vd=add]'));
 
 // The tap, for real this time.
 const startsBefore = (await frames()).filter((f) => f.type === 'start').length;
@@ -161,6 +215,15 @@ await inPage(editor, 'settings', clickIn('[data-vd=finish-add]'));
 r.written = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== undefined);
 r.config = await onDisk();
 r.notice = await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? null");
+r.rulesAfterAdd = await fs.readFile(rules, 'utf8').catch(() => '');
+r.accessAfterAdd = await panelAcl();
+
+// Added: the screen is not offered again.
+await inPage(editor, 'settings', clickIn('[data-vd=add]'));
+await until(() => exists(editor, '[data-vd-screen=HDMI-A-1] button'));
+r.offeredAfterAdd = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-screen]')].map((li) => li.dataset.vdScreen)");
+await inPage(editor, 'settings', clickIn('[data-vd-step=screen] .sp-button-quiet'));
+await until(() => exists(editor, '[data-vd=add]'));
 
 // THE LIST.
 await until(() => exists(editor, `[data-vd-deck="${KEY}"]`));
@@ -193,6 +256,8 @@ await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd=remov
 await inPage(editor, 'settings', clickIn('[data-vd=confirm-remove]'));
 r.removed = await until(async () => (await onDisk()).decks?.[KEY]?.virtual === undefined);
 r.afterRemove = await onDisk();
+r.removeRun = (await pkexecRuns()).at(-1);
+r.rulesAfterRemove = await fs.stat(rules).then(() => true, () => false);
 r.rowGone = await until(async () => !(await exists(editor, `[data-vd-deck="${KEY}"]`)));
 
 // ADD AGAIN: its layout was kept, so no size is asked, and it says so.
@@ -206,9 +271,34 @@ r.readded = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== u
 r.readdedNotice = await until(async () => /previous layout/.test((await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? ''")) ?? ''));
 r.readdedAskedSize = await exists(editor, '[data-vd-step=size]');
 r.readdedControls = (await onDisk()).profiles.default.layouts[KEY].panel.controls.length;
+r.rulesAfterReadd = /222a/.test(await fs.readFile(rules, 'utf8').catch(() => ''));
 
-check('Settings › Decks has a Virtual decks group: none yet, and Add', () => assert.deepEqual(r.empty, { group: true, rows: 0, add: true }));
-check('Add lists the connected screens by name', () => assert.deepEqual(r.screens, ['DP-4 HD Display', 'HDMI-A-1 HP E243']));
+check('Settings › Decks has a Virtual decks group: none yet, and Add (a touchscreen is connected)', () => assert.deepEqual(r.empty, { group: true, rows: 0, add: true }));
+check('Add lists every connected screen by name, size and resolution; the laptop\'s own is marked built-in', () =>
+  assert.deepEqual(r.screens, ['DP-4 HD Display — 10.2″ · 1920 × 720 · DP-4', 'HDMI-A-1 HP E243 — 23.8″ · 1920 × 1080 · HDMI-A-1', 'eDP-1 SHP-1515 — Built-in screen · 13.4″ · 3840 × 2400 · eDP-1']));
+check('the password refused: said, and nothing shown on the screen or paired', () => {
+  assert.equal(r.refused, true);
+  assert.equal(r.refusedNoPanel, true);
+});
+check('during the tap the touchscreens are readable; a cancel drops it and writes no rule', () => {
+  assert.match(r.accessDuringTap, /^user:\d+:r/);
+  assert.equal(r.accessAfterCancel, true);
+});
+check('no touch on the screen chosen: says so, suggests another, back to the list, access dropped', () => {
+  assert.equal(r.noTouch, true);
+  assert.equal(r.noTouchBackToList, true);
+  assert.equal(r.accessAfterNoTouch, true);
+});
+check('Add writes a rule for the paired touchscreen only, and drops the temporary access', () => {
+  assert.match(r.rulesAfterAdd, /ATTRS\{id\/vendor\}=="222a", ATTRS\{id\/product\}=="0001", TAG\+="uaccess"/);
+  assert.equal((r.rulesAfterAdd.match(/uaccess"$/gm) ?? []).length, 1);
+  assert.equal(r.accessAfterAdd, '');
+});
+check('a screen that is a virtual deck already is not offered', () => assert.deepEqual(r.offeredAfterAdd, ['HDMI-A-1', 'eDP-1']));
+check('Remove rewrites the rule without its touchscreen (none left: no rule file)', () => {
+  assert.equal(r.removeRun.trim(), 'set', 'the helper run with no entries left');
+  assert.equal(r.rulesAfterRemove, false);
+});
 check('Cancel during the tap closes the flow and quits the helper', () => assert.deepEqual(r.cancelled, { closed: true, quit: true }));
 check('the tap is read in pairing mode, and answered', () => {
   assert.equal(r.pairMode, 2);
@@ -258,6 +348,19 @@ check('added again after Remove: no size asked, its kept layout used, and said s
   assert.equal(r.readdedAskedSize, false);
   assert.equal(r.readdedNotice, true);
   assert.equal(r.readdedControls, 10, 'the 2 × 5 it had');
+  assert.equal(r.rulesAfterReadd, true, 'and its touchscreen\'s rule back');
+});
+
+// NO TOUCHSCREEN: unplugged, and the page shown afresh — no Add, and said so.
+for (const node of ILITEK_NODES) await sysfs.unplugNode(node.event);
+await inPage(editor, 'settings', clickIn('[data-settings-nav=general]'));
+await sleep(200);
+await inPage(editor, 'settings', clickIn('[data-settings-nav=decks]'));
+r.noTouchscreen = await until(() => exists(editor, '[data-vd=look-again]'));
+r.noTouchscreenAdd = await exists(editor, '[data-vd=add]');
+check('no touchscreen connected: no Add, a note that none was found, and Look again', () => {
+  assert.equal(r.noTouchscreen, true);
+  assert.equal(r.noTouchscreenAdd, false);
 });
 
 editor.child.kill();

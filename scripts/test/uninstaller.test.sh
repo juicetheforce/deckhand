@@ -83,4 +83,18 @@ out="$(end_twitch_link 2>&1)"; status=$?
 grep -n 'end_twitch_link$' "$REPO/scripts/install.sh" | head -1 | cut -d: -f1 > "$S/call-line"
 grep -n 'Stopping and disabling the service' "$REPO/scripts/install.sh" | cut -d: -f1 > "$S/stop-line"
 [ "$(cat "$S/call-line")" -lt "$(cat "$S/stop-line")" ] && ok "cmd_uninstall ends the Twitch link before it stops the service, which holds the tokens" || no "end_twitch_link is not called before the service stops"
+# Uninstalling removes Deckhand's rule, every paired touchscreen's rule and the
+# pairing helper; sudo and udevadm stand-ins, access re-applied (not run here).
+mkdir -p "$S/etc"
+UDEV_RULE_DST="$S/etc/60-deckhand.rules"; TOUCH_RULES_DST="$S/etc/61-deckhand-touchscreens.rules"; TOUCH_ACCESS_DST="$S/etc/deckhand-touch-access"
+touch "$UDEV_RULE_DST" "$TOUCH_RULES_DST" "$TOUCH_ACCESS_DST"
+sudo() { "$@"; }; udevadm() { :; }; retrigger_udev() { echo re-applied; }
+out="$(remove_udev_rule 2>&1)"
+[ ! -e "$UDEV_RULE_DST" ] && [ ! -e "$TOUCH_RULES_DST" ] && [ ! -e "$TOUCH_ACCESS_DST" ] && grep -q re-applied <<<"$out" \
+  && ok "uninstall removes the rule, the paired touchscreens' rules and the pairing helper, and re-applies access" || no "remove_udev_rule — $out; left: $(ls "$S/etc")"
+touch "$TOUCH_RULES_DST"
+out="$(remove_udev_rule 2>&1)"
+[ ! -e "$TOUCH_RULES_DST" ] && ok "…the paired touchscreens' rules even when Deckhand's own rule is already gone" || no "touch rules left behind — $out"
+unset -f sudo udevadm
+
 exit $fail

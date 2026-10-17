@@ -56,7 +56,7 @@ stub pactl 'exit "${STUB_PACTL_RC:-0}"'
 stub gio '[ "$1 $2" = "help launch" ] && [ -z "${STUB_GIO_OLD:-}" ] && { echo "  gio launch DESKTOP-FILE [FILE-ARG…]"; exit 0; }; echo "Usage: gio COMMAND [ARGS…]" >&2; exit 1'
 stub node 'echo "v${STUB_NODE_VERSION:-22.12.0}"'
 stub npm 'echo 11.0.0'
-for tool in make cc udevadm apparmor_parser; do stub "$tool" 'exit 0'; done
+for tool in make cc udevadm apparmor_parser pkexec setfacl; do stub "$tool" 'exit 0'; done
 # sudo runs what it is handed: the offer below builds a "sudo <manager> ..."
 # command, and the test has to see the manager receive it.
 stub sudo 'exec "$@"'
@@ -80,6 +80,7 @@ run() {
   mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"
   touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
+  cp "$REPO/udev/deckhand-touch-access" "$S/installed-touch-access"
   (
     # Sourced with the real PATH (it resolves REPO_DIR with dirname), then
     # narrowed. It also turns on `set -e`, so a failing setup ends the run
@@ -90,7 +91,7 @@ run() {
     REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"   # fns.sh would resolve them from $S
     SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null   # a character device
     UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"; LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"
-    UDEV_RULE_DST="$S/installed.rules"
+    UDEV_RULE_DST="$S/installed.rules"; TOUCH_ACCESS_SRC="$REPO/udev/deckhand-touch-access"; TOUCH_ACCESS_DST="$S/installed-touch-access"
     APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"
     APPARMOR_PROFILE_DST="$S/installed.apparmor"   # absent unless a setup puts it there
     eval "$1"
@@ -163,6 +164,8 @@ expect_missing "no gio"                      'rm "$S/stubs/gio"'                
 expect_missing "rule to install, no sudo"    'rm "$S/stubs/sudo" "$S/installed.rules"' 'sudo: needed once'
 expect_missing "rule to install, no udevadm" 'rm "$S/stubs/udevadm" "$S/installed.rules"' 'udevadm: needed'
 expect_clean   "rule current: no sudo needed" 'rm "$S/stubs/sudo" "$S/stubs/udevadm"'
+expect_missing "the pairing helper changed: sudo needed" 'echo old > "$S/installed-touch-access"; rm "$S/stubs/sudo"' 'sudo: needed once'
+expect_warning "no pkexec: said, not refused" 'rm "$S/stubs/pkexec"' 'pkexec (polkit) is not installed'
 
 # Several at once: all named, not only the first.
 out="$(run 'rm "$S/stubs/make"; UINPUT_NODE="$S/no-such-node"; export STUB_PACTL_RC=1 STUB_UID=0')"
@@ -208,12 +211,13 @@ completed "$out" && ! grep -q '^W: ' <<<"$out" && ok "no bus: no tray or shortcu
 entry() {  # entry '<setup>' '<function>' — prints its output, then "rc=N"
   rm -rf "$S/stubs"; cp -a "$S/stubs.orig" "$S/stubs"; mkdir -p "$S/seats/seat0"; touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
+  cp "$REPO/udev/deckhand-touch-access" "$S/installed-touch-access"
   (
     source "$S/fns.sh"
     export PATH="$S/stubs:$S/base" HOME="$S/home"
     REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"   # fns.sh would resolve them from $S
     SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"
-    LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"
+    LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"; TOUCH_ACCESS_SRC="$REPO/udev/deckhand-touch-access"; TOUCH_ACCESS_DST="$S/installed-touch-access"
     eval "$1"
     "$2"
   ) 2>&1
@@ -442,6 +446,7 @@ pty_run() {   # pty_run '<setup>' '<answer>' '<function>' — over a real pty
   rm -rf "$S/stubs" "$S/sys"; cp -a "$S/stubs.orig" "$S/stubs"
   mkdir -p "$S/sys/kernel" "$S/sys/user" "$S/seats/seat0"; touch "$S/uinput.h" "$S/wayland-client.h"
   cp "$REPO/udev/60-deckhand.rules" "$S/installed.rules"
+  cp "$REPO/udev/deckhand-touch-access" "$S/installed-touch-access"
   rm -f "$S/pm.log"
   cat > "$S/pty-run.sh" <<EOS
 S="$S"
@@ -450,7 +455,7 @@ source "$S/fns.sh"
 export PATH="$S/stubs:$S/base" HOME="$S/home"
 REPO_DIR="$REPO"; UDEV_RULE_SRC="$REPO/udev/60-deckhand.rules"
 SERVICE_NODE="$S/stubs/node"; UINPUT_NODE=/dev/null; UINPUT_HEADER="$S/uinput.h"; WAYLAND_HEADER="$S/wayland-client.h"
-LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"
+LOGIND_SEATS_DIR="$S/seats"; SYSCTL_DIR="$S/sys"; UDEV_RULE_DST="$S/installed.rules"; TOUCH_ACCESS_SRC="$REPO/udev/deckhand-touch-access"; TOUCH_ACCESS_DST="$S/installed-touch-access"
 APPARMOR_PROFILE_SRC="$REPO/apparmor/deckhand-editor"; APPARMOR_PROFILE_DST="$S/installed.apparmor"
 $1
 $3

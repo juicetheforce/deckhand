@@ -87,6 +87,20 @@ function customOf(rows: string, columns: string): { rows: number; columns: numbe
   return { rows: Math.max(1, Math.floor(Number(rows)) || 1), columns: Math.max(1, Math.floor(Number(columns)) || 1) };
 }
 
+/** "10.3″ · 1920 × 720 · DP-4": what tells screens apart in the list. */
+function describeScreen(s: ScreensReply['screens'][number]): string {
+  const parts: string[] = [];
+  if (s.widthMm && s.heightMm) parts.push(`${(Math.hypot(s.widthMm, s.heightMm) / 25.4).toFixed(1)}″`);
+  if (s.width && s.height) parts.push(`${s.width} × ${s.height}`);
+  parts.push(s.connector);
+  return parts.join(' · ');
+}
+
+/** The daemon's "nothing was tapped", in words that say what to do. */
+function pairingError(error: string, screen: string): string {
+  return /nothing was tapped/.test(error) ? `No touch was detected on ${screen}. It may not be the screen with the touchscreen: choose another.` : error;
+}
+
 type AddStep =
   | { step: 'closed' }
   | { step: 'screen'; screens: ScreensReply | null; error: string | null }
@@ -99,9 +113,17 @@ export function VirtualDecks() {
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [tapping, setTapping] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  /** Whether any touchscreen is connected: no Add without one. Null while asked. */
+  const [touchFound, setTouchFound] = useState<boolean | null>(null);
 
+  const lookForTouch = async () => {
+    setTouchFound(null);
+    const reply = await window.deckhand.virtualScreens();
+    setTouchFound(reply.ok ? reply.result.touchscreens.length > 0 : false);
+  };
   useEffect(() => {
     void window.deckhand.virtualDecks().then(setView);
+    void lookForTouch();
     return window.deckhand.onVirtualDecks(setView);
   }, []);
 
@@ -112,12 +134,12 @@ export function VirtualDecks() {
     setAdd(reply.ok ? { step: 'screen', screens: reply.result, error: null } : { step: 'screen', screens: null, error: reply.error });
   };
 
-  const tap = async (connector: string) => {
+  const tap = async (connector: string, name: string) => {
     setAdd({ step: 'tap', connector });
     const reply = await window.deckhand.pairScreen(connector);
     if (!reply.ok) {
       if (reply.code === 'cancelled') setAdd({ step: 'closed' });
-      else setAdd({ step: 'screen', screens: (await window.deckhand.virtualScreens().then((r) => (r.ok ? r.result : null))) ?? null, error: reply.error });
+      else setAdd({ step: 'screen', screens: (await window.deckhand.virtualScreens().then((r) => (r.ok ? r.result : null))) ?? null, error: pairingError(reply.error, name) });
       return;
     }
     const sizeStep = { step: 'size' as const, pairing: reply.result, size: 'medium' as PanelSize, rows: '3', columns: '8', error: null };
@@ -155,10 +177,11 @@ export function VirtualDecks() {
     const reply = await window.deckhand.pairScreen(deck.output);
     setTapping(null);
     if (!reply.ok) {
-      if (reply.code !== 'cancelled') setNotice({ kind: 'error', text: reply.error });
+      if (reply.code !== 'cancelled') setNotice({ kind: 'error', text: pairingError(reply.error, deck.label) });
       return;
     }
     if (reply.result.screen !== deck.key) {
+      void window.deckhand.cancelPairing();
       setNotice({ kind: 'error', text: `The screen on ${deck.output} is another screen now (${reply.result.name ?? reply.result.screen}). Add it as a virtual deck of its own instead.` });
       return;
     }
@@ -224,7 +247,14 @@ export function VirtualDecks() {
         </div>
       ))}
       {view.decks.length > 0 && <Divider />}
-      {add.step === 'closed' && (
+      {add.step === 'closed' && touchFound === false && (
+        <Row title="No touchscreen was found" detail="A virtual deck needs a touchscreen. Plug one in (its USB cable too, for a USB touch monitor), then look again.">
+          <button className="sp-button" onClick={() => void lookForTouch()} data-vd="look-again">
+            Look again
+          </button>
+        </Row>
+      )}
+      {add.step === 'closed' && touchFound === true && (
         <Row title="Add a virtual deck" detail="Use a touchscreen as a deck: choose it, tap it, choose a key size.">
           <button className="sp-button sp-button-primary" onClick={() => void openAdd()} data-vd="add">
             Add a virtual deck…
@@ -236,29 +266,34 @@ export function VirtualDecks() {
           <span className="sp-row-title">Which screen?</span>
           {add.error && <Banner kind="error">{add.error}</Banner>}
           {add.screens === null && !add.error && <p className="muted small">Asking the daemon…</p>}
-          {add.screens && add.screens.touchscreens.length === 0 && <p className="muted small">No touchscreen is connected. Plug the screen's USB cable in, then try again.</p>}
-          {add.screens && add.screens.touchscreens.length > 0 && (
-            <ul className="vd-screens">
-              {add.screens.screens.map((s) => {
-                // Judged from the editor's own list, not the daemon's flag:
-                // the daemon learns of a Remove only after the autosave and
-                // its reload, a moment later.
-                const taken = view.decks.some((d) => d.key === s.key);
-                return (
-                <li key={s.connector} data-vd-screen={s.connector}>
-                  <button className="sp-button" disabled={taken} onClick={() => void tap(s.connector)}>
-                    {s.name ?? s.key}
-                  </button>
-                  <span className="muted small">
-                    {s.connector}
-                    {s.widthMm ? ` · ${s.widthMm} × ${s.heightMm} mm` : ''}
-                    {taken ? ' · already a virtual deck' : ''}
-                  </span>
-                </li>
-                );
-              })}
-            </ul>
-          )}
+          {add.screens && add.screens.touchscreens.length === 0 && <p className="muted small">No touchscreen was found. Plug one in (its USB cable too, for a USB touch monitor), then try again.</p>}
+          {add.screens && add.screens.touchscreens.length > 0 && (() => {
+            // Deckhand cannot tell which screens have touch until one is
+            // tapped, so every screen is offered — but not one that is a
+            // virtual deck already. Judged from the editor's own list, not
+            // the daemon's flag: the daemon learns of a Remove only after
+            // the autosave and its reload, a moment later.
+            const free = add.screens.screens.filter((s) => !view.decks.some((d) => d.key === s.key));
+            if (free.length === 0) return <p className="muted small">Every connected screen is a virtual deck already.</p>;
+            return (
+              <>
+                <p className="muted small">Deckhand can tell which screen has the touchscreen only once it is tapped. Choose the one you will tap; pairing asks for your password.</p>
+                <ul className="vd-screens">
+                  {free.map((s) => (
+                    <li key={s.connector} data-vd-screen={s.connector}>
+                      <button className="sp-button" onClick={() => void tap(s.connector, s.name ?? s.key)}>
+                        {s.name ?? s.key}
+                      </button>
+                      <span className="muted small" data-vd-screen-detail>
+                        {s.builtIn ? 'Built-in screen · ' : ''}
+                        {describeScreen(s)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            );
+          })()}
           <div className="button-row">
             <button className="sp-button sp-button-quiet" onClick={() => setAdd({ step: 'closed' })}>
               Cancel
@@ -269,7 +304,10 @@ export function VirtualDecks() {
       {add.step === 'tap' && (
         <div className="vd-add" data-vd-step="tap">
           <span className="sp-row-title">Tap the screen that says “Tap this screen”</span>
-          <p className="muted small">The touchscreen you tap is the one paired with it. You have a minute.</p>
+          <p className="muted small">
+            Enter your password first if asked: until you tap, Deckhand can read every touchscreen; after, only the one you tapped. You have
+            30 seconds from when the screen says to tap.
+          </p>
           <div className="button-row">
             <button className="sp-button sp-button-quiet" onClick={() => void window.deckhand.cancelPairing()} data-vd="cancel-tap">
               Cancel
@@ -295,7 +333,15 @@ export function VirtualDecks() {
             <button className="sp-button sp-button-primary" onClick={() => void finishAdd(add)} data-vd="finish-add">
               Add
             </button>
-            <button className="sp-button sp-button-quiet" onClick={() => setAdd({ step: 'closed' })}>
+            <button
+              className="sp-button sp-button-quiet"
+              onClick={() => {
+                // Nothing is written; the touchscreens' temporary access goes.
+                void window.deckhand.cancelPairing();
+                setAdd({ step: 'closed' });
+              }}
+              data-vd="cancel-size"
+            >
               Cancel
             </button>
           </div>

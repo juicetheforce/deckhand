@@ -42,8 +42,8 @@ const READY_MS = 5000;
 const QUIT_MS = 2000;
 /** After a helper failed, its deck is not listed again for this long, so a broken helper cannot respawn in a loop. */
 const RETRY_AFTER_MS = 30_000;
-/** How long a pairing waits for the tap. */
-export const PAIR_MS = 60_000;
+/** How long a pairing waits for the tap (DECKHAND_PAIR_MS for tests). */
+export const PAIR_MS = Number(process.env.DECKHAND_PAIR_MS) || 30_000;
 
 /** Siblings already said to be unreadable, by deck and node: once each per daemon run, not on every attach. */
 const unreadSiblingsSaid = new Set<string>();

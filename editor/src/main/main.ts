@@ -40,6 +40,7 @@ import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
+import { AccessError, entriesOf, grantForPairing, setAccess, type PairingAccess } from './touch-access.js';
 
 // Electron's state (cache, local storage, lock files) goes in the state
 // directory, never the default ~/.config/<app name>: that would sit next to
@@ -202,6 +203,12 @@ function sendVirtualDecks(): void {
 
 /** The one pairing in progress, from Settings › Decks: aborting it closes its connection, which ends it in the daemon too. */
 let pairing: AbortController | null = null;
+/**
+ * The touchscreens' temporary access for that pairing (touch-access.ts): held
+ * from the password until the deck is added (the rule written for the
+ * touchscreen tapped) or the pairing is given up (nothing written).
+ */
+let access: PairingAccess | null = null;
 /** The only edits Settings › Decks may make. */
 const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck', 'setPanel']);
 
@@ -524,8 +531,11 @@ function openSettings(section?: SettingsSection): void {
   created.on('blur', () => (settingsLeft = true));
   created.on('closed', () => {
     if (settingsWindow === created) settingsWindow = null;
-    // A pairing it started would otherwise leave "Tap this screen" up for its full minute.
+    // A pairing it started would otherwise leave "Tap this screen" up, and
+    // the touchscreens readable, until their deadlines.
     pairing?.abort();
+    access?.cancel();
+    access = null;
     sentVirtual = '';
   });
   reportWindowState(created);
@@ -797,18 +807,33 @@ function registerIpc(): void {
     const path = socketPath();
     if (path === null) return { ok: false, code: 'not_connected', error: 'XDG_RUNTIME_DIR is not set, so the daemon cannot be reached.' };
     pairing?.abort();
+    access?.cancel();
+    access = null;
     const mine = new AbortController();
     pairing = mine;
     try {
+      // The password first: until it is given, no touchscreen can be read.
+      const granted = await grantForPairing();
+      if (mine.signal.aborted) {
+        granted.cancel();
+        return { ok: false, code: 'cancelled', error: 'cancelled' };
+      }
+      access = granted;
       return { ok: true, result: await pairScreen(path, output, mine.signal) };
     } catch (err) {
+      access?.cancel();
+      access = null;
+      if (err instanceof AccessError) return { ok: false, code: err.code, error: err.message };
       return { ok: false, code: err instanceof DaemonError ? err.code : 'internal', error: (err as Error).message };
     } finally {
       if (pairing === mine) pairing = null;
     }
   });
   ipcMain.handle('cancelPairing', (event) => {
-    if (fromSettingsWindow(event)) pairing?.abort();
+    if (!fromSettingsWindow(event)) return;
+    pairing?.abort();
+    access?.cancel();
+    access = null;
   });
   // A virtual deck's screen, for sizing a panel: its pixels from a panel it
   // already has, its millimetres from the daemon's read of the EDID.
@@ -832,9 +857,30 @@ function registerIpc(): void {
       return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on “${layout.pages[d.page]?.name ?? d.page}”`;
     });
   });
-  ipcMain.handle('virtualDeckEdit', (event, edit: unknown) => {
+  ipcMain.handle('virtualDeckEdit', async (event, edit: unknown) => {
     const kind = (edit as { kind?: unknown } | null)?.kind;
     if (!fromSettingsWindow(event) || !store || typeof kind !== 'string' || !VIRTUAL_DECK_EDITS.has(kind)) return { ok: false, error: 'not allowed' };
+    // The touchscreen rule changes with the pairings, before the config does:
+    // a deck is never saved with a touchscreen it cannot read, and a removed
+    // deck's touchscreen is no longer readable once it is gone.
+    const config = store.state().config;
+    const e = edit as { kind: string; key?: unknown; touch?: unknown };
+    try {
+      if ((kind === 'addVirtualDeck' || kind === 'repairVirtualDeck') && typeof e.key === 'string') {
+        if (!access) return { ok: false, error: 'Its touchscreen has no access yet: tap the screen again.' };
+        const pairingAccess = access;
+        access = null;
+        await pairingAccess.commit(entriesOf(config, { key: e.key, touch: e.touch as never }));
+      } else if (kind === 'removeVirtualDeck' && typeof e.key === 'string') {
+        const after = entriesOf(config, { key: e.key, touch: null });
+        if (after.join(' ') !== entriesOf(config).join(' ')) await setAccess(after);
+      }
+    } catch (err) {
+      if (kind === 'removeVirtualDeck' && err instanceof AccessError && err.code === 'not_authorized') {
+        return { ok: false, error: "Not removed: removing a virtual deck needs your password, to take away its touchscreen's access." };
+      }
+      return { ok: false, error: `Not saved: ${(err as Error).message}` };
+    }
     const result = store.apply(edit as Edit);
     return result.ok ? { ok: true } : { ok: false, error: result.error };
   });

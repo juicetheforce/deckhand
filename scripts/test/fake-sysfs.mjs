@@ -54,12 +54,14 @@ export function fakeSysfs(root) {
     /** Where the device nodes are: DECKHAND_DEV_INPUT_DIR. Plain files, readable unless a node says `readable: false`. */
     dev: DEV,
     /** A connector, connected or not, with an EDID or none. */
-    async plug(connector, status, edidBytes) {
+    /** `modes`, optional: the connector's mode list, preferred first ("1920x720"). */
+    async plug(connector, status, edidBytes, modes) {
       const dir = path.join(DRM, `card1-${connector}`);
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, 'status'), `${status}\n`);
       if (edidBytes) await fs.writeFile(path.join(dir, 'edid'), edidBytes);
       else await fs.rm(path.join(dir, 'edid'), { force: true });
+      if (modes) await fs.writeFile(path.join(dir, 'modes'), modes.map((m) => `${m}\n`).join(''));
     },
     async unplugConnector(connector) {
       await fs.rm(path.join(DRM, `card1-${connector}`), { recursive: true, force: true });

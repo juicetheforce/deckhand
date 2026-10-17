@@ -96,6 +96,11 @@ export interface ScreensReply {
     serial?: string;
     widthMm?: number;
     heightMm?: number;
+    /** Its native resolution, in pixels, when the kernel lists its modes. */
+    width?: number;
+    height?: number;
+    /** A laptop's own screen (an eDP, LVDS or DSI connector). */
+    builtIn: boolean;
     /** The virtual deck on it, by its key in "decks", if it is one. */
     deck: string | null;
   }>;
