@@ -3488,12 +3488,3 @@ body.settings-body {
 .vd-warning {
   color: var(--amber);
 }
-
-/* "Add a layout" for a virtual deck (VirtualLayoutPicker.tsx). */
-.virtual-layout-picker {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-}

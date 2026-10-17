@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
-import type { Config, PanelDef } from '../../../src/types.js';
+import type { Config } from '../../../src/types.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
@@ -57,7 +57,6 @@ import { DEFAULT_PANE_WIDTHS, paneColumns, type PaneName, type PaneWidths } from
 import { Toolbar, type AddPageResult, type AddProfileResult } from './Toolbar.js';
 import { keyCapture } from './key-capture.js';
 import { useBulk } from './useBulk.js';
-import { VirtualLayoutPicker } from './VirtualLayoutPicker.js';
 import { keyNumber } from '../shared/bulk.js';
 import { useEditor } from './useEditor.js';
 
@@ -349,13 +348,17 @@ function Editor({
   };
 
   const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
-  const addLayout = async (serial = selection.serial, panel?: PanelDef) => {
+  const addLayout = async (serial = selection.serial) => {
+    // A virtual deck is treated exactly as a Stream Deck here: the same card,
+    // and its new layout quietly takes the panel it has in another profile. A
+    // different size per profile is Settings › Decks' Change….
+    const panel = config.decks?.[serial]?.virtual ? Object.values(config.profiles).map((p) => p.layouts[serial]?.panel).find((p) => p !== undefined) : undefined;
     const result = await window.deckhand.apply({
       kind: 'addLayout',
       profile: selection.profile,
       serial,
       pageName: 'Main',
-      ...(panel ? { panel } : {}),
+      ...(panel ? { panel: structuredClone(panel) } : {}),
     });
     setAddLayoutError(result.ok ? null : result.error);
   };
@@ -480,15 +483,10 @@ function Editor({
       <div className="no-layout" data-empty-state={why.kind}>
         <p className="empty-title">{why.title}</p>
         <p className="muted">{why.detail}</p>
-        {why.canAddLayout && config.decks?.[serial]?.virtual ? (
-          // A virtual deck's layout carries its panel: the size is asked again.
-          <VirtualLayoutPicker config={config} serial={serial} label={deckLabel(config, daemon, serial)} disabled={editingBlocked} onAdd={(panel) => void addLayout(serial, panel)} />
-        ) : (
-          why.canAddLayout && (
-            <button className="primary" disabled={editingBlocked} onClick={() => void addLayout(serial)}>
-              Add a layout for {deckLabel(config, daemon, serial)}
-            </button>
-          )
+        {why.canAddLayout && (
+          <button className="primary" disabled={editingBlocked} onClick={() => void addLayout(serial)}>
+            Add a layout for {deckLabel(config, daemon, serial)}
+          </button>
         )}
         {addLayoutError && <p className="field-error">{addLayoutError}</p>}
       </div>

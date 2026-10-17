@@ -518,6 +518,16 @@ await check('addProfile never reuses a profile ID, and a repeated deck makes one
   store.close();
 });
 
+await check('addLayout for a virtual deck takes the panel it is given, as it is', async () => {
+  const store = await openStore(await configFile(EXAMPLE));
+  const panel = { size: { width: 1920, height: 720 }, controls: [{ id: 'k1', x: 14, y: 14, w: 211, h: 211 }], preset: 'medium' };
+  assert.equal(store.apply({ kind: 'addLayout', profile: 'prof_game', serial: 'GRA-6e4e', pageName: 'Main', panel }).ok, true);
+  const layout = store.state().config.profiles.prof_game.layouts['GRA-6e4e'];
+  assert.deepEqual(layout.panel, panel);
+  assert.equal(Object.keys(layout.pages).length, 1);
+  store.close();
+});
+
 await check('addLayout gives an uncovered deck a layout, and refuses one it already has', async () => {
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);
