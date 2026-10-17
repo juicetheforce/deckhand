@@ -400,7 +400,13 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
   const status = (serial: string) => (daemon.connected ? daemon.status?.decks.find((d) => d.serial === serial) : undefined);
   const deck = status(settled.serial);
   let focused = settled;
-  if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile)) {
+  // Followed into another profile only when it is the active one — a key on
+  // the deck switched profile. A deck the editor's profile has no keys for
+  // shows an older profile's; following it there would take the editor out of
+  // the profile being worked on, so it stays, on a page of its own (App.tsx
+  // gives it a blank one). Choosing a deck never changes the profile.
+  const active = daemon.status?.activeProfile?.id;
+  if (deck?.profile && deck.page && Object.prototype.hasOwnProperty.call(config.profiles, deck.profile) && (deck.profile === settled.profile || deck.profile === active)) {
     const moved = deck.profile !== settled.profile || deck.page !== settled.page;
     // A profile change takes the other decks' pages with it: they were pages
     // of the old profile, so each goes back to its start page before following.
@@ -422,13 +428,14 @@ export function followDeck(config: Config, daemon: DaemonView, current: Selectio
 }
 
 /**
- * The deck to edit after choosing a profile: the current one if the profile
- * has a layout for it, otherwise the first connected deck it covers, otherwise
+ * The deck to edit after choosing a profile: the current one if it is
+ * connected or the profile has a layout for it, otherwise the first connected deck it covers, otherwise
  * the first deck it has a layout for. Keeps the breadcrumb on a deck the new
  * profile actually shows, so following does not bounce it back.
  */
 export function deckForProfile(config: Config, daemon: DaemonView, profile: string, preferred: string): string {
-  if (layoutFor(config, profile, preferred)) return preferred;
+  // A connected deck stays: a profile with no keys for it gets a blank page (App.tsx).
+  if (layoutFor(config, profile, preferred) || geometryFor(daemon, preferred) !== null) return preferred;
   const choices = deckChoices(config, profile, daemon);
   return (choices.find((d) => d.connected && d.hasLayout) ?? choices.find((d) => d.hasLayout))?.id ?? preferred;
 }

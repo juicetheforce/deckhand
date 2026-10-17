@@ -630,8 +630,8 @@ await check('a new page added by the editor can be selected immediately', () => 
 console.log('live switching: following the decks');
 
 /** A daemon view where each listed deck shows the given profile and page. */
-function showing(decks: Array<{ serial: string; profile: string; page: string }>): DaemonView {
-  const view = daemonView(decks.map((d) => d.serial));
+function showing(decks: Array<{ serial: string; profile: string; page: string }>, active = 'default'): DaemonView {
+  const view = daemonView(decks.map((d) => d.serial), active);
   view.status!.decks = decks.map((d) => ({ serial: d.serial, connected: true, configured: true, profile: d.profile, page: d.page }));
   return view;
 }
@@ -641,9 +641,16 @@ await check('the breadcrumb follows a page change on the deck, and drops the key
   assert.deepEqual(s, { profile: 'default', serial: XL, page: 'games', key: null, keys: [], others: {} });
 });
 
-await check('the breadcrumb follows a profile change on the deck', () => {
-  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }]), { profile: 'default', serial: XL, page: 'main', key: null, keys: [], others: {} });
+await check('the breadcrumb follows a profile change on the deck (a key switched the active profile)', () => {
+  const s = followDeck(EXAMPLE, showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }], 'prof_game'), { profile: 'default', serial: XL, page: 'main', key: null, keys: [], others: {} });
   assert.deepEqual([s.profile, s.page], ['prof_game', 'pg_hotbar']);
+});
+
+await check('a deck still showing an older profile does not take the editor there: choosing a deck never changes the profile', () => {
+  // prof_game is active and has no V2 layout, so the V2 still shows "default".
+  const view = showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }, { serial: V2, profile: 'default', page: 'main' }], 'prof_game');
+  const s = followDeck(EXAMPLE, view, { profile: 'prof_game', serial: V2, page: '', key: null, keys: [], others: {} });
+  assert.deepEqual([s.profile, s.serial, s.page], ['prof_game', V2, ''], 'stays, with no page until the editor gives it a blank one');
 });
 
 await check('when the deck has not moved, the selected key stays (mid-edit)', () => {
@@ -784,7 +791,7 @@ await check('another deck showing a different profile is not followed into it, e
 await check('when the focused deck moves to another profile, the other decks go to their start pages in it', () => {
   // The V2 was on "extra", a page of the old profile. prof_game has no V2
   // layout, so it stays shown with no page; with one, it would be its start page.
-  const view = showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }, { serial: V2, profile: 'default', page: 'extra' }]);
+  const view = showing([{ serial: XL, profile: 'prof_game', page: 'pg_hotbar' }, { serial: V2, profile: 'default', page: 'extra' }], 'prof_game');
   const s = followDeck(MULTI, view, xlWithV2('extra'));
   assert.deepEqual([s.profile, s.page, s.others], ['prof_game', 'pg_hotbar', { [V2]: '' }]);
   const covered = structuredClone(MULTI);
@@ -802,13 +809,14 @@ await check('remembered shown decks join the focused one, on their start pages; 
   assert.deepEqual(restoreShown(MULTI, daemonView([XL, V2]), opened, []), opened, 'nothing remembered: one deck, as before (opt-in)');
 });
 
-await check('choosing a profile keeps the deck if the profile covers it, otherwise moves to a connected deck it covers', () => {
+await check('choosing a profile keeps a connected deck, covered or not; an unplugged one moves to a connected deck the profile covers', () => {
   const both = showing([
     { serial: XL, profile: 'default', page: 'main' },
     { serial: V2, profile: 'default', page: 'main' },
   ]);
   assert.equal(deckForProfile(EXAMPLE, both, 'default', V2), V2);
-  assert.equal(deckForProfile(EXAMPLE, both, 'prof_game', V2), XL, 'prof_game has no V2 layout');
+  assert.equal(deckForProfile(EXAMPLE, both, 'prof_game', V2), V2, 'prof_game has no V2 layout: it stays, and gets a blank page');
+  assert.equal(deckForProfile(EXAMPLE, showing([{ serial: XL, profile: 'default', page: 'main' }]), 'prof_game', V2), XL, 'the V2 unplugged');
 });
 
 await check('a switch is sent only for a connected deck with a session, with the daemon connected', () => {

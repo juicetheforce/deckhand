@@ -57,8 +57,8 @@ export function ProfileAction({
       )}
       {uncovered.length > 0 && (
         <p className="warning-text">
-          {uncovered.join(' and ')} {uncovered.length === 1 ? 'is' : 'are'} plugged in but not covered by this profile, so{' '}
-          {uncovered.length === 1 ? 'it keeps' : 'they keep'} whatever {uncovered.length === 1 ? 'layout it has' : 'layouts they have'}.
+          {uncovered.join(' and ')} {uncovered.length === 1 ? 'has' : 'have'} no keys in that profile yet, so switching there{' '}
+          {uncovered.length === 1 ? 'leaves it' : 'leaves them'} showing what {uncovered.length === 1 ? 'it shows' : 'they show'} now. Open the profile in the editor to give {uncovered.length === 1 ? 'it' : 'them'} a page.
         </p>
       )}
       {target === null && to === null && <p className="muted small">Pick the profile this key should switch to.</p>}

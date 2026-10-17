@@ -53,7 +53,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
   const stranded = layout ? new Set(pagesWithNoWayOff(layout)) : new Set<string>();
   // The same treatment for a profile that leaves a connected deck showing
   // whatever it had.
-  const uncovered = profileCoverage(config, daemon, selection.profile).uncoveredConnected;
 
   return (
     <header className="toolbar glass">
@@ -153,15 +152,6 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         />
       </nav>
       <span className="toolbar-spacer" />
-      {uncovered.length > 0 && (
-        <span
-          className="warn-badge"
-          role="status"
-          title={`This profile has no layout for ${uncovered.join(' and ')}, so ${uncovered.length === 1 ? 'it keeps' : 'they keep'} whatever ${uncovered.length === 1 ? 'was on it' : 'was on them'} when you switch to it.`}
-        >
-          ⚠ {uncovered.length === 1 ? `${uncovered[0]} not covered` : `${uncovered.length} decks not covered`}
-        </span>
-      )}
       {/* App settings: its own window, a child of this one. */}
       <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
         <SettingsGlyph size={18} />
@@ -587,6 +577,7 @@ function ProfileCrumb({
     <span className="crumb tab-wrap" ref={wrap}>
       <span className="crumb-label">Profile</span>
       <select
+        data-crumb="profile"
         value={profile}
         onChange={(e) => onSelect(e.target.value)}
         onContextMenu={(e) => {

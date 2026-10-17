@@ -1033,8 +1033,15 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
   const devices = await deviceList();
   const notices = [...document.querySelectorAll('.notice')].map((n) => n.textContent ?? '');
 
+  // A connected deck with no keys in the profile is given a blank page: wait for its grid.
+  await until(() => document.querySelector('.grid .key') !== null || document.querySelector('[data-empty-state]') === null, 3000);
+  await sleep(300);
+  const grid = document.querySelector<HTMLElement>('.grid');
   return {
-    kind: card?.getAttribute('data-empty-state') ?? null,
+    gridDeck: grid?.dataset.deck ?? null,
+    gridKeys: grid ? grid.querySelectorAll('.key').length : 0,
+    profileCrumb: document.querySelector<HTMLSelectElement>('select[data-crumb="profile"]')?.value ?? null,
+    kind: document.querySelector('[data-empty-state]')?.getAttribute('data-empty-state') ?? null,
     title: card?.querySelector('.empty-title')?.textContent ?? null,
     detail: card?.querySelector('.muted')?.textContent ?? null,
     // Null when there is no button, which is the point in four of the five.
@@ -1711,7 +1718,7 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
     deviceOptions: device instanceof HTMLSelectElement ? [...device.options].map((o) => ({ value: o.value, label: o.textContent })) : null,
     deviceValue: device instanceof HTMLSelectElement ? device.value : null,
     crumbs,
-    profileSelect: document.querySelector('.toolbar .crumb select:not([data-crumb])') !== null,
+    profileSelect: document.querySelector('.toolbar .crumb select[data-crumb="profile"]') !== null,
     deckRename: document.querySelector('.toolbar button[aria-label^="Rename \\"Little deck\\""]') !== null,
     tabs: [...document.querySelectorAll('.tabs .tab:not(.tab-add)')].map((t) => t.textContent),
     selectedTab: document.querySelector('.tab-selected')?.textContent ?? null,
@@ -2044,24 +2051,24 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   await sleep(100);
   out.untickFocused = { ...layout(), tabs: tabs(), selectedTab: selectedTab() };
 
-  // 12. A profile with no V2 layout, both shown: the V2 keeps its panel, with the "Add a layout" card.
+  // 12. A profile with no V2 layout, both shown: the V2 keeps its panel and
+  //     gets a blank page at once — an empty grid, no card, no click — and the
+  //     profile stays the one chosen.
   await tick(XL);
   await until(() => document.querySelectorAll('.grid').length === 2);
   click(keyOn(XL, 0));
   await until(() => layout().focused === XL);
-  const profile = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+  const profile = document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')!;
   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(profile, 'solo');
   profile.dispatchEvent(new Event('change', { bubbles: true }));
-  await until(() => panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined);
+  out.layoutAdded = await until(() => !!panel(V2)?.querySelector('.grid .key'));
   await sleep(200);
-  const card = panel(V2)?.querySelector('[data-empty-state]');
   out.noLayout = {
     ...layout(),
-    kind: card?.getAttribute('data-empty-state') ?? null,
-    button: card?.querySelector('button.primary')?.textContent ?? null,
+    card: panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined,
+    v2Keys: panel(V2)?.querySelectorAll('.grid .key').length ?? 0,
+    profile: document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')?.value ?? null,
   };
-  card?.querySelector<HTMLButtonElement>('button.primary')?.click();
-  out.layoutAdded = await until(() => panel(V2)?.querySelector('.grid') !== null && panel(V2)?.querySelector('.grid') !== undefined);
   await sleep(700); // past the autosave
 
   // The canvas. Both decks shown, never dragged: stacked, fitted.

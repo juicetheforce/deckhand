@@ -162,15 +162,11 @@ const fresh2 = await situation({
   },
 });
 
-check('the old sentence survives here, because here it is true', () => {
-  assert.equal(fresh2.kind, 'no-layout');
-  assert.match(fresh2.detail, /showing whatever it had/);
-});
-check('and names the deck rather than saying "this deck"', () => {
-  assert.match(fresh2.title, /Stream Deck Original V2/);
-});
-check('this is the one case that offers to add a layout, naming the deck', () => {
-  assert.match(fresh2.addButton ?? '', /Add a layout for Stream Deck Original V2/);
+check('a connected deck with no keys anywhere gets a blank page at once: an empty grid, no card', () => {
+  assert.equal(fresh2.kind, null);
+  assert.equal(fresh2.gridDeck, V2);
+  assert.equal(fresh2.gridKeys, 15, 'the V2 at its usual size, 5 × 3');
+  assert.equal(fresh2.addButton, null);
 });
 check('the deck is there, so the pill says connected, not "no decks"', () => {
   assert.equal(fresh2.pill, 'connected');
@@ -196,16 +192,15 @@ const chosen = await situation({
   },
 });
 
-check('choosing the uncovered deck shows the same thing', () => {
-  assert.equal(chosen.kind, 'no-layout');
-  assert.match(chosen.addButton ?? '', /Add a layout for/);
+check('choosing a deck the profile has no keys for: its empty grid, in the same profile — never another', () => {
+  assert.equal(chosen.kind, null);
+  assert.equal(chosen.gridDeck, V2);
+  assert.equal(chosen.gridKeys, 15);
+  assert.equal(chosen.profileCrumb, 'default');
 });
-check('say it once: the toolbar badge summarises, the card explains — two voices, not three', () => {
-  // The toolbar badge is the one summary; the device dropdown carries no
-  // per-row clause; the card is the only one that says what to do about it.
-  assert.equal(chosen.warnBadges.length, 1, 'the ⚠ summary');
-  assert.match(chosen.warnBadges[0], /not covered/);
-  assert.equal(chosen.deviceOptions.filter((o) => o.includes('no layout')).length, 0, 'the dropdown clause stays gone');
+check('no "not covered" badge, and the dropdown carries no per-row clause', () => {
+  assert.equal(chosen.warnBadges.length, 0);
+  assert.equal(chosen.deviceOptions.filter((o) => o.includes('no layout')).length, 0);
 });
 
 // ------------------------------- 5. a configured deck that is not plugged in

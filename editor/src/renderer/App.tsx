@@ -349,9 +349,9 @@ function Editor({
 
   const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
   const addLayout = async (serial = selection.serial) => {
-    // A virtual deck is treated exactly as a Stream Deck here: the same card,
-    // and its new layout quietly takes the panel it has in another profile. A
-    // different size per profile is Settings › Decks' Change….
+    // A virtual deck is treated exactly as a Stream Deck here, and its new
+    // layout quietly takes the panel it has in another profile. A different
+    // size per profile is Settings › Decks' Change….
     const panel = config.decks?.[serial]?.virtual ? Object.values(config.profiles).map((p) => p.layouts[serial]?.panel).find((p) => p !== undefined) : undefined;
     const result = await window.deckhand.apply({
       kind: 'addLayout',
@@ -362,6 +362,23 @@ function Editor({
     });
     setAddLayoutError(result.ok ? null : result.error);
   };
+
+  // Every connected deck shown in a profile with no keys for it gets a blank
+  // page there at once — a Stream Deck and a virtual deck alike — so it can be
+  // edited straight away, with no "add a layout" step. The deck then shows that
+  // blank page too, as the editor does, once it is the active profile. One
+  // request per deck and profile at a time; the config's change ends it.
+  const creatingLayouts = useRef(new Set<string>());
+  useEffect(() => {
+    if (editingBlocked || !Object.prototype.hasOwnProperty.call(config.profiles, selection.profile)) return;
+    for (const serial of [selection.serial, ...Object.keys(selection.others)]) {
+      if (serial === '' || geometryFor(daemon, serial) === null || layoutFor(config, selection.profile, serial) !== null) continue;
+      const slot = `${selection.profile}:${serial}`;
+      if (creatingLayouts.current.has(slot)) continue;
+      creatingLayouts.current.add(slot);
+      void addLayout(serial).finally(() => creatingLayouts.current.delete(slot));
+    }
+  });
 
   // Deleting a page is confirmed here rather than in the toolbar, because the
   // confirmation has to name the keys it is about to clear.
