@@ -121,6 +121,22 @@ const medium = makePanel(PANEL, 'medium');
 check('a panel: k1… in reading order, a 12% gap, centred, every key on the canvas', medium.controls.length === 24 && medium.controls[0].id === 'k1' && medium.controls[8].y > medium.controls[7].y && medium.controls[0].w === 211 && medium.controls.every((c) => c.x >= 0 && c.y >= 0 && c.x + c.w <= 1920 && c.y + c.h <= 720), JSON.stringify(medium.controls.slice(0, 2)));
 check('…which the config accepts', !refused(base({ ...medium })) && ['small', 'large'].every((size) => !refused(base(makePanel(XENEON, size)))));
 
+console.log('display events');
+{
+  const { screenChangeFilter } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
+  let wanted = true;
+  await fs.mkdir(path.join(DRM, 'card1-DP-9'), { recursive: true });
+  await fs.writeFile(path.join(DRM, 'card1-DP-9', 'status'), 'connected\n');
+  const changed = screenChangeFilter(() => wanted, DRM);
+  check('a display event with no screen changed: no rescan, however many', [changed(), changed(), changed()].every((c) => c === false));
+  await fs.writeFile(path.join(DRM, 'card1-DP-9', 'status'), 'disconnected\n');
+  check('a screen going: a rescan, once', changed() === true && changed() === false);
+  await fs.writeFile(path.join(DRM, 'card1-DP-9', 'status'), 'connected\n');
+  wanted = false;
+  check('with no virtual deck configured, display events are ignored', changed() === false);
+  await fs.rm(path.join(DRM, 'card1-DP-9'), { recursive: true });
+}
+
 console.log('frames');
 const k = canvasFrame(1920, 720, [1, 2, 3]);
 check('canvas: length 12, type K, size, background', k.readUInt32LE(0) === 12 && k[4] === 75 && k.readUInt32LE(5) === 1920 && k.readUInt32LE(9) === 720 && k[13] === 1 && k[15] === 3);

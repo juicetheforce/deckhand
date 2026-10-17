@@ -377,6 +377,27 @@ function startHelper(id: string, output: string): Promise<{ proc: ChildProcessWi
   });
 }
 
+/**
+ * Whether a display event changed anything a virtual deck cares about. A
+ * DRM "change" on the card is the GPU's hotplug signal, and some come in
+ * bursts with no screen coming or going (seen on the laptop: one every ~9 s
+ * for two minutes, nothing plugged — a monitor going in and out of standby,
+ * probably). So: with no virtual deck configured, never; otherwise only when
+ * the connected screens or their keys differ from the last look — a few small
+ * sysfs reads, instead of a rescan of every driver.
+ */
+export function screenChangeFilter(wanted: () => boolean, drmDir?: string): () => boolean {
+  const signature = () => listScreens(drmDir).map((s) => `${s.connector}=${s.key}`).join(',');
+  let last = signature();
+  return () => {
+    if (!wanted()) return false;
+    const now = signature();
+    if (now === last) return false;
+    last = now;
+    return true;
+  };
+}
+
 /** What a pairing found (control/protocol.ts). */
 export type Pairing = PairReply;
 
@@ -473,7 +494,11 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
 
     watch(onChange) {
       rescan = onChange;
-      const stop = watchScreensAndTouch((action, devpath) => onChange(`${action} ${devpath.split('/').pop()}`));
+      const screensChanged = screenChangeFilter(() => Object.values(config()?.decks ?? {}).some((d) => d.virtual));
+      const stop = watchScreensAndTouch((action, devpath) => {
+        if (/\/card\d+$/.test(devpath) && !screensChanged()) return;
+        onChange(`${action} ${devpath.split('/').pop()}`);
+      });
       return () => {
         stop();
         rescan = null;
