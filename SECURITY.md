@@ -21,10 +21,14 @@ usually within a few days. Only the latest release is supported.
   anything that lets another user reach it, or a client make the daemon do
   more than its commands allow.
 - **The udev rule** (`/etc/udev/rules.d/60-deckhand.rules`), which gives the
-  logged-in user access to the decks and to `/dev/uinput`. Its breadth is
-  deliberate — any process of that user can then synthesise keystrokes, which
-  is why uninstalling always removes it — but a way to widen it further is in
-  scope.
+  logged-in user access to the decks, to `/dev/uinput` and to touchscreens
+  (below). Its breadth is deliberate — any process of that user can then
+  synthesise keystrokes, which is why uninstalling always removes it — but a
+  way to widen it further is in scope.
+- **Virtual decks**: anything that lets a touch run an action while the
+  session is locked or not the active one, lets the display helper
+  (`panel/`) read an input device other than a touchscreen it was given, or
+  leaves a touchscreen grabbed after Deckhand lets go of it.
 - **The install script** (`scripts/install.sh`), which runs `sudo` for the
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
@@ -35,6 +39,27 @@ usually within a few days. Only the latest release is supported.
 - **Twitch**: anything that sends a Twitch token anywhere but `id.twitch.tv`
   and `api.twitch.tv`, or makes Deckhand act on Twitch without a key press,
   beyond the hourly check Twitch requires and linking you started.
+
+## Device access
+
+The udev rule uses `uaccess`: access goes to the user at the active local
+session, and is taken back on a user switch. It covers Stream Decks (by
+Elgato's USB vendor), `/dev/uinput`, and **every touchscreen**, which is
+broader than virtual decks need: a rule naming only the touchscreen you pair
+would need `sudo` every time you pair one. Touchscreens only: not keyboards,
+mice or other input devices, including the "mouse" node some touchscreens
+also have, which udev cannot tell from any other mouse. It does mean any
+program you run can read your touchscreens, which on a touchscreen laptop
+includes what you type on an on-screen keyboard; `/dev/uinput` already lets
+the same programs type as you.
+
+The daemon opens a touchscreen only once it is paired with a virtual deck's
+screen, except while you are pairing one, when every touchscreen is read
+until one is tapped. It **grabs** the paired touchscreen, so the desktop
+sees none of its touches, and lets go when the deck goes. Reading the
+device directly bypasses the lock screen, so **touches do nothing while the
+session is locked or not the active one**, as logind reports it, and
+nothing while Deckhand cannot tell.
 
 ## Secrets
 

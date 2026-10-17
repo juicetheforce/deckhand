@@ -86,6 +86,10 @@ The installer checks all of these.
   before it is published.
 - libusb 1.0, which the Stream Deck library links against (`libusb1` on
   Fedora, `libusb-1.0-0` on Debian and Ubuntu).
+- For virtual decks only, libwayland-client (`libwayland-client` on Fedora,
+  `libwayland-client0` on Debian and Ubuntu, `wayland` on Arch), which every
+  Wayland desktop has. Without it the installer warns, and Stream Decks still
+  work.
 - `pactl`, for the audio keys. That is **pulseaudio-utils** on Fedora, Debian
   and Ubuntu — a machine running PipeWire may still not have the command.
 - A desktop session with a systemd user manager and a session D-Bus.
@@ -117,8 +121,10 @@ nothing. On top of the release's requirements (bar curl and xz), it needs:
   `/usr/bin/node` — the service runs the Node the install was built with —
   plus `npm`. If your distribution's Node is older, you need nvm or a
   third-party repository; the installer will not replace it.
-- `gcc` and `make`, and your distribution's kernel headers, to build the
-  key-injection helper.
+- `gcc` and `make`, your distribution's kernel headers, and Wayland's
+  client development files (`wayland-devel` on Fedora, `libwayland-dev` on
+  Debian and Ubuntu, `wayland` on Arch), to build the two helpers: key
+  injection, and the virtual decks' display.
 - Network access during the install, for `npm ci` and the editor's Electron.
 
 To follow releases from source, clone a tag instead
@@ -131,7 +137,7 @@ newest release tag and installs it.
 
 For maintainers. `scripts/release.sh build <vX.Y.Z>` builds only from a clean
 checkout at that annotated tag, from `git archive` of the tag. It uses the
-official Node, compiles the key-injection helper on AlmaLinux 8 (glibc 2.28),
+official Node, compiles the two helpers on AlmaLinux 8 (glibc 2.28),
 and refuses the release if any binary in the package needs a newer glibc or
 libstdc++, or if a shipped package carries no licence.
 `bash scripts/test/release-ships.sh <vX.Y.Z>` then tests what ships: it loads
@@ -155,7 +161,7 @@ deckhand-uninstall --purge  # removes your config without asking
 
 Uninstall removes the service, the installed copy, the commands, the desktop
 entry and Deckhand's udev rule. The rule always goes, because it gives every
-program you run access to `/dev/uinput`. It also removes
+program you run access to `/dev/uinput` and to your touchscreens. It also removes
 `~/.local/state/deckhand/`, backups included — that is the app's state, not
 your config. A developer install is removed the same way; the checkout is
 yours to delete.
@@ -198,9 +204,27 @@ move it (the two swap), or onto another deck to copy it there, replacing
 whatever that key held. A copied Go to page key whose page isn't on the other
 deck keeps its icon and label and loses the link, and the editor says so.
 
+**Virtual decks.** A touchscreen becomes a deck in **Settings › Decks › Add
+a virtual deck**: choose the screen, tap it when it shows "Tap this screen"
+(within a minute), and choose a key size. Small, Medium and Large aim at keys
+about 23, 30 and 45 mm apart, from the screen's own reported size, or from
+its pixels when that size is implausible; **Custom** sets the rows and
+columns, up to 12 × 24, and says when the keys get very small. The new deck
+gets a layout in the current profile, and a blank page at the same size in
+any other profile it's shown in. Under each virtual deck, Settings lists its
+size in every profile, with **Change…**; a smaller size names the keys that
+no longer fit, and drops them when you confirm. **Tap again** pairs the
+screen with its touchscreen again, needed when a touchscreen without a
+serial number moves to another USB port. **Remove** stops using the screen
+as a deck and keeps its layouts, which come back if you set the same screen
+up again. While the session is locked, or another user's is active, touches
+do nothing; `deckhand status` says why under the deck (`touch: …`).
+
 **Profiles** switch every deck at once. A deck the active profile has no
 layout for keeps showing what it was showing, so a small deck can hold a
-permanent row of profile keys while a big one changes. Switch with a key on a
+permanent row of profile keys while a big one changes. Show such a deck in
+the editor while that profile is selected and it gets a blank page there,
+ready to fill; choosing a deck never changes the profile. Switch with a key on a
 deck, in the editor, or from a script: `deckhand profile <name>`.
 
 **Icons** are image files wherever you keep them (PNG, JPEG, WebP, GIF, SVG).
@@ -277,16 +301,24 @@ scripts. `config.example.json` shows a complete file — its serials and audio
   "defaults": { /* background, labelColor, labelSize, labelPosition,
                    iconFit, brightness, refreshMs */ },
 
-  "decks": {                                   // hardware settings, optional
-    "<serial>": { "name": "XL", "brightness": 70 }
+  "decks": {                                   // per deck, optional for a Stream Deck
+    "<serial>": { "name": "XL", "brightness": 70 },
+    "<screen key>": {                          // a virtual deck: what makes that screen one
+      "name": "Side panel",
+      "virtual": {
+        "output": "DP-4",                      // the connector it was set up on
+        "touch": { "vendor": "222a", "product": "0001", "path": "pci-0000:00:14.0-usb-0:2.3:1.0" }
+      }
+    }
   },
 
   "profiles": {
     "<profile ID>": {
       "name": "Gaming",                        // optional
       "layouts": {                             // what each deck shows in this profile
-        "<serial>": {
+        "<serial or screen key>": {
           "startPage": "Combat",               // page ID or name, optional
+          "panel": { /* a virtual deck only: its keys, below */ },
           "pages": {
             "<page ID>": {
               "name": "Combat",                // optional
@@ -312,14 +344,39 @@ with no layout in any profile is not used. The daemon always starts on
 `startProfile` (or the first profile), and a profile switch sends each deck to
 its layout's start page.
 
-**Buttons** are keyed by index as a string: 0 is top-left, counting across
-rows. A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
+**Buttons** are keyed by control ID. On a Stream Deck that is the key's
+index as a string: 0 is top-left, counting across rows. On a virtual deck it
+is the ID of one of its panel's controls (below). A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
 `labelColor`, `labelSize`, `labelPosition`, `background`, `action`,
 `onRelease` and `refreshMs`. `\n` in a label gives a second line. A line
 too wide for the key is cut and ends in `…`, each line on its own, so a
 short second line stays whole under a long first one. A button
 index past the deck's last key is accepted and never shown; the editor never
 writes one.
+
+**A virtual deck** is keyed by its screen: `<maker>-<product>` from the
+screen's EDID, plus its text serial number when it has one (`GRA-6e4e`,
+`HPN-3469-CNK8231CGN`), or `output-<connector>` for a screen with no EDID.
+`virtual.output` is the connector it was set up on, which tells identical
+screens apart; `virtual.touch` is its touchscreen, by USB vendor and product
+and either its USB `serial` or, without one, its port (`path`, udev's
+`ID_PATH`). The editor writes both when you tap the screen. Its layout in
+each profile carries a `panel`:
+
+```jsonc
+"panel": {
+  "size": { "width": 1920, "height": 720 },  // the canvas, in the screen's pixels
+  "preset": "medium",                        // what made it; information only
+  "controls": [                              // each key, in pixels of the canvas
+    { "id": "k1", "x": 42, "y": 42, "w": 211, "h": 211, "shape": "square" }
+  ]
+}
+```
+
+A control's `id` is up to 32 letters, digits, `-` and `_`, unique in the
+panel and never derived from its position, so moving a key keeps its
+button. Every control must lie on the canvas, and `square` is the only shape
+for now. On a screen of another size the canvas is scaled to fit, centred.
 
 **`icon`** is left out for the action's built-in icon (a key with no action
 stays blank), `null` for no icon, a path to an image file, or
@@ -648,8 +705,9 @@ application to have its own.
 ## The control socket
 
 `$XDG_RUNTIME_DIR/deckhand.sock`, mode `0600`: only your user can connect.
-Newline-delimited JSON over a stream socket. Protocol version 1, reported by
-`status`.
+Newline-delimited JSON over a stream socket. Protocol version 2, reported by
+`status`. A key is named by its control ID, a string (`"7"` on a Stream
+Deck); version 2 still accepts a Stream Deck's key as a whole number.
 
 A request is one line:
 
@@ -664,8 +722,10 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 
 | cmd | args | does |
 | --- | --- | --- |
-| `status` | | active profile, every deck, the config's last reload, backups |
-| `decks` | | connected decks: serial, model, geometry, unsupported controls |
+| `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`) |
+| `decks` | | connected decks: serial, model, geometry (each key's ID, place and size: grid cells on a Stream Deck, pixels of the canvas on a virtual deck), unsupported controls |
+| `screens` | | connected screens, each with its key and EDID details and the virtual deck on it if any; and the touchscreens |
+| `virtual.pair` | `output` (a connector) | shows "Tap this screen" on that screen and waits up to 60 s for a tap; replies with the screen's key, the touchscreen tapped and the screen's size. Writes nothing. Cancelled if this connection closes |
 | `repaint` | `serial` (optional) | redraws one deck, or all |
 | `profile.switch` | `to` | switches every deck to a profile, by ID or name |
 | `action.run` | `serial`, `action`, optional `onRelease` and `holdMs` | runs an action as if pressed on that deck, without saving it |
@@ -740,6 +800,19 @@ which thing is wrong: VTube Studio not running, **Allow Plugin API access**
 off in its settings, or another port. A key for a model that isn't loaded
 is marked and says which model it needs; load that model in VTube Studio.
 
+**A virtual deck ignores touches.** `deckhand status` says why under the
+deck. `locked` or `inactive`: unlock the session, or switch back to it.
+`missing`: its touchscreen isn't connected, or was paired by USB port and
+has moved — **Tap again** in Settings › Decks. `failed`: Deckhand could not
+open it; the journal says why, usually access, which the install line run
+again with `bash -s -- install --reinstall` fixes (it reports access per
+touchscreen), then replug it. `unknown`: Deckhand can't read whether the
+session is locked from logind, so it ignores touches.
+
+**A virtual deck shows nothing.** `deckhand decks` lists it only while its
+screen is connected. The journal says whether its display helper started;
+virtual decks need a Wayland session.
+
 **`deckhand` says the daemon isn't running.** `systemctl --user status
 deckhand`. If the service is up, look for `[control] listening on …` in its
 log; if the socket could not be created, the log says why, and the decks keep
@@ -786,7 +859,16 @@ under `dbus-run-session`). `scripts/test/fake-gio.mjs`,
 `fake-gsettings.mjs` and `fake-systemd-run.mjs` stand in for the programs an
 app key uses (`scripts/smoke-apps.mjs`). `scripts/test/no-decks.mjs` and
 `scripts/test/fake-decks.mjs` give a child process no decks, or decks a test
-can plug and unplug while the daemon runs.
+can plug and unplug while the daemon runs. For virtual decks,
+`scripts/test/fake-panel.mjs` stands in for the display helper
+(`DECKHAND_PANEL_BIN`), `fake-sysfs.mjs` builds a scratch `/sys/class/drm`,
+`/sys/class/input` and udev database of screens and touchscreens, and
+`fake-logind.mjs` puts a session that can be locked on a private bus
+standing in for the system bus. `scripts/smoke-panel.mjs` runs the real
+helper, `panel/deckhand-panel`, under a headless KWin (`kwin_wayland
+--virtual`) on a sealed bus, feeds it recorded touches, and compares what it
+drew pixel by pixel; without `kwin_wayland` or a built helper it says
+"skipped" and passes, so read its output.
 
 The checks:
 
@@ -795,7 +877,7 @@ The checks:
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch` — real
   Electron against a test harness for the control socket.
@@ -934,6 +1016,21 @@ Each has been hit more than once.
   `grep` exits at its first match, the writer dies of SIGPIPE, and the
   pipeline fails. Capture the output first, then search it (the install
   script's libusb check was bitten by exactly this).
+- **A headless KWin on your normal session bus, or under
+  `dbus-run-session`, starts the desktop's portals, and they attach to the
+  real display.** Run it on a `dbus-daemon` with no service directories, as
+  `scripts/smoke-panel.mjs` does, and wait for KWin's process group to exit
+  before cleaning up. **A `dbus-daemon` socket path has a length limit**: a
+  `unix:dir=` deep in a scratch directory can be too long; use `mktemp -d`
+  under `/tmp`.
+- **`tsc --noEmit` builds nothing.** A test run after it drives the old
+  `dist/`; run `npm run build:ts`, then the test.
+- **The editor's renderer compiles `src/control/protocol.ts`**, so that file
+  must import nothing that uses Node's types.
+- **The developer install copies what it builds into a staging directory**,
+  and every suite runs from the checkout, so a new source file the install
+  leaves behind passes every test. After adding a file the install builds,
+  run `scripts/install.sh update` (committed first).
 
 ### Style
 

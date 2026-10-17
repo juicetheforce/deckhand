@@ -54,6 +54,38 @@ It's one person's project, used every day.
 
 ![Two decks side by side in the editor](assets/screenshots/multi-deck.png)
 
+## Virtual decks
+
+A touchscreen can be a deck too: a small touch monitor beside your keyboard,
+say. Deckhand fills the screen with a grid of keys that work like a Stream
+Deck's: the same actions, pages and profiles, press and hold, several fingers
+at once. No Elgato hardware is needed. I use a 10.3-inch USB touch panel, and
+it has been tried on a Corsair Xeneon Edge.
+
+- **Set it up in the editor**, in **Settings › Decks › Add a virtual
+  deck**: choose the screen, tap it so Deckhand knows which touchscreen is
+  its own, and choose a key size: Small, Medium, Large, or your own rows and
+  columns. Edit its keys like any deck's. Nothing is ever edited on the
+  touchscreen itself, so a stray touch can't change anything.
+- **Its touches go only to Deckhand.** Deckhand reads the touchscreen
+  directly, so a touch on the panel never moves the pointer or clicks a
+  window, and on KDE Plasma the panel never takes keyboard focus from the
+  window you're typing in.
+- **Touches do nothing while your screen is locked**, or while another
+  user's session is the active one. Anything held is let go when the lock
+  comes on. If Deckhand can't tell whether the session is locked, it ignores
+  touches.
+- **A screen is known by its own identity**, not the port it's plugged into,
+  and its touchscreen by its serial number. Two identical screens are told
+  apart by their ports. A touchscreen with no serial number is remembered by
+  its USB port, so if you move its USB cable, tap it again (**Tap again** in
+  Settings).
+- **Each profile can give the screen its own key size**, in Settings ›
+  Decks.
+
+A virtual deck is a real monitor, so it uses one of the few displays your
+graphics card can drive at once. It covers the whole screen.
+
 ## OBS Studio
 
 Keys for OBS: go live, record, pause a recording, switch scenes, mute one of
@@ -201,8 +233,8 @@ corrupted or cut-short download, and that is all it does: the checksums come
 from the same GitHub release as the download, so they don't prove who made it.
 
 `sudo` is asked for once, to add a udev rule that gives you access to the
-decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then
-open **Deckhand** from your application menu.
+decks and touchscreens, and on Ubuntu once more for an AppArmor profile the
+editor needs. Then open **Deckhand** from your application menu.
 
 To update, run the same line again; the editor's **Settings › About** says
 when a newer release is out. To remove it: `deckhand-uninstall`.
@@ -249,6 +281,13 @@ And what it doesn't do well yet:
   until then. Changes made from VTube Studio's own window go through the
   model's hotkeys and are seen. Its beta has an event for every expression
   change, which Deckhand uses when it's there.
+- **Virtual decks need Wayland**, and have only been tried on KDE Plasma.
+  On GNOME the panel is a fullscreen window instead, which hasn't been
+  tried: it should take the keyboard focus once when it appears, and show in
+  the window list. X11 isn't supported.
+- **A touch on a virtual deck whose screen has gone to sleep** presses the
+  key under it.
+- **A rotated touchscreen** hasn't been tried.
 - **Twitch keys act on your own channel only**, not one you moderate.
 - **A Twitch clip that fails after the press** isn't reported. Twitch
   accepts the press and makes the clip in the background; Deckhand doesn't
@@ -264,6 +303,8 @@ That's what shapes it.
 - Volume for individual devices, not just the default one.
 - Window actions on KDE Plasma.
 - Dials and the touch strip, if I ever have a Stream Deck+ to test on.
+- Custom layouts for virtual decks: keys of any size and shape, anywhere on
+  the screen, over a background image; then exporting a panel to share it.
 - More OBS keys (replay buffer, virtual camera, studio mode) when someone
   asks for them.
 - More Twitch keys (raids, ads, chat modes) when someone asks for them.

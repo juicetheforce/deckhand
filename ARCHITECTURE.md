@@ -23,12 +23,18 @@ keeps those two things out of the path between a key press and a keystroke.
 
 ```
 deckhand daemon (Node, systemd --user)  ──stdin/keycodes──▶  deckhand-input (C)
-   │                                                            │
-   │ USB HID                                                    ▼
-   ▼                                                    uinput virtual kbd
-Stream Decks                                                    │
-   ▲                                                            ▼
-   │ unix socket ◀── deckhand CLI, editor                  evdev ──▶ games
+   │   │                                                        │
+   │   │ USB HID                                                ▼
+   │   ▼                                                uinput virtual kbd
+   │  Stream Decks                                              │
+   │                                                            ▼
+   │ pipes: images ▶ ◀ touches                             evdev ──▶ games
+   ▼
+deckhand-panel (C), one per virtual deck ──▶ Wayland surface on its screen
+   ▲
+   └── touchscreen (evdev, grabbed)
+
+unix socket ◀── deckhand CLI, editor
 editor (Electron/React) — config producer only
 ```
 
@@ -39,6 +45,13 @@ editor (Electron/React) — config producer only
   rebuilt against Electron's ABI on every Electron update. The component that
   has to just work does not take that risk. A release carries its own Node for
   the daemon, as it carries its own Electron for the editor.
+- **The display helper** (`panel/`, C, linking only libc and
+  `libwayland-client`) shows a virtual deck: a touchscreen used as a deck.
+  One runs per connected virtual deck's screen, started by the daemon, and
+  talks to it over its own pipes, never the socket. It composes the images
+  the daemon renders onto a surface on that screen, and reads the paired
+  touchscreen directly, grabbed, passing touches back. It knows nothing of
+  keys or shapes: the daemon decides which key a touch lands on.
 - **The input helper** (`helper/deckhand-input.c`, about 250 lines, no
   dependencies beyond libc and the kernel headers) is a resident process that
   owns one `uinput` virtual keyboard. It receives **numeric keycodes only** on
@@ -94,13 +107,50 @@ remove. The editor only produces config, so it could be sandboxed later.
 **Config is keyed by device serial, never by USB path.** A USB path changes
 when a deck moves to another port or hub; the serial follows the deck. The
 cost: a replaced deck is a new deck, and its layouts have to be moved to the
-new serial by hand (see the README).
+new serial by hand (see the README). A virtual deck is keyed the same way by
+its screen (below).
 
 **The daemon owns all device knowledge, and hardcodes none of it.** Key count,
 icon size and layout come from the Stream Deck library's control descriptions
 at runtime. There is no per-model table and no guessed default. Only a key the library says has a screen is drawn, at that screen's own size — not every model's keys are square (a Studio's are 144×112), and some keys have none (a Neo's touch keys, every Pedal key); `smoke-models` drives every model the installed library knows through the library's own checks. The editor
 learns each deck's geometry from the daemon, so a model it has never heard of
 draws correctly.
+
+**A virtual deck is Deckhand doing for a touchscreen what it does for a
+Stream Deck.** Above one seam the daemon never asks which kind of deck it
+has: each driver — the Stream Deck library, and virtual decks — hands it
+devices with controls that have an ID, a position, a size and a shape, and a
+Stream Deck's grid is one such layout. Keys are named by control ID, never
+by index, so a moved or resized key keeps its button. A panel's controls
+live in each profile's layout, so one screen can show different layouts in
+different profiles.
+
+- **The screen is drawn on a Wayland layer-shell surface on the `overlay`
+  layer** that never takes keyboard focus, on the chosen output; where the
+  compositor has no layer-shell (GNOME), a fullscreen window on it. Two
+  standard protocols and one fallback: no per-desktop code, and no portal.
+- **Touch is read from the touchscreen directly and grabbed**, below the
+  compositor, so the desktop never sees it and nothing depends on which
+  display the desktop thinks the touchscreen belongs to — which KDE Plasma
+  got wrong on both machines tried, until it was set by hand.
+- **The daemon hit-tests**, not the helper, in a module the editor shares,
+  so shapes never reach C. A touch belongs to the key it started on until it
+  lifts, as a held Stream Deck key does.
+- **A screen is recognised by its EDID**: maker and product, and its text
+  serial number when it has one — never the numeric serial field, which many
+  screens fill with a placeholder. Identical screens are told apart by the
+  connector each was set up on. **Nothing links a touch controller to its
+  screen**, so setup asks for one tap; the pairing is remembered by the
+  touch device's USB serial, or by its USB IDs and port when it has none.
+- **No touch runs an action while the session is locked or not the active
+  one**, as logind's `LockedHint` and `Active` say, followed by their change
+  signals; if they cannot be read, touches are refused. Reading the device
+  directly bypasses the lock screen, so this rule is what stands in for it.
+- **Discovery costs nothing at rest**: screens from `/sys/class/drm`,
+  touchscreens from udev's database, changes from the `udevadm monitor` the
+  daemon already runs. A display change that alters no screen Deckhand
+  cares about does not rescan. A helper runs only while a virtual deck's
+  screen is connected, and does nothing until the daemon sends it an image.
 
 **Config reaches the daemon one way: `config.json` and its hot reload.** The
 daemon never writes that file, except once to create a starter config on a
@@ -138,7 +188,9 @@ will find is not a recurring timer: after the session bus is lost,
 key**, or a press is waiting on it; if OBS is not running, the next try rides
 the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 `src/services/obs-client.ts` are one-shot deadlines for a handshake or a
-request, not recurring timers. **While a Twitch account is being
+request, not recurring timers. **Pairing a virtual deck's
+touchscreen** waits for a tap with a one-shot 60-second deadline, only
+while someone is pairing. **While a Twitch account is being
 linked**, the daemon asks Twitch every few seconds whether the person has
 approved — the only way to learn it — until they do, the code expires, they
 cancel, or the client that started it closes; never at rest. **VTube Studio
@@ -301,6 +353,12 @@ is here so the test is not "fixed" instead.
 | `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
+| `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
+| `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |
+| `src/screens.ts` | **a screen's key never contains the EDID's numeric serial**: the Xeneon Edge and two identical HP monitors all report the same placeholder there; only the text serial, cleaned of unprintable bytes (one carries a NUL), tells screens apart |
+| `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |
+| `src/services/hotplug.ts` | **a display event rescans only when the connected screens or their keys changed**, and is ignored with no virtual deck configured: `drm` change events have arrived every few seconds at rest with nothing plugged in |
+| `udev/60-deckhand.rules` | **touchscreens only**: a touchscreen's "mouse" twin is a plain mouse to udev, and no rule can grant it without granting every mouse |
 
 ## The control socket
 
@@ -322,7 +380,7 @@ replies, and can subscribe to `state`, `config` and `audio` events.
 Per user, under the XDG directories: the app in `~/.local/share/deckhand`, a
 `systemd --user` unit, and the `deckhand` and `deckhand-editor` commands in
 `~/.local/bin`. The only piece that needs root is a udev rule granting the
-logged-in user access to the decks and to `/dev/uinput`. Uninstalling always
+logged-in user access to the decks, to `/dev/uinput` and to touchscreens. Uninstalling always
 removes that rule, because it lets any of the user's processes synthesise
 keystrokes.
 
@@ -337,9 +395,9 @@ everything after the app directory is staged:
   anything installed. Nothing is compiled there, so a user needs no Node,
   npm or compiler. `scripts/release.sh` builds releases only from a clean,
   annotated tag, from `git archive` of it, so a release contains nothing that
-  is not in a commit. The one binary Deckhand compiles, the input helper, is
-  compiled on AlmaLinux 8 (glibc 2.28); every other native file is an upstream
-  prebuild. Then every binary in the package is read, and the release is
+  is not in a commit. The two binaries Deckhand compiles, the input and
+  display helpers, are compiled on AlmaLinux 8 (glibc 2.28); every other
+  native file is an upstream prebuild. Then every binary in the package is read, and the release is
   refused if any needs a newer glibc or libstdc++ than the floor — a failure on
   the maintainer's machine instead of a stranger's. Before publishing, the
   package is loaded in containers of the distributions it claims, installed
