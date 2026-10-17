@@ -832,28 +832,11 @@ function registerIpc(): void {
       return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on “${layout.pages[d.page]?.name ?? d.page}”`;
     });
   });
-  ipcMain.handle('virtualDeckEdit', async (event, edit: unknown) => {
+  ipcMain.handle('virtualDeckEdit', (event, edit: unknown) => {
     const kind = (edit as { kind?: unknown } | null)?.kind;
     if (!fromSettingsWindow(event) || !store || typeof kind !== 'string' || !VIRTUAL_DECK_EDITS.has(kind)) return { ok: false, error: 'not allowed' };
-    // A resize that drops keys keeps the configuration first, as a profile
-    // delete does: the editor has no undo, and the rolling backups can be
-    // minutes behind. Nothing is dropped unless the copy was written.
-    let backup: string | undefined;
-    if (kind === 'setPanel') {
-      const e = edit as Extract<Edit, { kind: 'setPanel' }>;
-      const layout = store.state().config.profiles[e.profile]?.layouts[e.serial];
-      if (layout?.panel && typeof e.panel === 'object' && resizePanel(layout, e.panel).dropped.length > 0) {
-        try {
-          await store.flush();
-          const kept = await keepConfigCopy(BACKUP_DIR, await fs.readFile(CONFIG_PATH, 'utf8'), 'resize');
-          backup = tildePath(keptConfigPath(BACKUP_DIR, kept.file));
-        } catch (err) {
-          return { ok: false, error: `nothing was changed: your configuration could not be kept first (${(err as Error).message})` };
-        }
-      }
-    }
     const result = store.apply(edit as Edit);
-    return result.ok ? { ok: true, ...(backup ? { backup } : {}) } : { ok: false, error: result.error };
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
   });
   ipcMain.handle('settingsDecks', async (event): Promise<DeckOption[]> => {
     if (!fromSettingsWindow(event)) return [];

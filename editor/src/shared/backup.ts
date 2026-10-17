@@ -144,8 +144,7 @@ export type ImportResult =
  * refuses rather than rotates, no second copy of identical bytes — are in
  * src/main/kept-configs.ts.
  */
-/** Why a configuration was kept: a profile deleted, an import, or a virtual deck's resize that dropped keys. */
-export type KeptReason = 'delete' | 'import' | 'resize';
+export type KeptReason = 'delete' | 'import';
 
 /** Enough to stop unbounded growth, not routine cleanup: these are made by hand, a handful a year. */
 export const MAX_KEPT_CONFIGS = 20;

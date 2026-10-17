@@ -319,8 +319,7 @@ export interface DeckhandBridge {
   pairScreen(output: string): Promise<{ ok: true; result: PairReply } | { ok: false; code: string; error: string }>;
   cancelPairing(): Promise<void>;
   /** One of the virtual-deck edits (add, tap again, remove, a new size), from Settings › Decks. Any other edit is refused. */
-  /** A resize that drops keys keeps the configuration first; `backup` names the copy. */
-  virtualDeckEdit(edit: Edit): Promise<{ ok: true; backup?: string } | { ok: false; error: string }>;
+  virtualDeckEdit(edit: Edit): Promise<{ ok: true } | { ok: false; error: string }>;
   /** A virtual deck's screen, to size a panel for it; null when it has no panel yet. Both windows. */
   virtualScreenSize(key: string): Promise<ScreenSize | null>;
   /** The keys a new panel would drop from a profile, named, for the confirmation (settings window only). */

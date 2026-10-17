@@ -331,7 +331,7 @@ function DeckSize({ deck, layout, onNotice }: {
     setEditing(null);
     onNotice(
       result.ok
-        ? { kind: 'ok', text: `${deck.label} in “${layout.profileName}” is ${SIZE_NAMES[e.size]} now.${result.backup ? ` What was there before is kept as ${result.backup} — Backups can restore it.` : ''}` }
+        ? { kind: 'ok', text: `${deck.label} in “${layout.profileName}” is ${SIZE_NAMES[e.size]} now.` }
         : { kind: 'error', text: result.error },
     );
   };
@@ -355,7 +355,7 @@ function DeckSize({ deck, layout, onNotice }: {
           {editing.dropped && editing.dropped.length > 0 && (
             <p className="warning-text" data-vd-dropped={editing.dropped.length}>
               {editing.dropped.length === 1 ? '1 key has' : `${editing.dropped.length} keys have`} no place at that size and will be removed: {editing.dropped.slice(0, 4).join(', ')}
-              {editing.dropped.length > 4 ? ` and ${editing.dropped.length - 4} more` : ''}. Your configuration is kept first, so Backups can bring them back.
+              {editing.dropped.length > 4 ? ` and ${editing.dropped.length - 4} more` : ''}.
             </p>
           )}
           <div className="button-row">

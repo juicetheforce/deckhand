@@ -28,7 +28,7 @@ import type { Config } from '../../../src/types.js';
 import { MAX_KEPT_CONFIGS, type KeptConfig, type KeptReason } from '../shared/backup.js';
 
 /** before-delete-2026-09-19T22-05-27.962Z.json — the time with ":" replaced, as the rolling backups write it. */
-const KEPT_NAME = /^before-(delete|import|resize)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z)\.json$/;
+const KEPT_NAME = /^before-(delete|import)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z)\.json$/;
 
 export function keptFileName(reason: KeptReason, when: Date): string {
   return `before-${reason}-${when.toISOString().replace(/:/g, '-')}.json`;

@@ -520,7 +520,7 @@ function KeptConfigs({
                 <div className="sp-kept">
                   <div className="kept-what">
                     <span className="kept-title">
-                      {entry.reason === 'delete' ? 'Before deleting a profile' : entry.reason === 'resize' ? 'Before resizing a virtual deck' : 'Before import'} <span className="kept-when">· {when(entry.keptAt)}</span>
+                      {entry.reason === 'delete' ? 'Before deleting a profile' : 'Before import'} <span className="kept-when">· {when(entry.keptAt)}</span>
                     </span>
                     <span className="kept-sub">{describeKept(entry)}</span>
                   </div>

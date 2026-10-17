@@ -13,7 +13,7 @@
 //   with its pairing and a Medium panel in the active profile only.
 // - The list: the deck, its size in that profile.
 // - A new size keeps keys by row and column; one with no place is named,
-//   and dropped only once confirmed, after the configuration was kept.
+//   and dropped only once confirmed; nothing is added to the kept configurations.
 // - Remove takes the pairing only; the layouts stay.
 //
 // Usage: npm run check:virtual   (builds first)
@@ -229,10 +229,10 @@ check('a new size that drops a key names it, and changes nothing until confirmed
   assert.match(r.droppedText ?? '', /1 key has no place at that size and will be removed: “Corner” \(key 24\) on “Main”\./);
   assert.equal(r.notYet, 24);
 });
-check('confirmed: keys keep their row and column, the one with no place goes, and the configuration was kept first', () => {
+check('confirmed: keys keep their row and column, the one with no place goes; no kept configuration is added', () => {
   assert.equal(r.resized, true);
   assert.deepEqual(r.afterButtons, { k1: { label: 'Stays' } });
-  assert.equal(r.kept.length, 1, JSON.stringify(r.kept));
+  assert.equal(r.kept.length, 0, JSON.stringify(r.kept));
 });
 check('Remove takes away the pairing only: the layouts stay', () => {
   assert.equal(r.removed, true);
