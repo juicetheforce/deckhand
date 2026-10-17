@@ -10,6 +10,7 @@ import { findScreen, listScreens, type Screen } from '../screens.js';
 import * as sessionLock from '../services/session-lock.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
+import type { PairReply } from '../control/protocol.js';
 import type { Config, LayoutDef, TouchDeviceDef } from '../types.js';
 import { canvasFrame, clearFrame, imageFrame, quitFrame, touchFrame } from './panel-frames.js';
 
@@ -376,14 +377,8 @@ function startHelper(id: string, output: string): Promise<{ proc: ChildProcessWi
   });
 }
 
-/** What a pairing found: the screen tapped, and its touchscreen as the config remembers it. */
-export interface Pairing {
-  connector: string;
-  screen: string;
-  touch: TouchDeviceDef;
-  /** The touchscreen's name, for saying which was found. */
-  touchName: string;
-}
+/** What a pairing found (control/protocol.ts). */
+export type Pairing = PairReply;
 
 /** Why a pairing did not pair. `code` is the control socket's. */
 export class PairingError extends Error {
@@ -544,7 +539,17 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
         });
         const node = touchscreens.find((n) => n.devnode === tapped);
         if (!node) throw new PairingError('action_failed', `the helper named ${tapped}, which is not a touchscreen`);
-        return { connector, screen: screen.key, touch: touchIdentity(node), touchName: node.name };
+        return {
+          connector,
+          screen: screen.key,
+          touch: touchIdentity(node),
+          touchName: node.name,
+          width,
+          height,
+          widthMm: screen.edid?.widthMm ?? 0,
+          heightMm: screen.edid?.heightMm ?? 0,
+          ...(screen.edid?.name ? { name: screen.edid.name } : {}),
+        };
       } finally {
         if (proc && proc.exitCode === null) {
           const gone = new Promise((resolve) => proc!.once('exit', resolve));

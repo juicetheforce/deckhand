@@ -193,8 +193,8 @@ export interface DeckhandBridge {
   clearFailure(at: ButtonLocation): Promise<DaemonResult>;
   /** The KDE global shortcut a combo is bound to, or null — including when KDE's service is not there. */
   findSystemShortcut(combo: string): Promise<SystemShortcut | null>;
-  previewSet(serial: string, key: number, button: ButtonDef): Promise<DaemonResult>;
-  previewClear(serial: string, key?: number): Promise<DaemonResult>;
+  previewSet(serial: string, key: string, button: ButtonDef): Promise<DaemonResult>;
+  previewClear(serial: string, key?: string): Promise<DaemonResult>;
   /**
    * Multi action's Test Run: run the action on a deck now — but
    * refused, code "focused", while the editor's window has focus, so a test
@@ -278,7 +278,7 @@ export interface DeckhandBridge {
    * reloaded, clear the preview on that key — so the key shows the saved icon
    * and responds to presses again.
    */
-  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: number } | null, slot: PairIconField | null): Promise<ApplyResult>;
+  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: string } | null, slot: PairIconField | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
   /**
    * App settings, in the editor's preferences file. Both

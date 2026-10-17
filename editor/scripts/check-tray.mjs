@@ -112,7 +112,7 @@ await sleep(1500); // let the renderer settle before measuring it
 results.openTree = processTree(editor.child.pid);
 
 // An edit, then the window closed at once — inside the 400 ms autosave delay.
-const at = { profile: 'default', serial: SERIAL, page: 'main', index: 0 };
+const at = { profile: 'default', serial: SERIAL, page: 'main', key: '0' };
 editor.send(`edit ${JSON.stringify({ kind: 'setLabel', at, label: 'written on close' })}`);
 editor.send('close');
 results.releasedToTray = await until(async () => {

@@ -7,6 +7,14 @@ import type { Config, Defaults, LayoutDef } from './types.js';
  * config.ts re-exports everything here.
  */
 
+/**
+ * What a `buttons` key may be: a control id (src/devices.ts). A Stream
+ * Deck's key 7 is "7", as every config has always said; a virtual deck's
+ * controls have ids of their own. No ":" — the socket's preview slots and the
+ * failure marks join ids with one.
+ */
+export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
 export const DEFAULTS: Required<Defaults> = {
   background: '#101014',
   labelColor: '#ffffff',

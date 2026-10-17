@@ -90,7 +90,7 @@ const badges = (editor) =>
     'editor',
     "Object.fromEntries([...document.querySelectorAll('.grid .key')].map((k, i) => [i, k.querySelector('.key-failed')?.getAttribute('title') ?? null]).filter(([, t]) => t !== null))",
   );
-const at = (index) => ({ profile: 'default', serial: XL, page: 'main', index });
+const at = (index) => ({ profile: 'default', serial: XL, page: 'main', key: String(index) });
 
 const r = {};
 const editor = startEditorAt(electronPath, editorRoot, env);

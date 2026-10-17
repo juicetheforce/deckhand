@@ -11,7 +11,7 @@ import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { builtinRef, pairIconFields } from '../shared/icons.js';
-import { keyName, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
+import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
 export type DeckGeometryWithSerial = DecksResult[number];
@@ -89,12 +89,12 @@ export interface Selection {
    * The key the inspector shows, or null. With several keys selected it is
    * the anchor: the last key clicked, where a Shift+click range starts.
    */
-  key: number | null;
+  key: string | null;
   /**
    * Every selected key, `key` included. Empty
    * exactly when `key` is null.
    */
-  keys: number[];
+  keys: string[];
   /**
    * The other decks shown in the editor, each with the page it shows; empty
    * when one deck is shown, which is today's editor exactly. `serial` is the
@@ -445,23 +445,23 @@ export function deckForProfile(config: Config, daemon: DaemonView, profile: stri
 export function clickKeys(
   grid: KeyGrid,
   current: Pick<Selection, 'key' | 'keys'>,
-  index: number,
+  key: string,
   modifiers: { ctrl: boolean; shift: boolean },
 ): Pick<Selection, 'key' | 'keys'> {
   if (modifiers.shift && current.key !== null) {
-    return { key: current.key, keys: rangeSelection(grid, current.key, index) };
+    return { key: current.key, keys: rangeSelection(grid, current.key, key) };
   }
   if (modifiers.ctrl) {
-    if (!current.keys.includes(index)) return { key: index, keys: [...current.keys, index] };
-    const keys = current.keys.filter((k) => k !== index);
-    return { key: current.key === index ? (keys[keys.length - 1] ?? null) : current.key, keys };
+    if (!current.keys.includes(key)) return { key, keys: [...current.keys, key] };
+    const keys = current.keys.filter((k) => k !== key);
+    return { key: current.key === key ? (keys[keys.length - 1] ?? null) : current.key, keys };
   }
-  return { key: index, keys: [index] };
+  return { key, keys: [key] };
 }
 
 /** "3 keys (“Jump”, “Sprint” and key 7)" — what the clipboard holds, for the line under the grid. */
 export function clipboardSummary(clip: Clipboard): string {
-  const names = clip.keys.map((k) => keyName(k.button, k.sourceIndex));
+  const names = clip.keys.map((k) => keyNamed(k.button, k.sourceNumber));
   const count = clip.keys.length === 1 ? '1 key' : `${clip.keys.length} keys`;
   const shown = names.length <= 3 ? joinNames(names) : `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
   return `${count} (${shown})`;
@@ -482,11 +482,11 @@ export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement
   if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
   else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
   if (written > 0 && placement.skipped.length > 0) {
-    const names = joinNames(placement.skipped.map((k) => keyName(k.button, k.sourceIndex)));
+    const names = joinNames(placement.skipped.map((k) => keyNamed(k.button, k.sourceNumber)));
     parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} no place on that deck.`);
   }
   if (placement.lostNavigation.length > 0) {
-    const names = joinNames(placement.lostNavigation.map((l) => keyName(l.key.button, l.index)));
+    const names = joinNames(placement.lostNavigation.map((l) => keyNamed(l.clip.button, l.clip.sourceNumber)));
     const one = placement.lostNavigation.length === 1;
     parts.push(`${names} lost ${one ? 'its' : 'their'} Go to page: that page is not on this deck, so ${one ? 'it needs' : 'they need'} a new target.`);
   }

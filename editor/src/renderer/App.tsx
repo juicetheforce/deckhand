@@ -57,6 +57,7 @@ import { DEFAULT_PANE_WIDTHS, paneColumns, type PaneName, type PaneWidths } from
 import { Toolbar, type AddPageResult, type AddProfileResult } from './Toolbar.js';
 import { keyCapture } from './key-capture.js';
 import { useBulk } from './useBulk.js';
+import { keyNumber } from '../shared/bulk.js';
 import { useEditor } from './useEditor.js';
 
 export function App() {
@@ -235,10 +236,10 @@ function Editor({
   const shown = shownDecks(config, daemon, selection);
   const several = shown.length > 1;
   /** A key on another shown deck: that deck takes the focus, with this key alone selected. */
-  const focusKey = (serial: string, index: number) =>
-    setSelection((s) => ({ ...focusDeck(s, serial), key: index, keys: [index] }));
+  const focusKey = (serial: string, key: string) =>
+    setSelection((s) => ({ ...focusDeck(s, serial), key, keys: [key] }));
 
-  const selectKeys = (keys: number[]) =>
+  const selectKeys = (keys: string[]) =>
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
   const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
@@ -249,15 +250,15 @@ function Editor({
   // Written first, then the key is selected and its form shown — the
   // pick comes after the write so the inspector sees the new action.
   // On another shown deck, the drop focuses it and the new button is made there.
-  const actionDrag = useActionDrag((type, { serial, index }) => {
+  const actionDrag = useActionDrag((type, { serial, key }) => {
     const pageId = pageOf(selection, serial);
     if (editingBlocked || pageId === null || !layoutFor(config, selection.profile, serial)?.pages[pageId]) return;
-    const at = { profile: selection.profile, serial, page: pageId, index };
-    if (serial === selection.serial) selectKeys([index]);
-    else focusKey(serial, index);
+    const at = { profile: selection.profile, serial, page: pageId, key };
+    if (serial === selection.serial) selectKeys([key]);
+    else focusKey(serial, key);
     void window.deckhand.apply({ kind: 'assignAction', at, action: { type } }).then((result) => {
       if (!result.ok) {
-        setSwitchError(`Could not put ${actionName(type)} on key ${index + 1}: ${result.error}`);
+        setSwitchError(`Could not put ${actionName(type)} on key ${keyNumber(key, geometryFor(daemon, serial) ?? undefined)}: ${result.error}`);
         return;
       }
       setSwitchError(null);
@@ -271,7 +272,7 @@ function Editor({
     onPaste: () => void bulk.paste(),
     onDuplicate: () => void bulk.duplicate(),
     onClear: () => void bulk.clear(),
-    onSelectAll: () => geometry && selectKeys(geometry.keys.map((k) => k.index)),
+    onSelectAll: () => geometry && selectKeys(geometry.keys.map((k) => k.id)),
     onSelectNone: () => selectKeys([]),
   });
 
@@ -432,8 +433,8 @@ function Editor({
         latchedKeys={latchedKeysOn(daemon, at)}
         notSetUp={(type) => notSetUp(daemon, type)}
         selectedKeys={focused ? selection.keys : []}
-        onClickKey={(index, modifiers) =>
-          focused ? setSelection((s) => ({ ...s, ...clickKeys(gridGeometry, s, index, modifiers) })) : focusKey(serial, index)
+        onClickKey={(key, modifiers) =>
+          focused ? setSelection((s) => ({ ...s, ...clickKeys(gridGeometry, s, key, modifiers) })) : focusKey(serial, key)
         }
         onMoveKey={
           editingBlocked
@@ -452,18 +453,18 @@ function Editor({
                 const toPage = pageOf(selection, to.serial);
                 if (toPage === null) return;
                 // The copy is on screen, so its deck takes the focus with the copy selected, as a library drop does.
-                focusKey(to.serial, to.index);
-                void bulk.copyKey({ serial, page: pageId, def: gridPage, index: from }, { serial: to.serial, page: toPage, index: to.index });
+                focusKey(to.serial, to.key);
+                void bulk.copyKey({ serial, page: pageId, def: gridPage, key: from }, { serial: to.serial, page: toPage, key: to.key });
               }
         }
         onKeyDragOver={setKeyDragOver}
         dropTarget={
-          actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.index : keyDragOver?.serial === serial ? keyDragOver.index : null
+          actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
         }
-        onKeyMenu={(index, x, y) => {
+        onKeyMenu={(key, x, y) => {
           // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
-          if (!focused) focusKey(serial, index);
-          else if (!selection.keys.includes(index)) selectKeys([index]);
+          if (!focused) focusKey(serial, key);
+          else if (!selection.keys.includes(key)) selectKeys([key]);
           if (!editingBlocked) setKeyMenu({ x, y });
         }}
       />
@@ -628,6 +629,7 @@ function Editor({
                 name={pageLabel(layout, pendingDelete)}
                 deletion={deletion}
                 pageName={(page: string) => pageLabel(layout, page)}
+                keyNumberOf={(key: string) => keyNumber(key, geometry ?? undefined)}
                 onConfirm={() => void confirmDelete()}
                 onCancel={() => setPendingDelete(null)}
               />
@@ -639,10 +641,11 @@ function Editor({
         <Inspector
           selectedCount={selection.keys.length}
           bulk={bulk}
-          at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, index: selection.key }}
-          button={selection.key === null ? undefined : page?.buttons[String(selection.key)]}
-          failure={selection.key === null ? undefined : failedKeysOn(daemon, { profile: selection.profile, serial: selection.serial, page: selection.page })[String(selection.key)]}
-          notSetUp={selection.key !== null && notSetUp(daemon, page?.buttons[String(selection.key)]?.action?.type)}
+          at={selection.key === null || !page ? null : { profile: selection.profile, serial: selection.serial, page: selection.page, key: selection.key }}
+          keyNumber={selection.key === null ? '' : keyNumber(selection.key, geometry ?? undefined)}
+          button={selection.key === null ? undefined : page?.buttons[selection.key]}
+          failure={selection.key === null ? undefined : failedKeysOn(daemon, { profile: selection.profile, serial: selection.serial, page: selection.page })[selection.key]}
+          notSetUp={selection.key !== null && notSetUp(daemon, page?.buttons[selection.key]?.action?.type)}
           editingBlocked={editingBlocked}
           pick={pick}
           pages={layout ? pageChoices(layout) : []}
@@ -749,9 +752,9 @@ function DeleteProfile({
           </p>
           <ul className="link-list">
             {plan.links.map((link) => (
-              <li key={`${link.profile}/${link.serial}/${link.page}/${link.index}/${link.where}`}>
+              <li key={`${link.profile}/${link.serial}/${link.page}/${link.key}/${link.where}`}>
                 {profileLabel(config, link.profile)} · {deckLabel(config, daemon, link.serial)} ·{' '}
-                {pageLabelIn(config, link.profile, link.serial, link.page)} · key {link.index + 1}
+                {pageLabelIn(config, link.profile, link.serial, link.page)} · key {keyNumber(link.key, geometryFor(daemon, link.serial) ?? undefined)}
                 {link.where === 'onRelease' ? ' (on release)' : ''}
                 {link.inMulti ? ' — one step of a multi action' : ''}
               </li>
@@ -807,12 +810,15 @@ function DeletePage({
   name,
   deletion,
   pageName,
+  keyNumberOf,
   onConfirm,
   onCancel,
 }: {
   name: string;
   deletion: NonNullable<ReturnType<typeof pageDeletion>>;
   pageName: (page: string) => string;
+  /** A key's number on the deck, as people count them ("key 5"). */
+  keyNumberOf: (key: string) => string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -841,8 +847,8 @@ function DeletePage({
           </p>
           <ul className="link-list">
             {deletion.links.map((link) => (
-              <li key={`${link.page}/${link.index}/${link.where}`}>
-                {pageName(link.page)} · key {link.index + 1}
+              <li key={`${link.page}/${link.key}/${link.where}`}>
+                {pageName(link.page)} · key {keyNumberOf(link.key)}
                 {link.where === 'onRelease' ? ' (on release)' : ''}
                 {link.inMulti ? ' — one step of a multi action' : ''}
               </li>

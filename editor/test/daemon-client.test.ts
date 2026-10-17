@@ -104,26 +104,26 @@ console.log('previews');
 await check('previewSet renders on the fake deck and shows in state; previewClear restores it', async () => {
   const before = xl.writes.get(3) ?? 0;
   const savedImage = xl.images.get(3);
-  await client.previewSet(XL, 3, { label: 'previewed', background: '#ff0000' });
+  await client.previewSet(XL, '3', { label: 'previewed', background: '#ff0000' });
   assert.ok((xl.writes.get(3) ?? 0) > before, 'nothing written to key 3');
   await until(client, (x) => (x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
-  await client.previewClear(XL, 3);
+  await client.previewClear(XL, '3');
   await until(client, (x) => !(x.status?.decks.find((d) => d.serial === XL)?.previews ?? []).includes('3'));
   assert.ok(xl.images.get(3)?.equals(savedImage), 'key 3 not restored to its saved image');
 });
 
 await check('an error reply rejects with the daemon error code', async () => {
-  await assert.rejects(client.previewSet('NO-SUCH-DECK', 0, { label: 'x' }), (err: unknown) => err instanceof DaemonError && (err.code === 'not_found' || err.code === 'deck_not_connected'));
-  await assert.rejects(client.previewSet(XL, 99, { label: 'x' }), (err: unknown) => err instanceof DaemonError && err.code === 'not_found');
+  await assert.rejects(client.previewSet('NO-SUCH-DECK', '0', { label: 'x' }), (err: unknown) => err instanceof DaemonError && (err.code === 'not_found' || err.code === 'deck_not_connected'));
+  await assert.rejects(client.previewSet(XL, '99', { label: 'x' }), (err: unknown) => err instanceof DaemonError && err.code === 'not_found');
   assert.equal(client.view().connected, true, 'an error reply must not drop the connection');
 });
 
 await check('a burst of 30 previews on one key all resolve, and the last one is shown', async () => {
   const writesBefore = xl.writes.get(5) ?? 0;
-  await Promise.all(Array.from({ length: 30 }, (_, i) => client.previewSet(XL, 5, { label: `burst ${i}` })));
+  await Promise.all(Array.from({ length: 30 }, (_, i) => client.previewSet(XL, '5', { label: `burst ${i}` })));
   const writes = (xl.writes.get(5) ?? 0) - writesBefore;
   const lastOnly = xl.images.get(5);
-  await client.previewSet(XL, 5, { label: 'burst 29' });
+  await client.previewSet(XL, '5', { label: 'burst 29' });
   assert.ok(xl.images.get(5)?.equals(lastOnly), 'the image shown is not the last preview');
   console.log(`       (${writes} key writes for 30 previews)`);
   await client.previewClear(XL);
@@ -132,7 +132,7 @@ await check('a burst of 30 previews on one key all resolve, and the last one is 
 console.log('the daemon going away and coming back');
 
 await check('a daemon stopping is reported, pending requests reject, and the client reconnects when it returns', async () => {
-  const pending = client.previewSet(XL, 6, { label: 'in flight' }).catch((err) => err);
+  const pending = client.previewSet(XL, '6', { label: 'in flight' }).catch((err) => err);
   await daemon.stop();
   const down = await until(client, (x) => !x.connected);
   assert.ok(down.problem, 'no problem reported');
@@ -152,7 +152,7 @@ await check('a daemon stopping is reported, pending requests reject, and the cli
 
 await check("stopping the client clears the previews it set (the daemon's rule, through this client)", async () => {
   const session = daemon.sessions.get(XL);
-  await client.previewSet(XL, 7, { label: 'mine' });
+  await client.previewSet(XL, '7', { label: 'mine' });
   assert.deepEqual(session.previewKeys(), ['7']);
   client.stop();
   const started = Date.now();

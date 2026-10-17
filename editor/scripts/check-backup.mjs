@@ -146,7 +146,7 @@ await until(async () => (await inPage(editor, 'settings', "document.querySelecto
 r.iconsTickedByDefault = await inPage(editor, 'settings', "document.querySelector('.settings-export input[type=checkbox]').checked");
 
 // An unsaved edit: made in the editor, exported before autosave's 400 ms.
-const at = JSON.stringify({ profile: 'default', serial: XL, page: 'main', index: 5 });
+const at = JSON.stringify({ profile: 'default', serial: XL, page: 'main', key: '5' });
 await inPage(editor, 'editor', `window.deckhand.apply({ kind: 'setLabel', at: ${at}, label: 'UNSAVED-EDIT' }).then((x) => x.ok)`);
 r.editNotOnDiskYet = !(await fs.readFile(configFile, 'utf8')).includes('UNSAVED-EDIT');
 r.withIconsStatus = await exportNow(editor);
@@ -219,7 +219,7 @@ await fs.copyFile(exportPath, importPath);
 await fs.rm(path.join(home, 'Pictures', 'ffxiv', 'dove.png'));
 await fs.rm(path.join(home, 'mic.png'));
 await fs.rm(path.join(outside, 'far.png'));
-const at7 = JSON.stringify({ profile: 'default', serial: XL, page: 'main', index: 7 });
+const at7 = JSON.stringify({ profile: 'default', serial: XL, page: 'main', key: '7' });
 await inPage(editor, 'editor', `window.deckhand.apply({ kind: 'setLabel', at: ${at7}, label: 'AFTER-EXPORT' }).then((x) => x.ok)`);
 await until(async () => (await fs.readFile(configFile, 'utf8')).includes('AFTER-EXPORT'));
 const restoredFar = `~/Deckhand icons (restored)${outside}/far.png`;

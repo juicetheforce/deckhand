@@ -105,7 +105,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
       // icon (commitIcon in main), so it is left to that. Clearing here would
       // show the key's old icon until the save lands.
       if (!saving.current) {
-        if (previewing.current) void window.deckhand.previewClear(at.serial, at.index);
+        if (previewing.current) void window.deckhand.previewClear(at.serial, at.key);
         previewing.current = false;
       }
       void window.deckhand.stopIconWatch();
@@ -218,7 +218,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           // A state icon is previewed as the key's icon, without the action:
           // the action would draw whichever of its pair matches the state now.
           const previewed = slot === null ? { ...(button ?? {}), icon: choice.path } : { ...(button ?? {}), icon: choice.path, action: undefined, onRelease: undefined };
-          const shown = await window.deckhand.previewSet(at.serial, at.index, previewed);
+          const shown = await window.deckhand.previewSet(at.serial, at.key, previewed);
           if (!shown.ok) {
             if (shown.code === 'render_failed') setRefused((s) => new Set(s).add(choice.path));
             if (latest.current === choice.path) {
@@ -229,7 +229,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           }
           if (wanted.current !== null) continue; // replaced while it was being shown
         }
-        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.index } : null, slot);
+        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.key } : null, slot);
         previewing.current = false;
         if (!result.ok) setMessage(result.error);
       }

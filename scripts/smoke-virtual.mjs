@@ -101,6 +101,25 @@ check('rows and columns are the distinct tops and lefts', g.rows === 2 && g.colu
 check('each key has a screen of its own size, in pixels of the canvas', g.units === 'pixels' && g.keys.every((k) => k.width === 216 && k.height === 216) && g.canvas.width === 1920);
 check('no panel: no keys', geometryOfPanel(undefined, 'Panel').keyCount === 0);
 
+console.log('sizes: Small, Medium, Large, Custom');
+const { gridFor, makePanel, plausibleSize } = await import(path.join(REPO, 'dist/panel-presets.js'));
+const PANEL = { width: 1920, height: 720, widthMm: 243, heightMm: 91 };
+const XENEON = { width: 2560, height: 720, widthMm: 364, heightMm: 113 };
+const counts = (screen) => ['small', 'medium', 'large'].map((size) => { const g = gridFor(screen, size); return `${g.rows}x${g.columns}`; }).join(' ');
+check('the 10.3" panel: 4 × 10, 3 × 8, 2 × 5 (scope §7\'s table)', counts(PANEL) === '4x10 3x8 2x5', counts(PANEL));
+check('the Xeneon Edge: 5 × 17, 4 × 14, 3 × 10', counts(XENEON) === '5x17 4x14 3x10', counts(XENEON));
+check('a size reported wrong is not trusted: the ILITEK\'s 528 × 300 mm on a 1920 × 720 screen', !plausibleSize({ width: 1920, height: 720, widthMm: 528, heightMm: 300 }) && plausibleSize(PANEL));
+check('…and then pixel pitches (180, 240, 360 px): the panel\'s own counts', counts({ width: 1920, height: 720, widthMm: 528, heightMm: 300 }) === '4x10 3x8 2x5' && counts({ width: 1920, height: 720 }) === '4x10 3x8 2x5');
+check('portrait: the same rule along the short side, the EDID turned to match', counts({ width: 720, height: 1920, widthMm: 243, heightMm: 91 }) === '4x10 3x8 2x5');
+const custom = gridFor(PANEL, 'custom', { rows: 5 });
+check('Custom: the rows chosen, columns worked out so keys stay square', custom.rows === 5 && custom.columns === 13 && custom.pitch === 144, JSON.stringify(custom));
+const customBoth = gridFor(PANEL, 'custom', { rows: 2, columns: 12 });
+check('Custom with columns too: keys as large as fit both ways, still square', customBoth.rows === 2 && customBoth.columns === 12 && customBoth.pitch === 160, JSON.stringify(customBoth));
+check('very small keys are flagged, never refused', gridFor(PANEL, 'custom', { rows: 8 }).verySmall === true && gridFor(PANEL, 'small').verySmall === false && makePanel(PANEL, 'custom', { rows: 8 }).controls.length > 0);
+const medium = makePanel(PANEL, 'medium');
+check('a panel: k1… in reading order, a 12% gap, centred, every key on the canvas', medium.controls.length === 24 && medium.controls[0].id === 'k1' && medium.controls[8].y > medium.controls[7].y && medium.controls[0].w === 211 && medium.controls.every((c) => c.x >= 0 && c.y >= 0 && c.x + c.w <= 1920 && c.y + c.h <= 720), JSON.stringify(medium.controls.slice(0, 2)));
+check('…which the config accepts', !refused(base({ ...medium })) && ['small', 'large'].every((size) => !refused(base(makePanel(XENEON, size)))));
+
 console.log('frames');
 const k = canvasFrame(1920, 720, [1, 2, 3]);
 check('canvas: length 12, type K, size, background', k.readUInt32LE(0) === 12 && k[4] === 75 && k.readUInt32LE(5) === 1920 && k.readUInt32LE(9) === 720 && k[13] === 1 && k[15] === 3);

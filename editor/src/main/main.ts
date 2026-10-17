@@ -309,7 +309,7 @@ async function searchIcons(folder: string, query: string): Promise<IconSearchRes
 async function commitIcon(
   at: ButtonLocation,
   icon: IconChoice,
-  preview: { serial: string; key: number } | null,
+  preview: { serial: string; key: string } | null,
   slot: PairIconField | null,
 ): Promise<ApplyResult> {
   if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
@@ -331,7 +331,7 @@ function isIconChoice(value: unknown): value is IconChoice {
 
 function isLocation(value: unknown): value is ButtonLocation {
   const v = value as ButtonLocation;
-  return typeof v === 'object' && v !== null && typeof v.profile === 'string' && typeof v.serial === 'string' && typeof v.page === 'string' && Number.isInteger(v.index);
+  return typeof v === 'object' && v !== null && typeof v.profile === 'string' && typeof v.serial === 'string' && typeof v.page === 'string' && typeof v.key === 'string' && v.key !== '';
 }
 
 /** Only this window's own page may call in. */
@@ -897,10 +897,10 @@ function registerIpc(): void {
     if (fromOurWindow(event) && (choice === 'file' || choice === 'mine')) await store?.resolveConflict(choice);
   });
   ipcMain.handle('reopenConfig', async (event) => (fromOurWindow(event) ? openStore() : storeView()));
-  ipcMain.handle('previewSet', (event, serial: string, key: number, button: ButtonDef) =>
+  ipcMain.handle('previewSet', (event, serial: string, key: string, button: ButtonDef) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewSet(serial, key, button)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
-  ipcMain.handle('previewClear', (event, serial: string, key?: number) =>
+  ipcMain.handle('previewClear', (event, serial: string, key?: string) =>
     fromOurWindow(event) ? daemonCall(() => daemon.previewClear(serial, key)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('testRun', (event, serial: unknown, action: unknown) => {
@@ -949,11 +949,8 @@ function registerIpc(): void {
     fromOurWindow(event) ? deckAction(() => switchProfile(to)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
   );
   ipcMain.handle('clearFailure', (event, at: unknown) => {
-    const a = at as { profile?: unknown; serial?: unknown; page?: unknown; index?: unknown } | null;
-    if (!fromOurWindow(event) || !a || typeof a.serial !== 'string' || typeof a.profile !== 'string' || typeof a.page !== 'string' || typeof a.index !== 'number') {
-      return { ok: false, code: 'not_allowed', error: 'not allowed' };
-    }
-    return daemonCall(() => daemon.clearFailure(a.serial as string, a.profile as string, a.page as string, a.index as number));
+    if (!fromOurWindow(event) || !isLocation(at)) return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    return daemonCall(() => daemon.clearFailure(at.serial, at.profile, at.page, at.key));
   });
   ipcMain.handle('showPage', (event, serial: string, page: string) =>
     fromOurWindow(event) ? deckAction(() => showPage(serial, page)) : { ok: false, code: 'not_allowed', error: 'not allowed' },
@@ -1040,7 +1037,7 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
     if (slot !== null && !isPairIconField(slot)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
-    const target = p && typeof p.serial === 'string' && Number.isInteger(p.key) ? { serial: p.serial, key: p.key as number } : null;
+    const target = p && typeof p.serial === 'string' && typeof p.key === 'string' ? { serial: p.serial, key: p.key } : null;
     return commitIcon(at, icon, target, slot);
   });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {

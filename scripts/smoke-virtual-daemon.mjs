@@ -201,6 +201,7 @@ try {
   await helperSays('DP-4', { ev: 'tap', device: `${DEVI}/event15` });
   const paired = await pairing;
   check('the reply names the screen and its touchscreen, as the config keeps them', paired.ok && paired.result.screen === KEY && JSON.stringify(paired.result.touch) === JSON.stringify(ILITEK), JSON.stringify(paired));
+  check('…and its size: the helper\'s pixels, and the EDID\'s millimetres and name', paired.result.width === 1920 && paired.result.height === 720 && paired.result.widthMm === 243 && paired.result.heightMm === 91 && paired.result.name === 'HD Display', JSON.stringify(paired.result));
   check('…and the deck comes back', await until(() => (log().match(/attached Test panel/g) ?? []).length === 2), log().slice(-500));
 
   const other = await connect(SOCKET);

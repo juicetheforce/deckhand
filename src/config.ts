@@ -1,13 +1,13 @@
 import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolvePage, resolveProfile } from './config-common.js';
+import { CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
 import type { Config, LayoutDef } from './types.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
 // daemon code keeps importing from config.js.
-export { DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
+export { CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
 
 export const CONFIG_DIR =
   process.env.DECKHAND_CONFIG_DIR ??
@@ -54,13 +54,6 @@ function rejectDuplicateNames(
   }
 }
 
-/**
- * What a `buttons` key may be: a control id (src/devices.ts). A Stream
- * Deck's key 7 is "7", as every config has always said; a virtual deck's
- * controls have ids of their own. No ":" — the socket's preview slots and the
- * failure marks join ids with one.
- */
-export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
 /** A panel's canvas may be at most this many pixels on a side. */
 const MAX_PANEL_SIDE = 16384;

@@ -30,8 +30,9 @@ const watchConfig: (onChange: () => void) => () => void = daemonConfig.watchConf
 
 const EXAMPLE = await fs.readFile(path.join(REPO, 'config.example.json'), 'utf8');
 const HOME = os.homedir();
-const XL: Omit<ButtonLocation, 'index'> = { profile: 'default', serial: 'REPLACE-WITH-XL-SERIAL', page: 'main' };
-const at = (index: number): ButtonLocation => ({ ...XL, index });
+const XL: Omit<ButtonLocation, 'key'> = { profile: 'default', serial: 'REPLACE-WITH-XL-SERIAL', page: 'main' };
+/** A Stream Deck's key by number: key 7 is "7". */
+const at = (index: number): ButtonLocation => ({ ...XL, key: String(index) });
 
 let failures = 0;
 let dirCounter = 0;
@@ -204,7 +205,7 @@ await check('assignAction (a library drop) replaces the action and clears icon, 
   assert.equal(store.apply({ kind: 'setLabelStyle', at: where, field: 'labelColor', value: '#ff0000' }).ok, true);
   assert.ok(key().icon !== undefined && key().label !== undefined, 'the fixture starts with an icon and a label');
   const before = { ...key(), onRelease: { type: 'keyHold', keys: 'f24', state: 'up' }, background: '#223344' };
-  assert.equal(store.apply({ kind: 'putButtons', profile: 'default', serial: XL.serial, page: 'main', writes: [{ index: 0, button: before }] }).ok, true);
+  assert.equal(store.apply({ kind: 'putButtons', profile: 'default', serial: XL.serial, page: 'main', writes: [{ key: '0', button: before }] }).ok, true);
   assert.equal(store.apply({ kind: 'assignAction', at: where, action: { type: 'page' } }).ok, true);
   assert.deepEqual(key(), { labelColor: '#ff0000', background: '#223344', action: { type: 'page' } });
   // Onto an empty slot: just the action.
@@ -267,14 +268,15 @@ await check('an edit at a location that does not exist is refused and changes no
     { kind: 'setAction', at: { ...at(0), page: 'nope' }, action: { type: 'noop' } },
     { kind: 'setAction', at: { ...at(0), profile: 'nope' }, action: { type: 'noop' } },
     { kind: 'setAction', at: { ...at(0), serial: 'nope' }, action: { type: 'noop' } },
-    { kind: 'setAction', at: at(-1), action: { type: 'noop' } },
+    // Not a key at all: no control id has a ":".
+    { kind: 'setAction', at: { ...XL, key: 'a:b' }, action: { type: 'noop' } },
     { kind: 'setAction', at: at(1.5), action: { type: 'noop' } },
     { kind: 'setAction', at: { ...at(0), page: '__proto__' }, action: { type: 'noop' } },
   ] as const) {
     const r = store.apply(bad);
     assert.equal(r.ok, false, JSON.stringify(bad));
     // Refused by the location checks, not by a TypeError that happens to be caught.
-    assert.match((r as { error: string }).error, /^(no page with ID|no profile with ID|profile "default" has no layout|key index)/, JSON.stringify(bad));
+    assert.match((r as { error: string }).error, /^(no page with ID|no profile with ID|profile "default" has no layout|"[^"]*" is not a key)/, JSON.stringify(bad));
   }
   assert.equal(serializeConfig(store.state().config), before);
   assert.equal(store.state().dirty, false);
@@ -813,7 +815,7 @@ await check('the plan says exactly what the delete does, and changes nothing its
   assert.equal(plan.freshLayoutsIn, 'home');
   assert.equal(plan.startProfileMovesTo, 'home');
   assert.deepEqual(
-    plan.links.map((l) => `${l.profile}/${l.serial}/${l.page}/${l.index}/${l.where}${l.inMulti ? '/multi' : ''}`),
+    plan.links.map((l) => `${l.profile}/${l.serial}/${l.page}/${l.key}/${l.where}${l.inMulti ? '/multi' : ''}`),
     ['home/DECK-A/main/0/action', 'home/DECK-A/main/1/action', 'home/DECK-A/main/2/action/multi', 'home/DECK-A/main/3/action/multi', 'home/DECK-A/second/4/action', 'prof_alt/DECK-A/alt/6/onRelease'],
   );
   // The page whose only way off was a switch to Raid; main keeps its page key.
@@ -1031,10 +1033,10 @@ await check("the confirmation's preview matches what the delete actually does", 
     const layoutAfter = store.state().config.profiles[profile].layouts[serial];
     assert.equal(startPageOf(layoutAfter), preview.startPageAfter ?? startedOn, `${page}: start page`);
     for (const link of preview.links) {
-      const button = layoutAfter.pages[link.page].buttons[String(link.index)];
+      const button = layoutAfter.pages[link.page].buttons[link.key];
       const action = button?.[link.where];
       const stillThere = action?.type === 'page' || (action?.type === 'multi' && JSON.stringify(action.steps).includes('"page"'));
-      assert.equal(stillThere, false, `${page}: ${link.page} key ${link.index} kept its navigation`);
+      assert.equal(stillThere, false, `${page}: ${link.page} key ${link.key} kept its navigation`);
     }
     store.close();
   }
@@ -1051,7 +1053,7 @@ async function exitShapedEdit(label: string, text: string): Promise<void> {
     assert.equal(r.ok, true, JSON.stringify(r));
     const page = (r as { result: { pageId: string } }).result.pageId;
     for (let i = 0; i < 9; i++) {
-      const loc = { profile, serial, page, index: i };
+      const loc = { profile, serial, page, key: String(i) };
       store.apply({ kind: 'setAction', at: loc, action: { type: 'hotkey', keys: `ctrl+${i + 1}` } });
       store.apply({ kind: 'setIcon', at: loc, icon: { kind: 'file', path: `${HOME}/Pictures/icons/FFXIV/IconKit Battle(Set)/14_BEAR/Bolt_${i}.png` } });
       store.apply({ kind: 'setLabel', at: loc, label: `B${i}` });
@@ -1085,32 +1087,32 @@ async function iconAndLabelOnOtherActions(label: string, text: string): Promise<
         for (const [page, pageDef] of Object.entries(layout.pages)) {
           for (const [index, button] of Object.entries(pageDef.buttons)) {
             if ((button.action && button.action.type !== 'hotkey') || button.onRelease) {
-              keys.push({ profile, serial, page, index: Number(index) });
+              keys.push({ profile, serial, page, key: index });
             }
           }
         }
       }
     }
     assert.ok(keys.length > 0, 'the config has no non-hotkey keys, so this checks nothing');
-    const types = new Set(keys.map((k) => parsed.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[String(k.index)].action?.type));
+    const types = new Set(keys.map((k) => parsed.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[k.key].action?.type));
     console.log(`       (${keys.length} keys: ${[...types].join(', ')})`);
 
-    const buttonOf = (c: Config, k: ButtonLocation) => c.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[String(k.index)];
+    const buttonOf = (c: Config, k: ButtonLocation) => c.profiles[k.profile].layouts[k.serial].pages[k.page].buttons[k.key];
     const file = await configFile(text);
     const store = await openStore(file);
 
     // 1. New icon and label on every one of them.
     for (const k of keys) {
-      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: { kind: 'file', path: `${HOME}/Pictures/icons/new ${k.index}.png` } }).ok, true);
-      assert.equal(store.apply({ kind: 'setLabel', at: k, label: `new ${k.index}` }).ok, true);
+      assert.equal(store.apply({ kind: 'setIcon', at: k, icon: { kind: 'file', path: `${HOME}/Pictures/icons/new ${k.key}.png` } }).ok, true);
+      assert.equal(store.apply({ kind: 'setLabel', at: k, label: `new ${k.key}` }).ok, true);
     }
     await store.flush();
     const afterSet = await fs.readFile(file, 'utf8');
     const expectedSet = JSON.parse(text) as Config;
     for (const k of keys) {
       const b = buttonOf(expectedSet, k);
-      b.icon = `~/Pictures/icons/new ${k.index}.png`;
-      b.label = `new ${k.index}`;
+      b.icon = `~/Pictures/icons/new ${k.key}.png`;
+      b.label = `new ${k.key}`;
     }
     assert.equal(afterSet, serializeConfig(expectedSet), 'set: file differs from the same change applied directly');
     const setParsed = JSON.parse(afterSet) as Config;
@@ -1351,9 +1353,9 @@ await check('putButtons writes and empties exactly the slots it names, and the d
     serial: XL_SERIAL,
     page: 'main',
     writes: [
-      { index: 3, button: copied }, // an empty slot gets a copy of key 0
-      { index: 1, button: null }, // an occupied slot is emptied
-      { index: 4, button: {} }, // {} is an empty slot, and 4 was already empty
+      { key: '3', button: copied }, // an empty slot gets a copy of key 0
+      { key: '1', button: null }, // an occupied slot is emptied
+      { key: '4', button: {} }, // {} is an empty slot, and 4 was already empty
     ],
   });
   assert.deepEqual(result, { ok: true, result: {} });
@@ -1374,10 +1376,10 @@ await check('putButtons writes and empties exactly the slots it names, and the d
 await check('a refused putButtons changes nothing — not even the writes before the bad one', async () => {
   const store = await openStore(await configFile(EXAMPLE));
   const where = { kind: 'putButtons' as const, profile: 'default', serial: XL_SERIAL, page: 'main' };
-  const twice = store.apply({ ...where, writes: [{ index: 3, button: { label: 'a' } }, { index: 3, button: { label: 'b' } }] });
+  const twice = store.apply({ ...where, writes: [{ key: '3', button: { label: 'a' } }, { key: '3', button: { label: 'b' } }] });
   assert.equal(twice.ok, false, 'one slot written twice');
-  assert.equal(store.apply({ ...where, writes: [{ index: 3, button: { label: 'a' } }, { index: -1, button: null }] }).ok, false, 'a bad index');
-  assert.equal(store.apply({ ...where, page: 'nope', writes: [{ index: 3, button: { label: 'a' } }] }).ok, false, 'an unknown page');
+  assert.equal(store.apply({ ...where, writes: [{ key: '3', button: { label: 'a' } }, { key: 'a:b', button: null }] }).ok, false, 'a key that is not a control id');
+  assert.equal(store.apply({ ...where, page: 'nope', writes: [{ key: '3', button: { label: 'a' } }] }).ok, false, 'an unknown page');
   assert.equal(store.state().dirty, false);
   assert.equal(xlMain(store.state().config)['3'], undefined, 'key 3 was not written by the refused edits');
   store.close();
@@ -1386,7 +1388,7 @@ await check('a refused putButtons changes nothing — not even the writes before
 await check('the button written is a copy: changing the edit object afterwards does not reach the config', async () => {
   const store = await openStore(await configFile(EXAMPLE));
   const button = { label: 'mine' };
-  store.apply({ kind: 'putButtons', profile: 'default', serial: XL_SERIAL, page: 'main', writes: [{ index: 3, button }] });
+  store.apply({ kind: 'putButtons', profile: 'default', serial: XL_SERIAL, page: 'main', writes: [{ key: '3', button }] });
   button.label = 'changed';
   assert.equal(xlMain(store.state().config)['3'].label, 'mine');
   store.close();

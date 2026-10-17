@@ -23,19 +23,19 @@ interface Props {
   /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
   /** By control id. */
   latchedKeys: string[];
-  selectedKeys: number[];
+  selectedKeys: string[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
-  onClickKey: (index: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
+  onClickKey: (key: string, modifiers: { ctrl: boolean; shift: boolean }) => void;
   /** A right-click, at window coordinates, for the bulk menu. */
-  onKeyMenu: (index: number, x: number, y: number) => void;
+  onKeyMenu: (key: string, x: number, y: number) => void;
   /** A key dropped on another key of this deck: move it, swapping with whatever is there. Null when editing is blocked. */
-  onMoveKey: ((from: number, to: number) => void) | null;
+  onMoveKey: ((from: string, to: string) => void) | null;
   /** A key dropped on another shown deck's key: copy it there. Null when editing is blocked or no other deck is shown. */
-  onCopyKey: ((from: number, to: KeyRef) => void) | null;
+  onCopyKey: ((from: string, to: KeyRef) => void) | null;
   /** The key under the pointer while a key of this grid is dragged, on any deck (useKeyDrag). */
   onKeyDragOver: (over: KeyRef | null) => void;
   /** The key on this deck something is being dragged over — an action from the library, or a key from this deck or another — drawn as the drop target. */
-  dropTarget: number | null;
+  dropTarget: string | null;
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
@@ -43,8 +43,8 @@ const DRAG_THRESHOLD_PX = 6;
 
 /** Where a dragged key may land: on this deck, a move; on another shown deck, a copy. */
 interface KeyDrop {
-  onMoveKey: ((from: number, to: number) => void) | null;
-  onCopyKey: ((from: number, to: KeyRef) => void) | null;
+  onMoveKey: ((from: string, to: string) => void) | null;
+  onCopyKey: ((from: string, to: KeyRef) => void) | null;
   /** The key under the pointer while a key is dragged, on any deck, or null: drawn by the grid it is on. */
   onDragOver: (over: KeyRef | null) => void;
 }
@@ -65,18 +65,18 @@ interface KeyDrop {
  * the drop target.
  */
 function useKeyDrag(serial: string, drop: KeyDrop) {
-  const press = useRef<{ from: number; pointerId: number; x: number; y: number } | null>(null);
+  const press = useRef<{ from: string; pointerId: number; x: number; y: number } | null>(null);
   // The drag as drawn, and a ref to the same, for the window listeners below.
-  const [drag, setDragState] = useState<{ from: number; over: KeyRef | null } | null>(null);
+  const [drag, setDragState] = useState<{ from: string; over: KeyRef | null } | null>(null);
   const dragRef = useRef(drag);
   const dropRef = useRef(drop);
   dropRef.current = drop;
-  const setDrag = (next: { from: number; over: KeyRef | null } | null) => {
+  const setDrag = (next: { from: string; over: KeyRef | null } | null) => {
     const before = dragRef.current?.over ?? null;
     dragRef.current = next;
     setDragState(next);
     const after = next?.over ?? null;
-    if (before?.serial !== after?.serial || before?.index !== after?.index) dropRef.current.onDragOver(after);
+    if (before?.serial !== after?.serial || before?.key !== after?.key) dropRef.current.onDragOver(after);
   };
   const serialRef = useRef(serial);
   serialRef.current = serial;
@@ -86,10 +86,10 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
   // Added once for the grid's lifetime. Each returns at once unless a key was pressed.
   useEffect(() => {
     /** The key a drop would land on: any key of this deck but the one dragged, or a key on another deck when copying is allowed. */
-    const targetUnder = (x: number, y: number, from: number): KeyRef | null => {
+    const targetUnder = (x: number, y: number, from: string): KeyRef | null => {
       const key = keyUnder(x, y);
       if (key === null) return null;
-      if (key.serial === serialRef.current) return key.index === from ? null : key;
+      if (key.serial === serialRef.current) return key.key === from ? null : key;
       return dropRef.current.onCopyKey ? key : null;
     };
     const move = (e: PointerEvent) => {
@@ -98,7 +98,7 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
       if (!dragRef.current && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD_PX) return;
       const over = targetUnder(e.clientX, e.clientY, p.from);
       const now = dragRef.current;
-      if (now === null || now.from !== p.from || now.over?.serial !== over?.serial || now.over?.index !== over?.index) setDrag({ from: p.from, over });
+      if (now === null || now.from !== p.from || now.over?.serial !== over?.serial || now.over?.key !== over?.key) setDrag({ from: p.from, over });
     };
     const up = (e: PointerEvent) => {
       const p = press.current;
@@ -111,10 +111,10 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
       // anywhere else, no key is clicked, and a flag left set would swallow the
       // next real click.
       const back = keyUnder(e.clientX, e.clientY);
-      suppressClick.current = back !== null && back.serial === serialRef.current && back.index === p.from;
+      suppressClick.current = back !== null && back.serial === serialRef.current && back.key === p.from;
       setDrag(null);
       if (over === null) return;
-      if (over.serial === serialRef.current) dropRef.current.onMoveKey?.(p.from, over.index);
+      if (over.serial === serialRef.current) dropRef.current.onMoveKey?.(p.from, over.key);
       else dropRef.current.onCopyKey?.(p.from, over);
     };
     const cancel = (e: KeyboardEvent) => {
@@ -144,9 +144,9 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
   return {
     drag,
     /** Start watching a press on a key that holds a button. */
-    onPointerDown: (index: number, occupied: boolean, e: ReactPointerEvent) => {
+    onPointerDown: (key: string, occupied: boolean, e: ReactPointerEvent) => {
       if (!drop.onMoveKey || !occupied || e.button !== 0 || e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
-      press.current = { from: index, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      press.current = { from: key, pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       suppressClick.current = false;
     },
     /** True once for the click that ends a drag. */
@@ -169,30 +169,31 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
 
   return (
     <div className="grid" style={gridStyle} data-deck={geometry.serial}>
-      {geometry.keys.map((k) => (
+      {geometry.keys.map((k, i) => (
         <Key
-          key={k.index}
+          key={k.id}
           serial={geometry.serial}
           config={config}
-          index={k.index}
+          id={k.id}
+          number={i + 1}
           row={k.row}
           column={k.column}
           hasScreen={k.feedback === 'lcd'}
           iconSize={geometry.iconSize}
-          button={page.buttons[String(k.index)]}
+          button={page.buttons[k.id]}
           iconStamps={iconStamps}
           appIcons={appIcons}
           failure={failedKeys[k.id]}
-          unset={notSetUp(page.buttons[String(k.index)]?.action?.type)}
+          unset={notSetUp(page.buttons[k.id]?.action?.type)}
           latched={latchedKeys.includes(k.id)}
-          selected={selectedKeys.includes(k.index)}
+          selected={selectedKeys.includes(k.id)}
           onClick={(modifiers) => {
-            if (!keyDrag.takeSuppressedClick()) onClickKey(k.index, modifiers);
+            if (!keyDrag.takeSuppressedClick()) onClickKey(k.id, modifiers);
           }}
-          onMenu={(x, y) => onKeyMenu(k.index, x, y)}
-          onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.index, occupied, e)}
-          dragging={keyDrag.drag?.from === k.index}
-          dropTarget={dropTarget === k.index}
+          onMenu={(x, y) => onKeyMenu(k.id, x, y)}
+          onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.id, occupied, e)}
+          dragging={keyDrag.drag?.from === k.id}
+          dropTarget={dropTarget === k.id}
         />
       ))}
     </div>
@@ -203,7 +204,10 @@ interface KeyProps {
   /** The deck this key is on, for the drags (keyUnder.ts). */
   serial: string;
   config: Config;
-  index: number;
+  /** Its control id. */
+  id: string;
+  /** Where it is as people count keys, from 1, in reading order: "Key 5". */
+  number: number;
   row: number;
   column: number;
   hasScreen: boolean;
@@ -227,7 +231,7 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ serial, config, index, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ serial, config, id, number, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const unsetName = INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].name;
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
@@ -253,8 +257,8 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
     .join(' ');
   const title =
     kind === 'empty'
-      ? `Key ${index + 1}: empty`
-      : `Key ${index + 1}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ` — ${unsetName} is not set up` : ''}`;
+      ? `Key ${number}: empty`
+      : `Key ${number}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ` — ${unsetName} is not set up` : ''}`;
 
   return (
     <button
@@ -264,7 +268,7 @@ function Key({ serial, config, index, row, column, hasScreen, iconSize, button, 
       aria-label={title}
       aria-pressed={selected}
       data-deck={serial}
-      data-key-index={index}
+      data-key={id}
       onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
       onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
       onContextMenu={(e) => {

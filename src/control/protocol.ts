@@ -68,6 +68,23 @@ export interface DeckStatus {
  */
 export type TouchState = 'ready' | 'not-paired' | 'missing' | 'opening' | 'failed' | 'locked' | 'inactive' | 'unknown';
 
+/** `virtual.pair`: the screen tapped, and its touchscreen as the config remembers it (`decks[screen].virtual.touch`). */
+export interface PairReply {
+  connector: string;
+  screen: string;
+  touch: { vendor: string; product: string; serial?: string; path?: string };
+  /** The touchscreen's name, for saying which was found. */
+  touchName: string;
+  /** The screen in pixels, as the helper found it on that output (rotation applied): a panel's canvas is laid out at this size. */
+  width: number;
+  height: number;
+  /** Its physical size from the EDID, 0 when it gives none — trusted only when plausible (src/panel-presets.ts). */
+  widthMm: number;
+  heightMm: number;
+  /** Its EDID name, when it has one. */
+  name?: string;
+}
+
 /** `screens`: the connected screens, by what recognises each (src/screens.ts), and the touchscreens. */
 export interface ScreensReply {
   screens: Array<{

@@ -133,14 +133,14 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const added = await api.apply({ kind: 'addPage', profile, serial, name: 'Bridge page' });
   out.addPage = added;
   const page = added.ok ? added.result.pageId! : '';
-  out.setAction = await api.apply({ kind: 'setAction', at: { profile, serial, page, index: 2 }, action: { type: 'hotkey', keys: 'ctrl+2' } });
-  out.badEdit = await api.apply({ kind: 'setAction', at: { profile, serial, page: 'no-such-page', index: 0 }, action: { type: 'noop' } });
+  out.setAction = await api.apply({ kind: 'setAction', at: { profile, serial, page, key: '2' }, action: { type: 'hotkey', keys: 'ctrl+2' } });
+  out.badEdit = await api.apply({ kind: 'setAction', at: { profile, serial, page: 'no-such-page', key: '0' }, action: { type: 'noop' } });
 
   const saved = await waitFor<StoreView>(api.onStore, (await api.snapshot()).store, (v) => v.open && !v.state.dirty);
   out.savedThroughAutosave = saved.open && !saved.state.dirty;
 
-  out.previewSet = await api.previewSet(serial, 3, { label: 'bridge preview', background: '#00ff00' });
-  out.previewBadKey = await api.previewSet(serial, 999, { label: 'x' });
+  out.previewSet = await api.previewSet(serial, '3', { label: 'bridge preview', background: '#00ff00' });
+  out.previewBadKey = await api.previewSet(serial, '999', { label: 'x' });
   const withPreview = await waitFor<DaemonView>(api.onDaemon, (await api.snapshot()).daemon, (v) =>
     (v.status?.decks.find((d) => d.serial === serial)?.previews ?? []).includes('3'),
   );
@@ -173,7 +173,7 @@ async function bridge(api: DeckhandBridge): Promise<Record<string, unknown>> {
   }
 
   // Left for the quit: an edit made just before quitting must still be written.
-  out.lastEdit = await api.apply({ kind: 'setLabel', at: { profile, serial, page, index: 2 }, label: 'written on quit' });
+  out.lastEdit = await api.apply({ kind: 'setLabel', at: { profile, serial, page, key: '2' }, label: 'written on quit' });
   return out;
 }
 
@@ -368,9 +368,9 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
       });
       committed.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
     });
-    void api.previewSet(serialForRace, 1, { label: 'race' });
+    void api.previewSet(serialForRace, '1', { label: 'race' });
   });
-  await api.previewClear(serialForRace, 1);
+  await api.previewClear(serialForRace, '1');
   await until(async () => (await deck())?.page === 'main');
   tab('Second')!.click();
   await until(async () => (await deck())?.page === 'second' && selectedTab() === 'Second');
@@ -410,9 +410,9 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   //    the deck to Main by itself; the breadcrumb must follow.
   const serial = (await deck())!.serial;
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial, 0, { label: 'press now' });
+  await api.previewSet(serial, '0', { label: 'press now' });
   out.followsDeck = await until(() => selectedTab() === 'Main', 10_000);
-  await api.previewClear(serial, 0);
+  await api.previewClear(serial, '0');
 
   // 5. Leave the deck on Second, then quit: closing must not change it.
   tab('Second')!.click();
@@ -617,7 +617,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   /** A handshake with the script: a preview on `key`. Refused, it is recorded, so the check says why rather than "never signalled". */
   const signalErrors: string[] = [];
   const signal = async (key: number, label: string) => {
-    const result = await api.previewSet(serial, key, { label });
+    const result = await api.previewSet(serial, String(key), { label });
     if (!result.ok) signalErrors.push(`key ${key}: ${result.error}`);
   };
   out.signalErrors = signalErrors;
@@ -713,7 +713,7 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.newFileAbsentBefore = !names().includes('Frost.png');
   await signal(31, 'WRITE-FILE');
   out.watcherShowedNewFile = await until(() => names().includes('Frost.png'), 10_000);
-  await api.previewClear(serial, 31);
+  await api.previewClear(serial, '31');
 
   // 8b. Back, forward and up, and the count on a folder tile.
   const crumbNow = () => document.querySelector('.picker-crumb-here')?.textContent;
@@ -844,10 +844,10 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.iconShownBeforeRename = await until(() => keyIcon() !== undefined && keyIcon()!.complete && keyIcon()!.naturalWidth > 0 && !iconIsMissing());
   await signal(30, 'RENAME-AWAY');
   out.renameAwayShowsMissing = await until(() => iconIsMissing(), 10_000);
-  await api.previewClear(serial, 30);
+  await api.previewClear(serial, '30');
   await signal(29, 'RENAME-BACK');
   out.renameBackShowsIcon = await until(() => keyIcon() !== undefined && !iconIsMissing() && keyIcon()!.complete && keyIcon()!.naturalWidth > 0, 10_000);
-  await api.previewClear(serial, 29);
+  await api.previewClear(serial, '29');
 
   // 16b. The pinned Built-in section: the first chip, then the same
   //      grid, filter and history as any folder; choosing writes builtin:<name>.
@@ -1127,9 +1127,9 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   tab('Second')!.click();
   out.onSecond = await until(async () => (await deckAt(serial))?.page === 'second');
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial, 0, { label: 'move it' });
+  await api.previewSet(serial, '0', { label: 'move it' });
   out.followsDeck = await until(() => selectedTab() === 'Main');
-  await api.previewClear(serial, 0);
+  await api.previewClear(serial, '0');
 
   // 6. Deleting a page clears the key that navigated to it.
   tab('Second')!.click();
@@ -1324,9 +1324,9 @@ async function navigate(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // 6. Hand back to the script: it presses the keys on the fake deck.
   out.tabBeforePress = selectedTab();
-  await api.previewSet(serial(), 31, { label: 'press now' });
+  await api.previewSet(serial(), '31', { label: 'press now' });
   out.deckFollowedTheProfileKey = await until(async () => (await deck())?.profile === 'other');
-  await api.previewClear(serial(), 31);
+  await api.previewClear(serial(), '31');
   out.finalTab = selectedTab();
   await sleep(300);
   return out;
@@ -1804,9 +1804,9 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     return false;
   };
   const panel = (serial: string) => document.querySelector<HTMLElement>(`[data-deck-panel="${serial}"]`);
-  const keyOn = (serial: string, index: number) => document.querySelector<HTMLButtonElement>(`.key[data-deck="${serial}"][data-key-index="${index}"]`)!;
+  const keyOn = (serial: string, index: number) => document.querySelector<HTMLButtonElement>(`.key[data-deck="${serial}"][data-key="${index}"]`)!;
   const selectedOn = (serial: string) =>
-    [...document.querySelectorAll<HTMLElement>(`.key[data-deck="${serial}"]`)].flatMap((k) => (k.classList.contains('key-selected') ? [Number(k.dataset.keyIndex)] : []));
+    [...document.querySelectorAll<HTMLElement>(`.key[data-deck="${serial}"]`)].flatMap((k) => (k.classList.contains('key-selected') ? [Number(k.dataset.key)] : []));
   const click = (el: Element, mods: { ctrlKey?: boolean; shiftKey?: boolean } = {}) =>
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...mods }));
   const buttons = async (serial: string, page = 'main', profile = 'default') => {
@@ -1926,7 +1926,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   // 8. A key dragged onto the other deck is copied there: the
   // original stays, an occupied key is replaced, that deck takes the focus
   // with the copy selected, and the status line says what happened there.
-  const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.keyIndex}`);
+  const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.key}`);
   const bulkMessage = () => document.querySelector('.bulk-message')?.firstChild?.textContent ?? null;
   const setPageMenu = async (serial: string, pageId: string) => {
     const select = panel(serial)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
@@ -2262,7 +2262,7 @@ async function multiDeckReopen(): Promise<Record<string, unknown>> {
   }
   await new Promise((r) => setTimeout(r, 500));
   const zoom = Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
-  const key0 = (serial: string) => document.querySelector(`.key[data-deck="${serial}"][data-key-index="0"]`)?.getBoundingClientRect();
+  const key0 = (serial: string) => document.querySelector(`.key[data-deck="${serial}"][data-key="0"]`)?.getBoundingClientRect();
   const xl = key0('MULTI-XL');
   const v2 = key0('MULTI-V2');
   return {
@@ -2441,7 +2441,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.toggleIcons = { toggleSlots, toggleOn, toggleBoth };
   // Every pair field on the list gets past main's guard; only the key's action
   // may refuse one it does not have. A field not on the list is refused by main.
-  const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', index: 30 };
+  const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', key: '30' };
   const again = { iconOn: 'builtin:headset', iconOff: 'builtin:mic' } as Record<string, string>;
   const pairGuard: Record<string, string> = {};
   for (const field of [...PAIR_ICON_FIELDS, 'iconBogus']) {
@@ -2492,11 +2492,11 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => device('alsa_input.pci-0000_00_1f.3.HiFi__Mic__source')?.classList.contains('target-selected') === true);
   const before = document.querySelector('.inspector .target-selected')?.getAttribute('data-node');
   const serial = (await api.snapshot()).daemon.decks?.[0]?.serial ?? '';
-  await api.previewSet(serial, 31, { label: 'unplug' });
+  await api.previewSet(serial, '31', { label: 'unplug' });
   const missingShown = await until(
     () => (document.querySelector('.inspector .target-selected .target-note')?.textContent?.includes('not present now') ?? false) && (document.querySelector('.inspector .warning-text')?.textContent?.includes('not present now') ?? false),
   );
-  await api.previewClear(serial, 31);
+  await api.previewClear(serial, '31');
   device('alsa_input.usb-Example_Headset-00.mono-fallback')!.click();
   const picked = await actionAs(10, { type: 'audio.source', node: 'alsa_input.usb-Example_Headset-00.mono-fallback', label: 'Example Headset Mono Mic' });
   // Input device moves recording streams, as Output device moves playing

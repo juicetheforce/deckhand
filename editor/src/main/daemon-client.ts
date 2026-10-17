@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, ReloadResult, StateSnapshot, StatusResult, SwitchResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, PairReply, ReloadResult, ScreensReply, StateSnapshot, StatusResult, SwitchResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -99,14 +99,13 @@ export class DaemonClient {
   }
 
   /** Show a button on a key without saving it. Resolves once the daemon has rendered it. */
-  async previewSet(serial: string, key: number, button: ButtonDef): Promise<void> {
-    // The socket names keys by control id; a Stream Deck's key 7 is "7".
-    await this.request('preview.set', { serial, key: String(key), button });
+  async previewSet(serial: string, key: string, button: ButtonDef): Promise<void> {
+    await this.request('preview.set', { serial, key, button });
   }
 
   /** Clear one previewed key, or every preview on the deck. */
-  async previewClear(serial: string, key?: number): Promise<void> {
-    await this.request('preview.clear', key === undefined ? { serial } : { serial, key: String(key) });
+  async previewClear(serial: string, key?: string): Promise<void> {
+    await this.request('preview.clear', key === undefined ? { serial } : { serial, key });
   }
 
   /** Make a profile active on the decks. */
@@ -119,9 +118,14 @@ export class DaemonClient {
    * the socket has no page command, and this needs none. Like every socket action it gets "busy"
    * while another socket action runs.
    */
+  /** The connected screens and touchscreens, for setting up a virtual deck (`screens`). */
+  async screens(): Promise<ScreensReply> {
+    return (await this.request('screens')) as ScreensReply;
+  }
+
   /** Clear one key's failure mark (failure.clear). */
-  async clearFailure(serial: string, profile: string, page: string, key: number): Promise<void> {
-    await this.request('failure.clear', { serial, profile, page, key: String(key) });
+  async clearFailure(serial: string, profile: string, page: string, key: string): Promise<void> {
+    await this.request('failure.clear', { serial, profile, page, key });
   }
 
   /** What a VTube Studio key's picker offers (vts.list): models, or one model's hotkeys or (loaded only) expressions. */
@@ -431,4 +435,43 @@ export class DaemonClient {
       // A closed connection reconnects and re-reads decks in the handshake.
     }
   }
+}
+
+/**
+ * Pair a screen with its touchscreen (`virtual.pair`): "Tap this screen" on
+ * `output`, resolving with what was tapped. On a connection of its own, not
+ * the client's: the daemon waits up to a minute for the tap, longer than a
+ * reply may take, and **closing this connection is what cancels it** there —
+ * so `signal` aborting ends it on both sides.
+ */
+export function pairScreen(socketPath: string, output: string, signal: AbortSignal): Promise<PairReply> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(socketPath);
+    let buffer = '';
+    const done = (fn: () => void) => {
+      signal.removeEventListener('abort', onAbort);
+      socket.destroy();
+      fn();
+    };
+    const onAbort = () => done(() => reject(new DaemonError('cancelled', 'Pairing was cancelled.')));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort);
+    socket.setEncoding('utf8');
+    socket.on('connect', () => socket.write(JSON.stringify({ id: 1, cmd: 'virtual.pair', args: { output } }) + '\n'));
+    socket.on('data', (chunk: string) => {
+      buffer += chunk;
+      const nl = buffer.indexOf('\n');
+      if (nl < 0) return;
+      let reply: { ok?: boolean; result?: PairReply; error?: { code: string; message: string } };
+      try {
+        reply = JSON.parse(buffer.slice(0, nl));
+      } catch {
+        done(() => reject(new DaemonError('bad_reply', 'The daemon sent something that is not JSON.')));
+        return;
+      }
+      done(() => (reply.ok && reply.result ? resolve(reply.result) : reject(new DaemonError(reply.error?.code ?? 'internal', reply.error?.message ?? 'Pairing failed.'))));
+    });
+    socket.on('error', (err) => done(() => reject(new DaemonError('not_connected', `Cannot reach the daemon: ${err.message}`))));
+    socket.on('close', () => done(() => reject(new DaemonError('not_connected', 'The daemon closed the connection.'))));
+  });
 }

@@ -22,7 +22,7 @@ interface BulkContext {
   geometry: DeckGeometryWithSerial | null;
   editingBlocked: boolean;
   /** Replace the selected keys on the page being edited. */
-  selectKeys: (keys: number[]) => void;
+  selectKeys: (keys: string[]) => void;
 }
 
 export interface Bulk {
@@ -40,7 +40,7 @@ export interface Bulk {
    * button becomes the selection. On the page being edited, or on `on`: another
    * shown deck's page, which the caller focuses.
    */
-  move: (from: number, to: number, on?: { serial: string; page: string; def: PageDef }) => Promise<void>;
+  move: (from: string, to: string, on?: { serial: string; page: string; def: PageDef }) => Promise<void>;
   /** Copy the selected keys to the same positions on another page, of this deck or another in this profile. */
   copyTo: (serial: string, page: string) => Promise<void>;
   /**
@@ -49,7 +49,7 @@ export interface Bulk {
    * lands, on the page that deck shows. The caller focuses `to`'s deck first,
    * so the status line, set after the write, is about that deck's page.
    */
-  copyKey: (from: { serial: string; page: string; def: PageDef; index: number }, to: { serial: string; page: string; index: number }) => Promise<void>;
+  copyKey: (from: { serial: string; page: string; def: PageDef; key: string }, to: { serial: string; page: string; key: string }) => Promise<void>;
 }
 
 /**
@@ -106,7 +106,7 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       }
       setMessage(placementMessage('Pasted', placement, `“${pageLabel(layout, selection.page)}”`));
       // Select what landed, so the next thing done acts on the pasted keys.
-      if (placement.writes.length > 0) selectKeys(placement.writes.map((w) => w.index));
+      if (placement.writes.length > 0) selectKeys(placement.writes.map((w) => w.key));
     },
 
     duplicate: async () => {
@@ -159,9 +159,9 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       const fromGeometry = geometryFor(daemon, from.serial);
       const toGeometry = geometryFor(daemon, to.serial);
       const toLayout = layoutFor(config, selection.profile, to.serial);
-      const toPosition = toGeometry?.keys.find((k) => k.index === to.index);
+      const toPosition = toGeometry?.keys.find((k) => k.id === to.key);
       if (!fromGeometry || !toPosition || !toLayout || !Object.prototype.hasOwnProperty.call(toLayout.pages, to.page)) return;
-      const clip = copyKeys(from.def, fromGeometry, [from.index]);
+      const clip = copyKeys(from.def, fromGeometry, [from.key]);
       if (clip === null) return;
       // Anchored on the key dropped on: one key always has a place there, so
       // nothing is skipped; a page key whose target is not on that deck loses the link.
