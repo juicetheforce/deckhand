@@ -151,6 +151,13 @@ different profiles.
   daemon already runs. A display change that alters no screen Deckhand
   cares about does not rescan. A helper runs only while a virtual deck's
   screen is connected, and does nothing until the daemon sends it an image.
+- **Whether the screen is plugged in is the kernel's to say; whether the
+  panel can be shown is the compositor's.** KWin removes a screen's output
+  when it wakes from power saving and adds it back a moment later, with
+  nothing in the kernel's view changing. So the helper outlives its output:
+  it waits for an output of the same name to be announced, then shows the
+  panel again, and the daemon quits it only when the kernel says the screen
+  is gone. A helper that stops by itself closes its deck.
 
 **Config reaches the daemon one way: `config.json` and its hot reload.** The
 daemon never writes that file, except once to create a starter config on a
@@ -356,6 +363,7 @@ is here so the test is not "fixed" instead.
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
 | `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |
 | `src/screens.ts` | **a screen's key never contains the EDID's numeric serial**: the Xeneon Edge and two identical HP monitors all report the same placeholder there; only the text serial, cleaned of unprintable bytes (one carries a NUL), tells screens apart |
+| `panel/wayland.c`, `src/drivers/virtual.ts`'s helper exit | **losing the output is not losing the screen**: the helper waits for its output to be announced again (no timer) and the daemon draws everything on its next `ready`; only the kernel's connector state ends a virtual deck. **A helper that stops unasked closes its deck's session** — listed again with its screen still connected, the session would stay open around a helper that is gone, showing nothing and reported connected. Held by `smoke-panel` (a headless KWin's output disabled and enabled) and `smoke-virtual` |
 | `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |
 | `src/services/hotplug.ts` | **a display event rescans only when the connected screens or their keys changed**, and is ignored with no virtual deck configured: `drm` change events have arrived every few seconds at rest with nothing plugged in |
 | `udev/60-deckhand.rules` | **touchscreens only**: a touchscreen's "mouse" twin is a plain mouse to udev, and no rule can grant it without granting every mouse |
