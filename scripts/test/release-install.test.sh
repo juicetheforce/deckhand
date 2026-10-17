@@ -22,12 +22,13 @@ ASSET="deckhand-$VERSION-linux-x64.tar.xz"
 # make_package <dir> [<version inside>] [<a module that throws>] [<leave out the helper>]
 make_package() {
   local out="$1" inside="${2:-$VERSION}" broken="${3:-}" nohelper="${4:-}" app="$S/build/deckhand"
-  rm -rf "$S/build"; mkdir -p "$app/runtime" "$app/dist" "$app/helper" "$app/editor/electron" "$out"
+  rm -rf "$S/build"; mkdir -p "$app/runtime" "$app/dist" "$app/helper" "$app/panel" "$app/editor/electron" "$out"
   ln -s "$(command -v node)" "$app/runtime/node"
   echo "$inside" > "$app/VERSION"
   echo '// daemon' > "$app/dist/index.js"
   [ -n "$nohelper" ] || { printf '#!/bin/sh\n' > "$app/helper/deckhand-input"; chmod 755 "$app/helper/deckhand-input"; }
   cp "$(type -P true)" "$app/editor/electron/electron"   # a real ELF whose libraries are all here
+  cp "$(type -P true)" "$app/panel/deckhand-panel"
   for mod in sharp node-hid @elgato-stream-deck/node; do
     mkdir -p "$app/node_modules/$mod"
     if [ "$mod" = "$broken" ]; then echo 'throw new Error("cannot load")' > "$app/node_modules/$mod/index.js"
@@ -114,5 +115,28 @@ make_package "$S/rel"
 out="$(stage '')"
 grep -q 'rc=1$' <<<"$out" && grep -q 'package is incomplete (editor/electron/electron missing)' <<<"$out" && nothing_staged \
   && ok "an incomplete package is refused: no Electron" || no "no electron — got: $out"
+
+# Incomplete: no display helper for virtual decks.
+make_package "$S/rel"
+( cd "$S/build" && rm deckhand/panel/deckhand-panel && tar -cJf "$S/rel/$ASSET" deckhand && cd "$S/rel" && sha256sum "$ASSET" > SHA256SUMS )
+out="$(stage '')"
+grep -q 'rc=1$' <<<"$out" && grep -q 'package is incomplete (panel/deckhand-panel missing)' <<<"$out" && nothing_staged \
+  && ok "an incomplete package is refused: no display helper" || no "no panel — got: $out"
+
+# The display helper needs a library this machine lacks: said, and staged
+# anyway — only virtual decks need it. A real ELF linked against a library
+# that is then taken away.
+make_package "$S/rel"
+mkdir -p "$S/lib"
+echo 'int absent(void) { return 0; }' > "$S/lib/absent.c"
+echo 'int absent(void); int main(void) { return absent(); }' > "$S/lib/main.c"
+cc -shared -fPIC -o "$S/lib/libdeckhand-absent.so" "$S/lib/absent.c" \
+  && cc -o "$S/build/deckhand/panel/deckhand-panel" "$S/lib/main.c" -L"$S/lib" -ldeckhand-absent \
+  && rm "$S/lib/libdeckhand-absent.so"
+( cd "$S/build" && tar -cJf "$S/rel/$ASSET" deckhand && cd "$S/rel" && sha256sum "$ASSET" > SHA256SUMS )
+out="$(stage '')"
+grep -q 'rc=0$' <<<"$out" && grep -q 'virtual decks .* will not work here: .* needs libdeckhand-absent.so' <<<"$out" && [ -x "$S/stage/panel/deckhand-panel" ] \
+  && ok "a display helper missing a library: a warning naming it, and the package staged" || no "panel library — got: $out"
+rm -rf "$S/stage"
 
 exit $fail

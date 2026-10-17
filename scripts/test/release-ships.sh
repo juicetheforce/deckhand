@@ -6,8 +6,9 @@
 #
 #   1. The build matches its own SHA256SUMS.
 #   2. It loads on the distributions it claims: in a container of each, with
-#      only libusb and libudev added, the bundled Node loads the daemon's
-#      native modules, sharp renders an image, and the helper finds its
+#      only libusb, libudev and libwayland-client added, the bundled Node
+#      loads the daemon's native modules, sharp renders an image, and both
+#      helpers — key injection and the virtual decks' display — find their
 #      libraries. (No display and no decks: this proves the binaries load, not
 #      that the app works. Electron's desktop libraries are reported, not
 #      required: a minimal image has no desktop.)
@@ -56,26 +57,27 @@ node_ok=no; ./runtime/node -e "
     .catch((e) => { console.error(e.message); process.exit(1); });
 " && node_ok=yes
 helper_missing=$(ldd helper/deckhand-input | grep -c "not found")
+panel_missing=$(ldd panel/deckhand-panel | grep -c "not found")
 electron_missing=$(ldd editor/electron/electron | grep -c "not found")
-echo "RESULT glibc=$(ldd --version | head -n 1 | grep -o "[0-9.]*$") node=$node_ok helper_missing=$helper_missing electron_missing=$electron_missing"'
+echo "RESULT glibc=$(ldd --version | head -n 1 | grep -o "[0-9.]*$") node=$node_ok helper_missing=$helper_missing panel_missing=$panel_missing electron_missing=$electron_missing"'
 while read -r image prep; do
   [ -n "$image" ] || continue
   out="$(timeout 900 podman run --rm -v "$S/pkg:/app:ro,Z" "$image" bash -c "$prep >/dev/null 2>&1; $LOAD" 2>&1)"
   result="$(grep '^RESULT' <<<"$out")"
-  if grep -q 'LOADED' <<<"$out" && grep -q 'node=yes helper_missing=0' <<<"$result"; then
+  if grep -q 'LOADED' <<<"$out" && grep -q 'node=yes helper_missing=0 panel_missing=0' <<<"$result"; then
     ok "$image: ${result#RESULT }"
   else
     no "$image: ${result:-no result} — $(grep -v '^RESULT' <<<"$out" | tail -3 | tr '\n' ' ')"
   fi
 done <<'IMAGES'
-quay.io/almalinux/almalinux:8 rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux && dnf -y install libusb systemd-libs
-docker.io/library/debian:11 apt-get update && apt-get install -y libusb-1.0-0 libudev1
-docker.io/library/debian:12 apt-get update && apt-get install -y libusb-1.0-0 libudev1
-docker.io/library/ubuntu:22.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1
-docker.io/library/ubuntu:24.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1
-docker.io/library/ubuntu:26.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1
-registry.fedoraproject.org/fedora:44 dnf -y install libusb1 systemd-libs
-docker.io/library/archlinux:latest pacman -Sy --noconfirm libusb systemd-libs
+quay.io/almalinux/almalinux:8 rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux && dnf -y install libusb systemd-libs libwayland-client
+docker.io/library/debian:11 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
+docker.io/library/debian:12 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
+docker.io/library/ubuntu:22.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
+docker.io/library/ubuntu:24.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
+docker.io/library/ubuntu:26.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
+registry.fedoraproject.org/fedora:44 dnf -y install libusb1 systemd-libs libwayland-client
+docker.io/library/archlinux:latest pacman -Sy --noconfirm libusb systemd-libs wayland
 IMAGES
 
 # --- 3. The shipped installer, piped ------------------------------------------------
@@ -165,7 +167,7 @@ mkdir -p "$T"
 # built-in icons from its own real location, and a test comparing that with the
 # tree's path would fail on a link for no fault of the package. node_modules is
 # linked; module resolution follows real paths anyway.
-for part in dist assets helper package.json; do cp -a "$APP/$part" "$T/$part"; done
+for part in dist assets helper panel package.json; do cp -a "$APP/$part" "$T/$part"; done
 # The installed editor's package.json too: the installer names the desktop entry
 # from its desktopName, and smoke-notifications checks the hint against it.
 mkdir -p "$T/editor" && cp -a "$APP/editor/package.json" "$T/editor/package.json"
@@ -173,7 +175,9 @@ ln -s "$APP/node_modules" "$T/node_modules"
 cp -r "$REPO/scripts" "$T/scripts"
 export PATH="$APP/runtime:$PATH"   # the fakes' #!/usr/bin/env node finds the bundled one
 for smoke in $(node -p "require('$REPO/package.json').scripts.smoke" | grep -o 'scripts/smoke[a-z-]*\.mjs'); do
-  if (cd "$T" && timeout 600 "$APP/runtime/node" "$smoke" > "$S/smoke.log" 2>&1); then ok "$smoke"
+  # A smoke test that skips (smoke-panel without KWin or the helper) tested
+  # nothing: here, where both must be, a skip is a failure.
+  if (cd "$T" && timeout 600 "$APP/runtime/node" "$smoke" > "$S/smoke.log" 2>&1) && ! grep -q ': skipped' "$S/smoke.log"; then ok "$smoke"
   else no "$smoke — $(tail -3 "$S/smoke.log" | tr '\n' ' ')"; keep "$S/smoke.log" "$(basename "$smoke" .mjs)"; fi
 done
 

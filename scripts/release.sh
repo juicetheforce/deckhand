@@ -22,9 +22,10 @@
 # - **One Node.** The official Node build (nodejs.org, checked against its
 #   SHASUMS256.txt) is the one that installs the dependencies and the one that
 #   ships in runtime/.
-# - **Old enough to run anywhere it claims to.** The one binary compiled here,
-#   the key-injection helper, is compiled in an AlmaLinux 8 container
-#   (glibc 2.28). Everything else native is an upstream prebuild. Then every
+# - **Old enough to run anywhere it claims to.** The two binaries compiled
+#   here, the key-injection helper and the virtual decks' display helper, are
+#   compiled in an AlmaLinux 8 container (glibc 2.28, libwayland-client
+#   1.21). Everything else native is an upstream prebuild. Then every
 #   ELF file in the package is read, and the build fails if any needs a glibc
 #   newer than GLIBC_FLOOR or a libstdc++ newer than GLIBCXX_FLOOR — a failure
 #   on this machine instead of on a stranger's.
@@ -122,18 +123,22 @@ build_stage() {
   )
 }
 
-# The key-injection helper, compiled where glibc is 2.28. Rootless podman: the
-# container's root is this user, so what it writes is ours.
+# The two helpers Deckhand compiles — key injection, and the virtual decks'
+# display — compiled where glibc is 2.28. Rootless podman: the container's root
+# is this user, so what it writes is ours.
 build_helper() {
-  say "Compiling the key-injection helper on $BUILDER_IMAGE"
+  say "Compiling the key-injection and display helpers on $BUILDER_IMAGE"
   # The image's AlmaLinux signing key is older than the one its packages are
   # signed with now, so dnf's signature check fails until the current key is
   # imported — over HTTPS, from AlmaLinux. The check stays on.
-  podman run --rm -v "$WORK/src/helper:/helper:Z" "$BUILDER_IMAGE" \
+  podman run --rm -v "$WORK/src/helper:/helper:Z" -v "$WORK/src/panel:/panel:Z" "$BUILDER_IMAGE" \
     bash -c 'rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux \
-      && dnf -q -y install gcc make kernel-headers >/dev/null \
-      && make -C /helper clean >/dev/null && make -C /helper && ldd --version | head -n 1'
+      && dnf -q -y install gcc make kernel-headers wayland-devel >/dev/null \
+      && make -C /helper clean >/dev/null && make -C /helper \
+      && make -C /panel clean >/dev/null && make -C /panel \
+      && ldd --version | head -n 1 && rpm -q libwayland-client'
   install -m 755 "$WORK/src/helper/deckhand-input" "$WORK/deckhand/helper/deckhand-input"
+  install -m 755 "$WORK/src/panel/deckhand-panel" "$WORK/deckhand/panel/deckhand-panel"
 }
 
 # What makes the stage a release rather than a developer install: its own Node

@@ -78,7 +78,9 @@ const env = {
 };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
+// A disabled button ignores click() without a word, which made a step do nothing
+// and the check fail later for another reason: here it is an error.
+const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); if (el.disabled) throw new Error('disabled: ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
 /** Type into a field as a person would: focus, the value, an input event — and leave it, when `leave`. */
 const typeInto = (selector, value, leave = false) =>
   `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)});
@@ -108,6 +110,7 @@ const section = () =>
       linking: s.querySelector('[data-twitch-message]')?.dataset.twitchLinking ?? null,
       link: s.querySelector('[data-twitch=link]')?.textContent ?? null,
       cancel: s.querySelector('[data-twitch=cancel]') !== null,
+      cancelEnabled: s.querySelector('[data-twitch=cancel]')?.disabled === false,
       open: s.querySelector('[data-twitch=open-activate]') !== null,
       confirm: s.querySelector('[data-twitch-confirm]')?.textContent ?? null,
       removable: s.querySelector('[data-twitch=remove]') !== null,
@@ -169,7 +172,9 @@ r.linkedFace = (await until(async () => (await editorFace()).blocked.every((b) =
 
 // Link again, then Cancel: polling stops, and the link it had stays.
 await inPage(editor, 'settings', clickIn('[data-twitch=link]'));
-await until(async () => (await section())?.cancel === true);
+// Cancel is drawn when the daemon reports the code, which can be before the
+// Link call returns — and until then it is disabled.
+assert.ok(await until(async () => (await section())?.cancelEnabled === true), 'Cancel never became available after Link');
 await inPage(editor, 'settings', clickIn('[data-twitch=cancel]'));
 r.cancelled = (await until(async () => (await section())?.linking === 'cancelled')) && (await section());
 const pollsAfterCancel = polls();
@@ -230,7 +235,9 @@ await inPage(editor, 'settings', clickIn('[data-twitch=keep]'));
 r.kept = { state: (await section()).state, saved: (await credentials()).twitch !== undefined };
 await inPage(editor, 'settings', clickIn('[data-twitch=remove]'));
 await inPage(editor, 'settings', clickIn('[data-twitch=confirm-remove]'));
-r.removed = (await until(async () => (await section())?.state === 'not-set-up')) && { section: await section(), saved: (await credentials()).twitch ?? null };
+// The state changes on the daemon's event; the message only once the Remove
+// call returns, which can be later.
+r.removed = (await until(async () => { const s = await section(); return s?.state === 'not-set-up' && s.message != null; })) && { section: await section(), saved: (await credentials()).twitch ?? null };
 r.revoked = fake.requests.filter((q) => q.path === '/oauth2/revoke').length === revokesBefore + 1 && fake.requests.filter((q) => q.path === '/oauth2/revoke').at(-1).body.token === saved.refreshToken;
 r.removedFace = (await until(async () => (await editorFace()).keyUnset === true)) && (await editorFace());
 r.keysKept = (await buttonsNow())['0']?.action?.type ?? null;

@@ -942,7 +942,7 @@ check_release_stage() {
   # Each looked for by name: ldd on a file that is not there reports no missing
   # library, so the Electron check below would pass a package without Electron.
   local part
-  for part in runtime/node helper/deckhand-input editor/electron/electron; do
+  for part in runtime/node helper/deckhand-input panel/deckhand-panel editor/electron/electron; do
     [ -x "$STAGE_DIR/$part" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete ($part missing); nothing was changed."; }
   done
   [ -f "$STAGE_DIR/dist/index.js" ] || { rm -rf "$STAGE_DIR"; die "the package is incomplete (dist/index.js missing); nothing was changed."; }
@@ -952,6 +952,18 @@ check_release_stage() {
     die "Deckhand's device and image modules do not load on this machine${absent:+ — missing: ${absent% }}. Nothing was changed."
   fi
   check_electron_libraries "$STAGE_DIR/editor/electron/electron"
+  check_panel_libraries "$STAGE_DIR/panel/deckhand-panel"
+}
+
+# The virtual decks' display helper needs libwayland-client, which every
+# Wayland desktop has. Only a virtual deck runs it, so a machine without it
+# still gets a working Deckhand for its Stream Decks: said, not refused.
+check_panel_libraries() {
+  local binary="$1" absent
+  has_command ldd || return 0
+  absent="$(ldd "$binary" 2>/dev/null | awk '/=> not found/ { print $1 }' | sort -u | tr '\n' ' ')" || true
+  [ -z "$absent" ] \
+    || warn "virtual decks (a touchscreen as a deck) will not work here: their display helper needs ${absent% }, which this machine does not have (libwayland-client on Fedora, libwayland-client0 on Debian and Ubuntu, wayland on Arch). Stream Decks are not affected."
 }
 
 # The editor goes inside the daemon's app directory, built from the same
