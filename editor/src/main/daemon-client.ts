@@ -387,9 +387,10 @@ export class DaemonClient {
       this.update({ status: { ...status, activeProfile: snapshot.activeProfile, decks: snapshot.decks } });
       const connected = snapshot.decks.filter((d) => d.connected).map((d) => d.serial).sort().join(',');
       const known = (this.current.decks ?? []).map((d) => d.serial).sort().join(',');
-      if (connected !== known) void this.refreshDecks();
+      if (connected !== known || this.hasVirtualDeck()) void this.refreshDecks();
     } else if (name === 'config') {
       this.update({ status: { ...status, config: { ...status.config, lastReload: data as ReloadResult } } });
+      if (this.hasVirtualDeck()) void this.refreshDecks();
     } else if (name === 'audio') {
       this.update({ audio: data as { sinks: AudioList; sources: AudioList } });
     } else if (name === 'obs') {
@@ -425,6 +426,16 @@ export class DaemonClient {
     } catch {
       // Not connected, or a daemon from before app keys: the App form says there is no list.
     }
+  }
+
+  /**
+   * A virtual deck's controls change with its layout — a new size, another
+   * profile's panel — while the set of decks stays the same, so with one
+   * connected the geometry is read again on every state and config event. A
+   * Stream Deck's never changes: without a virtual deck, nothing more is asked.
+   */
+  private hasVirtualDeck(): boolean {
+    return (this.current.decks ?? []).some((d) => d.units === 'pixels');
   }
 
   private async refreshDecks(): Promise<void> {

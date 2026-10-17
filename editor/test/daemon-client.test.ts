@@ -92,6 +92,60 @@ await check('a deck attaching is picked up from the state event, with its geomet
   assert.equal(v2.iconSize, 72);
 });
 
+/**
+ * A daemon of the test's own: one deck, whose geometry the test changes while
+ * the set of decks stays the same — as a virtual deck's does on a resize or
+ * a profile switch. Counts the decks requests.
+ */
+async function fakeDaemon(file: string, units: 'pixels' | 'cells') {
+  let keys = 24;
+  let decksAsked = 0;
+  const clients: net.Socket[] = [];
+  const server = net.createServer((c) => {
+    clients.push(c);
+    let buf = '';
+    c.on('data', (chunk) => {
+      buf += chunk;
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const req = JSON.parse(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+        const reply = (result: unknown) => c.write(JSON.stringify({ id: req.id, ok: true, result }) + '\n');
+        if (req.cmd === 'subscribe') reply({ events: req.args.events });
+        else if (req.cmd === 'status') reply({ protocol: 2, pid: 1, config: { path: '/x', lastReload: { ok: true, at: 'x' }, backups: { dir: '/x', count: 0, newest: null } }, activeProfile: { id: 'p', name: 'P' }, decks: [{ serial: 'D', connected: true, configured: true }] });
+        else if (req.cmd === 'decks') {
+          decksAsked++;
+          reply([{ serial: 'D', model: 'virtual', productName: 'Panel', keyCount: keys, units, iconSize: 100, rows: 1, columns: keys, keys: [], unsupported: [] }]);
+        } else c.write(JSON.stringify({ id: req.id, ok: false, error: { code: 'internal', message: 'no' } }) + '\n');
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(file, resolve));
+  const send = (name: string, data: unknown) => clients.forEach((c) => c.write(JSON.stringify({ event: name, data }) + '\n'));
+  return { setKeys: (n: number) => (keys = n), asked: () => decksAsked, send, close: () => new Promise((r) => server.close(r)) };
+}
+
+await check('a virtual deck\'s new size reaches the editor on the config event, with no re-pairing; a Stream Deck asks nothing more', async () => {
+  for (const units of ['pixels', 'cells'] as const) {
+    const file = path.join(await scratchDir(), 'fake.sock');
+    const fake = await fakeDaemon(file, units);
+    let view: DaemonView | null = null;
+    const client = new DaemonClient({ socketPath: file, onChange: (v) => (view = v), replyTimeoutMs: 1000 });
+    client.start();
+    for (let i = 0; i < 100 && !view?.connected; i++) await sleep(20);
+    const askedBefore = fake.asked();
+    fake.setKeys(10);
+    fake.send('config', { ok: true, at: 'later' });
+    fake.send('state', { activeProfile: { id: 'p', name: 'P' }, decks: [{ serial: 'D', connected: true, configured: true }] });
+    await sleep(200);
+    const keys = (view as DaemonView | null)?.decks?.[0]?.keyCount;
+    client.stop();
+    await fake.close();
+    if (units === 'pixels') assert.equal(keys, 10, 'the virtual deck shows its new size');
+    else assert.equal(fake.asked(), askedBefore, 'a Stream Deck: no decks request without a deck coming or going');
+  }
+});
+
 await check('a config event updates lastReload', async () => {
   daemon.state.lastReload = { ok: false, at: 'later', error: 'refused for the test' };
   daemon.events.config();
