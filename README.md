@@ -41,10 +41,10 @@ It's one person's project, used every day.
   another port and its layouts go with it.
 - **Any Stream Deck should work.** The key count, layout and each key's
   screen size come from the device, not from a list in Deckhand, and keys
-  without a screen (a Pedal's, a Neo's two touch keys) work as plain buttons.
-  I use an XL and an Original V2 side by side; every other model is checked
-  only against the Stream Deck library's own description of it, never on the
-  device.
+  without a screen (a Pedal's, a Neo's two touch keys) are treated as plain
+  buttons. I use an XL and an Original V2 side by side. Every other model is
+  checked only against the Stream Deck library's own description of it: the
+  Studio, Neo and Pedal haven't been tested on real hardware.
 - **Several decks in one editor.** With more than one plugged in, show them
   side by side and arrange them to match your desk. Drag a key onto another
   deck to copy it there.
@@ -59,13 +59,14 @@ It's one person's project, used every day.
 A touchscreen can be a deck too: a small touch monitor beside your keyboard,
 say. Deckhand fills the screen with a grid of keys that work like a Stream
 Deck's: the same actions, pages and profiles, press and hold, several fingers
-at once. No Elgato hardware is needed. I use a 10.3-inch USB touch panel, and
-it has been tried on a Corsair Xeneon Edge.
+at once. No Elgato hardware is needed. It has been tested on my 10.3-inch USB
+touch panel.
 
 - **Set it up in the editor**, in **Settings › Decks › Add a virtual
   deck**: choose the screen, tap it so Deckhand knows which touchscreen is
   its own, and choose a key size: Small, Medium, Large, or your own rows and
-  columns. Edit its keys like any deck's. Nothing is ever edited on the
+  columns. Pairing asks for your password once, to give Deckhand access to
+  that one touchscreen and no other ([why](SECURITY.md#device-access)). Edit its keys like any deck's. Nothing is ever edited on the
   touchscreen itself, so a stray touch can't change anything.
 - **Its touches go only to Deckhand.** Deckhand reads the touchscreen
   directly, so a touch on the panel never moves the pointer or clicks a
@@ -233,8 +234,7 @@ corrupted or cut-short download, and that is all it does: the checksums come
 from the same GitHub release as the download, so they don't prove who made it.
 
 `sudo` is asked for once, to add a udev rule that gives you access to the
-decks and touchscreens, and on Ubuntu once more for an AppArmor profile the
-editor needs. Then open **Deckhand** from your application menu.
+decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then open **Deckhand** from your application menu.
 
 To update, run the same line again; the editor's **Settings › About** says
 when a newer release is out. To remove it: `deckhand-uninstall`.
@@ -260,9 +260,7 @@ And what it doesn't do well yet:
 - **Replacing a deck.** A new deck starts blank, even the same model, because
   layouts belong to a serial number. Moving them over means editing the
   serial in the config file ([how](REFERENCE.md#using-it)).
-- **Dials, the Plus's touch strip, and the Neo's extra buttons** are ignored.
-- **Decks without screens, such as the Pedal**, haven't been tried and
-  probably don't work.
+- **Dials, the Plus's touch strip, and the Neo's info bar** are ignored.
 - **x86_64 only.** On other machines, install from source.
 - **Typed text assumes a US keyboard layout.**
 - **Audio devices with non-English names** show their system name instead,

@@ -86,10 +86,12 @@ The installer checks all of these.
   before it is published.
 - libusb 1.0, which the Stream Deck library links against (`libusb1` on
   Fedora, `libusb-1.0-0` on Debian and Ubuntu).
-- For virtual decks only, libwayland-client (`libwayland-client` on Fedora,
+- For virtual decks only: libwayland-client (`libwayland-client` on Fedora,
   `libwayland-client0` on Debian and Ubuntu, `wayland` on Arch), which every
-  Wayland desktop has. Without it the installer warns, and Stream Decks still
-  work.
+  Wayland desktop has; and polkit's `pkexec` and `setfacl` (the `acl`
+  package), with which pairing a touchscreen asks for your password and
+  gives Deckhand access to it. Without them the installer warns, and Stream
+  Decks still work.
 - `pactl`, for the audio keys. That is **pulseaudio-utils** on Fedora, Debian
   and Ubuntu — a machine running PipeWire may still not have the command.
 - A desktop session with a systemd user manager and a session D-Bus.
@@ -161,7 +163,8 @@ deckhand-uninstall --purge  # removes your config without asking
 
 Uninstall removes the service, the installed copy, the commands, the desktop
 entry and Deckhand's udev rule. The rule always goes, because it gives every
-program you run access to `/dev/uinput` and to your touchscreens. It also removes
+program you run access to `/dev/uinput`; with it go every paired
+touchscreen's rule and the pairing helper in `/usr/local/libexec`. It also removes
 `~/.local/state/deckhand/`, backups included — that is the app's state, not
 your config. A developer install is removed the same way; the checkout is
 yours to delete.
@@ -205,8 +208,14 @@ whatever that key held. A copied Go to page key whose page isn't on the other
 deck keeps its icon and label and loses the link, and the editor says so.
 
 **Virtual decks.** A touchscreen becomes a deck in **Settings › Decks › Add
-a virtual deck**: choose the screen, tap it when it shows "Tap this screen"
-(within a minute), and choose a key size. Small, Medium and Large aim at keys
+a virtual deck** (offered only while a touchscreen is connected): choose
+the screen — each listed with its size and resolution, the laptop's own
+marked built-in — enter your password when asked, tap the screen when it
+shows "Tap this screen" (within 30 seconds; with no touch it says so, and
+you can choose another screen), and choose a key size. **Only a touchscreen
+you pair is readable by Deckhand, or by any program you run**, and only from
+the moment you pair it ([SECURITY.md](SECURITY.md#device-access)): the
+password lets a small root helper grant access to that touchscreen alone. Small, Medium and Large aim at keys
 about 23, 30 and 45 mm apart, from the screen's own reported size, or from
 its pixels when that size is implausible; **Custom** sets the rows and
 columns, up to 12 × 24, and says when the keys get very small. The new deck
@@ -216,8 +225,9 @@ size in every profile, with **Change…**; a smaller size names the keys that
 no longer fit, and drops them when you confirm. **Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
-as a deck and keeps its layouts, which come back if you set the same screen
-up again. While the session is locked, or another user's is active, touches
+as a deck and takes away its touchscreen's access (your password again), and
+keeps its layouts, which come back if you set the same screen up again.
+**Tap again** asks for the password too. While the session is locked, or another user's is active, touches
 do nothing; `deckhand status` says why under the deck (`touch: …`).
 
 **Profiles** switch every deck at once. A deck the active profile has no
@@ -724,8 +734,8 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 | --- | --- | --- |
 | `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`) |
 | `decks` | | connected decks: serial, model, geometry (each key's ID, place and size: grid cells on a Stream Deck, pixels of the canvas on a virtual deck), unsupported controls |
-| `screens` | | connected screens, each with its key and EDID details and the virtual deck on it if any; and the touchscreens |
-| `virtual.pair` | `output` (a connector) | shows "Tap this screen" on that screen and waits up to 60 s for a tap; replies with the screen's key, the touchscreen tapped and the screen's size. Writes nothing. Cancelled if this connection closes |
+| `screens` | | connected screens, each with its key, EDID details, native resolution, whether it is built in (`eDP`, `LVDS`, `DSI`) and the virtual deck on it if any; and the touchscreens |
+| `virtual.pair` | `output` (a connector) | shows "Tap this screen" on that screen and waits up to 30 s for a tap — the touchscreens must already be readable, which the editor arranges; replies with the screen's key, the touchscreen tapped and the screen's size. Writes nothing. Cancelled if this connection closes |
 | `repaint` | `serial` (optional) | redraws one deck, or all |
 | `profile.switch` | `to` | switches every deck to a profile, by ID or name |
 | `action.run` | `serial`, `action`, optional `onRelease` and `holdMs` | runs an action as if pressed on that deck, without saving it |
@@ -804,9 +814,9 @@ is marked and says which model it needs; load that model in VTube Studio.
 deck. `locked` or `inactive`: unlock the session, or switch back to it.
 `missing`: its touchscreen isn't connected, or was paired by USB port and
 has moved — **Tap again** in Settings › Decks. `failed`: Deckhand could not
-open it; the journal says why, usually access, which the install line run
-again with `bash -s -- install --reinstall` fixes (it reports access per
-touchscreen), then replug it. `unknown`: Deckhand can't read whether the
+open it; the journal says why, usually access: **Tap again** writes its
+touchscreen's rule afresh. The install line reports, per touchscreen,
+whether it is readable; only paired ones should be. `unknown`: Deckhand can't read whether the
 session is locked from logind, so it ignores touches.
 
 **A virtual deck shows nothing.** `deckhand decks` lists it only while its
@@ -895,8 +905,10 @@ The checks:
   `release-install.test.sh` (a release's download, checksum and unpack, every
   way it can be wrong), `release-glibc.test.sh` (the release build's glibc
   check), `release-notes.test.sh` (a release's notes always end with the
-  install-or-update line) and `udev-trigger.test.sh` (re-applying the rule,
-  with uinput loaded and not). `scripts/install.sh check` runs the preflight for real and changes
+  install-or-update line), `udev-trigger.test.sh` (re-applying the rule,
+  with uinput loaded and not) and `touch-access.test.sh` (the root pairing
+  helper in its test mode: the temporary access granted and dropped on every
+  path, the rule it writes, the entries it refuses). `scripts/install.sh check` runs the preflight for real and changes
   nothing.
 - A built release: `scripts/test/release-ships.sh <version>` loads it in
   containers of the target distributions, pipes its installer, **installs it

@@ -61,7 +61,10 @@ editor (Electron/React) — config producer only
 - **The editor** (`editor/`) is **strictly a config producer**. It writes
   `config.json` and talks to the daemon over the socket to learn deck
   geometry and state, preview keys and switch pages. It cannot start, stop or
-  restart the daemon. **Once each time its window opens**, unless Settings ›
+  restart the daemon. When a touchscreen is paired as a virtual deck, or one
+  is removed, it also runs Deckhand's root helper through `pkexec`, which
+  asks for the password (below) — the editor, because the polkit prompt
+  belongs to the desktop session, and the daemon is outside it. **Once each time its window opens**, unless Settings ›
   About's "Check for updates" is off, it asks GitHub for the latest release,
   to say when a newer one exists; it downloads and installs nothing, and the
   daemon never asks. A hung or crashed editor cannot stall a key press, and
@@ -133,6 +136,19 @@ different profiles.
   compositor, so the desktop never sees it and nothing depends on which
   display the desktop thinks the touchscreen belongs to — which KDE Plasma
   got wrong on both machines tried, until it was set by hand.
+- **Only a touchscreen paired as a virtual deck is readable, and only from
+  the moment of pairing.** Wayland keeps programs from reading each other's
+  input; a udev rule giving the user access to a touchscreen opts that device
+  out of the protection, so any program the user runs could read its touches
+  — on a touchscreen laptop, what is typed on its on-screen keyboard. So the
+  install adds no touchscreen rule. Pairing asks for the password once, through
+  `pkexec`: a small root helper, installed root-owned in `/usr/local/libexec`,
+  gives temporary read access to the touchscreens while the daemon waits for
+  the tap, then writes a rule for the touchscreen tapped alone (its vendor
+  and product IDs, and its serial when it has one) and drops the temporary
+  access. Removing the deck removes its entry (the password again);
+  uninstalling removes them all. A touchscreen with no serial is covered by
+  model, so identical ones share an entry.
 - **The daemon hit-tests**, not the helper, in a module the editor shares,
   so shapes never reach C. A touch belongs to the key it started on until it
   lifts, as a held Stream Deck key does.
@@ -196,8 +212,9 @@ key**, or a press is waiting on it; if OBS is not running, the next try rides
 the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 `src/services/obs-client.ts` are one-shot deadlines for a handshake or a
 request, not recurring timers. **Pairing a virtual deck's
-touchscreen** waits for a tap with a one-shot 60-second deadline, only
-while someone is pairing. **While a Twitch account is being
+touchscreen** waits for a tap with a one-shot 30-second deadline, and its
+root helper drops its temporary access after at most 5 minutes, only while
+someone is pairing. **While a Twitch account is being
 linked**, the daemon asks Twitch every few seconds whether the person has
 approved — the only way to learn it — until they do, the code expires, they
 cancel, or the client that started it closes; never at rest. **VTube Studio
@@ -366,7 +383,7 @@ is here so the test is not "fixed" instead.
 | `panel/wayland.c`, `src/drivers/virtual.ts`'s helper exit | **losing the output is not losing the screen**: the helper waits for its output to be announced again (no timer) and the daemon draws everything on its next `ready`; only the kernel's connector state ends a virtual deck. **A helper that stops unasked closes its deck's session** — listed again with its screen still connected, the session would stay open around a helper that is gone, showing nothing and reported connected. Held by `smoke-panel` (a headless KWin's output disabled and enabled) and `smoke-virtual` |
 | `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |
 | `src/services/hotplug.ts` | **a display event rescans only when the connected screens or their keys changed**, and is ignored with no virtual deck configured: `drm` change events have arrived every few seconds at rest with nothing plugged in |
-| `udev/60-deckhand.rules` | **touchscreens only**: a touchscreen's "mouse" twin is a plain mouse to udev, and no rule can grant it without granting every mouse |
+| `udev/60-deckhand.rules`, `udev/deckhand-touch-access`, `editor/src/main/touch-access.ts` | **no touchscreen is readable unless it is paired as a virtual deck, and only from its pairing** (Ryan's decision, 2026-10-17). A rule granting a touchscreen opts it out of Wayland's separation of programs' input: any program the user runs could read it, a laptop's on-screen keyboard included. So no rule at install, no rule for every touchscreen, and one entry per paired touchscreen — its IDs, and its serial when it has one — written by the root helper at pairing, removed with its deck and at uninstall. The temporary access for the tap is dropped on every path: a deck added, a cancel, no tap, the editor gone, a kill, 5 minutes. The helper takes no paths or user from its caller and refuses any serial udev would read as a pattern. Never the "mouse" twin either, a plain mouse to udev. Held by `touch-access.test.sh` and `check:virtual` |
 
 ## The control socket
 
@@ -387,10 +404,13 @@ replies, and can subscribe to `state`, `config` and `audio` events.
 
 Per user, under the XDG directories: the app in `~/.local/share/deckhand`, a
 `systemd --user` unit, and the `deckhand` and `deckhand-editor` commands in
-`~/.local/bin`. The only piece that needs root is a udev rule granting the
-logged-in user access to the decks, to `/dev/uinput` and to touchscreens. Uninstalling always
-removes that rule, because it lets any of the user's processes synthesise
-keystrokes.
+`~/.local/bin`. The pieces that need root are a udev rule granting the
+logged-in user access to the decks and to `/dev/uinput`, and the touchscreen
+pairing helper, installed root-owned so that nothing the user can write runs
+as root; touchscreens are granted only one at a time, as they are paired
+(above). Uninstalling always removes the rule, every paired touchscreen's
+rule and the helper, because they let any of the user's processes synthesise
+keystrokes and read those touchscreens.
 
 **One install script, not a package per distribution.** `scripts/install.sh`
 checks what a machine needs and names everything missing at once, and rolls

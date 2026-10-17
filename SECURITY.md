@@ -21,14 +21,17 @@ usually within a few days. Only the latest release is supported.
   anything that lets another user reach it, or a client make the daemon do
   more than its commands allow.
 - **The udev rule** (`/etc/udev/rules.d/60-deckhand.rules`), which gives the
-  logged-in user access to the decks, to `/dev/uinput` and to touchscreens
-  (below). Its breadth is deliberate — any process of that user can then
+  logged-in user access to the decks and to `/dev/uinput`, and the rules
+  for paired touchscreens (below). Its breadth is deliberate — any process
+  of that user can then
   synthesise keystrokes, which is why uninstalling always removes it — but a
   way to widen it further is in scope.
 - **Virtual decks**: anything that lets a touch run an action while the
-  session is locked or not the active one, lets the display helper
-  (`panel/`) read an input device other than a touchscreen it was given, or
-  leaves a touchscreen grabbed after Deckhand lets go of it.
+  session is locked or not the active one; that gives access to a
+  touchscreen that was not paired, or keeps the temporary access after
+  pairing ends; that makes the root pairing helper do anything but write
+  its own rule file and set access on touchscreens; or that leaves a
+  touchscreen grabbed after Deckhand lets go of it.
 - **The install script** (`scripts/install.sh`), which runs `sudo` for the
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
@@ -42,24 +45,36 @@ usually within a few days. Only the latest release is supported.
 
 ## Device access
 
-The udev rule uses `uaccess`: access goes to the user at the active local
-session, and is taken back on a user switch. It covers Stream Decks (by
-Elgato's USB vendor), `/dev/uinput`, and **every touchscreen**, which is
-broader than virtual decks need: a rule naming only the touchscreen you pair
-would need `sudo` every time you pair one. Touchscreens only: not keyboards,
-mice or other input devices, including the "mouse" node some touchscreens
-also have, which udev cannot tell from any other mouse. It does mean any
-program you run can read your touchscreens, which on a touchscreen laptop
-includes what you type on an on-screen keyboard; `/dev/uinput` already lets
-the same programs type as you.
+The udev rule Deckhand installs uses `uaccess`: access goes to the user at
+the active local session, and is taken back on a user switch. It covers
+Stream Decks (by Elgato's USB vendor) and `/dev/uinput`, which lets any
+program you run type as you.
 
-The daemon opens a touchscreen only once it is paired with a virtual deck's
-screen, except while you are pairing one, when every touchscreen is read
-until one is tapped. It **grabs** the paired touchscreen, so the desktop
-sees none of its touches, and lets go when the deck goes. Reading the
-device directly bypasses the lock screen, so **touches do nothing while the
-session is locked or not the active one**, as logind reports it, and
-nothing while Deckhand cannot tell.
+**It covers no touchscreen.** Wayland keeps programs from reading each other's
+input: normally only your desktop sees a touchscreen's touches. A rule that
+gives you access to a touchscreen opts that device out of the protection, so
+any program running as you could read its touches — on a touchscreen laptop,
+including what you type on its on-screen keyboard. So Deckhand gives access
+**only to touchscreens you pair as virtual decks, never to any other, and
+only from the moment you pair them**:
+
+- Pairing a touchscreen in Settings › Decks asks for your password once. A
+  small helper, `/usr/local/libexec/deckhand-touch-access`, installed
+  root-owned, then gives you temporary read access to the connected
+  touchscreens, so Deckhand can see which one you tap; writes a rule for that
+  one touchscreen alone, by its vendor and product IDs and its serial number
+  when it has one, to `/etc/udev/rules.d/61-deckhand-touchscreens.rules`; and
+  takes the temporary access away. It is taken away too if you cancel, if
+  nothing is tapped, if the editor closes, and after 5 minutes at most.
+- A touchscreen with no serial number is covered by its model: an identical
+  touchscreen plugged in later is covered too.
+- Removing a virtual deck removes its touchscreen's entry, and asks for your
+  password to do it. Uninstalling removes them all, and the helper.
+
+Deckhand grabs the paired touchscreen, so the desktop sees none of its
+touches. Reading the device directly bypasses the lock screen, so **touches
+do nothing while the session is locked or not the active one**, as logind
+reports it, and nothing while Deckhand cannot tell.
 
 ## Secrets
 
