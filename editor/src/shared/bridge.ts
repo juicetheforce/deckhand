@@ -8,8 +8,9 @@
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
 import type { UpdateState } from './updates.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, StatusResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
-import type { ActionDef, ButtonDef, Config } from '../../../src/types.js';
+import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, PairReply, ScreensReply, StatusResult, TouchState, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { ActionDef, ButtonDef, Config, PanelDef } from '../../../src/types.js';
+import type { ScreenSize } from '../../../src/panel-presets.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
 import type { DeckPositions } from './deck-positions.js';
@@ -309,6 +310,21 @@ export interface DeckhandBridge {
   openUpdate(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Turn them on or off; resolves with the setting as it now is. */
   setNotifications(on: boolean): Promise<boolean | null>;
+  /** Settings › Decks' virtual decks, and the profile a new one is added to (settings window only). */
+  virtualDecks(): Promise<VirtualDecksView>;
+  onVirtualDecks(callback: (view: VirtualDecksView) => void): () => void;
+  /** The connected screens and touchscreens, from the daemon (`screens`). */
+  virtualScreens(): Promise<{ ok: true; result: ScreensReply } | { ok: false; error: string }>;
+  /** "Tap this screen" on a connector, waiting for the tap (`virtual.pair`); cancelPairing ends it. One at a time. */
+  pairScreen(output: string): Promise<{ ok: true; result: PairReply } | { ok: false; code: string; error: string }>;
+  cancelPairing(): Promise<void>;
+  /** One of the virtual-deck edits (add, tap again, remove, a new size), from Settings › Decks. Any other edit is refused. */
+  /** A resize that drops keys keeps the configuration first; `backup` names the copy. */
+  virtualDeckEdit(edit: Edit): Promise<{ ok: true; backup?: string } | { ok: false; error: string }>;
+  /** A virtual deck's screen, to size a panel for it; null when it has no panel yet. Both windows. */
+  virtualScreenSize(key: string): Promise<ScreenSize | null>;
+  /** The keys a new panel would drop from a profile, named, for the confirmation (settings window only). */
+  virtualPanelPreview(profile: string, key: string, panel: PanelDef): Promise<string[] | null>;
   /**
    * Export the whole configuration as a .zip (settings window
    * only): with every icon file it names, or config only. Asks where to save.
@@ -399,4 +415,26 @@ export interface DeckhandBridge {
 
   /** Checks only (scripts/check-*.mjs): report a result to the main process, which prints it and quits. */
   reportCheck(name: string, report: unknown): void;
+}
+
+/** A virtual deck, as Settings › Decks lists it. */
+export interface VirtualDeckRow {
+  /** Its key under "decks": what recognises its screen (src/screens.ts). */
+  key: string;
+  /** Its name, or the screen's when it has none. */
+  label: string;
+  /** The connector it was set up on. */
+  output: string;
+  connected: boolean;
+  /** Whether its touch works, and if not why (control/protocol.ts TouchState); null when not connected. */
+  touch: TouchState | null;
+  paired: boolean;
+  /** Its panel in each profile that has one. */
+  layouts: Array<{ profile: string; profileName: string; preset: string | null; rows: number; columns: number }>;
+}
+
+export interface VirtualDecksView {
+  decks: VirtualDeckRow[];
+  /** Where a new virtual deck gets its layout: the profile the decks show now. */
+  activeProfile: { id: string; name: string } | null;
 }

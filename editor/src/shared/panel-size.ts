@@ -1,9 +1,9 @@
 /**
  * A virtual deck's panel given a new size, in one profile: every page's keys
- * keep their row and column, as paste and Copy to device place keys
- * (`[decided]` Ryan, 2026-10-16). A key with no place in the new grid is
- * dropped, and named first so the editor can ask. Undo brings it back, as for
- * any edit.
+ * keep their row and column, as paste and Copy to device place keys. A key
+ * with no place in the new grid is dropped, and named first so the editor can
+ * ask; the configuration is kept before such a resize (main.ts), as before a
+ * profile delete — the editor has no undo.
  *
  * Pure, importing only the daemon's own geometry: the Settings window builds
  * the confirmation with it, and the main process applies the same result.

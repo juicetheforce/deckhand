@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
+import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, VirtualDecksView, WindowState } from '../shared/bridge.js';
 import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import type { AppSettings } from '../shared/settings.js';
 import type { UpdateState } from '../shared/updates.js';
@@ -61,6 +61,14 @@ const bridge: DeckhandBridge = {
   setUpdateCheck: (on) => ipcRenderer.invoke('setUpdateCheck', on),
   openUpdate: () => ipcRenderer.invoke('openUpdate'),
   setNotifications: (on) => ipcRenderer.invoke('setNotifications', on),
+  virtualDecks: () => ipcRenderer.invoke('virtualDecks'),
+  onVirtualDecks: (callback) => subscribe<VirtualDecksView>('virtualDecks', callback),
+  virtualScreens: () => ipcRenderer.invoke('virtualScreens'),
+  pairScreen: (output) => ipcRenderer.invoke('pairScreen', output),
+  cancelPairing: () => ipcRenderer.invoke('cancelPairing'),
+  virtualDeckEdit: (edit) => ipcRenderer.invoke('virtualDeckEdit', edit),
+  virtualScreenSize: (key) => ipcRenderer.invoke('virtualScreenSize', key),
+  virtualPanelPreview: (profile, key, panel) => ipcRenderer.invoke('virtualPanelPreview', profile, key, panel),
   exportConfig: (includeIcons) => ipcRenderer.invoke('exportConfig', includeIcons),
   deleteProfile: (profile, pageName) => ipcRenderer.invoke('deleteProfile', profile, pageName),
   keptConfigs: () => ipcRenderer.invoke('keptConfigs'),
