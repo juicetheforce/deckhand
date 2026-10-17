@@ -65,10 +65,10 @@ UDEV_RULE_DST="/etc/udev/rules.d/60-deckhand.rules"
 # The root helper that grants a touchscreen when it is paired as a virtual deck
 # (udev/deckhand-touch-access), installed root-owned outside anything the user
 # can write, since the editor runs it as root through pkexec; and the rules it
-# writes, one entry per paired touchscreen.
+# writes, a file per user with one entry per touchscreen they paired.
 TOUCH_ACCESS_SRC="$REPO_DIR/udev/deckhand-touch-access"
 TOUCH_ACCESS_DST="/usr/local/libexec/deckhand-touch-access"
-TOUCH_RULES_DST="/etc/udev/rules.d/61-deckhand-touchscreens.rules"
+TOUCH_RULES_GLOB="/etc/udev/rules.d/61-deckhand-touchscreens*.rules"
 # The AppArmor profile that lets the editor's Electron have a user namespace.
 # Installed only where the kernel is restricting them; see apparmor_needed().
 APPARMOR_PROFILE_SRC="$REPO_DIR/apparmor/deckhand-editor"
@@ -1089,13 +1089,8 @@ retrigger_udev() {
     say "uinput is a module that is not loaded yet; it loads when Deckhand first opens it, and the rule applies then"
   fi
   for node in $(elgato_hidraw_nodes); do targets+=("/sys/class/hidraw/${node#/dev/}"); done
-  # Touchscreens: the user's access taken away from each first, so the trigger
-  # leaves it only where a rule grants it — re-applying a rule adds access but
-  # never removes it, and an older install granted every touchscreen.
-  for node in $(touchscreen_nodes); do
-    sudo setfacl -x "u:$(id -u)" "$node" 2>/dev/null || true
-    targets+=("/sys/class/input/${node#/dev/input/}")
-  done
+  # Never touchscreens: a paired one's access is a file ACL its own rule sets
+  # (udev/deckhand-touch-access), which no re-trigger is needed for.
   [ "${#targets[@]}" -gt 0 ] || return 0
   if output="$(sudo udevadm trigger --action=change --settle "${targets[@]}" 2>&1)"; then
     say "udev re-applied to: ${targets[*]}"
@@ -1558,9 +1553,14 @@ remove_apparmor_profile() {
 }
 
 remove_udev_rule() {
-  [ -e "$UDEV_RULE_DST" ] || [ -e "$TOUCH_RULES_DST" ] || [ -e "$TOUCH_ACCESS_DST" ] || { say "No udev rule to remove"; return; }
-  say "Removing udev rules $UDEV_RULE_DST and $TOUCH_RULES_DST, and $TOUCH_ACCESS_DST (needs sudo)"
-  if sudo rm -f "$UDEV_RULE_DST" "$TOUCH_RULES_DST" "$TOUCH_ACCESS_DST" && sudo udevadm control --reload; then
+  local touch_rules=() node
+  for node in $TOUCH_RULES_GLOB; do [ -e "$node" ] && touch_rules+=("$node"); done
+  [ -e "$UDEV_RULE_DST" ] || [ "${#touch_rules[@]}" -gt 0 ] || [ -e "$TOUCH_ACCESS_DST" ] || { say "No udev rule to remove"; return; }
+  say "Removing udev rule $UDEV_RULE_DST, ${#touch_rules[@]} paired-touchscreen rule file(s) and $TOUCH_ACCESS_DST (needs sudo)"
+  # A paired touchscreen's access is a file ACL for this user: taken off
+  # directly, as removing a virtual deck does.
+  for node in $(touchscreen_nodes); do sudo setfacl -x "u:$(id -u)" "$node" 2>/dev/null || true; done
+  if sudo rm -f "$UDEV_RULE_DST" "${touch_rules[@]}" "$TOUCH_ACCESS_DST" && sudo udevadm control --reload; then
     # Re-apply rules so the access this rule granted is withdrawn now, not
     # at the next reboot or replug.
     retrigger_udev

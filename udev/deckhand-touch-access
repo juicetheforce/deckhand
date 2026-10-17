@@ -9,8 +9,9 @@
 #                  "set <entries>" writes the rule file (below), drops the
 #                  temporary access and prints "done"; anything else, the end
 #                  of input, or 5 minutes, drops it and prints "cancelled".
-#   set <entries>  Writes the rule file to exactly these entries, and takes
-#                  away access to touchscreens no entry covers.
+#   set <entries>  Writes the user's rule file to exactly these entries, gives
+#                  the user read access to the touchscreens they cover now, and
+#                  takes it away from every other touchscreen.
 #
 # An entry is <vendor>:<product> or <vendor>:<product>:<serial> — a paired
 # touchscreen's input IDs (four hex digits each) and its serial when it has one.
@@ -24,6 +25,18 @@
 # 2026-10-17; SECURITY.md, "Device access"). Do not widen the rule to all
 # touchscreens, or add one at install.
 #
+# WHY A FILE ACL AND NOT THE UACCESS TAG. udev keeps a device's tags until the
+# device is unplugged or the machine restarts, and its seat rule re-applies
+# uaccess access on every re-trigger of a device that ever had the tag — so a
+# touchscreen once granted that way could not be taken back until then
+# (measured on the laptop, 2026-10-17). The rule instead runs setfacl for the
+# user who paired it, on that device only; removing it is deleting the rule
+# and the ACL, with no re-trigger, and nothing brings it back (measured: change
+# and add events on the panel, the laptop's own touchscreen and every other).
+# The cost: access belongs to the user who paired the touchscreen, whoever is
+# logged in at the seat. Read access only: writing to an input device can
+# inject events into it.
+#
 # The script is installed root-owned at /usr/local/libexec, outside anything
 # the user can write: pkexec runs it as root, so a copy the user could edit
 # would be a way to root. It takes no paths and no user from its caller.
@@ -31,7 +44,7 @@
 set -euo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-RULES=/etc/udev/rules.d/61-deckhand-touchscreens.rules
+RULES_DIR=/etc/udev/rules.d
 INPUT=/sys/class/input
 DEV=/dev/input
 UDEVADM=udevadm
@@ -40,7 +53,7 @@ GETFACL=getfacl
 DEADLINE=300
 # Tests only, never as root: scratch paths and stand-ins for udevadm and the ACL tools.
 if [ "$(id -u)" != 0 ] && [ -n "${DECKHAND_TOUCH_ACCESS_TEST:-}" ]; then
-  RULES="$DECKHAND_TOUCH_ACCESS_TEST/rules/61-deckhand-touchscreens.rules"
+  RULES_DIR="$DECKHAND_TOUCH_ACCESS_TEST/rules"
   INPUT="$DECKHAND_TOUCH_ACCESS_TEST/sys/class/input"
   DEV="$DECKHAND_TOUCH_ACCESS_TEST/dev/input"
   UDEVADM="$DECKHAND_TOUCH_ACCESS_TEST/bin/udevadm"
@@ -53,6 +66,10 @@ die() { echo "error: $*"; exit 1; }
 
 user="${PKEXEC_UID:-}"
 [[ "$user" =~ ^[0-9]+$ ]] && [ "$user" != 0 ] || die "run through pkexec, as the user who will use the touchscreen"
+# One file per user: the rule names the user, and one user's change must not touch another's.
+RULES="$RULES_DIR/61-deckhand-touchscreens-$user.rules"
+# The rule runs setfacl by its absolute path.
+SETFACL_PATH="$(command -v "$SETFACL")" || die "setfacl is not installed (the acl package)"
 
 # Every touchscreen udev knows of, as event node names.
 touchscreens() {
@@ -66,21 +83,35 @@ touchscreens() {
 
 has_access() { "$GETFACL" -n -c -p "$DEV/$1" 2>/dev/null | grep -q "^user:$user:r"; }
 
-# The rule for each entry. A serial is matched as the USB device's serial or
-# the input device's uniq, whichever the touchscreen has; never left out, so
-# an entry with one covers that one touchscreen.
+# The rule for each entry: read access for this user, by a file ACL, when the
+# touchscreen appears (at boot, or plugged in). Never the uaccess tag (above).
+# A serial is matched as the USB device's serial or the input device's uniq,
+# whichever the touchscreen has; never left out, so an entry with one covers
+# that one touchscreen.
 rule_lines() {
-  local entry vendor product serial base
+  local entry vendor product serial base grant
+  grant="RUN+=\"$SETFACL_PATH -m u:$user:r \$devnode\""
   for entry in "$@"; do
     IFS=: read -r vendor product serial <<<"$entry"
-    base="SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{ID_INPUT_TOUCHSCREEN}==\"1\""
+    base="SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{ID_INPUT_TOUCHSCREEN}==\"1\", ATTRS{id/vendor}==\"$vendor\", ATTRS{id/product}==\"$product\""
     if [ -z "$serial" ]; then
-      echo "$base, ATTRS{id/vendor}==\"$vendor\", ATTRS{id/product}==\"$product\", TAG+=\"uaccess\""
+      echo "$base, $grant"
     else
-      echo "$base, ATTRS{id/vendor}==\"$vendor\", ATTRS{id/product}==\"$product\", ATTRS{uniq}==\"$serial\", TAG+=\"uaccess\""
-      echo "$base, ATTRS{id/vendor}==\"$vendor\", ATTRS{id/product}==\"$product\", ENV{ID_SERIAL_SHORT}==\"$serial\", TAG+=\"uaccess\""
+      echo "$base, ATTRS{uniq}==\"$serial\", $grant"
+      echo "$base, ENV{ID_SERIAL_SHORT}==\"$serial\", $grant"
     fi
   done
+}
+
+# Whether a touchscreen node is the one an entry names: as the rule matches.
+covers() {
+  local node="$1" entry="$2" vendor product serial dir
+  IFS=: read -r vendor product serial <<<"$entry"
+  dir="$INPUT/$node/device"
+  [ "$(cat "$dir/id/vendor" 2>/dev/null)" = "$vendor" ] && [ "$(cat "$dir/id/product" 2>/dev/null)" = "$product" ] || return 1
+  [ -z "$serial" ] && return 0
+  [ "$(cat "$dir/uniq" 2>/dev/null)" = "$serial" ] && return 0
+  "$UDEVADM" info -q property -n "$DEV/$node" 2>/dev/null | grep -qx "ID_SERIAL_SHORT=$serial"
 }
 
 # Strict: four hex digits each, and a serial of letters, digits, ".", "_" and
@@ -101,10 +132,11 @@ write_rules() {
   else
     tmp="$(mktemp "$RULES.XXXXXX")"
     {
-      echo "# Written by Deckhand when a touchscreen is paired as a virtual deck; one"
-      echo "# entry per paired touchscreen, and nothing else. Any program run by the user"
-      echo "# at the seat can read a touchscreen this covers, so it covers only those."
-      echo "# See /usr/local/libexec/deckhand-touch-access. Removed by deckhand-uninstall."
+      echo "# Written by Deckhand when a touchscreen is paired as a virtual deck, for user"
+      echo "# $user: one entry per touchscreen they paired, and nothing else. Any program"
+      echo "# that user runs can read a touchscreen this covers, so it covers only those."
+      echo "# A file ACL, never the uaccess tag, so a removed entry stays removed. See"
+      echo "# /usr/local/libexec/deckhand-touch-access. Removed by deckhand-uninstall."
       rule_lines "$@"
     } > "$tmp"
     chmod 644 "$tmp"
@@ -113,13 +145,17 @@ write_rules() {
   "$UDEVADM" control --reload
 }
 
-# Takes the user's access away from every touchscreen, then lets udev give it
-# back where the rules say: a re-applied rule adds access, but never removes
-# what a rule no longer grants.
-reapply() {
-  local node
-  for node in $(touchscreens); do "$SETFACL" -x "u:$user" "$DEV/$node" 2>/dev/null || true; done
-  "$UDEVADM" trigger --action=change --subsystem-match=input --property-match=ID_INPUT_TOUCHSCREEN=1 --settle 2>/dev/null || true
+# Access now, as the rules give it at the next plug-in: read for the user on
+# every touchscreen an entry covers, none on any other. Directly, with no
+# re-trigger: nothing else is touched, and no other user's access.
+apply_now() {
+  local node entry covered
+  for node in $(touchscreens); do
+    covered=no
+    for entry in "$@"; do covers "$node" "$entry" && covered=yes && break; done
+    if [ "$covered" = yes ]; then "$SETFACL" -m "u:$user:r" "$DEV/$node"
+    else "$SETFACL" -x "u:$user" "$DEV/$node" 2>/dev/null || true; fi
+  done
 }
 
 granted=()
@@ -134,7 +170,7 @@ case "${1:-}" in
     shift
     check_entries "$@"
     write_rules "$@"
-    reapply
+    apply_now "$@"
     echo done
     ;;
   pair)
@@ -153,7 +189,7 @@ case "${1:-}" in
       check_entries "${entries[@]}"
       drop_temporary
       write_rules "${entries[@]}"
-      reapply
+      apply_now "${entries[@]}"
       echo done
     else
       drop_temporary

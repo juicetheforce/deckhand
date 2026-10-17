@@ -8,7 +8,10 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
 KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"
 
 # No touchscreen here. A touchscreen is granted only when it is paired as a
-# virtual deck, by a rule of its own in 61-deckhand-touchscreens.rules
-# (written by /usr/local/libexec/deckhand-touch-access, which says why): a rule
-# granting every touchscreen would let any of the user's programs read every
-# touchscreen's touches, a laptop's on-screen keyboard included.
+# virtual deck, to the user who paired it, by a file ACL its own rule sets in
+# 61-deckhand-touchscreens-<uid>.rules (written by
+# /usr/local/libexec/deckhand-touch-access, which says why): a rule granting
+# every touchscreen would let any of the user's programs read every
+# touchscreen's touches, a laptop's on-screen keyboard included. Never
+# TAG+="uaccess" for a touchscreen: udev keeps the tag until the device goes,
+# and re-grants on every re-trigger, so access could not be taken back.

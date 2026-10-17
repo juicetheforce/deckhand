@@ -9,8 +9,10 @@
  * root-owned at /usr/local/libexec) through pkexec, which asks for the
  * password once: the helper gives temporary read access to the touchscreens
  * while the daemon waits for the tap, then writes a rule for the paired ones
- * only and drops the temporary access. Removing a virtual deck rewrites the
- * rule without it, which needs the password again.
+ * only — a file ACL for this user, never the sticky uaccess tag — and drops
+ * the temporary access. Removing a virtual deck rewrites the rule without it
+ * and takes the ACL off, which needs the password again. Access belongs to
+ * the user who paired the touchscreen, whoever is logged in.
  *
  * The editor runs it, not the daemon: pkexec asks through the desktop
  * session's polkit agent, and the daemon, a systemd user service, is outside

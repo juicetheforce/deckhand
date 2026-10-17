@@ -57,10 +57,13 @@ else
   no "not loaded, deck — got: $out; log: $(cat "$S/udevadm.log")"
 fi
 
-# A touchscreen present: re-triggered by its sysfs node, as a deck is.
+# A touchscreen present: never re-triggered. Its access, when paired, is a
+# file ACL its own rule sets; a re-trigger is what once re-granted access
+# through udev's sticky uaccess tag (udev/deckhand-touch-access).
+: > "$S/udevadm.log"
 out="$(run 'UINPUT_SYSFS="$S/sys/not-loaded"; touchscreen_nodes() { echo /dev/input/event15; }')"
-if grep -q '/sys/class/input/event15' "$S/udevadm.log" && ! grep -q 'hidraw' "$S/udevadm.log"; then
-  ok "a touchscreen present: it is re-triggered"
+if ! grep -q 'event15' "$S/udevadm.log"; then
+  ok "a touchscreen present: it is not re-triggered"
 else
   no "touchscreen — got: $out; log: $(cat "$S/udevadm.log")"
 fi

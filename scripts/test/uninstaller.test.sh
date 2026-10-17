@@ -86,15 +86,17 @@ grep -n 'Stopping and disabling the service' "$REPO/scripts/install.sh" | cut -d
 # Uninstalling removes Deckhand's rule, every paired touchscreen's rule and the
 # pairing helper; sudo and udevadm stand-ins, access re-applied (not run here).
 mkdir -p "$S/etc"
-UDEV_RULE_DST="$S/etc/60-deckhand.rules"; TOUCH_RULES_DST="$S/etc/61-deckhand-touchscreens.rules"; TOUCH_ACCESS_DST="$S/etc/deckhand-touch-access"
-touch "$UDEV_RULE_DST" "$TOUCH_RULES_DST" "$TOUCH_ACCESS_DST"
+UDEV_RULE_DST="$S/etc/60-deckhand.rules"; TOUCH_RULES_GLOB="$S/etc/61-deckhand-touchscreens*.rules"; TOUCH_ACCESS_DST="$S/etc/deckhand-touch-access"
+TOUCH_RULES_DST="$S/etc/61-deckhand-touchscreens-1000.rules"
+touch "$UDEV_RULE_DST" "$TOUCH_RULES_DST" "$S/etc/61-deckhand-touchscreens-1001.rules" "$TOUCH_ACCESS_DST"
 sudo() { "$@"; }; udevadm() { :; }; retrigger_udev() { echo re-applied; }
+touchscreen_nodes() { echo /dev/input/event15; }; setfacl() { echo "setfacl $*" >> "$S/setfacl.log"; }
 out="$(remove_udev_rule 2>&1)"
-[ ! -e "$UDEV_RULE_DST" ] && [ ! -e "$TOUCH_RULES_DST" ] && [ ! -e "$TOUCH_ACCESS_DST" ] && grep -q re-applied <<<"$out" \
-  && ok "uninstall removes the rule, the paired touchscreens' rules and the pairing helper, and re-applies access" || no "remove_udev_rule — $out; left: $(ls "$S/etc")"
+[ ! -e "$UDEV_RULE_DST" ] && [ -z "$(ls "$S/etc")" ] && grep -q re-applied <<<"$out" && grep -q "setfacl -x u:$(id -u) /dev/input/event15" "$S/setfacl.log" \
+  && ok "uninstall removes the rule, every user's paired-touchscreen rules and the pairing helper, and takes the user's ACL off each touchscreen" || no "remove_udev_rule — $out; left: $(ls "$S/etc")"
 touch "$TOUCH_RULES_DST"
 out="$(remove_udev_rule 2>&1)"
 [ ! -e "$TOUCH_RULES_DST" ] && ok "…the paired touchscreens' rules even when Deckhand's own rule is already gone" || no "touch rules left behind — $out"
-unset -f sudo udevadm
+unset -f sudo udevadm touchscreen_nodes setfacl
 
 exit $fail

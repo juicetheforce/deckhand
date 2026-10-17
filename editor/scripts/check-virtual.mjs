@@ -113,7 +113,11 @@ delete env.ELECTRON_RUN_AS_NODE;
 // (event3), stand-ins for udevadm and the ACL tools, and a pkexec that runs
 // the real helper as this user, or refuses as a dismissed password does.
 const ht = path.join(scratch, 'touch-access');
-for (const d of ['sys/class/input/event15', 'sys/class/input/event3', 'dev/input', 'bin', 'acl', 'props', 'rules']) await fs.mkdir(path.join(ht, d), { recursive: true });
+for (const d of ['sys/class/input/event15/device/id', 'sys/class/input/event3/device/id', 'dev/input', 'bin', 'acl', 'props', 'rules']) await fs.mkdir(path.join(ht, d), { recursive: true });
+for (const [n, vendor, product] of [['event15', '222a', '0001'], ['event3', '1234', '5678']]) {
+  await fs.writeFile(path.join(ht, 'sys/class/input', n, 'device/id/vendor'), `${vendor}\n`);
+  await fs.writeFile(path.join(ht, 'sys/class/input', n, 'device/id/product'), `${product}\n`);
+}
 for (const n of ['event15', 'event3']) await fs.writeFile(path.join(ht, 'dev/input', n), '');
 await fs.writeFile(path.join(ht, 'props/event15'), 'ID_INPUT_TOUCHSCREEN=1\n');
 await fs.writeFile(path.join(ht, 'props/event3'), 'ID_INPUT_KEYBOARD=1\n');
@@ -126,7 +130,7 @@ const refuse = path.join(ht, 'refuse');
 await fs.writeFile(path.join(ht, 'pkexec'), script(`echo "\${@:2}" >> "${pkexecLog}"; [ -e "${refuse}" ] && exit 126; exec env PKEXEC_UID="$(id -u)" DECKHAND_TOUCH_ACCESS_TEST="${ht}" bash "$@"`), { mode: 0o755 });
 env.DECKHAND_TOUCH_ACCESS = path.join(repoRoot, 'udev/deckhand-touch-access');
 env.DECKHAND_PKEXEC = path.join(ht, 'pkexec');
-const rules = path.join(ht, 'rules/61-deckhand-touchscreens.rules');
+const rules = path.join(ht, `rules/61-deckhand-touchscreens-${process.getuid()}.rules`);
 const panelAcl = () => fs.readFile(path.join(ht, 'acl/event15'), 'utf8').catch(() => '');
 const pkexecRuns = async () => (await fs.readFile(pkexecLog, 'utf8').catch(() => '')).split('\n').filter(Boolean);
 const bannerText = () => inPage(editor, 'settings', "document.querySelector('[data-vd-step=screen] .sp-banner, [data-vd-step=screen] [class*=banner]')?.textContent ?? ''");
@@ -258,6 +262,7 @@ r.removed = await until(async () => (await onDisk()).decks?.[KEY]?.virtual === u
 r.afterRemove = await onDisk();
 r.removeRun = (await pkexecRuns()).at(-1);
 r.rulesAfterRemove = await fs.stat(rules).then(() => true, () => false);
+r.accessAfterRemove = await panelAcl();
 r.rowGone = await until(async () => !(await exists(editor, `[data-vd-deck="${KEY}"]`)));
 
 // ADD AGAIN: its layout was kept, so no size is asked, and it says so.
@@ -289,15 +294,18 @@ check('no touch on the screen chosen: says so, suggests another, back to the lis
   assert.equal(r.noTouchBackToList, true);
   assert.equal(r.accessAfterNoTouch, true);
 });
-check('Add writes a rule for the paired touchscreen only, and drops the temporary access', () => {
-  assert.match(r.rulesAfterAdd, /ATTRS\{id\/vendor\}=="222a", ATTRS\{id\/product\}=="0001", TAG\+="uaccess"/);
-  assert.equal((r.rulesAfterAdd.match(/uaccess"$/gm) ?? []).length, 1);
-  assert.equal(r.accessAfterAdd, '');
+check('Add writes a rule for the paired touchscreen only — a file ACL for this user, never the uaccess tag — and it is readable at once', () => {
+  const lines = r.rulesAfterAdd.split('\n').filter((l) => l.startsWith('SUBSYSTEM'));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], new RegExp(`ATTRS\\{id/vendor\\}=="222a", ATTRS\\{id/product\\}=="0001", RUN\\+=".*setfacl -m u:${process.getuid()}:r \\$devnode"$`));
+  assert.doesNotMatch(lines[0], /uaccess/);
+  assert.match(r.accessAfterAdd, new RegExp(`^user:${process.getuid()}:r`));
 });
 check('a screen that is a virtual deck already is not offered', () => assert.deepEqual(r.offeredAfterAdd, ['HDMI-A-1', 'eDP-1']));
 check('Remove rewrites the rule without its touchscreen (none left: no rule file)', () => {
   assert.equal(r.removeRun.trim(), 'set', 'the helper run with no entries left');
   assert.equal(r.rulesAfterRemove, false);
+  assert.equal(r.accessAfterRemove, '', 'and its ACL taken off at once');
 });
 check('Cancel during the tap closes the flow and quits the helper', () => assert.deepEqual(r.cancelled, { closed: true, quit: true }));
 check('the tap is read in pairing mode, and answered', () => {
