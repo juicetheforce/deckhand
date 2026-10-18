@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks v0.8.0 on Nobara with the Xeneon Edge (one-line install, pairing, touch, lock, resize, sleep/wake, profiles); then stage 2 (custom layouts), designed first."
+next = "Ryan checks v0.8.1 on Nobara (a profile made after the Xeneon gets a full-size page); then stage 2 (custom layouts), designed first. Known issue: the daemon leaks ~0.5 MB of native memory per output-loss redraw."
 category = "Gaming"
 paused = false
 focus = true
@@ -22,5 +22,6 @@ Virtual decks planned (2026-10-15): a touchscreen as a deck, layouts keyed by th
 Virtual decks stage 1 (2026-10-16): S1 (the device seam) and S2 (the display helper) confirmed on the laptop; S3 built: touch read directly and grabbed, screens keyed by EDID, pairing by one tap, no touch while the session is locked or inactive (failing closed). The udev rule grants touchscreens only; the clock key stays as it is.
 S3 confirmed on the 10.3" panel (2026-10-16). S4 built: Settings › Decks adds a virtual deck (screen, tap, size); the editor names keys by control id; a resize keeps keys by row and column, keeping a copy first since the editor has no undo.
 S4 confirmed (2026-10-17): a deck in a profile without keys gets a blank page; resize drops keys after a warning, no kept copy. S5: v0.8.0 built as a release candidate, tagged locally only, not published until both machines are confirmed; the panel helper now survives KWin removing its output on a screen wake (found measuring idle: 0.29% of a core, the panel helper 0). Stage 2 will have adjustable background transparency.
-v0.8.0 published 2026-10-17: virtual decks (a touchscreen as a deck). A touchscreen is readable only once paired: pairing asks for the password and writes a per-user file ACL rule for that touchscreen alone (never the sticky uaccess tag); Remove takes it away. Checked on the laptop; Nobara with the Xeneon next.
+v0.8.0 published 2026-10-17: virtual decks (a touchscreen as a deck). A touchscreen is readable only once paired: pairing asks for the password and writes a per-user file ACL rule for that touchscreen alone (never the sticky uaccess tag); Remove takes it away. Checked on the laptop and on Nobara with the Xeneon (2026-10-17).
+v0.8.1 published 2026-10-17: a virtual deck has a default size, so a profile made later never gives it zero keys (found on both machines). A 2.5 GB memory peak during a display-flapping run was investigated and is not being pursued; a smaller per-redraw native leak is logged to fix later.
 """
