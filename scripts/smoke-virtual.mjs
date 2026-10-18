@@ -224,6 +224,29 @@ await settle('relayout', async () => {
   check('the socket\'s geometry is the new one', session.geometry.keys.map((k) => k.id).join() === 't1,t2');
 });
 
+console.log('a profile with no panel of its own (made after the deck was added)');
+await settle('default panel', async () => {
+  // Found on both machines, 2026-10-17: a profile created later had no panel
+  // for the deck, and the deck attached with "0 keys, no screens".
+  const bare = { startPage: 'main', pages: { main: { name: 'Main', buttons: {} } } };
+  config.decks['output-DP-4'].virtual.panel = grid('d', 2, 4, 300);
+  await session.setLayout(bare);
+  check('the deck\'s default panel: its eight keys', session.keyCount === 8 && session.hasKey('d8'), String(session.keyCount));
+  delete config.decks['output-DP-4'].virtual.panel;
+  await session.setLayout(structuredClone(bare));
+  check('no default (a config from before defaults): the first profile\'s panel', session.keyCount === 6 && session.hasKey('k6'), String(session.keyCount));
+  const saved = config.profiles;
+  config = { ...config, profiles: { lone: { layouts: { 'output-DP-4': bare } } } };
+  await session.setLayout(structuredClone(bare));
+  check('no panel anywhere: a Medium grid for the screen — never zero keys', session.keyCount > 0 && session.geometry.canvas?.width === 1920, String(session.keyCount));
+  config = { ...config, profiles: saved };
+  const before = (await frames()).length;
+  await session.setLayout(config.profiles.one.layouts['output-DP-4']);
+  // Its six keys drawn before the next section counts frames.
+  await until(async () => (await frames()).slice(before).filter((f) => f.type === 'I').length >= 6);
+  await sleep(200);
+});
+
 console.log('the helper\'s own events');
 await settle('resize', async () => {
   const before = (await frames()).length;

@@ -222,6 +222,20 @@ r.notice = await inPage(editor, 'settings', "document.querySelector('[data-vd-no
 r.rulesAfterAdd = await fs.readFile(rules, 'utf8').catch(() => '');
 r.accessAfterAdd = await panelAcl();
 
+// A PROFILE MADE AFTER THE DECK (found on both machines, 2026-10-17: the deck
+// got no panel there, "0 keys", and Settings could not size it). The call the
+// toolbar's New profile makes, with both decks ticked — the harness cannot
+// connect a virtual deck, so its form would not list it.
+await inPage(editor, 'editor', `window.deckhand.apply({ kind: 'addProfile', name: 'Later', serials: ['${XL}', '${KEY}'], pageName: 'Main' }).then((x) => x.ok)`);
+r.laterMade = await until(async () => Object.values((await onDisk()).profiles).some((p) => p.name === 'Later'));
+const [laterId, later] = Object.entries((await onDisk()).profiles).find(([, p]) => p.name === 'Later');
+r.laterLayout = later.layouts[KEY];
+r.laterDefault = (await onDisk()).decks[KEY].virtual.panel;
+r.laterListed = await until(() => exists(editor, `[data-vd-layout="${laterId}"]`));
+r.laterRow = await inPage(editor, 'settings', `document.querySelector('[data-vd-layout="${laterId}"] .sp-row-detail')?.textContent ?? null`);
+r.defaultRow = await inPage(editor, 'settings', "document.querySelector('[data-vd-default] .sp-row-detail')?.textContent ?? null");
+r.secondRow = await inPage(editor, 'settings', "document.querySelector('[data-vd-layout=second] .sp-row-detail')?.textContent ?? null");
+
 // Added: the screen is not offered again.
 await inPage(editor, 'settings', clickIn('[data-vd=add]'));
 await until(() => exists(editor, '[data-vd-screen=HDMI-A-1] button'));
@@ -240,16 +254,16 @@ withKeys.profiles.default.layouts[KEY].pages[withKeys.profiles.default.layouts[K
 await fs.writeFile(configFile, JSON.stringify(withKeys, null, 2) + '\n');
 await until(async () => JSON.stringify(daemon.state.config).includes('Corner'));
 await sleep(300);
-await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd=resize]`));
+await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd-layout=default] [data-vd=resize]`));
 await until(() => exists(editor, '[data-vd-layout=default] [data-vd-size=large] input'));
 await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd-size=large] input'));
 await sleep(100);
 await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd=apply-size]'));
 r.droppedNamed = await until(() => exists(editor, '[data-vd-dropped]'));
 r.droppedText = await inPage(editor, 'settings', "document.querySelector('[data-vd-dropped]')?.textContent ?? null");
-r.notYet = (await onDisk()).profiles.default.layouts[KEY].panel.controls.length;
+r.notYet = (await onDisk()).profiles.default.layouts[KEY].panel?.controls.length ?? 'no panel of its own';
 await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd=apply-size]'));
-r.resized = await until(async () => (await onDisk()).profiles.default.layouts[KEY].panel.controls.length === 10);
+r.resized = await until(async () => (await onDisk()).profiles.default.layouts[KEY].panel?.controls.length === 10);
 const afterResize = (await onDisk()).profiles.default.layouts[KEY];
 r.afterButtons = afterResize.pages[afterResize.startPage].buttons;
 r.kept = (await fs.readdir(path.join(stateDir, 'backups')).catch(() => [])).filter((f) => f.startsWith('before-resize-'));
@@ -322,23 +336,37 @@ check('Custom sets both rows and columns, starting from the size before it, and 
 });
 check('Add writes the pairing, keyed by the screen, and a Medium panel in the active profile only', () => {
   assert.equal(r.written, true);
-  assert.deepEqual(r.config.decks[KEY], { virtual: { output: 'DP-4', touch: ILITEK } });
+  const { panel, ...rest } = r.config.decks[KEY].virtual;
+  assert.deepEqual(rest, { output: 'DP-4', touch: ILITEK });
+  assert.equal(panel.preset, 'medium', 'the size chosen is the deck\'s default');
+  assert.equal(panel.controls.length, 24);
+  assert.deepEqual(panel.size, { width: 1920, height: 720 });
   const layout = r.config.profiles.default.layouts[KEY];
-  assert.equal(layout.panel.preset, 'medium');
-  assert.equal(layout.panel.controls.length, 24);
-  assert.deepEqual(layout.panel.size, { width: 1920, height: 720 });
+  assert.ok(layout, 'a layout in the active profile');
+  assert.equal(layout.panel, undefined, 'with no size of its own: it follows the default');
   assert.equal(r.config.profiles.second.layouts[KEY], undefined, 'another profile gets its layout from the editor');
   assert.match(r.notice ?? '', /HD Display is a virtual deck, paired with ILITEK Multi-Touch-V3000\. Its keys are in the editor, in “Default”\./);
+});
+check('a profile made after the deck: a full-size blank page, and its row in Settings\' size list', () => {
+  assert.equal(r.laterMade, true);
+  assert.ok(r.laterLayout, 'the deck has a layout in it');
+  assert.equal(r.laterLayout.panel, undefined, 'following the default');
+  assert.deepEqual(Object.values(r.laterLayout.pages).map((p) => Object.keys(p.buttons).length), [0], 'one blank page');
+  assert.equal(r.laterDefault.controls.length, 24, 'the default it follows: full size, never zero keys');
+  assert.equal(r.laterListed, true);
+  assert.equal(r.laterRow, 'Medium, 3 × 8 keys (the default)');
+  assert.equal(r.defaultRow, 'Medium, 3 × 8 keys — every profile without a size of its own');
+  assert.equal(r.secondRow, 'Medium, 3 × 8 keys (the default)', 'every profile is listed, one with no layout for the deck included');
 });
 check('the list shows it, and its size in that profile', () => {
   assert.match(r.row.text, /GRA-6e4e|HD Display/);
   assert.match(r.row.detail, /^DP-4 · not connected$/);
-  assert.equal(r.row.size, 'Medium, 3 × 8 keys');
+  assert.equal(r.row.size, 'Medium, 3 × 8 keys (the default)');
 });
 check('a new size that drops a key names it, and changes nothing until confirmed', () => {
   assert.equal(r.droppedNamed, true);
   assert.match(r.droppedText ?? '', /1 key has no place at that size and will be removed: “Corner” \(key 24\) on “Main”\./);
-  assert.equal(r.notYet, 24);
+  assert.equal(r.notYet, 'no panel of its own', 'still following the default');
 });
 check('confirmed: keys keep their row and column, the one with no place goes; no kept configuration is added', () => {
   assert.equal(r.resized, true);

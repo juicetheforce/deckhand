@@ -40,6 +40,7 @@ import { createTray, deadTray, type LauncherTray } from './tray.js';
 import { Bookmarks, Preferences } from './preferences.js';
 import { handleIconScheme, registerIconScheme } from './icon-protocol.js';
 import { findSystemShortcut } from './system-shortcuts.js';
+import { defaultPanelOf } from '../../../src/panel-presets.js';
 import { AccessError, entriesOf, grantForPairing, setAccess, type PairingAccess } from './touch-access.js';
 
 // Electron's state (cache, local storage, lock files) goes in the state
@@ -169,11 +170,16 @@ function virtualDecksView(): VirtualDecksView {
     if (!deck.virtual || !config) return [];
     const status = view.status?.decks.find((d) => d.serial === key);
     const geometry = view.decks?.find((d) => d.serial === key);
-    const layouts = Object.entries(config.profiles).flatMap(([profile, def]) => {
-      const panel = def.layouts[key]?.panel;
-      if (!panel) return [];
+    // Every profile, those made after the deck included: its own size, or the deck's default.
+    const fallback = defaultPanelOf(config, key);
+    const sizeOf = (panel: PanelDef) => {
       const g = geometryOfPanel(panel, '');
-      return [{ profile, profileName: def.name ?? profile, preset: panel.preset ?? null, rows: g.rows, columns: g.columns }];
+      return { preset: panel.preset ?? null, rows: g.rows, columns: g.columns };
+    };
+    const layouts = Object.entries(config.profiles).flatMap(([profile, def]) => {
+      const own = def.layouts[key]?.panel;
+      const panel = own ?? fallback;
+      return panel ? [{ profile, profileName: def.name ?? profile, own: own !== undefined, ...sizeOf(panel) }] : [];
     });
     return [{
       key,
@@ -182,6 +188,7 @@ function virtualDecksView(): VirtualDecksView {
       connected: status?.connected === true,
       touch: status?.touch ?? null,
       paired: deck.virtual.touch !== undefined,
+      defaultSize: fallback ? sizeOf(fallback) : null,
       layouts,
     }];
   });
@@ -210,7 +217,7 @@ let pairing: AbortController | null = null;
  */
 let access: PairingAccess | null = null;
 /** The only edits Settings › Decks may make. */
-const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck', 'setPanel']);
+const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck', 'setPanel', 'setDefaultPanel']);
 
 /**
  * The settings window's OBS form, from the page: only the fields it may set,
@@ -840,22 +847,34 @@ function registerIpc(): void {
   ipcMain.handle('virtualScreenSize', async (event, key: unknown): Promise<ScreenSize | null> => {
     if ((!fromOurWindow(event) && !fromSettingsWindow(event)) || typeof key !== 'string') return null;
     const config = store?.state().config;
-    const panel = Object.values(config?.profiles ?? {}).map((p) => p.layouts[key]?.panel).find((p) => p !== undefined);
+    const panel = defaultPanelOf(config, key);
     if (!panel) return null;
     const screen = await daemon.screens().then((r) => r.screens.find((x) => x.key === key), () => undefined);
     return { width: panel.size.width, height: panel.size.height, widthMm: screen?.widthMm ?? 0, heightMm: screen?.heightMm ?? 0 };
   });
   // What a new size would drop, named, before it is asked for.
+  // A profile's own size (profile), or the default (null), which every
+  // profile without its own follows: named in each, with the profile when
+  // more than one is affected.
   ipcMain.handle('virtualPanelPreview', (event, profile: unknown, key: unknown, panel: unknown) => {
-    if (!fromSettingsWindow(event) || typeof profile !== 'string' || typeof key !== 'string' || typeof panel !== 'object' || panel === null) return null;
-    const def = store?.state().config.profiles[profile];
-    const layout = def?.layouts[key];
-    if (!layout?.panel) return null;
-    const { dropped } = resizePanel(layout, panel as PanelDef);
-    return dropped.map((d) => {
-      const at = geometryOfPanel(layout.panel, '').keys.findIndex((k) => k.id === d.key);
-      return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on “${layout.pages[d.page]?.name ?? d.page}”`;
+    if (!fromSettingsWindow(event) || (typeof profile !== 'string' && profile !== null) || typeof key !== 'string' || typeof panel !== 'object' || panel === null) return null;
+    const config = store?.state().config;
+    if (!config) return null;
+    const fallback = defaultPanelOf(config, key);
+    const affected = Object.entries(config.profiles).flatMap(([id, def]) => {
+      const layout = def.layouts[key];
+      if (!layout) return [];
+      if (profile === null ? layout.panel !== undefined : id !== profile) return [];
+      const shown = layout.panel ?? fallback;
+      return shown ? [{ name: def.name ?? id, layout: { ...layout, panel: shown } }] : [];
     });
+    return affected.flatMap(({ name, layout }) =>
+      resizePanel(layout, panel as PanelDef).dropped.map((d) => {
+        const at = geometryOfPanel(layout.panel, '').keys.findIndex((k) => k.id === d.key);
+        const where = `“${layout.pages[d.page]?.name ?? d.page}”${affected.length > 1 ? ` in “${name}”` : ''}`;
+        return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on ${where}`;
+      }),
+    );
   });
   ipcMain.handle('virtualDeckEdit', async (event, edit: unknown) => {
     const kind = (edit as { kind?: unknown } | null)?.kind;

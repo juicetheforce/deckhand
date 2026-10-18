@@ -241,6 +241,7 @@ export function VirtualDecks() {
               </span>
             )}
           </Row>
+          {deck.defaultSize && <DeckSize deck={deck} layout={{ profile: null, profileName: null, own: true, ...deck.defaultSize }} onNotice={setNotice} />}
           {deck.layouts.map((layout) => (
             <DeckSize key={layout.profile} deck={deck} layout={layout} onNotice={setNotice} />
           ))}
@@ -352,12 +353,14 @@ export function VirtualDecks() {
 }
 
 /**
- * A deck's size in one profile, and changing it: keys keep their row and
- * column; any with no place are named, and dropped only once confirmed.
+ * A deck's default size (profile null), which every profile without one of
+ * its own follows, or its size in one profile; and changing it: keys keep
+ * their row and column; any with no place are named, and dropped only once
+ * confirmed.
  */
 function DeckSize({ deck, layout, onNotice }: {
   deck: VirtualDeckRow;
-  layout: VirtualDeckRow['layouts'][number];
+  layout: Omit<VirtualDeckRow['layouts'][number], 'profile' | 'profileName'> & { profile: string | null; profileName: string | null };
   onNotice: (notice: { kind: 'ok' | 'error'; text: string } | null) => void;
 }) {
   const [screen, setScreen] = useState<ScreenSize | null>(null);
@@ -379,18 +382,33 @@ function DeckSize({ deck, layout, onNotice }: {
         return;
       }
     }
-    const result = await window.deckhand.virtualDeckEdit({ kind: 'setPanel', profile: layout.profile, serial: deck.key, panel });
+    const result = await window.deckhand.virtualDeckEdit(
+      layout.profile === null ? { kind: 'setDefaultPanel', key: deck.key, panel } : { kind: 'setPanel', profile: layout.profile, serial: deck.key, panel },
+    );
     setEditing(null);
     onNotice(
       result.ok
-        ? { kind: 'ok', text: `${deck.label} in “${layout.profileName}” is ${SIZE_NAMES[e.size]} now.` }
+        ? {
+            kind: 'ok',
+            text:
+              layout.profile === null
+                ? `${deck.label}'s default size is ${SIZE_NAMES[e.size]} now, in every profile without a size of its own.`
+                : `${deck.label} in “${layout.profileName}” is ${SIZE_NAMES[e.size]} now.`,
+          }
         : { kind: 'error', text: result.error },
     );
   };
 
   return (
-    <div className="vd-layout" data-vd-layout={layout.profile}>
-      <Row title={`Size in “${layout.profileName}”`} detail={`${current}, ${layout.rows} × ${layout.columns} keys`}>
+    <div className="vd-layout" data-vd-layout={layout.profile ?? undefined} data-vd-default={layout.profile === null ? '' : undefined}>
+      <Row
+        title={layout.profile === null ? 'Default size' : `Size in “${layout.profileName}”`}
+        detail={
+          layout.profile === null
+            ? `${current}, ${layout.rows} × ${layout.columns} keys — every profile without a size of its own`
+            : `${current}, ${layout.rows} × ${layout.columns} keys${layout.own ? '' : ' (the default)'}`
+        }
+      >
         {!editing && (
           <button className="sp-button" onClick={() => setEditing({ size: (layout.preset as PanelSize) ?? 'medium', rows: String(layout.rows), columns: '', dropped: null })} data-vd="resize">
             Change…

@@ -323,7 +323,8 @@ export interface DeckhandBridge {
   /** A virtual deck's screen, to size a panel for it; null when it has no panel yet. Both windows. */
   virtualScreenSize(key: string): Promise<ScreenSize | null>;
   /** The keys a new panel would drop from a profile, named, for the confirmation (settings window only). */
-  virtualPanelPreview(profile: string, key: string, panel: PanelDef): Promise<string[] | null>;
+  /** The keys a new size would drop: in one profile, or (null) in every profile following the default. */
+  virtualPanelPreview(profile: string | null, key: string, panel: PanelDef): Promise<string[] | null>;
   /**
    * Export the whole configuration as a .zip (settings window
    * only): with every icon file it names, or config only. Asks where to save.
@@ -428,8 +429,10 @@ export interface VirtualDeckRow {
   /** Whether its touch works, and if not why (control/protocol.ts TouchState); null when not connected. */
   touch: TouchState | null;
   paired: boolean;
-  /** Its panel in each profile that has one. */
-  layouts: Array<{ profile: string; profileName: string; preset: string | null; rows: number; columns: number }>;
+  /** Its default size: what every profile shows it at unless it has one of its own. Null only with no panel anywhere. */
+  defaultSize: { preset: string | null; rows: number; columns: number } | null;
+  /** Its size in every profile: its own there (`own`), else the default. */
+  layouts: Array<{ profile: string; profileName: string; own: boolean; preset: string | null; rows: number; columns: number }>;
 }
 
 export interface VirtualDecksView {

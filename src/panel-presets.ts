@@ -160,3 +160,28 @@ export function makePanel(screen: ScreenSize, size: PanelSize, custom?: { rows: 
   }
   return { size: { width: screen.width, height: screen.height }, controls, preset: size };
 }
+
+/** The parts of a config a virtual deck's panel is looked up in: structural, so this file imports nothing. */
+interface PanelConfig<P> {
+  decks?: Record<string, { virtual?: { panel?: P } }>;
+  profiles: Record<string, { layouts: Record<string, { panel?: P }> }>;
+}
+
+/**
+ * A virtual deck's default panel: its own (`decks[key].virtual.panel`), else —
+ * a config written before defaults existed — the first profile's that has one.
+ */
+export function defaultPanelOf<P>(config: PanelConfig<P> | null | undefined, key: string): P | undefined {
+  const own = config?.decks?.[key]?.virtual?.panel;
+  if (own) return own;
+  for (const profile of Object.values(config?.profiles ?? {})) {
+    const panel = profile.layouts[key]?.panel;
+    if (panel) return panel;
+  }
+  return undefined;
+}
+
+/** The panel a profile shows a virtual deck with: its layout's own, else the deck's default. */
+export function panelIn<P>(config: PanelConfig<P> | null | undefined, profile: string, key: string): P | undefined {
+  return config?.profiles[profile]?.layouts[key]?.panel ?? defaultPanelOf(config, key);
+}

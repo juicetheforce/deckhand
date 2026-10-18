@@ -64,6 +64,12 @@ export interface VirtualDeckDef {
   output: string;
   /** Its touchscreen, from the pairing tap. Absent: the panel shows, and takes no touches. */
   touch?: TouchDeviceDef;
+  /**
+   * Its default panel: the size chosen when it was added. A profile shows it
+   * with this unless its layout has a `panel` of its own (src/panel-presets.ts
+   * panelIn). Absent in a config written before defaults existed.
+   */
+  panel?: PanelDef;
 }
 
 /** A touchscreen, as a pairing remembers it (src/touchscreens.ts): its serial when it has one, else its IDs and the port it hangs from. */

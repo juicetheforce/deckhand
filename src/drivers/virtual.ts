@@ -11,7 +11,8 @@ import * as sessionLock from '../services/session-lock.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
-import type { Config, LayoutDef, TouchDeviceDef } from '../types.js';
+import { defaultPanelOf, makePanel } from '../panel-presets.js';
+import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
 import { canvasFrame, clearFrame, imageFrame, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
@@ -92,6 +93,7 @@ class PanelDevice implements DeckDevice {
   private exited = false;
   /** The helper's output went away with the screen still plugged in (a wake, on KWin); "ready" says it is back. */
   private outputLost = false;
+  private generatedSaid = false;
   private closing = false;
   readonly gone: Promise<void>;
   /** Each contact down, and the control it started on (null: it started on none). */
@@ -111,6 +113,10 @@ class PanelDevice implements DeckDevice {
     private readonly proc: ChildProcessWithoutNullStreams,
     private readonly productName: string,
     private ready: Ready,
+    /** The deck's default panel, read from the config when a layout has none of its own. */
+    private readonly defaultPanel: () => PanelDef | undefined,
+    /** Its screen's size from the EDID (0 when unknown), for the last-resort grid. */
+    private readonly screenMm: { widthMm: number; heightMm: number },
     private readonly onExit: (expected: boolean, code: number | null) => void,
   ) {
     this.geometry = geometryOfPanel(undefined, productName);
@@ -328,8 +334,23 @@ class PanelDevice implements DeckDevice {
     this.letGoListeners.push(listener);
   }
 
+  /**
+   * A profile's layout as this deck's geometry: its own panel, else the
+   * deck's default (a profile made after the deck was added has none of its
+   * own), else — no panel anywhere — a Medium grid for this screen. **Never
+   * zero keys** (found on both machines, 2026-10-17: a later profile attached
+   * the deck with "0 keys, no screens").
+   */
   layoutFrom(layout: LayoutDef): DeckGeometry {
-    return geometryOfPanel(layout.panel, this.productName);
+    let panel = layout.panel ?? this.defaultPanel();
+    if (!panel) {
+      panel = makePanel({ width: this.ready.width, height: this.ready.height, widthMm: this.screenMm.widthMm, heightMm: this.screenMm.heightMm }, 'medium');
+      if (!this.generatedSaid) {
+        this.generatedSaid = true;
+        console.log(`[virtual] ${this.id}: no panel in the config for it; showing a Medium grid for its screen`);
+      }
+    }
+    return geometryOfPanel(panel, this.productName);
   }
 
   showGeometry(geometry: DeckGeometry): void {
@@ -507,7 +528,8 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
             }
             failedAt.delete(id);
             const name = deck.name ?? screen.edid?.name ?? `Virtual deck on ${screen.connector}`;
-            const device = new PanelDevice(id, screen.connector, started.proc, name, started.ready, (expected, code) => {
+            const screenMm = { widthMm: screen.edid?.widthMm ?? 0, heightMm: screen.edid?.heightMm ?? 0 };
+            const device = new PanelDevice(id, screen.connector, started.proc, name, started.ready, () => defaultPanelOf(config(), id), screenMm, (expected, code) => {
               if (open.get(id) === device) open.delete(id);
               if (expected) return;
               // The helper stopped unasked — the compositor would not show

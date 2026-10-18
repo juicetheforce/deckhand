@@ -5,6 +5,7 @@ import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 import { deleteProfile } from '../shared/profile-deletion.js';
+import { defaultPanelOf } from '../../../src/panel-presets.js';
 import { resizePanel } from '../shared/panel-size.js';
 
 export type { ButtonLocation, Edit, EditResult };
@@ -418,30 +419,67 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
     case 'addVirtualDeck': {
       const profile = profileAt(config, edit.profile);
       config.decks ??= {};
+      // Set up before and removed: its kept layouts keep their own panels,
+      // and the default is the one it had (the first kept), else the size chosen.
+      const kept = defaultPanelOf(config, edit.key);
       // A name kept from an earlier pairing stays.
-      config.decks[edit.key] = { ...config.decks[edit.key], virtual: { output: edit.output, touch: structuredClone(edit.touch) } };
-      if (!Object.prototype.hasOwnProperty.call(profile.layouts, edit.key)) {
-        profile.layouts[edit.key] = { panel: structuredClone(edit.panel), ...newLayout(edit.pageName, env) };
-      }
+      config.decks[edit.key] = {
+        ...config.decks[edit.key],
+        virtual: { output: edit.output, touch: structuredClone(edit.touch), panel: structuredClone(kept ?? edit.panel) },
+      };
+      // The deck's own size is its default: a layout here has no panel of its
+      // own, and neither has one in a profile made later (2026-10-17).
+      if (!Object.prototype.hasOwnProperty.call(profile.layouts, edit.key)) profile.layouts[edit.key] = newLayout(edit.pageName, env);
       return {};
     }
     case 'repairVirtualDeck': {
       const deck = config.decks?.[edit.key];
       if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
-      deck.virtual = { output: edit.output, touch: structuredClone(edit.touch) };
+      // A new touchscreen; its default panel stays.
+      deck.virtual = { ...deck.virtual, output: edit.output, touch: structuredClone(edit.touch) };
       return {};
     }
     case 'removeVirtualDeck': {
       const deck = config.decks?.[edit.key];
       if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
+      // Its layouts are kept for the same screen set up again: each takes the
+      // default as its own first, so none is left without a size.
+      const fallback = defaultPanelOf(config, edit.key);
+      if (fallback) {
+        for (const profile of Object.values(config.profiles)) {
+          const layout = profile.layouts[edit.key];
+          if (layout && !layout.panel) profile.layouts[edit.key] = { panel: structuredClone(fallback), ...layout };
+        }
+      }
       delete deck.virtual;
       return {};
     }
     case 'setPanel': {
+      // One profile's own size, from whatever it showed (its own or the
+      // default); a profile with no layout for the deck gets one.
       const profile = profileAt(config, edit.profile);
-      const layout = layoutAt(config, edit.profile, edit.serial);
-      if (!layout.panel) throw new EditError(`deck "${edit.serial}" has no panel to resize`);
-      profile.layouts[edit.serial] = resizePanel(layout, edit.panel).layout;
+      const existing = Object.prototype.hasOwnProperty.call(profile.layouts, edit.serial) ? profile.layouts[edit.serial] : undefined;
+      if (!existing) {
+        profile.layouts[edit.serial] = { panel: structuredClone(edit.panel), ...newLayout(edit.pageName ?? 'Main', env) };
+        return {};
+      }
+      const shown = existing.panel ?? defaultPanelOf(config, edit.serial);
+      profile.layouts[edit.serial] = resizePanel({ ...existing, panel: shown }, edit.panel).layout;
+      return {};
+    }
+    case 'setDefaultPanel': {
+      // The deck's default size, and with it every profile that has no size
+      // of its own: their keys keep their row and column, as one resize.
+      const deck = config.decks?.[edit.key];
+      if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
+      const before = defaultPanelOf(config, edit.key);
+      for (const profile of Object.values(config.profiles)) {
+        const layout = profile.layouts[edit.key];
+        if (!layout || layout.panel || !before) continue;
+        const { panel: _own, ...inherits } = resizePanel({ ...layout, panel: before }, edit.panel).layout;
+        profile.layouts[edit.key] = inherits;
+      }
+      deck.virtual.panel = structuredClone(edit.panel);
       return {};
     }
     default: {

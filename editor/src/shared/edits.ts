@@ -85,7 +85,9 @@ export type Edit =
   /** Remove a virtual deck: only its pairing goes; its name and layouts stay, used again if the same screen is set up later. */
   | { kind: 'removeVirtualDeck'; key: string }
   /** A virtual deck's panel at a new size, in one profile: keys keep their row and column (shared/panel-size.ts), the rest are dropped. */
-  | { kind: 'setPanel'; profile: string; serial: string; panel: PanelDef }
+  | { kind: 'setPanel'; profile: string; serial: string; panel: PanelDef; pageName?: string }
+  /** A virtual deck's default size, and with it every profile without one of its own. */
+  | { kind: 'setDefaultPanel'; key: string; panel: PanelDef }
   /**
    * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a

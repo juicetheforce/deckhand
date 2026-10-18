@@ -349,17 +349,10 @@ function Editor({
 
   const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
   const addLayout = async (serial = selection.serial) => {
-    // A virtual deck is treated exactly as a Stream Deck here, and its new
-    // layout quietly takes the panel it has in another profile. A different
-    // size per profile is Settings › Decks' Change….
-    const panel = config.decks?.[serial]?.virtual ? Object.values(config.profiles).map((p) => p.layouts[serial]?.panel).find((p) => p !== undefined) : undefined;
-    const result = await window.deckhand.apply({
-      kind: 'addLayout',
-      profile: selection.profile,
-      serial,
-      pageName: 'Main',
-      ...(panel ? { panel: structuredClone(panel) } : {}),
-    });
+    // A virtual deck is treated exactly as a Stream Deck here: its new layout
+    // has no panel of its own, so it shows the deck's default size. A
+    // different size per profile is Settings › Decks' Change….
+    const result = await window.deckhand.apply({ kind: 'addLayout', profile: selection.profile, serial, pageName: 'Main' });
     setAddLayoutError(result.ok ? null : result.error);
   };
 

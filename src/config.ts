@@ -134,6 +134,7 @@ export function validateConfig(config: unknown): Config {
             throw new Error(`deck "${serial}": "virtual.touch" must be { "vendor", "product" } (four hex digits each) and a "serial" or "path"`);
           }
         }
+        if (deck.virtual.panel !== undefined) validatePanel(deck.virtual.panel, `deck "${serial}": "virtual"`);
       }
     }
   }
