@@ -219,11 +219,13 @@ password lets a small root helper grant access to that touchscreen alone,
 and to your user alone — not to whoever else logs in on the computer. Small, Medium and Large aim at keys
 about 23, 30 and 45 mm apart, from the screen's own reported size, or from
 its pixels when that size is implausible; **Custom** sets the rows and
-columns, up to 12 × 24, and says when the keys get very small. The new deck
-gets a layout in the current profile, and a blank page at the same size in
-any other profile it's shown in. Under each virtual deck, Settings lists its
-size in every profile, with **Change…**; a smaller size names the keys that
-no longer fit, and drops them when you confirm. **Tap again** pairs the
+columns, up to 12 × 24, and says when the keys get very small. **That size
+is the deck's default**: every profile shows the deck at it, profiles you
+create later included, unless you give a profile a size of its own. Under
+each virtual deck, Settings lists its **Default size** and its size in every
+profile, each with **Change…**; changing the default changes every profile
+without a size of its own. A smaller size names the keys that no longer fit,
+and drops them when you confirm. **Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
 as a deck and takes away its touchscreen's access (your password again), and
@@ -371,8 +373,10 @@ screen's EDID, plus its text serial number when it has one (`GRA-6e4e`,
 `virtual.output` is the connector it was set up on, which tells identical
 screens apart; `virtual.touch` is its touchscreen, by USB vendor and product
 and either its USB `serial` or, without one, its port (`path`, udev's
-`ID_PATH`). The editor writes both when you tap the screen. Its layout in
-each profile carries a `panel`:
+`ID_PATH`). The editor writes both when you tap the screen. `virtual.panel`
+is the deck's default panel, the size chosen when it was added; a profile's
+layout for the deck may carry a `panel` of its own, which that profile uses
+instead. A panel:
 
 ```jsonc
 "panel": {
@@ -388,6 +392,9 @@ A control's `id` is up to 32 letters, digits, `-` and `_`, unique in the
 panel and never derived from its position, so moving a key keeps its
 button. Every control must lie on the canvas, and `square` is the only shape
 for now. On a screen of another size the canvas is scaled to fit, centred.
+A layout with no `panel` uses the deck's default; with no default either (a
+config written before `v0.8.1`), the first profile's panel; with none at all,
+a Medium grid for the screen, so a virtual deck never shows no keys.
 
 **`icon`** is left out for the action's built-in icon (a key with no action
 stays blank), `null` for no icon, a path to an image file, or
