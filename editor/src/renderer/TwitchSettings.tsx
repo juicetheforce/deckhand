@@ -45,7 +45,11 @@ export function TwitchSettings({ focus }: { focus: number }) {
     linkButton.current?.focus();
   }, [focus, loaded]);
 
-  const call = async <T extends { ok: true; status: TwitchStatus } | { ok: false; error: string }>(run: () => Promise<T>, failed: string): Promise<T | null> => {
+  const call = async <T extends { ok: true; status: TwitchStatus } | { ok: false; error: string }>(
+    run: () => Promise<T>,
+    failed: string,
+    { useReply = true }: { useReply?: boolean } = {},
+  ): Promise<T | null> => {
     setBusy(true);
     const result = await run();
     setBusy(false);
@@ -53,14 +57,18 @@ export function TwitchSettings({ focus }: { focus: number }) {
       setMessage({ kind: 'error', text: `${failed}: ${result.error}` });
       return null;
     }
-    setStatus(result.status);
+    if (useReply) setStatus(result.status);
     return result;
   };
 
   const link = async () => {
     setMessage(null);
     setConfirmingRemove(false);
-    await call(() => window.deckhand.twitchLink(), 'Could not ask Twitch');
+    // Not the reply's status: it is the moment linking started ("starting"),
+    // and the code ("waiting") comes as an event that can arrive first —
+    // applied after it, the reply would hide the code and Cancel until
+    // linking ended. Every change of linking arrives as an event.
+    await call(() => window.deckhand.twitchLink(), 'Could not ask Twitch', { useReply: false });
   };
   const cancel = async () => {
     setMessage(null);

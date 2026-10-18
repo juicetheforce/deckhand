@@ -174,7 +174,10 @@ r.linkedFace = (await until(async () => (await editorFace()).blocked.every((b) =
 await inPage(editor, 'settings', clickIn('[data-twitch=link]'));
 // Cancel is drawn when the daemon reports the code, which can be before the
 // Link call returns — and until then it is disabled.
-assert.ok(await until(async () => (await section())?.cancelEnabled === true), 'Cancel never became available after Link');
+if (!(await until(async () => (await section())?.cancelEnabled === true))) {
+  const s = await section();
+  throw new Error(`Cancel never became available after Link; Settings showed: ${JSON.stringify({ state: s?.state, linking: s?.linking, code: s?.code, link: s?.link, cancel: s?.cancel, message: s?.message })}`);
+}
 await inPage(editor, 'settings', clickIn('[data-twitch=cancel]'));
 r.cancelled = (await until(async () => (await section())?.linking === 'cancelled')) && (await section());
 const pollsAfterCancel = polls();
