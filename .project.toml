@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Design virtual decks stage 2 (custom layouts) with Claude Design first. Later: the daemon's per-redraw native leak; profile delete is not discoverable (editor polish)."
+next = "Run the Discord probe's report on Nobara (the RPM's socket), then plan the Discord integration; virtual decks stage 2 design is still queued."
 category = "Gaming"
 paused = false
 focus = true
@@ -25,4 +25,5 @@ S4 confirmed (2026-10-17): a deck in a profile without keys gets a blank page; r
 v0.8.0 published 2026-10-17: virtual decks (a touchscreen as a deck). A touchscreen is readable only once paired: pairing asks for the password and writes a per-user file ACL rule for that touchscreen alone (never the sticky uaccess tag); Remove takes it away. Checked on the laptop and on Nobara with the Xeneon (2026-10-17).
 v0.8.1 published 2026-10-17: a virtual deck has a default size, so a profile made later never gives it zero keys (found on both machines). A 2.5 GB memory peak during a display-flapping run was investigated and is not being pursued; a smaller per-redraw native leak is logged to fix later.
 Virtual decks stage 1 complete and confirmed on both machines (2026-10-17): v0.8.1 checked on Nobara with the Xeneon Edge and already used in a game.
+Discord stage 0 (2026-10-20): each user brings their own app's client ID (Public Client + PKCE, no secret, no shared app; Discord isn't approving RPC apps). RPM and Flatpak supported, Vesktop not. Every voice action but per-user volume confirmed against the laptop's Flatpak Discord. REFERENCE gained Home Assistant and webhooks (command keys, no integration).
 """
