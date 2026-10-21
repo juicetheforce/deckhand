@@ -12,7 +12,8 @@ on the code. Why things are the way they are is in
 - [The deckhand command](#the-deckhand-command)
 - [Configuration](#configuration)
 - [Actions](#actions)
-- [OBS Studio](#obs-studio)
+- [OBS Studio](#obs-studio), [VTube Studio](#vtube-studio), [Twitch](#twitch)
+- [Home Assistant and webhooks](#home-assistant-and-webhooks)
 - [The control socket](#the-control-socket)
 - [Troubleshooting](#troubleshooting)
 - [Developing](#developing): [running it](#running-it-while-developing),
@@ -719,6 +720,51 @@ application to have its own.
   else's channel isn't supported.
 - **No ads, raids or chat modes yet.**
 - **A clip Twitch accepts and then fails to make** isn't reported, as above.
+
+## Home Assistant and webhooks
+
+Deckhand has no Home Assistant integration. A `command` key running `curl`
+drives it, and anything else that takes a web request, the same way.
+
+**A webhook, which needs no token.** In Home Assistant, make an automation
+whose trigger is **Webhook**, and note its webhook ID. Then:
+
+```json
+{ "type": "command",
+  "command": "curl -fsS -X POST http://homeassistant.local:8123/api/webhook/<id>" }
+```
+
+The webhook ID is all that protects it, so make it long and random. Home
+Assistant accepts it only from your local network unless you change that.
+
+**A direct service call, with a token.** For a service the automation would
+only wrap, call it directly with a long-lived access token (your Home
+Assistant profile › Security):
+
+```json
+{ "type": "command",
+  "command": "curl -fsS -X POST -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' -d '{\"entity_id\": \"light.desk\"}' http://homeassistant.local:8123/api/services/light/toggle" }
+```
+
+That token is in `config.json`, in every backup, and in every export, and
+it can do anything you can in Home Assistant. That is why the webhook comes
+first. To keep it out, put the `curl` in a script of your own and point the
+key at the script.
+
+**How it went.** The command runs on its own, so it never takes focus and
+the key returns at once — but the key never learns whether the request
+worked, and a failed one shows no badge. With `"wait": true` it runs for up
+to 15 seconds and a failure marks the key; `-f` is what makes an HTTP error
+count as one. A failure's message names the whole command, so with a token
+in it, the token shows in the editor and the log.
+
+**A Discord channel's webhook** posts a message the same way (the channel's
+settings › Integrations › Webhooks; its URL is as good as a password):
+
+```json
+{ "type": "command",
+  "command": "curl -fsS -H 'Content-Type: application/json' -d '{\"content\": \"Going live\"}' https://discord.com/api/webhooks/<id>/<token>" }
+```
 
 ## The control socket
 
