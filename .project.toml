@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Run the Discord probe's report on Nobara (the RPM's socket), then plan the Discord integration; virtual decks stage 2 design is still queued."
+next = "Plan the Discord integration (bring-your-own client ID; stage 0 done on both clients); virtual decks stage 2 design is still queued."
 category = "Gaming"
 paused = false
 focus = true
