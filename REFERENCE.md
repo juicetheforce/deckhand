@@ -430,7 +430,7 @@ is saved.
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `brightness` | `value` or `delta`; `showLevel: true` shows the level |
+| `brightness` | `value` or `delta`; `showLevel: true` shows the level, at the top of the key |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
 | `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconActive` (off) |
@@ -439,7 +439,7 @@ is saved.
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
 | `audio.cycleSource` | `devices: [{ node, label }, …]` — steps through inputs from one key |
 | `audio.micMute` | Toggles the default input's mute; `iconActive` (muted) |
-| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level |
+| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key |
 | `audio.mute` | Toggles output mute; `iconActive` (muted) |
 | `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconActive` (playing) |
 | `sound.stopAll` | Stops every sound Deckhand is playing |
@@ -463,7 +463,13 @@ is saved.
 | `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconActive` (push-to-talk) |
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
-| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level — the volume you hear one person at, 0–200 % |
+| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 % |
+
+**A level never takes the label's place.** Volume, Brightness and User
+volume keys draw their level (`showLevel`) at the top of the key, in the
+label's style, and the label stays where it is: several such keys can share
+an icon, and the label is what tells them apart. A label moved to the top
+puts the level at the bottom instead.
 
 **A key that shows a state has two icons**: its **default icon**, the
 key's own `icon`, and one for its **active state**, the action's
