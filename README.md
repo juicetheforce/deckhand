@@ -6,8 +6,8 @@
 
 Stream Deck software for Linux. A small background service drives the decks,
 and an editor lets you set them up: hotkeys, opening apps, audio device
-switching, media controls, OBS Studio, VTube Studio, Twitch, pages and
-profiles.
+switching, media controls, OBS Studio, VTube Studio, Twitch, Discord, pages
+and profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -20,7 +20,8 @@ It's one person's project, used every day.
   decks and sends the keys. The editor only writes a config file. A slow,
   closed or crashed editor can't delay a key press.
 - **It does nothing when nothing is happening.** It waits for key presses,
-  devices, players, OBS and VTube Studio rather than checking on them. On my
+  devices, players, OBS, VTube Studio and Discord rather than checking on
+  them. On my
   laptop, with music playing and live keys on screen, it idles at about 1% of
   one CPU core. The one exception is a linked Twitch account: Twitch requires
   apps to check their link once an hour, so Deckhand does, and only then.
@@ -200,6 +201,27 @@ in the same file only you can read as the OBS password, and go only to
 Twitch ([SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md)). **Remove** in
 Settings ends the link at Twitch too.
 
+## Discord
+
+Keys for the Discord app: mute, deafen, switch between push-to-talk and
+voice activity, join and leave a voice channel, and make one person louder or
+quieter for you. Mute, Deafen and Input mode show Discord's own state.
+
+- **You make your own Discord application, once.** Discord doesn't let one
+  registration serve everyone, so setup is three steps in Discord's
+  Developer Portal, then **Connect** in **Settings › Integrations › Discord**
+  ([how](REFERENCE.md#discord)). No secret anywhere.
+- **Channels and people are picked from Discord's own lists**, never typed.
+- **Discord can be slow to answer.** Starting Discord, or switching to a
+  profile with Discord keys, can take a few seconds before the keys respond;
+  until then they show they're connecting.
+- **The official app only**: the Flathub Flatpak, or a package of Discord
+  itself. Not Vesktop.
+
+The tokens stay on your computer, in the same file only you can read as the
+OBS password ([SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md)).
+**Remove** in Settings revokes them at Discord too.
+
 ## Screenshots
 
 Setting up a hotkey:
@@ -253,7 +275,8 @@ from source instead, see [the developer install](REFERENCE.md#developer-install)
 - **Use ydotool or the desktop portals.** It has its own virtual keyboard.
 - **Plugins, a store, telemetry, or an account with Deckhand.** None of them.
   Twitch keys sign in to your own Twitch account, only if you link it, and
-  the tokens stay on your computer.
+  Discord keys to the Discord app on your computer, only if you connect
+  it; the tokens stay on your computer.
 
 And what it doesn't do well yet:
 
@@ -287,6 +310,8 @@ And what it doesn't do well yet:
   key under it.
 - **A rotated touchscreen** hasn't been tried.
 - **Twitch keys act on your own channel only**, not one you moderate.
+- **Discord keys need the official Discord app.** Vesktop and other
+  third-party clients aren't supported.
 - **A Twitch clip that fails after the press** isn't reported. Twitch
   accepts the press and makes the clip in the background; Deckhand doesn't
   keep asking whether it worked.

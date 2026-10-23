@@ -23,6 +23,18 @@ Only what you set up, and only to the service you set it up for:
   Twitch user ID, and the key's own text (a marker's description, a clip's
   title, a chat message, a title, a category). Twitch's own privacy notice
   covers what Twitch does with it.
+- **Discord**, if you connect it. Almost everything goes to the Discord app
+  on your computer, not the internet. Deckhand talks to Discord's servers at
+  `discord.com` only:
+  - when you press **Connect**, to trade the code Discord's Authorize window
+    gives it for tokens;
+  - when it connects to the Discord app and the authorization has less than
+    two days left, to renew it;
+  - when you remove it, to revoke it.
+
+  What it sends is what that request needs: your application's ID, the code
+  or the tokens Discord gave it. Discord's own privacy notice covers what
+  Discord does with it.
 - **Album art.** When a media player shares a picture's web address for the
   track that is playing, Deckhand downloads it to show on a key.
 - **The update check.** Each time the editor opens, it asks GitHub
@@ -42,11 +54,19 @@ not the internet.
   what the link allows, in `~/.local/state/deckhand/credentials.json`,
   readable only by you, with the OBS password and VTube Studio's token.
   They are never in Deckhand's configuration, its exports or its backups.
+- **The Discord authorization**: your application's ID, the tokens, what
+  they allow, and your Discord name (to show "Connected as …"), in the same
+  file.
 - **Your configuration**, in `~/.config/deckhand/config.json`. For a Stream
-  info key it holds the category's ID and name as you chose them.
+  info key it holds the category's ID and name as you chose them; for a
+  Discord key, the server, channel or person's ID and name as you chose
+  them.
 
 Nothing from Twitch is kept beyond that: Deckhand shows nothing from Twitch
-on its keys, so it stores nothing it reads from Twitch.
+on its keys, so it stores nothing it reads from Twitch. What the Discord app
+tells Deckhand — whether you're muted, which voice channel you're in, who is
+in it and how loud you hear them — is held in memory only, while Deckhand is
+connected, and never written down.
 
 ## Ending it
 
@@ -59,6 +79,13 @@ first, then deletes that file with the rest of Deckhand's state. If Twitch
 does not confirm — no internet, say, or Deckhand's service not running — the
 uninstaller says so: end it at twitch.tv/settings/connections. A link nothing
 uses any more lapses after 30 days anyway.
+
+**Remove** in **Settings › Integrations › Discord** deletes the
+authorization from your computer and revokes it at Discord. You can also
+remove it in Discord's **User Settings › Authorized Apps**, where it is
+listed under your application's name. Uninstalling Deckhand revokes it
+first, as it ends a Twitch link; if Discord does not confirm, the
+uninstaller says where to remove it.
 
 ## Questions
 
