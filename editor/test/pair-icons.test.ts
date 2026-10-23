@@ -14,7 +14,7 @@ import path from 'node:path';
 process.env.HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-pair-icons-'));
 
 const { ICON_FIELDS } = await import('../src/shared/backup.js');
-const { PAIR_ICON_FIELDS, isPairIconField, pairIconFields } = await import('../src/shared/icons.js');
+const { LEGACY_STATE_ICON_FIELDS, PAIR_ICON_FIELDS, isPairIconField, pairIconFields } = await import('../src/shared/icons.js');
 const { iconReferences } = await import('../src/main/export-bundle.js');
 const { CATALOGUE } = await import('../src/renderer/catalogue.js');
 
@@ -39,8 +39,8 @@ await check('every pair field is an icon field for export and import, and passes
   assert.equal(isPairIconField('iconBogus'), false);
 });
 
-await check('an export finds a path in every pair field, on a key action, onRelease and a multi step', () => {
-  for (const field of PAIR_ICON_FIELDS) {
+await check('an export finds a path in every state icon field — iconActive and the old shape\'s — on a key action, onRelease and a multi step', () => {
+  for (const field of [...PAIR_ICON_FIELDS, ...LEGACY_STATE_ICON_FIELDS]) {
     const config = {
       profiles: { p: { name: 'P', layouts: { S: { startPage: 'm', pages: { m: { name: 'M', buttons: {
         0: { action: { type: 'x', [field]: `~/${field}-action.png` }, onRelease: { type: 'x', [field]: `~/${field}-release.png` } },
@@ -60,7 +60,7 @@ await check('every pair an action can have is on the list', () => {
       }
     }
   }
-  assert.deepEqual(pairIconFields({ type: 'toggle' }), ['iconOn', 'iconOff']);
+  assert.deepEqual(pairIconFields({ type: 'toggle' }), ['iconActive'], "the toggle's held-down icon is its active state's");
 });
 
 if (failures > 0) {

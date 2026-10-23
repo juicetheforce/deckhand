@@ -3,6 +3,7 @@ import { promises as fs, watch, type FSWatcher } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { validateConfig } from '../../../src/config.js';
+import { migrateStateIcons } from '../../../src/state-icons.js';
 import type { Config } from '../../../src/types.js';
 import type { Conflict, StoreState } from '../shared/bridge.js';
 import type { ApplyResult, Edit, EditResult } from '../shared/edits.js';
@@ -73,6 +74,20 @@ export class ConfigStore {
     this.config = config;
     this.baseText = text;
     this.reformatPending = serializeConfig(config) !== text;
+    this.migrate();
+  }
+
+  /**
+   * Keys whose icons are in the old shape, one field per state, moved to the
+   * Default icon and the active icon (src/state-icons.ts), drawing what they
+   * drew, and saved: the daemon reads either, and no icon someone set is
+   * lost. Whether the file needs reformatting is judged before, on the file
+   * as it was.
+   */
+  private migrate(): void {
+    if (!migrateStateIcons(this.config)) return;
+    this.dirty = true;
+    this.scheduleSave();
   }
 
   /**
@@ -342,6 +357,7 @@ export class ConfigStore {
       this.config = parseAndValidate(text);
       this.fileError = null;
       this.reformatPending = serializeConfig(this.config) !== text;
+      this.migrate();
     } catch (err) {
       this.fileError = (err as Error).message;
     }

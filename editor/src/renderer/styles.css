@@ -2248,6 +2248,15 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* A key with one face: its Default icon named, with nothing to choose between. */
+.icon-slot-only {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 .segment {
   background: transparent;
   border: none;

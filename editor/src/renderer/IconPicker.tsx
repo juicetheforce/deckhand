@@ -272,7 +272,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           {currentIcon !== undefined && (
             <button
               disabled={editingBlocked}
-              title={slot === null ? "Remove this key's icon, so its action's default icon is drawn" : 'Remove this state icon, so the key falls back to its own icon or the default'}
+              title={slot === null ? "Remove this key's icon, so its action's default icon is drawn" : "Remove the active state's icon, so the key draws its default icon in that state, or the built-in"}
               onClick={() => {
                 setCursor(null);
                 latest.current = null;

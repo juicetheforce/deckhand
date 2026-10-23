@@ -172,7 +172,7 @@ const buttons = {
   10: { action: { type: 'audio.volume', delta: 5, showLevel: true } },
   11: { action: { type: 'brightness', delta: 10 } },
   12: { action: { type: 'audio.micMute' } },
-  13: { action: { type: 'audio.micMute', iconMuted: GOOD } },
+  13: { action: { type: 'audio.micMute', iconActive: GOOD } },
   14: { action: { type: 'audio.mute' } },
   15: { action: { type: 'media.control', method: 'next' } },
   16: { action: { type: 'media.control', method: 'playpause' } },
@@ -212,7 +212,7 @@ console.log('which icon a key draws');
   check('brightness up draws brightness-up, with no level label by default', same(key(11), await builtinKey('brightness-up')));
   // fake-pactl's default input starts muted.
   check('mic mute, muted: mic-muted, with its muted background', same(key(12), await builtinKey('mic-muted', { background: '#5a1d1d' })));
-  check('an explicit iconMuted wins over the default', same(key(13), await expected(GOOD, { background: '#5a1d1d' })));
+  check('an active icon (iconActive) wins over the default in its state', same(key(13), await expected(GOOD, { background: '#5a1d1d' })));
   check('output mute, unmuted: speaker', same(key(14), await builtinKey('speaker')));
   check('media next draws next', same(key(15), await builtinKey('next')));
   check('play/pause with nothing playing draws play', same(key(16), await builtinKey('play')));
@@ -276,8 +276,39 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
       return err.message.includes('builtinIconSize');
     }
   };
-  check('the config refuses a builtinIconSize outside 30–70 (the slider\'s range), or not a number', refusedSize(25) && refusedSize(75) && refusedSize('45'));
-  check('...and takes one within it, a hand-edited one between steps too', !refusedSize(30) && !refusedSize(70) && !refusedSize(53));
+  check('the config refuses a builtinIconSize outside 28–70 (the slider\'s 40–100%), or not a number', refusedSize(27.9) && refusedSize(70.5) && refusedSize('45'));
+  check('...and takes one within it, a hand-edited one between steps too', !refusedSize(28) && !refusedSize(70) && !refusedSize(45.5) && !refusedSize(53));
+{
+  const { shownIconSize, storedIconSize } = await import(path.join(REPO, 'dist/config.js'));
+  check('the slider shows a size relative to its largest: 70% of the key is 100%, 45.5% is 65%, 28% is 40%', shownIconSize(70) === 100 && shownIconSize(45.5) === 65 && shownIconSize(28) === 40);
+  check('…and stores each step it shows as a percent of the key, exactly', storedIconSize(65) === 45.5 && storedIconSize(40) === 28 && storedIconSize(100) === 70 && storedIconSize(45) === 31.5 && [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].every((n) => shownIconSize(storedIconSize(n)) === n));
+}
+}
+
+console.log('keys with states: icons in the old shape migrated in memory, as the editor migrates them');
+{
+  const { migrateStateIcons } = await import(path.join(REPO, 'dist/state-icons.js'));
+  const config = { profiles: { p: { layouts: { S: { pages: { m: { buttons: {
+    0: { action: { type: 'audio.micMute', iconMuted: '~/m.png', iconUnmuted: '~/u.png' } },
+    1: { icon: '~/own.png', action: { type: 'toggle', keys: 'shift', iconOff: '~/up.png' } },
+    2: { action: { type: 'discord.inputMode', iconOn: '~/va.png', iconOff: '~/ptt.png' } },
+    3: { action: { type: 'hotkey', keys: 'a' } },
+  } } } } } } } };
+  check('the old shape is changed', migrateStateIcons(config) === true);
+  const b = config.profiles.p.layouts.S.pages.m.buttons;
+  check('both states: the resting icon is the Default, the active one stays active', JSON.stringify(b[0]) === JSON.stringify({ action: { type: 'audio.micMute', iconActive: '~/m.png' }, icon: '~/u.png' }));
+  check('only the resting icon, and the key\'s own (which showed held down): own → active', JSON.stringify(b[1]) === JSON.stringify({ icon: '~/up.png', action: { type: 'toggle', keys: 'shift', iconActive: '~/own.png' } }));
+  check('Input mode: voice activity, its default, the Default icon; push-to-talk active', JSON.stringify(b[2]) === JSON.stringify({ action: { type: 'discord.inputMode', iconActive: '~/ptt.png' }, icon: '~/va.png' }));
+  check('…and migrating again changes nothing', migrateStateIcons(config) === false);
+  // Through loadConfig, as the daemon reads it: in memory, the file untouched.
+  const dir = path.join(TMP, 'migrate-config');
+  await fs.mkdir(dir, { recursive: true });
+  const old = { profiles: { p: { layouts: { S: { pages: { m: { buttons: { 0: { action: { type: 'obs.stream', iconOn: '~/live.png' } } } } } } } } } };
+  await fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(old));
+  const { execFileSync } = await import('node:child_process');
+  const loaded = execFileSync(process.execPath, ['--input-type=module', '-e', `const { loadConfig } = await import(${JSON.stringify(path.join(REPO, 'dist/config.js'))}); const { config } = await loadConfig(); process.stdout.write(JSON.stringify(config.profiles.p.layouts.S.pages.m.buttons[0]));`], { env: { ...process.env, DECKHAND_CONFIG_DIR: dir } }).toString();
+  check('the daemon\'s loadConfig migrates in memory: Stream\'s live icon is its active icon', loaded === JSON.stringify({ action: { type: 'obs.stream', iconActive: '~/live.png' } }), loaded);
+  check('…and never writes config.json', (await fs.readFile(path.join(dir, 'config.json'), 'utf8')) === JSON.stringify(old));
 }
 
 console.error = originalError;

@@ -316,11 +316,11 @@ console.log('audio.cycleSource by devices');
 
 console.log('audio.mute face (output mute state)');
 {
-  const muteKey = { type: 'audio.mute', iconMuted: '/icons/speaker-off.png', iconUnmuted: '/icons/speaker.png', labelMuted: 'Muted', labelUnmuted: 'Sound' };
+  const muteKey = { type: 'audio.mute', iconActive: '/icons/speaker-off.png', labelMuted: 'Muted', labelUnmuted: 'Sound' };
   await serverState({ defaultSink: STEREO });
   check('the cache knows the default output is not muted', audio.cachedState().defaultSinkMuted === false);
   const unmuted = await describe(muteKey);
-  check('unmuted: the unmuted icon and label', unmuted.icon === '/icons/speaker.png' && unmuted.label === 'Sound');
+  check('unmuted: the unmuted label, and no icon of its own — the key\'s Default icon is drawn', !('icon' in unmuted) && unmuted.label === 'Sound');
   check('...and no background: state is shown by the icon pair only', !('background' in unmuted));
 
   const ctx = context();
@@ -332,10 +332,10 @@ console.log('audio.mute face (output mute state)');
   const muted = await describe(muteKey);
   check('muted: the muted icon and label, still no background', muted.icon === '/icons/speaker-off.png' && muted.label === 'Muted' && !('background' in muted));
   await runActionOrThrow(context(), { type: 'audio.mute' });
-  check('a second press unmutes', audio.cachedState().defaultSinkMuted === false && (await describe(muteKey)).icon === '/icons/speaker.png');
+  check('a second press unmutes', audio.cachedState().defaultSinkMuted === false && (await describe(muteKey)).icon === undefined);
 
   await serverState({ defaultSink: STEREO, muted: { [MONO]: true } });
-  check('the face follows the default output: another device muted changes nothing', (await describe(muteKey)).icon === '/icons/speaker.png');
+  check('the face follows the default output: another device muted changes nothing', (await describe(muteKey)).icon === undefined);
   const switched = context();
   const repaint = [];
   switched.invalidateByType = (types) => repaint.push(...types);
@@ -360,7 +360,7 @@ console.log('cost');
     await describe({ type: 'audio.sink', ...stereoRef });
     await describe({ type: 'audio.cycle', devices: [stereoRef, monoRef] });
     await describe({ type: 'audio.source', node: 'alsa_input.pci-0000_00_1f.3.HiFi__Mic__source', label: 'x' });
-    await describe({ type: 'audio.mute', iconMuted: '/a.png' });
+    await describe({ type: 'audio.mute', iconActive: '/a.png' });
   }
   check('200 audio key-face refreshes spawn no pactl', (await spawns()).length === before);
 }

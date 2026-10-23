@@ -39,7 +39,7 @@ function Needs() {
 }
 
 /** discord.mute, discord.deafen, discord.inputMode, discord.leave: nothing to set. */
-export function DiscordForm({ type, button, disabled, onChooseIcon }: { type: string; button?: ButtonDef; disabled?: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+export function DiscordForm({ type, button, disabled, onChooseIcon }: { type: string; button?: ButtonDef; disabled?: boolean; onChooseIcon?: (field: PairIconField | null) => void }) {
   const about = ABOUT[type];
   if (!about) return null;
   return (

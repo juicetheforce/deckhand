@@ -155,7 +155,7 @@ export function AppForm({ at, button, disabled, run, apps }: FormProps & { apps:
  * on that same virtual deck, it can turn it off but not back on — said, as
  * decided (scope §7, the polish release), not refused: someone may want just that.
  */
-export function VirtualPowerForm({ at, button, disabled, run, decks, onChooseIcon }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }>; onChooseIcon?: (field: PairIconField) => void }) {
+export function VirtualPowerForm({ at, button, disabled, run, decks, onChooseIcon }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }>; onChooseIcon?: (field: PairIconField | null) => void }) {
   const action = actionOf('virtual.power', button);
   const chosen = typeof action?.deck === 'string' && action.deck !== '' ? action.deck : null;
   const known = chosen === null || decks.some((d) => d.id === chosen);

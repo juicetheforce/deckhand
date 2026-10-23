@@ -3,7 +3,7 @@ import type { VtsList } from '../../../../src/control/protocol.js';
 import type { PairIconField } from '../../shared/icons.js';
 import { StateIcons, actionOf, nextAction, type FormProps } from './controls.js';
 
-type WithIcons = FormProps & { onChooseIcon?: (field: PairIconField) => void };
+type WithIcons = FormProps & { onChooseIcon?: (field: PairIconField | null) => void };
 
 /**
  * The VTube Studio keys. What a key acts

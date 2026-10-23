@@ -1,4 +1,7 @@
-import { BUILTIN_ICONS, type BuiltinIcon } from '../../../src/default-icons.js';
+import { BUILTIN_ICONS, type BuiltinIcon, type IconState } from '../../../src/default-icons.js';
+import { hasStates } from '../../../src/state-icons.js';
+
+export { LEGACY_STATE_ICON_FIELDS } from '../../../src/state-icons.js';
 
 /** The scheme main serves icon files on (src/main/icon-protocol.ts). No Node imports: the renderer uses this module. */
 export const ICON_SCHEME = 'deckhand-icon';
@@ -18,53 +21,67 @@ export const BUILTIN_PREFIX = 'builtin:';
 export const BUILTIN_FOLDER = BUILTIN_PREFIX;
 
 /**
- * The icons of a state pair, kept on the action: `audio.micMute`
- * and `audio.mute` swap between muted and unmuted, a play/pause
- * `media.control` between playing and paused, a latching `toggle` between
- * held down and up — and every other two-state key between on and off, as
- * Elgato's two-state keys do (src/actions/state-icon.ts): OBS's, Discord's,
- * VTube Studio's, Play sound and Virtual deck on/off. The daemon draws whichever
- * matches the state, and falls back to the key's own icon, then the default.
+ * Keys with states (src/state-icons.ts; scope §10, the pattern for every
+ * multi-state key): two icons — **"Default icon"**, the key's own `icon`, its
+ * normal look; and one for its **active state**, the action's `iconActive`.
+ * The daemon draws the active icon in the active state; otherwise the key's
+ * own icon, else the built-in for the state it is in. Each key below, with
+ * the name of its active state and which state is its default.
  */
-export const PAIR_ICON_FIELDS = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused', 'iconOn', 'iconOff'] as const;
+export const PAIR_ICON_FIELDS = ['iconActive'] as const;
 export type PairIconField = (typeof PAIR_ICON_FIELDS)[number];
 
+export interface KeyStates {
+  /** The active state's slot, named as the inspector shows it. */
+  active: string;
+  /** The state the active icon is drawn in, for its built-in. */
+  activeState: IconState;
+  /** The key's default state: what the grid draws, having no live state. */
+  defaultState: IconState;
+}
+
+const MUTE: KeyStates = { active: 'While muted', activeState: { muted: true }, defaultState: { muted: false } };
+
+export const KEY_STATES: Record<string, KeyStates> = {
+  'audio.micMute': MUTE,
+  'audio.mute': MUTE,
+  'obs.mute': MUTE,
+  'discord.mute': MUTE,
+  // play/pause only (hasStates).
+  'media.control': { active: 'While playing', activeState: { playing: true }, defaultState: { playing: false } },
+  toggle: { active: 'While held down', activeState: { latched: true }, defaultState: { latched: false } },
+  'obs.stream': { active: 'While live', activeState: { live: true }, defaultState: { live: false } },
+  'obs.record': { active: 'While recording', activeState: { live: true }, defaultState: { live: false } },
+  'obs.recordPause': { active: 'While paused', activeState: { paused: true }, defaultState: { paused: false } },
+  'obs.scene': { active: 'While on air', activeState: { active: true }, defaultState: { active: false } },
+  'obs.source': { active: 'While hidden', activeState: { hidden: true }, defaultState: { hidden: false } },
+  'discord.deafen': { active: 'While deafened', activeState: { muted: true }, defaultState: { muted: false } },
+  // Voice activity is its default; push-to-talk the active state.
+  'discord.inputMode': { active: 'On push-to-talk', activeState: { active: false }, defaultState: { active: true } },
+  'vts.model': { active: 'While loaded', activeState: { active: true }, defaultState: { active: false } },
+  'vts.expression': { active: 'While on', activeState: { active: true }, defaultState: { active: false } },
+  'sound.play': { active: 'While playing', activeState: { playing: true }, defaultState: { playing: false } },
+  // On is its default; off the active state.
+  'virtual.power': { active: 'While off', activeState: { active: false }, defaultState: { active: true } },
+};
+
 /**
- * Whether a value names a pair icon. The one test for it: main's icon
- * handler accepts exactly these, and export and import carry exactly these
- * (ICON_FIELDS in backup.ts is built from the same list), so a field added
- * above reaches all three.
+ * Whether a value names a state icon field. The one test for it: main's icon
+ * handler accepts exactly these, and export and import carry these and the
+ * fields of the old shape (ICON_FIELDS in backup.ts).
  */
 export function isPairIconField(value: unknown): value is PairIconField {
   return (PAIR_ICON_FIELDS as readonly unknown[]).includes(value);
 }
 
-/** The keys with an on and an off icon (src/actions/state-icon.ts); the mute keys have muted and unmuted. */
-const ON_OFF_KEYS: readonly string[] = [
-  'obs.stream',
-  'obs.record',
-  'obs.recordPause',
-  'obs.scene',
-  'obs.source',
-  'discord.deafen',
-  'discord.inputMode',
-  'vts.model',
-  'vts.expression',
-  'sound.play',
-  'virtual.power',
-];
+/** The key's states, or null for a key with one face. */
+export function keyStates(action: { type: string; method?: unknown } | undefined): KeyStates | null {
+  return action && hasStates(action) ? (KEY_STATES[action.type] ?? null) : null;
+}
 
-/** Which pair icons an action has; none for every other action. */
+/** Which state icons an action has: its active state's, or none. */
 export function pairIconFields(action: { type: string; method?: unknown } | undefined): readonly PairIconField[] {
-  if (!action) return [];
-  if (action.type === 'audio.micMute' || action.type === 'audio.mute') return ['iconMuted', 'iconUnmuted'];
-  if (action.type === 'media.control' && String(action.method ?? 'playpause').toLowerCase() === 'playpause') return ['iconPlaying', 'iconPaused'];
-  // The latching toggle: held down and released.
-  if (action.type === 'toggle') return ['iconOn', 'iconOff'];
-  // Muted and unmuted, as audio's; every other two-state key on and off.
-  if (action.type === 'obs.mute' || action.type === 'discord.mute') return ['iconMuted', 'iconUnmuted'];
-  if (ON_OFF_KEYS.includes(action.type)) return ['iconOn', 'iconOff'];
-  return [];
+  return keyStates(action) ? ['iconActive'] : [];
 }
 
 export function builtinRef(name: BuiltinIcon): string {

@@ -1,3 +1,4 @@
+import { activeIcon } from '../state-icons.js';
 import * as audio from '../services/audio.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
@@ -316,8 +317,11 @@ export const cycleSource: ActionHandler = {
 /**
  * audio.micMute — toggle the default input, with the button reflecting state.
  *
- *   { "type": "audio.micMute", "iconMuted": "~/icons/mic-off.png",
- *     "iconUnmuted": "~/icons/mic-on.png" }
+ *   { "icon": "~/icons/mic-on.png",
+ *     "action": { "type": "audio.micMute", "iconActive": "~/icons/mic-off.png" } }
+ *
+ * The key's own icon is its default; `iconActive` is drawn while muted
+ * (src/state-icons.ts).
  */
 export const micMute: ActionHandler = {
   async execute(ctx, _params: ActionDef) {
@@ -333,11 +337,11 @@ export const micMute: ActionHandler = {
     if (!state) return null;
     const patch: DisplayPatch = {};
     if (state.defaultSourceMuted) {
-      if (params.iconMuted) patch.icon = String(params.iconMuted);
+      const icon = activeIcon(params, true);
+      if (icon) patch.icon = icon;
       if (params.labelMuted) patch.label = String(params.labelMuted);
       patch.background = String(params.mutedBackground ?? '#5a1d1d');
     } else {
-      if (params.iconUnmuted) patch.icon = String(params.iconUnmuted);
       if (params.labelUnmuted) patch.label = String(params.labelUnmuted);
       patch.background = String(params.unmutedBackground ?? '#101014');
     }
@@ -373,8 +377,8 @@ export const volume: ActionHandler = {
 /**
  * audio.mute — toggle output mute, with the button reflecting state.
  *
- *   { "type": "audio.mute", "iconMuted": "~/icons/speaker-off.png",
- *     "iconUnmuted": "~/icons/speaker.png" }
+ *   { "icon": "~/icons/speaker.png",
+ *     "action": { "type": "audio.mute", "iconActive": "~/icons/speaker-off.png" } }
  *
  * The same icon and label parameters as audio.micMute, but **no background
  * change**: output mute shows its state by the icon pair alone.
@@ -395,11 +399,11 @@ export const mute: ActionHandler = {
     if (!state) return null;
     const patch: DisplayPatch = {};
     if (state.defaultSinkMuted) {
-      if (params.iconMuted) patch.icon = String(params.iconMuted);
+      const icon = activeIcon(params, true);
+      if (icon) patch.icon = icon;
       if (params.labelMuted) patch.label = String(params.labelMuted);
-    } else {
-      if (params.iconUnmuted) patch.icon = String(params.iconUnmuted);
-      if (params.labelUnmuted) patch.label = String(params.labelUnmuted);
+    } else if (params.labelUnmuted) {
+      patch.label = String(params.labelUnmuted);
     }
     return patch;
   },

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { defaultIconFor, type IconState } from '../../../../src/default-icons.js';
 import type { ActionDef, ButtonDef } from '../../../../src/types.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
-import { builtinName, pairIconFields, type PairIconField } from '../../shared/icons.js';
+import { builtinName, KEY_STATES, keyStates, pairIconFields, type PairIconField } from '../../shared/icons.js';
 
 /** What every action form is given. */
 export interface FormProps {
@@ -162,57 +162,9 @@ export function TextSetting({ label, value, placeholder, disabled, onSave }: { l
   );
 }
 
-const PAIR_LABELS: Record<PairIconField, string> = {
-  iconMuted: 'While muted',
-  iconUnmuted: 'While unmuted',
-  iconPlaying: 'While playing',
-  iconPaused: 'While paused',
-  iconOn: 'While held down',
-  iconOff: 'While up',
-};
-
-const PAIR_STATES: Record<PairIconField, IconState> = {
-  iconMuted: { muted: true },
-  iconUnmuted: { muted: false },
-  iconPlaying: { playing: true },
-  iconPaused: { playing: false },
-  iconOn: { latched: true },
-  iconOff: { latched: false },
-};
-
-/**
- * Each on/off key's two states, in its own words — on is live, recording,
- * on air, deafened, loaded, playing… — and its state for the built-in
- * fallback. The mute keys use PAIR_LABELS' muted and unmuted.
- */
-const ON_OFF_PAIRS: Record<string, { on: string; off: string; onState: IconState; offState: IconState }> = {
-  'obs.stream': { on: 'While live', off: 'While off', onState: { live: true }, offState: { live: false } },
-  'obs.record': { on: 'While recording', off: 'While not recording', onState: { live: true }, offState: { live: false } },
-  'obs.recordPause': { on: 'While paused', off: 'While not paused', onState: { paused: true }, offState: { paused: false } },
-  'obs.scene': { on: 'While on air', off: 'While not on air', onState: { active: true }, offState: { active: false } },
-  'obs.source': { on: 'While shown', off: 'While hidden', onState: { hidden: false }, offState: { hidden: true } },
-  'discord.deafen': { on: 'While deafened', off: 'While not deafened', onState: { muted: true }, offState: { muted: false } },
-  'discord.inputMode': { on: 'On voice activity', off: 'On push-to-talk', onState: { active: true }, offState: { active: false } },
-  'vts.model': { on: 'While loaded', off: 'While not loaded', onState: { active: true }, offState: { active: false } },
-  'vts.expression': { on: 'While on', off: 'While off', onState: { active: true }, offState: { active: false } },
-  'sound.play': { on: 'While playing', off: 'While not playing', onState: { playing: true }, offState: { playing: false } },
-  'virtual.power': { on: 'While on', off: 'While off', onState: { active: true }, offState: { active: false } },
-};
-
-/** A state icon's name in the inspector, for the key's action. */
-export function pairLabel(field: PairIconField, type?: string): string {
-  const pair = type === undefined ? undefined : ON_OFF_PAIRS[type];
-  if (pair && field === 'iconOn') return pair.on;
-  if (pair && field === 'iconOff') return pair.off;
-  return PAIR_LABELS[field];
-}
-
-/** The state a state icon is shown in, for the built-in it falls back to. */
-function pairState(field: PairIconField, type: string | undefined): IconState {
-  const pair = type === undefined ? undefined : ON_OFF_PAIRS[type];
-  if (pair && field === 'iconOn') return pair.onState;
-  if (pair && field === 'iconOff') return pair.offState;
-  return PAIR_STATES[field];
+/** A state icon's name in the inspector, for the key's action: "While muted", "On push-to-talk"… */
+export function pairLabel(_field: PairIconField, type?: string): string {
+  return (type !== undefined ? KEY_STATES[type]?.active : undefined) ?? 'Active state';
 }
 
 /** How a stored icon reads in the inspector: a built-in by name, a file by its path. */
@@ -222,9 +174,10 @@ export function iconText(icon: string): string {
 }
 
 /**
- * The icon each state shows, in the daemon's order (src/deck.ts): the state's
- * own icon, else the key's own icon, else the built-in default. Said per state
- * because the middle case surprises — a key with its own icon stops swapping.
+ * A key's two icons, as the form lists them (src/state-icons.ts): its
+ * Default icon — its own, else the built-in for its default state — and its
+ * active state's, else, as the daemon draws it, the default icon when that is
+ * the person's own (no switching: their call), or the built-in for the state.
  */
 export function PairIcons({
   fields,
@@ -235,40 +188,45 @@ export function PairIcons({
   fields: readonly PairIconField[];
   button: ButtonDef | undefined;
   disabled: boolean;
-  onChoose: (field: PairIconField) => void;
+  /** Open the Icon tab on an icon: the default (null) or the active state's. */
+  onChoose: (field: PairIconField | null) => void;
 }) {
-  if (fields.length === 0) return null;
   const action = button?.action;
+  const states = keyStates(action);
+  if (fields.length === 0 || !states) return null;
   const own = typeof button?.icon === 'string' ? button.icon : null;
+  const builtin = (state: IconState) => `built-in (${defaultIconFor(action, state) ?? 'none'})`;
+  const active = typeof action?.iconActive === 'string' ? action.iconActive : null;
+  const defaultText = own !== null ? iconText(own) : button?.icon === null ? 'none' : builtin(states.defaultState);
+  const activeText = active !== null ? iconText(active) : own !== null ? `the default icon, unchanged (${iconText(own)})` : builtin(states.activeState);
   return (
     <div className="pair-icons">
-      {fields.map((field) => {
-        const set = typeof action?.[field] === 'string' ? (action[field] as string) : null;
-        const fallback = own !== null ? `the key's own icon (${iconText(own)})` : `default (${defaultIconFor(action, pairState(field, action?.type)) ?? 'none'})`;
-        return (
-          <Row key={field} name={pairLabel(field, action?.type)}>
-            <span className="form-value" data-pair={field}>
-              {set !== null ? iconText(set) : fallback}
-            </span>
-            <button className="link-button" disabled={disabled} onClick={() => onChoose(field)}>
-              Choose…
-            </button>
-          </Row>
-        );
-      })}
-      {own !== null && fields.some((f) => typeof action?.[f] !== 'string') && (
-        <p className="muted small">The key has its own icon, so a state with no icon of its own shows that instead of swapping.</p>
-      )}
+      <Row name="Default icon">
+        <span className="form-value" data-pair="default">
+          {defaultText}
+        </span>
+        <button className="link-button" disabled={disabled} onClick={() => onChoose(null)}>
+          Choose…
+        </button>
+      </Row>
+      <Row name={states.active}>
+        <span className="form-value" data-pair="iconActive">
+          {activeText}
+        </span>
+        <button className="link-button" disabled={disabled} onClick={() => onChoose('iconActive')}>
+          Choose…
+        </button>
+      </Row>
     </div>
   );
 }
 
 /**
- * A two-state key's own icon for each state (src/actions/state-icon.ts),
- * listed in its form; each "Choose…" opens the Icon tab on that state. Absent
+ * A key with states: its Default icon and its active state's icon
+ * (src/state-icons.ts), listed in its form; each "Choose…" opens the Icon tab on that state. Absent
  * for a Multi step, which has no face.
  */
-export function StateIcons({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+export function StateIcons({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField | null) => void }) {
   if (!onChooseIcon) return null;
   return <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />;
 }

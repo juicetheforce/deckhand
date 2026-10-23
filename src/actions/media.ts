@@ -1,3 +1,4 @@
+import { activeIcon } from '../state-icons.js';
 import * as mpris from '../services/mpris.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
@@ -16,7 +17,7 @@ function truncate(value: string, max: number | undefined): string {
  *
  * Omit "player" and it targets whatever is actually playing, so the same
  * button works for a music app today and a browser tab tomorrow. A playpause
- * button can swap its icon with iconPlaying / iconPaused.
+ * button draws `iconActive` while playing, its own icon otherwise (src/state-icons.ts).
  */
 const METHODS: Record<string, mpris.MediaMethod> = {
   playpause: 'PlayPause',
@@ -47,13 +48,12 @@ export const control: ActionHandler = {
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const key = String(params.method ?? 'playpause').toLowerCase();
     if (key !== 'playpause') return null;
-    if (!params.iconPlaying && !params.iconPaused) return null;
+    if (!params.iconActive) return null;
 
     // From the player state cache: no D-Bus call on a refresh (services/mpris.ts).
     const info = mpris.cachedTrackInfo(params.player ? String(params.player) : undefined);
-    const playing = info?.status === 'Playing';
-    const icon = playing ? params.iconPlaying : params.iconPaused;
-    return icon ? { icon: String(icon) } : null;
+    const icon = activeIcon(params, info?.status === 'Playing');
+    return icon ? { icon } : null;
   },
 };
 

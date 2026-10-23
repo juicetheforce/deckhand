@@ -2,12 +2,13 @@ import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
+import { migrateStateIcons } from './state-icons.js';
 import type { Config, LayoutDef } from './types.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
 // daemon code keeps importing from config.js.
-export { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
+export { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, shownIconSize, startPageOf, startProfileOf, storedIconSize } from './config-common.js';
 
 export const CONFIG_DIR =
   process.env.DECKHAND_CONFIG_DIR ??
@@ -192,7 +193,11 @@ export async function loadConfig(): Promise<{ config: Config; text: string }> {
   } catch (err) {
     throw new Error(`config.json is not valid JSON: ${(err as Error).message}`);
   }
-  return { config: validateConfig(parsed), text };
+  const config = validateConfig(parsed);
+  // A key's icons in the old shape, one field per state, drawn as before (state-icons.ts).
+  // In memory only: the daemon never writes config.json; the editor saves it.
+  migrateStateIcons(config);
+  return { config, text };
 }
 
 export async function ensureConfigDir(): Promise<void> {

@@ -15,8 +15,32 @@ import type { Config, Defaults, LayoutDef } from './types.js';
  */
 export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
-/** Icon size's slider (Settings › General; Claude Design's 16c): what `defaults.builtinIconSize` may be. */
-export const BUILTIN_ICON_SIZE = { min: 30, max: 70, step: 5 } as const;
+/**
+ * Icon size (Settings › General). `defaults.builtinIconSize` is stored as a
+ * percent of the key, 28–70; **the slider shows it relative to its largest
+ * size** — 70% of the key shown as 100% — from 40 to 100% in steps of 5,
+ * 65% (45.5% of the key) by default (Ryan, 2026-10-23, revising Claude
+ * Design's 16c). Converted for display only.
+ */
+export const BUILTIN_ICON_SIZE = {
+  /** The largest, as a percent of the key: shown as 100%. */
+  largest: 70,
+  /** What the slider shows. */
+  shown: { min: 40, max: 100, step: 5 },
+  /** What `defaults.builtinIconSize` may be: the shown range in percent of the key. */
+  min: 28,
+  max: 70,
+} as const;
+
+/** A stored size (percent of the key) as the slider shows it. */
+export function shownIconSize(stored: number): number {
+  return Math.round((stored / BUILTIN_ICON_SIZE.largest) * 100);
+}
+
+/** A size the slider shows, stored as a percent of the key (to a tenth: 65 → 45.5). */
+export function storedIconSize(shown: number): number {
+  return Math.round(shown * BUILTIN_ICON_SIZE.largest) / 100;
+}
 
 export const DEFAULTS: Required<Defaults> = {
   background: '#101014',
@@ -25,9 +49,9 @@ export const DEFAULTS: Required<Defaults> = {
   labelPosition: 'bottom',
   iconFit: 'cover',
   // A built-in's drawing, as a percent of the key: Settings › General › Icon
-  // size (Claude Design's 16c: 30–70, step 5, default 45). The editor's grid
+  // size, which shows it as 65% (BUILTIN_ICON_SIZE). The editor's grid
   // follows it too.
-  builtinIconSize: 45,
+  builtinIconSize: 45.5,
   brightness: 70,
   refreshMs: 1000,
 };

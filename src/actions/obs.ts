@@ -1,7 +1,8 @@
 import { ActionNeeded } from '../action-error.js';
 import * as obs from '../services/obs.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
-import { MUTED_UNMUTED, ON_OFF, stateIcon, withStateIcon } from './state-icon.js';
+import { builtinIconRef } from '../builtin-icons.js';
+import { activeIcon } from '../state-icons.js';
 
 /**
  * OBS Studio keys, through
@@ -18,13 +19,17 @@ const UNSET: DisplayPatch = { unset: true };
 const notSetUp = () => obs.cachedState().connection === 'not-set-up';
 
 /**
- * An OBS key's face: its own icon for the state it is in (state-icon.ts) —
- * `on` null for a third face the built-ins draw, a stream reconnecting or a
- * recording paused, which no custom icon hides. Not set up: dimmed, whatever
- * is drawn.
+ * An OBS key's face (src/state-icons.ts): its active icon while it is in
+ * its active state; otherwise nothing of the action's, so the key's own icon
+ * or the built-in draws. A warning — a stream reconnecting, a recording
+ * paused — draws its built-in over any custom icon, the key's own included.
+ * Not set up: dimmed, whatever is drawn.
  */
-function faceOf(params: ActionDef, on: boolean | null, fields: readonly [string, string] = ON_OFF): DisplayPatch | null {
-  return withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, on, fields));
+function faceOf(params: ActionDef, active: boolean, warning: 'obs-stream-reconnecting' | 'obs-paused' | null = null): DisplayPatch | null {
+  const icon = warning !== null ? builtinIconRef(warning) : activeIcon(params, active);
+  const patch: DisplayPatch = notSetUp() ? { ...UNSET } : {};
+  if (icon !== undefined) patch.icon = icon;
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 /**
@@ -127,7 +132,7 @@ export const stream: ActionHandler = {
   // The icons carry state on their own, reconnecting included: keys keep their own background.
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const stream = obs.cachedState().stream;
-    return faceOf(params, stream === 'reconnecting' ? null : running(stream));
+    return faceOf(params, running(stream), stream === 'reconnecting' ? 'obs-stream-reconnecting' : null);
   },
 };
 
@@ -150,10 +155,10 @@ export const record: ActionHandler = {
 
   iconState: () => ({ live: running(obs.cachedState().record), paused: obs.cachedState().recordPaused }),
 
-  // On: recording; paused draws the built-in paused face.
+  // Active: recording; paused draws the built-in paused face over any custom icon.
   describe: async (_ctx, params) => {
     const { record: phase, recordPaused } = obs.cachedState();
-    return faceOf(params, running(phase) && recordPaused ? null : running(phase));
+    return faceOf(params, running(phase), running(phase) && recordPaused ? 'obs-paused' : null);
   },
 };
 
@@ -196,7 +201,7 @@ export const recordPause: ActionHandler = {
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),
 
-  // On: paused.
+  // Active: paused.
   describe: async (_ctx, params) => faceOf(params, obs.cachedState().recordPaused === true),
 };
 
@@ -223,7 +228,7 @@ export const scene: ActionHandler = {
 
   iconState: (params) => ({ active: named(params.scene) !== null && obs.cachedState().programScene === params.scene }),
 
-  // On: the program scene.
+  // Active: the program scene, on air.
   describe: async (_ctx, params) => faceOf(params, named(params.scene) !== null && obs.cachedState().programScene === params.scene),
 };
 
@@ -245,7 +250,7 @@ export const mute: ActionHandler = {
 
   iconState: (params) => ({ muted: obs.cachedState().inputMuted[String(params.input)] === true }),
 
-  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true, MUTED_UNMUTED),
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true),
 };
 
 /**
@@ -271,6 +276,6 @@ export const source: ActionHandler = {
 
   iconState: (params) => ({ hidden: obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false }),
 
-  // On: shown, the state the built-in pair draws as the plain source.
-  describe: async (_ctx, params) => faceOf(params, obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] !== false),
+  // Active: hidden. Shown is its default.
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false),
 };

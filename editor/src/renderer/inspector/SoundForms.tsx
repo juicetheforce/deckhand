@@ -25,7 +25,7 @@ function modeOf(value: unknown): Mode {
   return MODES.some((m) => m.value === value) ? (value as Mode) : 'playStop';
 }
 
-export function SoundForm({ at, button, disabled, run, audio, inStep, onChooseIcon }: FormProps & { audio: AudioLists; inStep: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+export function SoundForm({ at, button, disabled, run, audio, inStep, onChooseIcon }: FormProps & { audio: AudioLists; inStep: boolean; onChooseIcon?: (field: PairIconField | null) => void }) {
   const action = actionOf('sound.play', button);
   const file = typeof action?.file === 'string' ? action.file : '';
   const node = typeof action?.node === 'string' && action.node !== '' ? action.node : null;

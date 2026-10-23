@@ -50,7 +50,7 @@ const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
 const { startFakePlayer } = await import('./test/fake-mpris-player.mjs');
 
 const describe = (action) => registry[action.type].describe({ log: () => undefined }, action);
-const control = { type: 'media.control', method: 'playpause', iconPlaying: '/icons/pause.svg', iconPaused: '/icons/play.svg' };
+const control = { type: 'media.control', method: 'playpause', iconActive: '/icons/pause.svg' };
 const info = { type: 'media.info', show: 'title+artist' };
 
 /** Wait until fn() is truthy, up to ms. */
@@ -81,7 +81,7 @@ const a = await startFakePlayer('fakeA', { status: 'Paused', track: { title: 'Fi
   const t = mpris.cachedTrackInfo();
   check('...status, title and artist', t.status === 'Paused' && t.artist === 'Band' && t.player === 'fakeA');
   check('...and the change listener fired', await until(() => changes > 0));
-  check('paused: play/pause shows iconPaused', (await describe(control))?.icon === '/icons/play.svg');
+  check('paused: play/pause adds nothing of its own — the key\'s Default icon, or the built-in, is drawn', (await describe(control)) === null);
   check('...and the default icon state says not playing', registry['media.control'].iconState({ type: 'media.control', method: 'playpause' }).playing === false);
   check('now-playing shows title and artist', (await describe(info))?.label === 'First\nBand');
   check('...and its icon state is not idle', registry['media.info'].iconState(info).idle === false);
@@ -89,7 +89,7 @@ const a = await startFakePlayer('fakeA', { status: 'Paused', track: { title: 'Fi
   const before = changes;
   a.set({ status: 'Playing' });
   check('PlaybackStatus from the signal reaches the cache', await until(() => mpris.cachedTrackInfo()?.status === 'Playing', 500));
-  check('playing: play/pause shows iconPlaying', (await describe(control))?.icon === '/icons/pause.svg');
+  check('playing: play/pause shows its active icon', (await describe(control))?.icon === '/icons/pause.svg');
   check('...and the default icon state says playing, from the cache', registry['media.control'].iconState({ type: 'media.control', method: 'playpause' }).playing === true);
   check('...and the change listener fired again', await until(() => changes > before));
 

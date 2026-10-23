@@ -30,9 +30,9 @@ const ABOUT: Record<string, { heading: string; text: string }> = {
   },
 };
 
-type ObsFormProps = FormProps & { onChooseIcon?: (field: PairIconField) => void };
+type ObsFormProps = FormProps & { onChooseIcon?: (field: PairIconField | null) => void };
 
-export function ObsForm({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+export function ObsForm({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField | null) => void }) {
   const about = ABOUT[type];
   if (!about) return null;
   return (

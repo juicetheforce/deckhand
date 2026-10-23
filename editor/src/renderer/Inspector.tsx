@@ -177,13 +177,13 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
   const editable = actionEditable(button, type);
   // A library pick of Hotkey asks the hotkey form to start listening.
   const [listenRequest, setListenRequest] = useState(false);
-  // Which icon the Icon tab chooses: the key's own (null), or one of its
-  // action's state pair. A pair field the action no longer has
-  // falls back to the key's own.
+  // Which icon the Icon tab chooses: the Default icon — the key's own (null) —
+  // or its active state's (src/state-icons.ts). A key whose action has no
+  // states has only the default.
   const pairFields = pairIconFields(button?.action);
   const [slotChosen, setSlot] = useState<PairIconField | null>(null);
   const slot = slotChosen !== null && pairFields.includes(slotChosen) ? slotChosen : null;
-  const chooseIcon = (field: PairIconField) => {
+  const chooseIcon = (field: PairIconField | null) => {
     setSlot(field);
     onTab('icon');
   };
@@ -251,22 +251,25 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
         </button>
       </div>
 
-      {tab === 'icon' && pairFields.length > 0 && (
-        <div className="icon-slots">
-          <div className="segmented segmented-wrap" role="group" aria-label="Which icon">
+      {/* Two icons on a key with states, in equal halves like Key / Icon above:
+          its Default icon and its active state's. One face: the default alone, no selector. */}
+      {tab === 'icon' &&
+        (pairFields.length > 0 ? (
+          <div className="icon-slots inspector-tabs" role="group" aria-label="Which icon">
             {[null, ...pairFields].map((field) => (
               <button
-                key={field ?? 'key'}
-                className={field === slot ? 'segment segment-selected' : 'segment'}
+                key={field ?? 'default'}
+                className={`inspector-tab icon-slot${field === slot ? ' inspector-tab-selected' : ''}`}
                 aria-pressed={field === slot}
                 onClick={() => setSlot(field)}
               >
-                {field === null ? 'Key icon' : pairLabel(field, button?.action?.type)}
+                {field === null ? 'Default icon' : pairLabel(field, button?.action?.type)}
               </button>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="icon-slot-only">Default icon</p>
+        ))}
 
       {tab === 'icon' && (
         // Keyed by slot: the picker's saving state belongs to one icon.

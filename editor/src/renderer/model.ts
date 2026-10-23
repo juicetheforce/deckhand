@@ -10,7 +10,7 @@ import { defaultIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
-import { BUILTIN_PREFIX, builtinRef, pairIconFields } from '../shared/icons.js';
+import { BUILTIN_PREFIX, builtinRef, keyStates } from '../shared/icons.js';
 import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
@@ -599,46 +599,20 @@ export function appIconsOf(apps: AppListing[] | null | undefined): AppIcons {
 export function faceIcon(button: ButtonDef | undefined, latched = false, appIcons: AppIcons = {}): string | null {
   if (!button) return null;
   const action = button.action;
-  // A state pair's own icon comes first on the deck (src/deck.ts); the grid
-  // shows the resting half's — except a toggle, whose state the daemon reports
-  // per key, so the grid can show the half the deck is really showing.
-  const toggleIcon = action?.type === 'toggle' ? (latched ? action.iconOn : action.iconOff) : undefined;
-  const resting = action === undefined ? undefined : action.type === 'toggle' ? toggleIcon : action[RESTING_ICON[action.type] ?? ''];
-  if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
+  // The grid has no live state, so a key with states shows its Default icon
+  // (src/state-icons.ts) — except a toggle, whose state the daemon reports
+  // per key: held down, it shows its active icon, as the deck does.
+  if (action?.type === 'toggle' && latched && typeof action.iconActive === 'string' && action.iconActive !== '') return action.iconActive;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
   // An app key draws its app's icon, as the daemon resolved it; the built-in only when it has none.
   const appIcon = action?.type === 'app' && typeof action.app === 'string' ? appIcons[action.app] : undefined;
   if (appIcon) return appIcon;
-  const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : { latched });
+  // The built-in for the state the key is in: its default state, having no live one.
+  const state = action?.type === 'media.info' ? { idle: true } : action?.type === 'toggle' ? { latched } : (keyStates(action)?.defaultState ?? {});
+  const name = defaultIconFor(action, state);
   return name === null ? null : builtinRef(name);
 }
-
-/**
- * The state icon the grid shows for each state pair, which has no state in
- * the editor: the resting half — unmuted, paused, off; an OBS source shown
- * and a virtual deck on, as the built-in pair's plain face is. A toggle's is
- * the deck's own state.
- */
-const RESTING_ICON: Record<string, string> = {
-  'media.control': 'iconPaused',
-  'audio.micMute': 'iconUnmuted',
-  'audio.mute': 'iconUnmuted',
-  'obs.mute': 'iconUnmuted',
-  'obs.stream': 'iconOff',
-  'obs.record': 'iconOff',
-  'obs.recordPause': 'iconOff',
-  'obs.scene': 'iconOff',
-  'obs.source': 'iconOn',
-  'discord.mute': 'iconUnmuted',
-  'discord.deafen': 'iconOff',
-  'discord.inputMode': 'iconOff',
-  'vts.model': 'iconOff',
-  'vts.expression': 'iconOff',
-  'sound.play': 'iconOff',
-  // On, as the grid draws its built-in: the editor does not know it is off.
-  'virtual.power': 'iconOn',
-};
 
 /**
  * The keys this deck is holding down right now, from the daemon's status.
@@ -687,9 +661,9 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   command: ['command'],
   // With its release action; see isPressRelease.
   keyHold: ['keys', 'state'],
-  // The toggle: the combo, and the icon pair the picker sets (shared/icons.ts
+  // The toggle: the combo, and its held-down icon the picker sets (shared/icons.ts
   // pairIconFields). `labelOn`/`labelOff` and the backgrounds stay hand-edited.
-  toggle: ['keys', 'iconOn', 'iconOff'],
+  toggle: ['keys', 'iconActive'],
   // Each step is checked on its own (MultiForm.tsx); one it cannot edit is shown read-only.
   multi: ['steps'],
   page: ['to', 'back'],
@@ -702,32 +676,32 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   app: ['app'],
   brightness: ['delta', 'value', 'showLevel'],
   'audio.volume': ['delta', 'showLevel'],
-  'audio.micMute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
-  'audio.mute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
-  'media.control': ['method', 'iconPlaying', 'iconPaused'],
+  'audio.micMute': ['iconActive', 'labelMuted', 'labelUnmuted'],
+  'audio.mute': ['iconActive', 'labelMuted', 'labelUnmuted'],
+  'media.control': ['method', 'iconActive'],
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
   // By its key under "decks" (inspector/SystemForms.tsx).
-  'virtual.power': ['deck', 'iconOn', 'iconOff'],
+  'virtual.power': ['deck', 'iconActive'],
   // `match` / `matches` are hand-edited config only: a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
   'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
   // The soundboard (inspector/SoundForms.tsx): the output as Output device stores it, node and label.
-  'sound.play': ['file', 'node', 'label', 'volume', 'mode', 'iconOn', 'iconOff'],
+  'sound.play': ['file', 'node', 'label', 'volume', 'mode', 'iconActive'],
   'sound.stopAll': [],
-  // With an icon of the person's own for each state (shared/icons.ts pairIconFields).
-  'obs.stream': ['iconOn', 'iconOff'],
-  'obs.record': ['iconOn', 'iconOff'],
-  'obs.recordPause': ['iconOn', 'iconOff'],
+  // With an icon of the person's own for their active state (shared/icons.ts KEY_STATES).
+  'obs.stream': ['iconActive'],
+  'obs.record': ['iconActive'],
+  'obs.recordPause': ['iconActive'],
   // Picked from OBS's own lists, by name (inspector/ObsForms.tsx).
-  'obs.scene': ['scene', 'iconOn', 'iconOff'],
-  'obs.mute': ['input', 'iconMuted', 'iconUnmuted'],
-  'obs.source': ['scene', 'source', 'iconOn', 'iconOff'],
+  'obs.scene': ['scene', 'iconActive'],
+  'obs.mute': ['input', 'iconActive'],
+  'obs.source': ['scene', 'source', 'iconActive'],
   // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
-  'vts.model': ['model', 'modelName', 'iconOn', 'iconOff'],
-  'vts.expression': ['model', 'expression', 'modelName', 'expressionName', 'iconOn', 'iconOff'],
+  'vts.model': ['model', 'modelName', 'iconActive'],
+  'vts.expression': ['model', 'expression', 'modelName', 'expressionName', 'iconActive'],
   // Written in the form (inspector/TwitchForms.tsx).
   'twitch.chat': ['message'],
   'twitch.marker': ['description'],
@@ -735,10 +709,10 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   // The category picked from Twitch's search, by ID; its name kept to show.
   'twitch.streamInfo': ['title', 'category', 'categoryName'],
   // Nothing else to set: what they act on is Discord itself.
-  // Mute, Deafen and Input mode: an icon of the person's own for each state (shared/icons.ts pairIconFields).
-  'discord.mute': ['iconMuted', 'iconUnmuted'],
-  'discord.deafen': ['iconOn', 'iconOff'],
-  'discord.inputMode': ['iconOn', 'iconOff'],
+  // Mute, Deafen and Input mode: an icon of the person's own for their active state (shared/icons.ts KEY_STATES).
+  'discord.mute': ['iconActive'],
+  'discord.deafen': ['iconActive'],
+  'discord.inputMode': ['iconActive'],
   'discord.leave': [],
   // Picked from Discord's own lists, by ID; the names kept to show (inspector/DiscordForms.tsx).
   'discord.join': ['guild', 'channel', 'guildName', 'channelName'],

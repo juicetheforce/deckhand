@@ -519,7 +519,7 @@ export class DeckSession implements DeckHandle {
     if (!this.previews.has(index) && this.failures.has(this.serial, this.profileOf(), this.page, index)) display.failed = true;
 
     // The action's built-in default, in this order: an icon
-    // the action chose (iconMuted, album art) wins, then the key's own icon;
+    // the action chose (its active state's icon, album art) wins, then the key's own icon;
     // `icon: null` means deliberately none, so only an *absent* icon gets a
     // default; and a key with no action gets none — it stays blank. An
     // action's own file (an app's icon) comes before its built-in.

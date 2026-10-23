@@ -213,7 +213,7 @@ const loadsSent = () => fake.requests.filter((r) => r.type === 'ModelLoadRequest
 check('a Model key of the loaded model is lit', defaultIconFor(MODEL_AKARI, iconStateOf(MODEL_AKARI)) === 'vts-model-active');
 check('one of another model is not', defaultIconFor(MODEL_HIYORI, iconStateOf(MODEL_HIYORI)) === 'vts-model');
 // Own icons for each state (src/actions/state-icon.ts).
-check('a Model key with its own icons: "while loaded" for the loaded model, "while not loaded" for another', (await describeAction({}, { ...MODEL_AKARI, iconOn: '~/on.png', iconOff: '~/off.png' }))?.icon === '~/on.png' && (await describeAction({}, { ...MODEL_HIYORI, iconOn: '~/on.png', iconOff: '~/off.png' }))?.icon === '~/off.png');
+check('a Model key\'s own active icon while its model is loaded, nothing of its own for another (not loaded is its default)', (await describeAction({}, { ...MODEL_AKARI, iconActive: '~/on.png' }))?.icon === '~/on.png' && (await describeAction({}, { ...MODEL_HIYORI, iconActive: '~/on.png' })) === null);
 const loadsBefore = loadsSent();
 check('loading the model already loaded sends nothing — VTS would reload it, dropping the avatar', (await settle(vts.loadModel('m1', {}))) === 'already' && loadsSent() === loadsBefore);
 fake.loadDelayMs = 600;
@@ -253,7 +253,7 @@ vts.setWanted(true, true);
 check('an expression key comes into view: the state is asked, once', (await until(() => vts.cachedState().expressionsModel === 'm1')) && stateAsks() === 1);
 check('one already on in VTS is drawn on', lit(CRY_EXPR));
 check('one off is drawn off', drawnOff(HEART_EXPR));
-check('an Expression key with its own icons: its on icon while on, its off icon while off', (await describeAction({}, { ...CRY_EXPR, iconOn: '~/on.png', iconOff: '~/off.png' }))?.icon === '~/on.png' && (await describeAction({}, { ...HEART_EXPR, iconOn: '~/on.png' })) === null);
+check('an Expression key\'s own active icon while on, nothing of its own while off', (await describeAction({}, { ...CRY_EXPR, iconActive: '~/on.png' }))?.icon === '~/on.png' && (await describeAction({}, { ...HEART_EXPR, iconActive: '~/on.png' })) === null);
 vts.setWanted(true, true);
 await sleep(100);
 check('shown again: not asked again', stateAsks() === 1);

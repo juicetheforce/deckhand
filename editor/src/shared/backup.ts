@@ -8,7 +8,7 @@
  * app, so they are listed but never bundled.
  */
 
-import { PAIR_ICON_FIELDS } from './icons.js';
+import { LEGACY_STATE_ICON_FIELDS, PAIR_ICON_FIELDS } from './icons.js';
 
 export const BUNDLE_FORMAT = 'deckhand-export';
 /** Raised when a bundle changes in a way an older import could misread. */
@@ -17,12 +17,13 @@ export const MANIFEST_ENTRY = 'deckhand-export.json';
 export const CONFIG_ENTRY = 'config.json';
 
 /**
- * Every config field that holds an icon: a key's own `icon`, and the state
- * pairs actions keep. Built from PAIR_ICON_FIELDS so a new pair is exported
- * and imported without anyone remembering this list. An export collects these
- * wherever they appear, not only where the editor shows them.
+ * Every config field that holds an icon: a key's own `icon`, its active
+ * state's (PAIR_ICON_FIELDS), and the fields of the old shape, one per state
+ * (src/state-icons.ts) — a bundle made before the change still carries its
+ * files, and the import's config is migrated when it is opened. An export
+ * collects these wherever they appear, not only where the editor shows them.
  */
-export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS] as const;
+export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS, ...LEGACY_STATE_ICON_FIELDS] as const;
 
 /** One icon path, exactly as the config writes it. */
 export interface BundledIcon {

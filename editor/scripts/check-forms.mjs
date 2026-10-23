@@ -177,7 +177,7 @@ if (r && !r.error) {
       next: { type: 'media.control', method: 'next' },
       pairShownForNext: false,
       back: { type: 'media.control' },
-      pairShownForPlayPause: ['While playing', 'While paused'],
+      pairShownForPlayPause: ['Default icon', 'While playing'],
     });
   });
   check('Mic mute: the labels write labelMuted/labelUnmuted; "Choose…" opens the Icon tab on that state', () => {
@@ -185,33 +185,36 @@ if (r && !r.error) {
     assert.deepEqual(r.slotOpened, { tab: 'Icon', slot: 'While muted' });
   });
   check('a state icon chosen from Built-in is written on the action by name — the key icon untouched — and put on the deck first, without the action', () => {
+    const labels = { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' };
     assert.deepEqual(r.micIcons, {
-      afterMuted: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconMuted: 'builtin:speaker-muted' } },
-      afterUnmuted: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconMuted: 'builtin:speaker-muted', iconUnmuted: 'builtin:headset' } },
-      gridShowsUnmuted: true,
-      formSays: { iconMuted: 'Built-in: speaker-muted', iconUnmuted: 'Built-in: headset' },
-      keySlotCurrent: [],
-      cleared: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconUnmuted: 'builtin:headset' } },
+      afterMuted: { action: { ...labels, iconActive: 'builtin:speaker-muted' } },
+      afterDefault: { action: { ...labels, iconActive: 'builtin:speaker-muted' }, icon: 'builtin:headset' },
+      gridShowsDefault: true,
+      slotNames: ['Default icon', 'While muted'],
+      activeSlotCurrent: ['speaker-muted'],
+      formSays: { default: 'Built-in: headset', iconActive: 'Built-in: speaker-muted' },
+      cleared: { action: labels, icon: 'builtin:headset' },
+      activeUnsetSays: 'the default icon, unchanged (Built-in: headset)',
     });
     const muted = previewed.find((p) => p.index === 4 && p.button.icon === 'builtin:speaker-muted');
     assert.ok(muted, `no preview of the muted icon on key 4: ${JSON.stringify(previewed)}`);
     assert.equal(muted.button.action, undefined, 'previewed with the action, which would draw the current state instead');
   });
-  check("Toggle: both state icons are chosen through the Icon tab's slots and saved on the action", () => {
+  check("Toggle: its Default icon and its held-down icon, chosen through the Icon tab's two slots", () => {
     assert.deepEqual(r.toggleIcons, {
-      toggleSlots: ['Key icon', 'While held down', 'While up'],
-      toggleOn: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset' },
-      toggleBoth: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' },
+      toggleSlots: ['Default icon', 'While held down'],
+      toggleOn: { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' },
+      toggleBoth: { action: { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' }, icon: 'builtin:mic' },
     });
   });
-  check("OBS: the Stream key's icon for each state is chosen through the Icon tab's slots, named for its states; the grid shows the resting half", () => {
+  check("OBS: the Stream key's Default icon and its live icon, in the Icon tab's two slots; the grid shows the Default icon", () => {
     assert.deepEqual(r.obsIcons, {
-      obsRowsOnKeyTab: ['While live', 'While off'],
-      obsSlots: ['Key icon', 'While live', 'While off'],
-      obsLive: { type: 'obs.stream', iconOn: 'builtin:headset' },
+      obsRowsOnKeyTab: ['Default icon', 'While live'],
+      obsSlots: ['Default icon', 'While live'],
+      obsLive: { type: 'obs.stream', iconActive: 'builtin:headset' },
       obsGridResting: true,
       live: 'Built-in: headset',
-      off: 'default (obs-stream)',
+      byDefault: 'built-in (obs-stream)',
     });
   });
   check('Virtual deck on/off: lists the virtual decks by name, writes the one picked; no warning on another deck; an icon of its own for on and off', () => {
@@ -219,8 +222,8 @@ if (r && !r.error) {
       listed: ['Side panel'],
       saved: { type: 'virtual.power', deck: 'GRA-6e4e' },
       selfWarning: false,
-      powerRows: ['While on', 'While off'],
-      powerSlots: ['Key icon', 'While on', 'While off'],
+      powerRows: ['Default icon', 'While off'],
+      powerSlots: ['Default icon', 'While off'],
     });
   });
   check("Play sound's picker: the icon picker's browsing over sounds only; ▶ plays one first through the daemon, ■ stops it, and choosing writes its path", () => {
@@ -248,12 +251,10 @@ if (r && !r.error) {
   });
   check("every pair icon field gets past main's guard (only the key's action may refuse one); an unlisted field does not", () => {
     assert.deepEqual(r.pairGuard, {
-      iconMuted: 'refused by the action',
-      iconUnmuted: 'refused by the action',
-      iconPlaying: 'refused by the action',
-      iconPaused: 'refused by the action',
-      iconOn: 'ok',
-      iconOff: 'ok',
+      iconActive: 'ok',
+      iconOn: 'not allowed',
+      iconOff: 'not allowed',
+      iconMuted: 'not allowed',
       iconBogus: 'not allowed',
     });
   });
@@ -375,8 +376,8 @@ if (r && !r.error) {
       afterDelay: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] },
     });
   });
-  check("a mute key with its own icon says each state falls back to it, and why it stops swapping", () => {
-    assert.deepEqual(r.ownIcon, { iconMuted: "the key's own icon (~/own.png)", iconUnmuted: "the key's own icon (~/own.png)", note: true });
+  check('a mute key with its own Default icon and no muted icon says it stays the same while muted: no switching, the person\'s call', () => {
+    assert.deepEqual(r.ownIcon, { default: '~/own.png', iconActive: 'the default icon, unchanged (~/own.png)' });
   });
 }
 
@@ -388,7 +389,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     1: { label: 'Vol', icon: 'builtin:headset', action: { type: 'audio.volume', delta: -10, showLevel: true } },
     2: { action: { type: 'brightness', value: 30 } },
     3: { action: { type: 'media.control' } },
-    4: { action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live', iconUnmuted: 'builtin:headset' } },
+    4: { icon: 'builtin:headset', action: { type: 'audio.micMute', labelMuted: 'MUTED', labelUnmuted: 'live' } },
     5: { action: { type: 'media.info', show: 'title', showArt: false, pressAction: 'none', idleLabel: 'Quiet' } },
     6: BUTTONS[6],
     7: BUTTONS[7],
@@ -407,8 +408,8 @@ check('the saved file holds exactly what the forms wrote', () => {
     19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] } },
     22: { action: { type: 'sound.play', file: '~/Music/horn.mp3', volume: 60 } },
     23: { action: { type: 'virtual.power', deck: 'GRA-6e4e' } },
-    30: { action: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' } },
-    31: { action: { type: 'obs.stream', iconOn: 'builtin:headset' } },
+    30: { action: { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' }, icon: 'builtin:mic' },
+    31: { action: { type: 'obs.stream', iconActive: 'builtin:headset' } },
   };
   assert.deepEqual(saved, expected);
 });

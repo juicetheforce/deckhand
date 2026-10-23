@@ -141,6 +141,8 @@ await check('removeAction ("Clear hotkey") keeps icon and label', async () => {
 await check('removeAction on a key with only an action leaves an empty slot, not {}', async () => {
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);
+  // Key 2 has a Default icon too: take it off first, leaving only its action.
+  store.apply({ kind: 'setIcon', at: at(2), icon: { kind: 'default' } });
   store.apply({ kind: 'removeAction', at: at(2) });
   await store.flush();
   assert.equal(await fs.readFile(file, 'utf8'), expected((c) => delete xlMain(c)['2']));
@@ -214,26 +216,70 @@ await check('assignAction (a library drop) replaces the action and clears icon, 
   store.close();
 });
 
-await check('setActionIcon writes one icon of a state pair on the action — a built-in by name, a file as ~/ — and default removes it; refused where the action has no such pair', async () => {
+await check("setActionIcon writes a key's active state icon on the action — a built-in by name, a file as ~/ — and default removes it; refused where the action has no states", async () => {
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);
   const action = (i: number) => store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons[String(i)]?.action;
   assert.equal(store.apply({ kind: 'assignAction', at: at(30), action: { type: 'audio.micMute' } }).ok, true);
-  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconMuted', icon: { kind: 'file', path: 'builtin:mic-muted' } }).ok, true);
-  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconUnmuted', icon: { kind: 'file', path: `${HOME}/Pictures/on.png` } }).ok, true);
-  assert.deepEqual(action(30), { type: 'audio.micMute', iconMuted: 'builtin:mic-muted', iconUnmuted: '~/Pictures/on.png' });
-  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconMuted', icon: { kind: 'default' } }).ok, true);
-  assert.deepEqual(action(30), { type: 'audio.micMute', iconUnmuted: '~/Pictures/on.png' });
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconActive', icon: { kind: 'file', path: 'builtin:mic-muted' } }).ok, true);
+  assert.deepEqual(action(30), { type: 'audio.micMute', iconActive: 'builtin:mic-muted' });
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconActive', icon: { kind: 'file', path: `${HOME}/Pictures/on.png` } }).ok, true);
+  assert.deepEqual(action(30), { type: 'audio.micMute', iconActive: '~/Pictures/on.png' });
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), field: 'iconActive', icon: { kind: 'default' } }).ok, true);
+  assert.deepEqual(action(30), { type: 'audio.micMute' });
   for (const refused of [
-    { field: 'iconPlaying', icon: { kind: 'file', path: 'builtin:play' } },
-    { field: 'iconMuted', icon: { kind: 'none' } },
-    { field: 'iconMuted', icon: { kind: 'file', path: 'builtin:nope' } },
+    { field: 'iconActive', icon: { kind: 'none' } },
+    { field: 'iconActive', icon: { kind: 'file', path: 'builtin:nope' } },
   ] as const) {
     assert.equal(store.apply({ kind: 'setActionIcon', at: at(30), ...refused }).ok, false, JSON.stringify(refused));
   }
   assert.equal(store.apply({ kind: 'assignAction', at: at(31), action: { type: 'media.control', method: 'next' } }).ok, true);
-  assert.equal(store.apply({ kind: 'setActionIcon', at: at(31), field: 'iconPaused', icon: { kind: 'file', path: 'builtin:stop' } }).ok, false, 'next has no play/pause pair');
+  assert.equal(store.apply({ kind: 'setActionIcon', at: at(31), field: 'iconActive', icon: { kind: 'file', path: 'builtin:stop' } }).ok, false, 'next has one face');
   store.close();
+});
+
+await check('icons in the old shape — one field per state — are moved to the Default icon and the active icon when the editor opens config.json, drawing what they drew, and saved', async () => {
+  const old = JSON.parse(EXAMPLE) as { profiles: { default: { layouts: Record<string, { pages: { main: { buttons: Record<string, unknown> } } }> } } };
+  const buttons = old.profiles.default.layouts[XL.serial].pages.main.buttons;
+  // Both states set: the resting one becomes the default, the active one stays active.
+  buttons['20'] = { action: { type: 'audio.micMute', iconMuted: '~/m.png', iconUnmuted: '~/u.png' } };
+  // Only the resting one, and the key's own icon (which showed while muted): own → active.
+  buttons['21'] = { icon: '~/own.png', action: { type: 'audio.mute', iconUnmuted: '~/u.png' } };
+  // Only the active one: nothing moves but its field.
+  buttons['22'] = { action: { type: 'toggle', keys: 'shift', iconOn: '~/down.png' } };
+  // Play/pause; and next, which has one face, left alone.
+  buttons['23'] = { action: { type: 'media.control', iconPlaying: '~/pl.png', iconPaused: '~/pa.png' } };
+  buttons['24'] = { action: { type: 'media.control', method: 'next', iconPlaying: '~/pl.png' } };
+  // v0.10.0's builds: Input mode's iconOn was voice activity, now its default; Stream's iconOn was live.
+  buttons['25'] = { action: { type: 'discord.inputMode', iconOn: '~/va.png', iconOff: '~/ptt.png' } };
+  buttons['26'] = { action: { type: 'obs.stream', iconOn: '~/live.png' } };
+  // Both states had icons of their own, so the key's own never showed: dropped.
+  buttons['27'] = { icon: '~/never.png', action: { type: 'obs.scene', scene: 'A', iconOn: '~/air.png', iconOff: '~/off.png' } };
+  // In the editor's own format, so nothing but the migration has to be saved.
+  const file = await configFile(JSON.stringify(old, null, 2) + '\n');
+  const store = await openStore(file);
+  const key = (i: number) => store.state().config.profiles.default.layouts[XL.serial].pages.main.buttons[String(i)];
+  assert.deepEqual(key(20), { icon: '~/u.png', action: { type: 'audio.micMute', iconActive: '~/m.png' } });
+  assert.deepEqual(key(21), { icon: '~/u.png', action: { type: 'audio.mute', iconActive: '~/own.png' } });
+  assert.deepEqual(key(22), { action: { type: 'toggle', keys: 'shift', iconActive: '~/down.png' } });
+  assert.deepEqual(key(23), { icon: '~/pa.png', action: { type: 'media.control', iconActive: '~/pl.png' } });
+  assert.deepEqual(key(24), { action: { type: 'media.control', method: 'next', iconPlaying: '~/pl.png' } }, 'a one-face key is left as it is');
+  assert.deepEqual(key(25), { icon: '~/va.png', action: { type: 'discord.inputMode', iconActive: '~/ptt.png' } });
+  assert.deepEqual(key(26), { action: { type: 'obs.stream', iconActive: '~/live.png' } });
+  assert.deepEqual(key(27), { icon: '~/off.png', action: { type: 'obs.scene', scene: 'A', iconActive: '~/air.png' } });
+  // Saved, and saved once: opening the saved file again changes nothing.
+  let saved: string | null = null;
+  for (let i = 0; i < 100 && saved === null; i++) {
+    const text = await fs.readFile(file, 'utf8');
+    // The example has iconActive already: the old fields gone is what says it was saved.
+    if (!text.includes('"iconUnmuted"')) saved = text;
+    else await sleep(20);
+  }
+  assert.ok(saved && !/"icon(Muted|Unmuted|Paused|Off)"/.test(saved) && saved.includes('"iconPlaying": "~/pl.png"'), 'the file was not migrated on disk');
+  store.close();
+  const again = await openStore(file);
+  assert.equal(again.state().dirty, false, 'a migrated file migrated again');
+  again.close();
 });
 
 await check('setPressRelease writes keyHold down and up as a pair, keeping icon and label; null removes both; an empty key is refused', async () => {

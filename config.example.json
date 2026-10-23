@@ -47,10 +47,10 @@
                   }
                 },
                 "2": {
+                  "icon": "~/Pictures/deck-icons/mic-on.png",
                   "action": {
                     "type": "audio.micMute",
-                    "iconMuted": "~/Pictures/deck-icons/mic-off.png",
-                    "iconUnmuted": "~/Pictures/deck-icons/mic-on.png",
+                    "iconActive": "~/Pictures/deck-icons/mic-off.png",
                     "labelMuted": "Muted",
                     "labelUnmuted": "Mic"
                   }
@@ -73,11 +73,11 @@
                   }
                 },
                 "7": {
+                  "icon": "~/Pictures/deck-icons/play.png",
                   "action": {
                     "type": "media.control",
                     "method": "playpause",
-                    "iconPlaying": "~/Pictures/deck-icons/pause.png",
-                    "iconPaused": "~/Pictures/deck-icons/play.png"
+                    "iconActive": "~/Pictures/deck-icons/pause.png"
                   }
                 },
                 "8": {

@@ -14,7 +14,7 @@ const METHODS = [
 
 type Method = (typeof METHODS)[number]['value'];
 
-export function MediaControlForm({ at, button, disabled, run, onChooseIcon }: FormProps & { onChooseIcon?: (field: PairIconField) => void }) {
+export function MediaControlForm({ at, button, disabled, run, onChooseIcon }: FormProps & { onChooseIcon?: (field: PairIconField | null) => void }) {
   const action = actionOf('media.control', button);
   const raw = String(action?.method ?? 'playpause').toLowerCase();
   const method = (raw === 'prev' ? 'previous' : raw) as Method;

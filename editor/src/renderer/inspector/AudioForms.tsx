@@ -34,7 +34,7 @@ export function VolumeForm({ at, button, disabled, run }: FormProps) {
 }
 
 /** audio.micMute and audio.mute: the same settings; mic mute also turns the key red while muted. */
-export function MuteForm({ type, at, button, disabled, run, onChooseIcon }: FormProps & { type: 'audio.micMute' | 'audio.mute'; onChooseIcon?: (field: PairIconField) => void }) {
+export function MuteForm({ type, at, button, disabled, run, onChooseIcon }: FormProps & { type: 'audio.micMute' | 'audio.mute'; onChooseIcon?: (field: PairIconField | null) => void }) {
   const action = actionOf(type, button);
   const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction(type, button, patch) });
   const text = (field: 'labelMuted' | 'labelUnmuted') => (typeof action?.[field] === 'string' ? (action[field] as string) : '');

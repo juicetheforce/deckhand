@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { ActionDef, Config } from '../../src/types.js';
+import type { ActionDef, ButtonDef, Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
@@ -494,21 +494,19 @@ await check('a built-in is drawn at the deck\'s built-in size and an icon file f
   assert.equal(face({ icon: '~/a.png' }, tuned).builtinScale, 0.7, 'the missing placeholder follows it too');
 });
 
-await check('every two-state key has its own icon for each state; the grid shows its resting half', async () => {
-  const { pairIconFields } = await import('../src/shared/icons.js');
-  const onOff = ['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'discord.deafen', 'discord.inputMode', 'vts.model', 'vts.expression', 'sound.play', 'virtual.power'];
-  for (const type of onOff) assert.deepEqual(pairIconFields({ type }), ['iconOn', 'iconOff'], type);
-  for (const type of ['audio.micMute', 'audio.mute', 'obs.mute', 'discord.mute']) assert.deepEqual(pairIconFields({ type }), ['iconMuted', 'iconUnmuted'], type);
-  for (const type of ['discord.join', 'discord.leave', 'sound.stopAll', 'vts.hotkey']) assert.deepEqual(pairIconFields({ type }), [], `${type} has one face`);
-  // The editor has no live state: off, unmuted, not playing — a virtual deck on, as its built-in is drawn.
-  const resting = (action: ActionDef) => faceIcon({ action });
-  assert.equal(resting({ type: 'discord.mute', iconMuted: '~/m.png', iconUnmuted: '~/u.png' }), '~/u.png');
-  assert.equal(resting({ type: 'discord.deafen', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
-  assert.equal(resting({ type: 'vts.model', model: 'm', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
-  assert.equal(resting({ type: 'sound.play', file: '~/a.wav', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
-  assert.equal(resting({ type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/on.png');
-  assert.equal(resting({ type: 'sound.play', file: '~/a.wav', iconOn: '~/on.png' }), 'builtin:sound-play', 'no resting icon of its own: the built-in');
-  for (const type of [...onOff, 'discord.mute']) assert.equal(actionEditable({ action: { type, ...Object.fromEntries(pairIconFields({ type }).map((f) => [f, '~/x.png'])) } } as never, type), true, `${type} with its icons stays editable`);
+await check('every key with states has a Default icon and an active state icon; the grid shows its Default icon', async () => {
+  const { pairIconFields, KEY_STATES } = await import('../src/shared/icons.js');
+  const withStates = ['audio.micMute', 'audio.mute', 'media.control', 'toggle', 'obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source', 'discord.mute', 'discord.deafen', 'discord.inputMode', 'vts.model', 'vts.expression', 'sound.play', 'virtual.power'];
+  for (const type of withStates) assert.deepEqual(pairIconFields({ type }), ['iconActive'], type);
+  assert.deepEqual(Object.keys(KEY_STATES).sort(), [...withStates].sort(), 'every key with states is named');
+  for (const type of ['discord.join', 'discord.leave', 'sound.stopAll', 'vts.hotkey', 'hotkey']) assert.deepEqual(pairIconFields({ type }), [], `${type} has one face`);
+  assert.deepEqual(pairIconFields({ type: 'media.control', method: 'next' }), [], 'next has one face');
+  // The editor has no live state: the Default icon — own, else the built-in for the default state.
+  const face = (button: ButtonDef) => faceIcon(button);
+  assert.equal(face({ icon: '~/d.png', action: { type: 'discord.deafen', iconActive: '~/a.png' } }), '~/d.png');
+  assert.equal(face({ action: { type: 'vts.model', model: 'm', iconActive: '~/a.png' } }), 'builtin:vts-model', 'not loaded is the default');
+  assert.equal(face({ action: { type: 'sound.play', file: '~/a.wav', iconActive: '~/a.png' } }), 'builtin:sound-play');
+  for (const type of withStates) assert.equal(actionEditable({ action: { type, iconActive: '~/x.png' } } as never, type), true, `${type} with its active icon stays editable`);
 });
 
 await check("key faces draw the action's default when no icon is set, as the deck does", () => {
@@ -528,11 +526,15 @@ await check("key faces draw the action's default when no icon is set, as the dec
   assert.equal(icon({ action: { type: 'media.info' } }), 'builtin:now-playing', 'shown as idle');
   assert.equal(icon({ action: { type: 'clock' } }), null, 'the time is the face');
   assert.equal(icon({ action: { type: 'noop' } }), null, 'a spacer');
-  // A state pair's own icon comes before the key's own, as on the deck; the grid shows the resting half.
-  assert.equal(icon({ icon: '~/own.png', action: { type: 'audio.micMute', iconUnmuted: '~/on.png', iconMuted: '~/off.png' } }), '~/on.png');
-  assert.equal(icon({ action: { type: 'audio.mute', iconMuted: 'builtin:speaker-muted' } }), 'builtin:speaker', 'only the muted half set: the resting half falls to the default');
-  assert.equal(icon({ action: { type: 'media.control', iconPaused: 'builtin:stop', iconPlaying: 'builtin:pause' } }), 'builtin:stop');
-  assert.equal(icon({ action: { type: 'media.control', method: 'next', iconPaused: 'builtin:stop' } }), 'builtin:next', 'not a play/pause key: no pair');
+
+  // A key with states shows its Default icon — its own, else the built-in for its default state.
+  assert.equal(icon({ icon: '~/own.png', action: { type: 'audio.micMute', iconActive: '~/off.png' } }), '~/own.png');
+  assert.equal(icon({ action: { type: 'audio.mute', iconActive: 'builtin:speaker-muted' } }), 'builtin:speaker', 'only the active icon set: the default is the built-in');
+  assert.equal(icon({ action: { type: 'media.control', iconActive: 'builtin:pause' } }), 'builtin:play');
+  assert.equal(icon({ action: { type: 'media.control', method: 'next' } }), 'builtin:next', 'not a play/pause key: one face');
+  assert.equal(icon({ action: { type: 'discord.inputMode' } }), 'builtin:discord-voice-activity', "Input mode's default state is voice activity");
+  assert.equal(icon({ action: { type: 'virtual.power', deck: 'GRA-6e4e' } }), 'builtin:virtual-deck-on', "Virtual deck on/off's default state is on");
+  assert.equal(icon({ action: { type: 'obs.source', scene: 'S', source: 'W' } }), 'builtin:obs-source', "Show/hide source's default state is shown");
 });
 
 await check('library rows show default icons: every action but Nothing has one, and each is a shipped built-in', () => {
@@ -1010,11 +1012,13 @@ await check("a toggle's face follows the latch: its own icons, or the built-in p
   const plain = { action: { type: 'toggle', keys: 'shift' } };
   assert.equal(faceIcon(plain, false), 'builtin:toggle-off');
   assert.equal(faceIcon(plain, true), 'builtin:toggle', 'the grid should show the half the deck is showing');
-  const own = { action: { type: 'toggle', keys: 'shift', iconOn: '~/on.png', iconOff: '~/off.png' } };
+  const own = { icon: '~/off.png', action: { type: 'toggle', keys: 'shift', iconActive: '~/on.png' } };
   assert.equal(faceIcon(own, false), '~/off.png');
   assert.equal(faceIcon(own, true), '~/on.png');
-  // A key with its own icon keeps it in both states, as everywhere else.
+  // A Default icon with no active icon: the same in both states — the person's call.
   assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, true), '~/mine.png');
+  // An active icon with no Default: the built-in up, then the active icon.
+  assert.equal(faceIcon({ action: { type: 'toggle', keys: 'shift', iconActive: '~/on.png' } }, false), 'builtin:toggle-off');
 });
 
 await check("an app key's face: the app's icon from the daemon's list, never over the key's own", () => {

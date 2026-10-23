@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
 import micIconUrl from '../../../assets/icons/mic.svg';
-import { BUILTIN_ICON_SIZE, DEFAULTS } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, DEFAULTS, shownIconSize, storedIconSize } from '../../../src/config-common.js';
 import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection } from '../shared/bridge.js';
@@ -61,7 +61,7 @@ export function SettingsWindow() {
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
   /** Built-in icons' size, also in config.json; null while it is not open. */
   const [iconSize, setIconSize] = useState<number | null>(null);
-  /** Icon size's sample while the slider moves: live, though nothing is saved until it is let go. */
+  /** Icon size's sample while the slider moves, as stored (percent of the key): live, though nothing is saved until it is let go. */
   const [iconSample, setIconSample] = useState<number | null>(null);
   const params = new URLSearchParams(window.location.search);
   const opening = params.get('section');
@@ -172,16 +172,17 @@ export function SettingsWindow() {
                 <Divider />
                 {/* Claude Design's 16a–16c: global, percent of the key, built-in icons only. */}
                 <Row title="Icon size" detail={iconSize === null ? 'Needs config.json to be open' : 'Built-in icons on keys'}>
+                  {/* Shown relative to the largest size (70% of the key as 100%), stored as a percent of the key. */}
                   <Slider
                     label="Icon size"
-                    value={iconSize ?? DEFAULTS.builtinIconSize}
-                    min={BUILTIN_ICON_SIZE.min}
-                    max={BUILTIN_ICON_SIZE.max}
-                    step={BUILTIN_ICON_SIZE.step}
+                    value={shownIconSize(iconSize ?? DEFAULTS.builtinIconSize)}
+                    min={BUILTIN_ICON_SIZE.shown.min}
+                    max={BUILTIN_ICON_SIZE.shown.max}
+                    step={BUILTIN_ICON_SIZE.shown.step}
                     unit="%"
                     disabled={iconSize === null}
-                    onPreview={setIconSample}
-                    onCommit={changeIconSize}
+                    onPreview={(shown) => setIconSample(storedIconSize(shown))}
+                    onCommit={(shown) => changeIconSize(storedIconSize(shown))}
                   >
                     <span className="sp-icon-sample" data-settings="icon-sample">
                       <img src={micIconUrl} alt="" width={Math.round((56 * sampleSize) / 100)} height={Math.round((56 * sampleSize) / 100)} />

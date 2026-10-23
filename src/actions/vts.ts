@@ -2,7 +2,12 @@ import { ActionNeeded } from '../action-error.js';
 import * as vts from '../services/vts.js';
 import { VtsError } from '../services/vts-client.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
-import { stateIcon, withStateIcon } from './state-icon.js';
+import { activeIcon } from '../state-icons.js';
+
+/** A VTS key's face with its active icon while active (src/state-icons.ts). */
+function withActive(patch: DisplayPatch | null, icon: string | undefined): DisplayPatch | null {
+  return icon === undefined ? patch : { ...(patch ?? {}), icon };
+}
 
 /**
  * VTube Studio keys, through
@@ -99,8 +104,8 @@ export const model: ActionHandler = {
 
   iconState: (params) => ({ active: vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model }),
 
-  // iconOn while its model is the one loaded, iconOff otherwise (state-icon.ts).
-  describe: async (_ctx, params) => withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model)),
+  // Active: its model loaded. Not loaded is its default.
+  describe: async (_ctx, params) => withActive(notSetUp() ? UNSET : null, activeIcon(params, vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model)),
 };
 
 /**
@@ -137,10 +142,10 @@ export const expression: ActionHandler = {
     return { active: s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true };
   },
 
-  // iconOn while the expression is on, iconOff while off (state-icon.ts).
+  // Active: the expression on. Off is its default.
   describe: async (_ctx, params) => {
     const s = vts.cachedState();
     const on = s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true;
-    return withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, on));
+    return withActive(notSetUp() ? UNSET : null, activeIcon(params, on));
   },
 };

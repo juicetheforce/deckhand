@@ -129,9 +129,10 @@ export interface Defaults {
   labelPosition?: 'top' | 'bottom' | 'center';
   iconFit?: 'cover' | 'contain';
   /**
-   * How big a built-in icon is drawn, in percent of the key, centred (30–70;
-   * 45 unless set): what Settings › General › Icon size writes. An icon file
-   * chosen for a key is never resized by it.
+   * How big a built-in icon is drawn, in percent of the key, centred (28–70;
+   * 45.5 unless set): what Settings › General › Icon size writes, though it
+   * shows it relative to its largest (70 as 100%). An icon file chosen for a
+   * key is never resized by it.
    */
   builtinIconSize?: number;
   brightness?: number;

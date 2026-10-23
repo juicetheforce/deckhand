@@ -155,11 +155,11 @@ const TOGGLE_CONFIG = {
                 2: { action: { type: 'toggle', keys: 'shift+ctrl' } },
                 3: { action: { type: 'toggle', keys: 'ctrl' } },
                 4: { action: { type: 'toggle' } },
-                // Isolate the two halves of the face. Key 5 sets its own icons,
+                // Isolate the two halves of the face. Key 5 sets its own Default and active icons,
                 // so only describe() can change it; key 6 sets neither icon and
                 // the same background both ways, so only the built-in default
                 // pair (iconState) can.
-                5: { action: { type: 'toggle', keys: 'f13', iconOn: 'builtin:toggle', iconOff: 'builtin:toggle-off' } },
+                5: { icon: 'builtin:toggle-off', action: { type: 'toggle', keys: 'f13', iconActive: 'builtin:toggle' } },
                 6: { action: { type: 'toggle', keys: 'f14', onBackground: '#101014', offBackground: '#101014' } },
               },
             },

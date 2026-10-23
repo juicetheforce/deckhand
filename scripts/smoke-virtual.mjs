@@ -324,13 +324,13 @@ console.log('Virtual deck on/off: its own icon for each state');
   const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
   const { defaultIconFor } = await import(path.join(REPO, 'dist/default-icons.js'));
   power.setKnownDecks(() => new Set(['GRA-6e4e']));
-  const key = { type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png', iconOff: '~/off.png' };
+  const key = { type: 'virtual.power', deck: 'GRA-6e4e', iconActive: '~/off.png' };
   const face = async (a) => (await registry['virtual.power'].describe({}, a))?.icon;
-  check('on: its "while on" icon', (await face(key)) === '~/on.png');
+  check('on — its default state — nothing of its own: its Default icon, or the built-in', (await face(key)) === undefined);
   power.setPower('GRA-6e4e', false);
   await power.saved();
-  check('off: its "while off" icon', (await face(key)) === '~/off.png');
-  check('off, with no icon of its own for it: the built-in faded deck', (await face({ type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png' })) === undefined && defaultIconFor(key, registry['virtual.power'].iconState(key)) === 'virtual-deck-off');
+  check('off — its active state — its active icon', (await face(key)) === '~/off.png');
+  check('off with no active icon: the built-in faded deck', (await face({ type: 'virtual.power', deck: 'GRA-6e4e' })) === undefined && defaultIconFor(key, registry['virtual.power'].iconState(key)) === 'virtual-deck-off');
   check('drawn on events only, never on the clock', registry['virtual.power'].redraw === 'events');
   check('the off state written to the scratch state directory', JSON.parse(await fs.readFile(path.join(TMP, 'state', 'virtual-off.json'), 'utf8')).off[0] === 'GRA-6e4e');
 }

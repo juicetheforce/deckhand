@@ -38,7 +38,7 @@ export interface ActionFormProps {
   listenRequest: boolean;
   onListening: () => void;
   /** Open the Icon tab on a state icon; absent for a Multi step, which has no face. */
-  onChooseIcon?: (field: PairIconField) => void;
+  onChooseIcon?: (field: PairIconField | null) => void;
   /** The deck, for Multi action's Test Run. */
   serial: string;
   canTestRun: boolean;

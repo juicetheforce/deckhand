@@ -1,3 +1,4 @@
+import { activeIcon } from '../state-icons.js';
 import { input } from '../input.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import { HOTKEY_GAP_MS, TEXT_DELAY_MS } from '../input-timing.js';
@@ -68,8 +69,8 @@ export const keyHold: ActionHandler = {
  * which is momentary and follows the finger, the daemon holds the state and
  * ignores the physical release.
  *
- *   { "type": "toggle", "keys": "shift",
- *     "iconOn": "~/icons/on.png", "iconOff": "~/icons/off.png" }
+ *   { "icon": "~/icons/off.png",
+ *     "action": { "type": "toggle", "keys": "shift", "iconActive": "~/icons/on.png" } }
  *
  * The state belongs to the deck session, not here: it owns the lifecycle, and
  * every way off a page — a page or profile change, the deck going, the helper
@@ -98,11 +99,12 @@ export const toggle: ActionHandler = {
     // The same shape as audio.micMute: an icon or label for each state is used
     // when it is set, and the background says which state it is in either way.
     if (latched) {
-      if (params.iconOn) patch.icon = String(params.iconOn);
+      // Held down is its active state (src/state-icons.ts); up is the key's own icon.
+      const icon = activeIcon(params, true);
+      if (icon) patch.icon = icon;
       if (params.labelOn) patch.label = String(params.labelOn);
       patch.background = String(params.onBackground ?? '#1d3a5a');
     } else {
-      if (params.iconOff) patch.icon = String(params.iconOff);
       if (params.labelOff) patch.label = String(params.labelOff);
       patch.background = String(params.offBackground ?? '#101014');
     }

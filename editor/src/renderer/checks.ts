@@ -2320,10 +2320,13 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
     const s = (await api.snapshot()).store;
     return s.open && !s.state.dirty ? s.state.config.profiles.default.layouts['FORMS-XL'].pages.main.buttons : null;
   };
+  /** JSON with its keys sorted: a field's place in the file is not what is checked. */
+  const canonical = (v: unknown): string =>
+    JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
   /** Wait until the saved key matches, and return what was saved either way. */
   const savedAs = async (index: number, expected: unknown) => {
-    const want = JSON.stringify(expected);
-    await until(async () => JSON.stringify((await buttons())?.[String(index)] ?? null) === want);
+    const want = canonical(expected);
+    await until(async () => canonical((await buttons())?.[String(index)] ?? null) === want);
     return (await buttons())?.[String(index)] ?? null;
   };
   const actionAs = async (index: number, expected: unknown) => {
@@ -2419,7 +2422,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => document.querySelector('.picker') !== null);
   out.slotOpened = {
     tab: document.querySelector('.inspector-tab-selected')?.textContent,
-    slot: document.querySelector('.icon-slots .segment-selected')?.textContent,
+    slot: document.querySelector('.icon-slots .inspector-tab-selected')?.textContent,
   };
   const pickerItem = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.picker-item')].find((i) => i.querySelector('.picker-name')?.textContent === name);
   const chooseBuiltin = async (name: string) => {
@@ -2428,28 +2431,32 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
     pickerItem(name)!.click();
   };
   await chooseBuiltin('speaker-muted');
-  const afterMuted = await savedAs(4, { action: { ...labels, iconMuted: 'builtin:speaker-muted' } });
-  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === 'While unmuted')!.click();
+  const afterMuted = await savedAs(4, { action: { ...labels, iconActive: 'builtin:speaker-muted' } });
+  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .icon-slot')].find((b) => b.textContent === 'Default icon')!.click();
   await sleep(100);
   await chooseBuiltin('headset');
-  const afterUnmuted = await savedAs(4, { action: { ...labels, iconMuted: 'builtin:speaker-muted', iconUnmuted: 'builtin:headset' } });
-  const gridShowsUnmuted = await until(() =>
+  const afterDefault = await savedAs(4, { icon: 'builtin:headset', action: { ...labels, iconActive: 'builtin:speaker-muted' } });
+  const gridShowsDefault = await until(() =>
     decodeURIComponent(document.querySelectorAll('.key')[4].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '').includes('path=builtin:headset'),
   );
-  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === 'Key icon')!.click();
+  [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .icon-slot')].find((b) => b.textContent === 'While muted')!.click();
   await sleep(200);
-  const keySlotCurrent = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
+  const activeSlotCurrent = [...document.querySelectorAll('.picker-item-current .picker-name')].map((n) => n.textContent);
+  const slotNames = [...document.querySelectorAll('.icon-slots .icon-slot')].map((b) => b.textContent);
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
-  await until(() => pairValue('iconMuted') !== null);
-  const formSays = { iconMuted: pairValue('iconMuted'), iconUnmuted: pairValue('iconUnmuted') };
-  // Clearing a state icon removes only that one.
+  await until(() => pairValue('iconActive') !== null);
+  const formSays = { default: pairValue('default'), iconActive: pairValue('iconActive') };
+  // Clearing the active icon removes only that one.
   [...document.querySelectorAll<HTMLButtonElement>('.pair-icons .form-row')].find((row) => row.textContent?.includes('While muted'))!.querySelector('button')!.click();
   await until(() => document.querySelector('.picker') !== null);
   const clear = [...document.querySelectorAll<HTMLButtonElement>('.picker-actions button')].find((b) => b.textContent === 'Clear icon');
   clear?.click();
-  const cleared = await savedAs(4, { action: { ...labels, iconUnmuted: 'builtin:headset' } });
-  out.micIcons = { afterMuted, afterUnmuted, gridShowsUnmuted, formSays, keySlotCurrent, cleared };
+  const cleared = await savedAs(4, { icon: 'builtin:headset', action: labels });
+  await until(() => pairValue('iconActive') !== null || document.querySelector('.picker') !== null);
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  await until(() => pairValue('iconActive') !== null);
+  const activeUnsetSays = pairValue('iconActive');
+  out.micIcons = { afterMuted, afterDefault, gridShowsDefault, slotNames, activeSlotCurrent, formSays, cleared, activeUnsetSays };
 
   // A latching toggle's two icons, chosen through the Icon tab's slots.
   await selectKey(30);
@@ -2457,27 +2464,27 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
   if (!(await until(() => document.querySelector('.icon-slots') !== null))) throw new Error('toggle: the Icon tab has no slots');
   const toggleSlot = (label: string) => {
-    const found = [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .segment')].find((b) => b.textContent === label);
+    const found = [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .icon-slot')].find((b) => b.textContent === label);
     if (!found) throw new Error(`toggle: no "${label}" slot`);
     return found;
   };
-  const toggleSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  const toggleSlots = [...document.querySelectorAll('.icon-slots .icon-slot')].map((b) => b.textContent);
   toggleSlot('While held down').click();
   await sleep(100);
   await chooseBuiltin('headset');
-  const toggleOn = await actionAs(30, { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset' });
-  toggleSlot('While up').click();
+  const toggleOn = await actionAs(30, { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' });
+  toggleSlot('Default icon').click();
   await sleep(100);
   await chooseBuiltin('mic');
-  const toggleBoth = await actionAs(30, { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' });
+  const toggleBoth = await savedAs(30, { icon: 'builtin:mic', action: { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' } });
   out.toggleIcons = { toggleSlots, toggleOn, toggleBoth };
   // Every pair field on the list gets past main's guard; only the key's action
   // may refuse one it does not have. A field not on the list is refused by main.
   const at = { profile: 'default', serial: 'FORMS-XL', page: 'main', key: '30' };
-  const again = { iconOn: 'builtin:headset', iconOff: 'builtin:mic' } as Record<string, string>;
   const pairGuard: Record<string, string> = {};
-  for (const field of [...PAIR_ICON_FIELDS, 'iconBogus']) {
-    const result = await api.commitIcon(at, { kind: 'file', path: again[field] ?? 'builtin:headset' }, null, field as PairIconField);
+  // The old shape's fields are not state icon fields any more: main refuses them.
+  for (const field of [...PAIR_ICON_FIELDS, 'iconOn', 'iconOff', 'iconMuted', 'iconBogus']) {
+    const result = await api.commitIcon(at, { kind: 'file', path: 'builtin:headset' }, null, field as PairIconField);
     pairGuard[field] = result.ok ? 'ok' : result.error === 'not allowed' ? 'not allowed' : 'refused by the action';
   }
   out.pairGuard = pairGuard;
@@ -2489,17 +2496,17 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const obsRowsOnKeyTab = pairRows();
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
   if (!(await until(() => document.querySelector('.icon-slots') !== null))) throw new Error('obs: the Icon tab has no slots');
-  const obsSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  const obsSlots = [...document.querySelectorAll('.icon-slots .icon-slot')].map((b) => b.textContent);
   toggleSlot('While live').click();
   await sleep(100);
   await chooseBuiltin('headset');
-  const obsLive = await actionAs(31, { type: 'obs.stream', iconOn: 'builtin:headset' });
-  // The grid has no OBS state: it shows the resting half, off — the built-in, since no off icon is set.
+  const obsLive = await actionAs(31, { type: 'obs.stream', iconActive: 'builtin:headset' });
+  // The grid has no OBS state: it shows the Default icon — the built-in off face, since none is set.
   const gridIcon = () => decodeURIComponent(document.querySelectorAll('.key')[31].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '');
   const obsGridResting = await until(() => gridIcon().includes('path=builtin:obs-stream') && !gridIcon().includes('obs-stream-on'));
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
-  await until(() => pairValue('iconOn') !== null);
-  out.obsIcons = { obsRowsOnKeyTab, obsSlots, obsLive, obsGridResting, live: pairValue('iconOn'), off: pairValue('iconOff') };
+  await until(() => pairValue('iconActive') !== null);
+  out.obsIcons = { obsRowsOnKeyTab, obsSlots, obsLive, obsGridResting, live: pairValue('iconActive'), byDefault: pairValue('default') };
 
   // Play sound: its picker (the icon picker's browsing, over sounds), ▶, then
   // a file, how a press behaves, its volume and its output.
@@ -2555,7 +2562,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const powerRows = pairRows();
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
   await until(() => document.querySelector('.icon-slots') !== null);
-  const powerSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  const powerSlots = [...document.querySelectorAll('.icon-slots .icon-slot')].map((b) => b.textContent);
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
   out.virtualPower = { listed, saved, selfWarning: document.querySelector('[data-virtual-power-self]') !== null, powerRows, powerSlots };
 
@@ -2910,11 +2917,10 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
 
   // A mute key with its own icon.
   await selectKey(8);
-  await until(() => pairValue('iconMuted') !== null);
+  await until(() => pairValue('iconActive') !== null);
   out.ownIcon = {
-    iconMuted: pairValue('iconMuted'),
-    iconUnmuted: pairValue('iconUnmuted'),
-    note: document.querySelector('.pair-icons')?.textContent?.includes('instead of swapping') ?? false,
+    default: pairValue('default'),
+    iconActive: pairValue('iconActive'),
   };
 
   await sleep(700); // past the autosave

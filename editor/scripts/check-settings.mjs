@@ -295,7 +295,7 @@ await inPage(editor, 'settings', key('keydown', 'ArrowRight'));
 await sleep(900);
 r.iconSizeWhileHeld = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
 await inPage(editor, 'settings', key('keyup', 'ArrowRight'));
-r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 55);
+r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 52.5);
 await inPage(editor, 'settings', key('keydown', 'End'));
 await inPage(editor, 'settings', key('keyup', 'End'));
 r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 70);
@@ -306,7 +306,7 @@ await inPage(editor, 'settings', pointer('pointermove', 0.5));
 await sleep(900);
 r.iconSizeWhileDragging = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
 await inPage(editor, 'settings', pointer('pointerup', 0.5));
-r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 50);
+r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 49);
 
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
 r.resetButton = await inPage(
@@ -326,7 +326,7 @@ r.keepKeeps = JSON.stringify(await prefs()) === prefsBeforeReset && (await inPag
 await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
 await inPage(editor, 'settings', clickIn('[data-settings=confirm-reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
-r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '45';
+r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '65';
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
@@ -422,21 +422,22 @@ check('Reset to defaults is a button, without an ellipsis, and asks first: one c
   assert.equal(r.keepKeeps, true);
 });
 check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
-check('Icon size: a slider in Appearance, 30–70% in steps of 5 with nine ticks, at 45% by default, its sample a 56 px key\'s icon at 45%', () => {
-  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '45', text: '45%', min: '30', max: '70', value: '45%', ticks: 9, sample: '25', row: undefined });
+check('Icon size: a slider in Appearance, shown relative to its largest — 40–100% in steps of 5, 13 ticks, 65% by default — its sample a 56 px key\'s icon at 45.5% of it', () => {
+  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '65', text: '65%', min: '40', max: '100', value: '65%', ticks: 13, sample: '25', row: undefined });
   assert.match(r.iconSizeAtRest.row, /^Icon sizeBuilt-in icons on keys/);
 });
-check('Icon size by keyboard: the sample follows each step at once, and config.json changes only when the key is let go; End is the top', () => {
-  assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '55', value: '55%', sample: '31' }, onDisk: 'absent' });
+check('Icon size by keyboard: the sample follows each step at once, and config.json changes only when the key is let go — stored as a percent of the key (75% shown: 52.5); End is the top (70)', () => {
+  // Two steps up: 75% shown, 52.5% of the key stored, a 29 px sample.
+  assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '75', value: '75%', sample: '29' }, onDisk: 'absent' });
   assert.equal(r.iconSizeKeySaved, true);
   assert.equal(r.iconSizeEnd, true);
 });
 check('Icon size by dragging: snapped to the step, the sample live, nothing saved until the pointer is let go', () => {
-  assert.equal(r.iconSizeWhileDragging.shown.now, '50');
+  assert.equal(r.iconSizeWhileDragging.shown.now, '70', 'the middle of 40–100');
   assert.equal(r.iconSizeWhileDragging.onDisk, 70);
   assert.equal(r.iconSizeDragSaved, true);
 });
-check('Reset to defaults puts Icon size back to 45%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
+check('Reset to defaults puts Icon size back to 65%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
 check('each change is saved at once; the accent reaches the editor behind it live, and the settings window too', () => {
   assert.equal(r.deckSaved, true);
   assert.equal(r.accentSaved, true);
