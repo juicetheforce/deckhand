@@ -407,8 +407,10 @@ stays blank), `null` for no icon, a path to an image file, or
 can't be drawn shows a dashed "missing" icon.
 
 **Built-in icons are drawn smaller than the key**, centred, at
-`defaults.builtinIconSize` percent of it: 45 unless set, from 30 to 70 — what
-**Settings › General › Icon size** sets, in steps of 5. It applies to every
+`defaults.builtinIconSize` percent of it: 45.5 unless set, from 28 to 70 —
+what **Settings › General › Icon size** sets. The slider shows it relative
+to the largest size, 70% of the key as 100%: from 40 to 100% in steps of 5,
+65% by default. It applies to every
 built-in — an action's own, one chosen by name, the "missing" icon — and
 never to an image file you chose, which fills the key as `iconFit` says. The
 decks and the editor redraw when the slider is let go, or when `config.json`
@@ -419,7 +421,7 @@ is saved.
 | type | what it does |
 | --- | --- |
 | `hotkey` | `keys: "ctrl+alt+3"`, or an array for a sequence. Also `holdMs`, `repeat`, `gapMs` |
-| `toggle` | `keys` — latches: one press holds the keys down, the next releases them. `iconOn` / `iconOff` |
+| `toggle` | `keys` — latches: one press holds the keys down, the next releases them. `iconActive` (held down) |
 | `keyHold` | `keys`, `state: "down"` / `"up"` — pair with `onRelease` for push-to-talk |
 | `text` | Types a literal string (US layout) |
 | `command` | `command: "sh string"` or `exec: ["bin", "arg"]`. Started in its own systemd scope, so it outlives the daemon; with `wait: true` it runs as the daemon's child for up to 15 s, and a failure marks the key |
@@ -431,43 +433,50 @@ is saved.
 | `brightness` | `value` or `delta`; `showLevel: true` shows the level |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
-| `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconOn` / `iconOff` |
+| `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconActive` (off) |
 | `audio.sink` | `node` (from `deckhand sinks`), `label` — sets the default output and moves playing streams to it. Highlights when active |
 | `audio.cycle` | `devices: [{ node, label }, …]` — steps through outputs from one key |
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
 | `audio.cycleSource` | `devices: [{ node, label }, …]` — steps through inputs from one key |
-| `audio.micMute` | Toggles the default input's mute; `iconMuted` / `iconUnmuted` |
+| `audio.micMute` | Toggles the default input's mute; `iconActive` (muted) |
 | `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level |
-| `audio.mute` | Toggles output mute; `iconMuted` / `iconUnmuted` |
-| `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconOn` (playing) / `iconOff` |
+| `audio.mute` | Toggles output mute; `iconActive` (muted) |
+| `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconActive` (playing) |
 | `sound.stopAll` | Stops every sound Deckhand is playing |
-| `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconPlaying` / `iconPaused` |
+| `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconActive` (playing; play/pause only) |
 | `media.info` | Live now-playing key, with album art via `showArt`. `maxChars` cuts the title and artist at a number of characters instead of at the key's width |
-| `obs.stream` | Goes live in OBS on a press; stops only when held for a second. Red while live, amber with broken arcs while OBS reconnects. `iconOn` (live) / `iconOff` |
-| `obs.record` | Starts and stops recording in OBS. Red while recording, amber while paused. `iconOn` (recording) / `iconOff` |
-| `obs.recordPause` | Pauses and resumes OBS's recording. `iconOn` (paused) / `iconOff` |
-| `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air. `iconOn` (on air) / `iconOff` |
-| `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`). `iconMuted` / `iconUnmuted` |
-| `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first. `iconOn` (shown) / `iconOff` (hidden) |
+| `obs.stream` | Goes live in OBS on a press; stops only when held for a second. Red while live, amber with broken arcs while OBS reconnects. `iconActive` (live) |
+| `obs.record` | Starts and stops recording in OBS. Red while recording, amber while paused. `iconActive` (recording) |
+| `obs.recordPause` | Pauses and resumes OBS's recording. `iconActive` (paused) |
+| `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air. `iconActive` (on air) |
+| `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`). `iconActive` (muted) |
+| `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first. `iconActive` (hidden) |
 | `vts.hotkey` | `model`, `hotkey` (IDs) — runs one of a model's hotkeys in VTube Studio, as set up there. Dashed while another model is loaded |
-| `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on. `iconOn` / `iconOff` |
-| `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded. `iconOn` (loaded) / `iconOff` |
+| `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on. `iconActive` (on) |
+| `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded. `iconActive` (loaded) |
 | `twitch.marker` | optional `description` (up to 140 characters) — adds a stream marker to your live stream |
 | `twitch.clip` | optional `title`, `duration` (5–60 seconds; Twitch's default is 30) — clips your live stream |
 | `twitch.chat` | `message` (up to 500 characters) — sends it to your own channel's chat, as you |
 | `twitch.streamInfo` | `title` (up to 140 characters) and/or `category` (Twitch's ID, with `categoryName` to show) — sets your channel's title and category; one left out stays as it is |
-| `discord.mute` | Mutes and unmutes your microphone in Discord. Red while muted. `iconMuted` / `iconUnmuted` |
-| `discord.deafen` | Deafens and undeafens you in Discord. Red while deafened. `iconOn` (deafened) / `iconOff` |
-| `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconOn` (voice activity) / `iconOff` (push-to-talk) |
+| `discord.mute` | Mutes and unmutes your microphone in Discord. Red while muted. `iconActive` (muted) |
+| `discord.deafen` | Deafens and undeafens you in Discord. Red while deafened. `iconActive` (deafened) |
+| `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconActive` (push-to-talk) |
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
 | `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level — the volume you hear one person at, 0–200 % |
 
-**A state's own icon** (`iconMuted`, `iconOn`, …) is drawn in that state —
-every key that shows a state has them, chosen in the editor's Icon tab; a
-state without one draws the key's own icon, or else the action's built-in
-for that state, so setting one never loses the other. A stream reconnecting
-and a recording paused always draw their built-ins.
+**A key that shows a state has two icons**: its **default icon**, the
+key's own `icon`, and one for its **active state**, the action's
+`iconActive` (muted, live, playing… — the table says which), both chosen in
+the editor's Icon tab. With neither set the built-in pair switches; with a
+default icon and no active one, that icon stays in both states; with an
+active icon and no default, the built-in default, then your active icon;
+with both, they switch. A stream reconnecting and a recording paused always
+draw their built-in warning, over any icon of yours. A config written
+before `v0.10.0`, with one field per state (`iconMuted`/`iconUnmuted`,
+`iconPlaying`/`iconPaused`, `iconOn`/`iconOff`), draws as it did: the
+daemon reads it as the new shape, and the editor saves it so when it opens
+the file.
 
 **Play sound** plays through `pw-play`, or `paplay` where that is missing
 (it comes with `pactl`). Two keys with the same file, output, volume and

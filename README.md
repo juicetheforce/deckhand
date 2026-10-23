@@ -36,7 +36,7 @@ It's one person's project, used every day.
   copied or imported; edit the file and the key updates. A key without an
   icon draws a built-in one for its action, as large as you like (Settings ›
   General › Icon size). A key that shows a state — muted, live, playing —
-  takes an icon of yours for each. A label can stack its words on more than
+  takes a default icon of yours and one for that state. A label can stack its words on more than
   one line.
 
 ## How it treats your hardware
@@ -132,10 +132,10 @@ key turns red.
   end a stream.
 - **Scenes, inputs and sources are picked from OBS's own lists**, never
   typed, so OBS needs to be running while you set those keys up.
-- **Your own icon for each state.** In the Icon tab, a Stream key has an
-  icon for while live and one for while off; Record, Pause, Scene, Mute and
-  Show/hide source keys have theirs. A state you leave alone keeps the
-  built-in icon, so your own icon never hides whether you're live.
+- **Your own icons, for each state.** In the Icon tab, a Stream key has a
+  default icon and one for while live; Record, Pause, Scene, Mute and
+  Show/hide source keys have theirs. Set only the live one and the default
+  stays the built-in, so you can always tell whether you're live.
   Reconnecting and paused always show their built-in warning.
 - **Deckhand talks to OBS only while a deck shows an OBS key.** Start OBS
   after Deckhand and the keys catch up within a minute, or at once when you
