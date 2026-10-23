@@ -765,8 +765,11 @@ secret anywhere: Deckhand never needs one, and never asks for one. Because
 the application is yours, your own account needs nothing more; anyone else
 makes their own.
 
-Deckhand asks Discord for `rpc`, `rpc.voice.read` and `rpc.voice.write`:
-the voice controls, and nothing else.
+Deckhand asks Discord for `rpc`, which Discord requires for any of this,
+and `rpc.voice.read` and `rpc.voice.write`, which name what the keys do.
+`rpc` is the broad one: it lets the application use the Discord app's local
+connection, not only its voice controls. Deckhand uses it only for what its
+keys do.
 
 **The keys.**
 
