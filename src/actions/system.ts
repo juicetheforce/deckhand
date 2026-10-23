@@ -233,7 +233,8 @@ export const brightness: ActionHandler = {
   },
 
   async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
-    return params.showLevel === true ? { label: `${ctx.deck.currentBrightness()}%` } : null;
+    // At the top of the key, never in the label's place (types.ts Display.level).
+    return params.showLevel === true ? { level: `${ctx.deck.currentBrightness()}%` } : null;
   },
 };
 

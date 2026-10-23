@@ -55,6 +55,24 @@ async function labelSvg(display: Display, size: number): Promise<Buffer> {
   return Buffer.from(svg);
 }
 
+/**
+ * A live level (Display.level): one line at the top of the key — the
+ * bottom when the label is at the top — in the label's style and size,
+ * fitted as a label line is. Never moves the label.
+ */
+async function levelSvg(display: Display, size: number): Promise<Buffer> {
+  if (!display.level) return Buffer.alloc(0);
+  const fontSize = display.labelSize;
+  const line = await fitLine(display.level, fontSize, size);
+  const baseline = display.labelPosition === 'top' ? size - 2 - Math.round(fontSize * 0.15) : fontSize + 2;
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  <style>
+    ${labelStyle(fontSize, display.labelColor)}
+  </style>
+  <text x="${size / 2}" y="${baseline}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>
+</svg>`);
+}
+
 /** The failed-key badge (src/failed-badge.ts), placed over a finished key. */
 function failedBadge(size: number): OverlayOptions {
   const { diameter, inset } = failedBadgePlacement(size);
@@ -224,6 +242,8 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 
   const svg = await labelSvg(display, size);
   if (svg.length > 0) layers.push({ input: svg, top: 0, left: 0 });
+  const level = await levelSvg(display, size);
+  if (level.length > 0) layers.push({ input: level, top: 0, left: 0 });
 
   // Last, so it is over the label as well as the icon. `failed` is part of the
   // cache key (JSON.stringify(display), above), so a marked face and a clean

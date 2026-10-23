@@ -127,6 +127,7 @@ export const userVolume: ActionHandler = {
     if (face || params.showLevel !== true) return face;
     const s = discord.cachedState();
     const level = s.connection === 'connected' ? s.users[String(params.user)]?.volume : undefined;
-    return level === undefined ? null : { label: `${Math.round(level)}%` };
+    // At the top of the key, never in the label's place (types.ts Display.level).
+    return level === undefined ? null : { level: `${Math.round(level)}%` };
   },
 };

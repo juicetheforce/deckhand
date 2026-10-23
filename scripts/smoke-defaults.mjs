@@ -311,6 +311,44 @@ console.log('keys with states: icons in the old shape migrated in memory, as the
   check('…and never writes config.json', (await fs.readFile(path.join(dir, 'config.json'), 'utf8')) === JSON.stringify(old));
 }
 
+console.log('a level never hides the label (Volume, Brightness, User volume)');
+{
+  const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
+  const ctx = { deck: { currentBrightness: () => 40 } };
+  const brightness = await registry.brightness.describe(ctx, { type: 'brightness', delta: 10, showLevel: true });
+  check('Brightness gives its level as the level, not the label', brightness?.level === '40%' && !('label' in brightness));
+  /** Rows of a key with any ink brighter than the background, as fractions of its height. */
+  const inkRows = (image, size) => {
+    const rows = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const at = (y * size + x) * 4;
+        if (image[at] > 200 && image[at + 1] > 200 && image[at + 2] > 200) {
+          rows.push(y / size);
+          break;
+        }
+      }
+    }
+    return rows;
+  };
+  for (const size of [72, 96, 211]) {
+    // The largest icon size (70% of the key), a two-line label, and a level.
+    const base = display({ icon: 'builtin:speaker', builtinIconSize: 70, label: 'Desk\nspeakers', labelSize: size === 211 ? 22 : 14 });
+    const withLevel = await renderButton({ ...base, level: '40%' }, size);
+    const without = await renderButton(base, size);
+    const labelOnly = await renderButton({ ...base, icon: undefined }, size);
+    const levelOnly = await renderButton({ ...base, icon: undefined, label: undefined, level: '40%' }, size);
+    const bottomHalf = (img) => img.subarray(Math.floor(size / 2) * size * 4);
+    check(`${size} px: the label is drawn exactly as without the level (the bottom half unchanged)`, bottomHalf(withLevel).equals(bottomHalf(without)));
+    const levelRows = inkRows(levelOnly, size);
+    const labelRows = inkRows(labelOnly, size);
+    check(`${size} px: the level sits at the top, clear of the two-line label`, levelRows.length > 0 && Math.max(...levelRows) < 0.3 && Math.min(...labelRows) > Math.max(...levelRows));
+  }
+  const topLabel = await renderButton(display({ label: 'Desk', labelPosition: 'top', level: '40%' }), 96);
+  const topRows = inkRows(topLabel, 96);
+  check('a label moved to the top: the level goes to the bottom instead, so they never overlap', Math.min(...topRows) < 0.3 && Math.max(...topRows) > 0.7);
+}
+
 console.error = originalError;
 check('the only errors logged are for the two broken built-in references',
   errors.length === 2 && errors.every((l) => /nope|not a built-in name/.test(l)));

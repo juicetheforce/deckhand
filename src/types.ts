@@ -173,6 +173,13 @@ export interface Display {
   labelColor: string;
   labelSize: number;
   labelPosition: 'top' | 'bottom' | 'center';
+  /**
+   * A live level ("40%": a volume, a brightness), when the key shows one
+   * (`showLevel`). Drawn at the top of the key — the bottom, if the label is
+   * at the top — in the label's style, **never in the label's place**: keys
+   * sharing an icon are told apart by their labels (Ryan, 2026-10-23).
+   */
+  level?: string;
   background: string;
   /** The key's last press failed: drawn with a badge over everything else. */
   failed?: boolean;

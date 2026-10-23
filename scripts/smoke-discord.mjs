@@ -203,10 +203,10 @@ check('…and its people, from subscribing to it (not you)', await until(() => d
 const joins = fake.commands.filter((x) => x.cmd === 'SELECT_VOICE_CHANNEL').length;
 await runActionOrThrow(ctx, JOIN);
 check('Join again while in it: nothing sent', fake.commands.filter((x) => x.cmd === 'SELECT_VOICE_CHANNEL').length === joins);
-check('User volume face: no level label until shown… then 100%', (await describeAction(ctx, { ...VOL, showLevel: false })) === null && (await describeAction(ctx, VOL))?.label === '100%');
+check('User volume face: no level until shown… then 100%, as the level, never the label', (await describeAction(ctx, { ...VOL, showLevel: false })) === null && (await describeAction(ctx, VOL))?.level === '100%' && (await describeAction(ctx, VOL))?.label === undefined);
 await runActionOrThrow(ctx, VOL);
 check('User volume +10: 110, only what you hear', fake.channels['c-general'].people[0].volume === 110);
-check('the level from the event: 110%', await until(async () => (await describeAction(ctx, VOL))?.label === '110%'));
+check('the level from the event: 110%', await until(async () => (await describeAction(ctx, VOL))?.level === '110%'));
 for (let i = 0; i < 12; i++) await runActionOrThrow(ctx, VOL);
 check('never past 200', fake.channels['c-general'].people[0].volume === 200);
 await runActionOrThrow(ctx, { ...VOL, delta: -250 });

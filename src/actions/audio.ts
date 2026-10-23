@@ -357,6 +357,7 @@ export const micMute: ActionHandler = {
  *
  * The key draws its default icon (`speaker`, or `volume-down` for a negative
  * delta). The level is shown only with `showLevel: true` — off by default,
+ * and at the top of the key, never in the label's place (types.ts Display.level) —
  * so a default key is not a label drawn over an icon.
  */
 export const volume: ActionHandler = {
@@ -370,7 +371,7 @@ export const volume: ActionHandler = {
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     if (params.showLevel !== true) return null;
     const level = audio.cachedState()?.defaultSinkVolume ?? null;
-    return level === null ? null : { label: `${level}%` };
+    return level === null ? null : { level: `${level}%` };
   },
 };
 
