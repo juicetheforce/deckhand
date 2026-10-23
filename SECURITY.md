@@ -154,9 +154,11 @@ no secret ships with it, and none is needed. Who it sends what to is in
 
 ## Discord
 
-Discord's tokens let a program control your voice through the Discord app:
-mute and deafen you, change your input mode, move you between voice
-channels, and change how loud you hear people. Anything that can read the
+Discord's tokens let a program use the Discord app's local connection as
+your application. That includes everything Deckhand's keys do — mute and
+deafen you, change your input mode, move you between voice channels, change
+how loud you hear people — and, since Discord requires its broad `rpc`
+permission for any of it, possibly more. Anything that can read the
 credentials file can do that, until the authorization is revoked. Whether a
 stolen token works with a Discord app on another computer has not been
 tested; treat it as if it does. Revoke it with **Remove** in Deckhand's
