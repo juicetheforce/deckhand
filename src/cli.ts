@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, StatusResult, SwitchResult, TwitchStatus, VtsList, VtsStatus } from './control/protocol.js';
+import type { AppListing, AudioList, DecksResult, DiscordStatus, StatusResult, SwitchResult, TwitchStatus, VtsList, VtsStatus } from './control/protocol.js';
 import { socketPath } from './control/server.js';
 
 /**
@@ -48,6 +48,8 @@ const USAGE = `usage: deckhand <command> [--json]
   twitch link                         link a Twitch account: prints a code to approve at
                                         twitch.tv/activate, and waits (Ctrl+C cancels)
   twitch remove                       forget the Twitch link, and end it at Twitch
+  discord                             Discord: set up or not, connected or not, as whom
+  discord remove                      forget Discord's authorization, and revoke it at Discord
   watch                               print state, config and audio events until Ctrl+C
   raw '<request>'                     send one request as JSON and print the reply
 
@@ -292,6 +294,15 @@ function twitchStatusText(r: TwitchStatus): string {
   ].join('\n');
 }
 
+function discordStatusText(r: DiscordStatus): string {
+  const setUp = r.setUp ? `set up${r.userName ? ` as ${r.userName}` : ''}, application ${r.clientId}` : "not set up (Deckhand's Settings › Integrations › Discord)";
+  return [
+    setUp,
+    `connection: ${r.connection}`,
+    ...(r.approval.state === 'none' ? [] : [`connect: ${r.approval.state}: ${r.approval.message ?? ''}`]),
+  ].join('\n');
+}
+
 /** States of a link that are its outcome: the command ends on one. */
 const TWITCH_OUTCOMES = new Set(['approved', 'expired', 'cancelled', 'failed', 'none']);
 
@@ -344,7 +355,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'twitch', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'twitch', 'discord', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -521,6 +532,17 @@ async function main(argv: string[]): Promise<void> {
         } else {
           throw new CliExit(2, `unknown twitch command "${sub}"\n\n${USAGE}`);
         }
+        break;
+      }
+      case 'discord': {
+        const sub = args[1] ?? 'status';
+        if (sub !== 'status' && sub !== 'remove') throw new CliExit(2, `unknown discord command "${sub}"\n\n${USAGE}`);
+        const r = resultOf<DiscordStatus & { revoked?: boolean | null }>(await client.request(sub === 'status' ? 'discord.status' : 'discord.remove'));
+        print(json, r, () =>
+          r.revoked === false
+            ? `${discordStatusText(r)}\nDiscord did not confirm revoking the authorization: remove it in Discord's Settings › Authorized Apps`
+            : discordStatusText(r),
+        );
         break;
       }
       case 'raw': {

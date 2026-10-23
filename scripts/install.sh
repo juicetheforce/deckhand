@@ -1597,6 +1597,26 @@ end_twitch_link() {
   return 0
 }
 
+# Discord's authorization is revoked at Discord the same way, for the same
+# reason: through the running daemon, before the service stops, best effort.
+# Each person's own application keeps it listed in Discord's Authorized Apps
+# otherwise.
+end_discord_authorization() {
+  local credentials="$STATE_DIR/credentials.json"
+  [ -f "$credentials" ] && grep -q '"discord"' "$credentials" || return 0
+  local node="$APP_DIR/runtime/node" cli="$APP_DIR/dist/cli.js" reply=""
+  if [ -x "$node" ] && [ -f "$cli" ]; then
+    reply="$("$node" "$cli" discord remove --json 2>/dev/null || true)"
+  fi
+  if grep -q '"revoked": true' <<<"$reply"; then
+    say "Revoked Deckhand's Discord authorization at Discord"
+  else
+    warn "Discord did not confirm revoking Deckhand's authorization (no answer, or Deckhand's service is not running)."
+    warn "The tokens are deleted with Deckhand's state; remove your application in Discord's User Settings > Authorized Apps."
+  fi
+  return 0
+}
+
 cmd_uninstall() {
   local purge=no
   for arg in "$@"; do
@@ -1610,6 +1630,7 @@ cmd_uninstall() {
   resolve_locations
 
   end_twitch_link
+  end_discord_authorization
 
   say "Stopping and disabling the service"
   systemctl --user disable --now deckhand >/dev/null 2>&1 || true

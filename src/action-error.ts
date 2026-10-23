@@ -16,3 +16,12 @@ export class ActionNeeded extends Error {}
  * notification (services/notifications.ts).
  */
 export class NotSetUp extends ActionNeeded {}
+
+/**
+ * A press of a key whose integration is still connecting (Discord, whose
+ * handshake has taken up to 20 s): refused at once rather than waiting, and,
+ * like NotSetUp, never marked — the key's face already shows it is
+ * connecting, and a mark would outlast the connection. Notified as any
+ * failed press is.
+ */
+export class StillConnecting extends NotSetUp {}

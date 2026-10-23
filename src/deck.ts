@@ -617,6 +617,21 @@ export class DeckSession implements DeckHandle {
     );
   }
 
+  /**
+   * The actions of this type family on **every page** of the layout this deck
+   * shows, press and release, a multi action's steps included: what
+   * services/discord.ts is kept connected for (ARCHITECTURE, the Discord
+   * exception to "only while shown").
+   */
+  layoutActions(prefix: string): ActionDef[] {
+    const of = (a: ActionDef | undefined): ActionDef[] => {
+      if (!a) return [];
+      if (a.type === 'multi' && Array.isArray(a.steps)) return (a.steps as ActionDef[]).flatMap(of);
+      return a.type.startsWith(prefix) ? [a] : [];
+    };
+    return Object.values(this.layout.pages).flatMap((page) => Object.values(page.buttons ?? {}).flatMap((button) => [...of(button.action), ...of(button.onRelease)]));
+  }
+
   /** True if `key` is one of this deck's keys. */
   hasKey(key: string): boolean {
     return this.order.has(key);

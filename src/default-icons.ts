@@ -26,6 +26,19 @@ export const BUILTIN_ICONS = [
   'clock',
   'command',
   'deckhand',
+  // Discord, in its section colour, sky #5ab8f5: every key inside a round
+  // voice ring, which alone says "Discord" beside the bare audio glyphs; an
+  // active face is a solid disc with the glyph cut out — red for muted and
+  // deafened, sky for voice activity. Join and leave are one-shots.
+  'discord-deafen',
+  'discord-deafened',
+  'discord-join',
+  'discord-leave',
+  'discord-mute',
+  'discord-muted',
+  'discord-push-to-talk',
+  'discord-user-volume',
+  'discord-voice-activity',
   'forward',
   'headset',
   'headset-muted',
@@ -72,6 +85,12 @@ export const BUILTIN_ICONS = [
   'press-release',
   'previous',
   'profile',
+  // A soundboard, ready for its action (not built yet, so mapped to none):
+  // idle an empty pad, playing and looping a solid block.
+  'sound-looping',
+  'sound-play',
+  'sound-playing',
+  'sound-stop-all',
   'speaker',
   'speaker-muted',
   'speaker-out',
@@ -113,7 +132,7 @@ export type BuiltinIcon = (typeof BUILTIN_ICONS)[number];
 
 /** What a state-pair default needs to know: read from the daemon's caches, never from a subprocess or D-Bus call. */
 export interface IconState {
-  /** audio.micMute: the default input is muted. audio.mute: the default output is muted. obs.mute: its OBS input is muted. */
+  /** audio.micMute: the default input is muted. audio.mute: the default output is muted. obs.mute: its OBS input is muted. discord.mute, discord.deafen: Discord says so. */
   muted?: boolean;
   /** media.control playpause: the chosen player is playing. */
   playing?: boolean;
@@ -127,7 +146,7 @@ export interface IconState {
   paused?: boolean;
   /** obs.stream: OBS is reconnecting the stream. */
   reconnecting?: boolean;
-  /** obs.scene: its scene is OBS's program scene. vts.model: its model is the one loaded in VTube Studio. vts.expression: VTube Studio says it is on. */
+  /** obs.scene: its scene is OBS's program scene. vts.model: its model is the one loaded in VTube Studio. vts.expression: VTube Studio says it is on. discord.inputMode: Discord is on voice activity. */
   active?: boolean;
   /** obs.source: its source is hidden in its scene. */
   hidden?: boolean;
@@ -252,6 +271,21 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return 'twitch-clip';
     case 'twitch.streamInfo':
       return 'twitch-stream-info';
+    // Discord: the mute pairs show what is happening, as audio's do; the
+    // input mode shows the mode Discord is in.
+    case 'discord.mute':
+      return state.muted ? 'discord-muted' : 'discord-mute';
+    case 'discord.deafen':
+      return state.muted ? 'discord-deafened' : 'discord-deafen';
+    case 'discord.inputMode':
+      return state.active ? 'discord-voice-activity' : 'discord-push-to-talk';
+    case 'discord.join':
+      return 'discord-join';
+    case 'discord.leave':
+      return 'discord-leave';
+    // One icon whichever way it turns: several user volume keys look alike until named — no default label.
+    case 'discord.userVolume':
+      return 'discord-user-volume';
     case 'media.control': {
       const method = String(action.method ?? 'playpause').toLowerCase();
       // Shows what a press will do: pause while playing.

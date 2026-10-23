@@ -4,7 +4,7 @@ import { STATE_DIR } from './backups.js';
 
 /**
  * Secrets for the services Deckhand is a client of — OBS's password, VTube
- * Studio's token and Twitch's tokens, one section each — in one owner-only file in the
+ * Studio's token, Twitch's and Discord's tokens, one section each — in one owner-only file in the
  * state directory:
  *
  *   $XDG_STATE_HOME/deckhand/credentials.json   mode 0600
@@ -62,10 +62,30 @@ export interface TwitchCredentials {
   expiresAt?: number;
 }
 
+/**
+ * Discord's authorization: the person's own application (its ID — each
+ * person makes one, scope §7), the tokens Discord gave it, and the account
+ * that allowed it, by name, for Settings to show. The refresh token rotates
+ * on every refresh, so each new pair is written here, in one write, before
+ * anything uses it; a replaced one is refused but does not end the link
+ * (measured), unlike Twitch's.
+ */
+export interface DiscordCredentials {
+  clientId: string;
+  accessToken: string;
+  refreshToken: string;
+  /** When the access token lapses, in ms since the epoch: seven days after it was given (measured). */
+  expiresAt: number;
+  scopes: string[];
+  /** The Discord account that allowed it, as Discord shows its name; for Settings' "Connected as". */
+  userName: string;
+}
+
 interface CredentialsFile {
   obs?: ObsCredentials;
   vts?: VtsCredentials;
   twitch?: TwitchCredentials;
+  discord?: DiscordCredentials;
 }
 
 type Section = keyof CredentialsFile;
@@ -208,6 +228,33 @@ export function setTwitchCredentials(link: TwitchCredentials): Promise<void> {
 /** Remove Twitch's saved link: Twitch is no longer set up. Nothing else in the file is touched. */
 export async function removeTwitchCredentials(): Promise<void> {
   await removeSection('twitch');
+}
+
+/**
+ * Discord's saved authorization, or null when **Discord is not set up**: no
+ * application ID or refresh token. One Discord no longer accepts still
+ * counts as set up — refused, until Connect again or Remove. A file that
+ * cannot be read or parsed throws.
+ */
+export async function discordCredentials(): Promise<DiscordCredentials | null> {
+  const discord = await readSection('discord');
+  const clientId = stringField(discord?.clientId);
+  const refreshToken = stringField(discord?.refreshToken);
+  if (!discord || !clientId || !refreshToken) return null;
+  const scopes = Array.isArray(discord.scopes) ? discord.scopes.filter((v): v is string => typeof v === 'string') : [];
+  const expiresAt = typeof discord.expiresAt === 'number' && Number.isFinite(discord.expiresAt) ? discord.expiresAt : 0;
+  return { clientId, accessToken: stringField(discord.accessToken) ?? '', refreshToken, expiresAt, scopes, userName: stringField(discord.userName) ?? '' };
+}
+
+/** Save Discord's authorization whole — a new one, or a refresh's new pair: the entry is replaced, not merged. Written as OBS's are. */
+export function setDiscordCredentials(saved: DiscordCredentials): Promise<void> {
+  // One write: the refresh token just spent is gone from Discord's side.
+  return exclusively(async () => writeFile({ ...(await readFile()), discord: { ...saved } }));
+}
+
+/** Remove Discord's saved authorization: Discord is no longer set up. Nothing else in the file is touched. */
+export async function removeDiscordCredentials(): Promise<void> {
+  await removeSection('discord');
 }
 
 /** Numbers each write's temp file, so no two writes ever share one. */

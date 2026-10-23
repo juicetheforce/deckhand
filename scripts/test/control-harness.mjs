@@ -36,6 +36,7 @@ export const commands = await import(dist('control/commands.js'));
 const obsService = await import(dist('services/obs.js'));
 const vtsService = await import(dist('services/vts.js'));
 const twitchService = await import(dist('services/twitch.js'));
+const discordService = await import(dist('services/discord.js'));
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -133,6 +134,8 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
   const stopVts = vtsService.subscribe(() => events.vts());
   // And Twitch's, as the "twitch" event.
   const stopTwitch = twitchService.subscribe(() => events.twitch());
+  // And Discord's, as the "discord" event.
+  const stopDiscord = discordService.subscribe(() => events.discord());
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
@@ -159,6 +162,7 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
     stopObs();
     stopVts();
     stopTwitch();
+    stopDiscord();
     await control.stop();
     for (const session of sessions.values()) await session.close();
   }

@@ -42,3 +42,18 @@ export function unsetBadgeSvg(diameter: number): string {
   </g>
 </svg>`;
 }
+
+/**
+ * The connecting badge: the not-set-up badge's grey disc with three white
+ * dots, in the same place, for a key whose integration is answering its
+ * handshake (Discord's has taken up to 20 s) — so the key does not look
+ * dead meanwhile. Not dimmed: the key is set up, and works in a moment.
+ * Drawn by Deckhand, not from the icon set: the design mockups have no
+ * connecting state.
+ */
+export function connectingBadgeSvg(diameter: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="11" fill="#6b7086" stroke="#11121c" stroke-width="2"/>
+  <g fill="#fff"><circle cx="7.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="16.5" cy="12" r="1.8"/></g>
+</svg>`;
+}

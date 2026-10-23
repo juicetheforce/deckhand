@@ -10,7 +10,7 @@ import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
 import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
-import type { ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
+import type { DiscordList, ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
@@ -133,6 +133,7 @@ let storeError: string | null = null;
 let sentObs = '';
 let sentVts = '';
 let sentTwitch = '';
+let sentDiscord = '';
 
 const daemon = new DaemonClient({
   socketPath: socketPath(),
@@ -153,6 +154,11 @@ const daemon = new DaemonClient({
     if (twitch !== sentTwitch) {
       sentTwitch = twitch;
       settings?.webContents.send('twitchStatus', view.twitch ?? null);
+    }
+    const discord = JSON.stringify(view.discord ?? null);
+    if (discord !== sentDiscord) {
+      sentDiscord = discord;
+      settings?.webContents.send('discordStatus', view.discord ?? null);
     }
     sendVirtualDecks();
   },
@@ -549,6 +555,7 @@ function openSettings(section?: SettingsSection): void {
   sentObs = JSON.stringify(daemon.view().obs ?? null);
   sentVts = JSON.stringify(daemon.view().vts ?? null);
   sentTwitch = JSON.stringify(daemon.view().twitch ?? null);
+  sentDiscord = JSON.stringify(daemon.view().discord ?? null);
   void settingsWindow.loadFile(path.join(import.meta.dirname, '../renderer/index.html'), { query: { view: 'settings', ...(section ? { section } : {}) } });
 }
 
@@ -967,7 +974,7 @@ function registerIpc(): void {
     if (fromSettingsWindow(event) && pendingImport?.id === id) pendingImport = null;
   });
   ipcMain.handle('openSettings', (event, section: unknown) => {
-    if (fromOurWindow(event)) openSettings(section === 'obs' || section === 'vts' || section === 'twitch' ? section : undefined);
+    if (fromOurWindow(event)) openSettings(section === 'obs' || section === 'vts' || section === 'twitch' || section === 'discord' ? section : undefined);
   });
   // --- OBS, in Settings › Integrations. Never a secret back: the daemon reports only whether a password is set. ---
   ipcMain.handle('obsStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().obs ?? null) : null));
@@ -1017,7 +1024,7 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle('twitchStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().twitch ?? null) : null));
-  const twitchCall = async <T,>(event: Electron.IpcMainInvokeEvent, call: () => Promise<T>) => {
+  const settingsCall = async <T,>(event: Electron.IpcMainInvokeEvent, call: () => Promise<T>) => {
     if (!fromSettingsWindow(event)) return { ok: false as const, error: 'not allowed' };
     try {
       return { ok: true as const, ...(await call()) };
@@ -1026,13 +1033,13 @@ function registerIpc(): void {
     }
   };
   ipcMain.handle('twitchLink', (event) =>
-    twitchCall(event, async () => {
+    settingsCall(event, async () => {
       const { started, ...status } = await daemon.twitchLink();
       return { started, status };
     }),
   );
-  ipcMain.handle('twitchCancel', (event) => twitchCall(event, async () => ({ status: await daemon.twitchCancel() })));
-  ipcMain.handle('twitchRemove', (event) => twitchCall(event, () => daemon.twitchRemove()));
+  ipcMain.handle('twitchCancel', (event) => settingsCall(event, async () => ({ status: await daemon.twitchCancel() })));
+  ipcMain.handle('twitchRemove', (event) => settingsCall(event, () => daemon.twitchRemove()));
   ipcMain.handle('twitchOpenActivate', (event) => {
     if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
     // The daemon's URL, never the page's, and only Twitch's activate page.
@@ -1040,6 +1047,22 @@ function registerIpc(): void {
     if (!url || !/^https:\/\/www\.twitch\.tv\/activate(\?|$)/.test(url)) return { ok: false, error: 'no Twitch code is waiting to be approved' };
     return openInBrowser(url, CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
   });
+  // --- Discord, in Settings › Integrations. Never a token back: the daemon reports only whether one is saved, and as whom. ---
+  ipcMain.handle('discordStatus', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? (daemon.view().discord ?? null) : null));
+  ipcMain.handle('discordConnect', (event, clientId: unknown) => {
+    if (typeof clientId !== 'string' || !/^\d{15,25}$/.test(clientId.trim())) return { ok: false, error: 'the Application ID is the long number from the Developer Portal' };
+    return settingsCall(event, async () => {
+      const { started, ...status } = await daemon.discordConnect(clientId.trim());
+      return { started, status };
+    });
+  });
+  ipcMain.handle('discordCancel', (event) => settingsCall(event, async () => ({ status: await daemon.discordCancel() })));
+  ipcMain.handle('discordRemove', (event) =>
+    settingsCall(event, async () => {
+      const { revoked, ...status } = await daemon.discordRemove();
+      return { status, revoked };
+    }),
+  );
   ipcMain.handle('closeSettings', (event) => {
     if (fromSettingsWindow(event)) settingsWindow?.close();
   });
@@ -1123,6 +1146,16 @@ function registerIpc(): void {
       return await daemon.vtsList(kind, kind === 'models' ? undefined : (model as string));
     } catch (err) {
       // No daemon, or one from before VTube Studio: the picker says why.
+      return { ok: false, reason: 'other', message: (err as Error).message };
+    }
+  });
+  ipcMain.handle('discordList', async (event, kind: unknown, guild: unknown): Promise<DiscordList> => {
+    if (!fromOurWindow(event) || (kind !== 'guilds' && kind !== 'channels' && kind !== 'users')) return { ok: false, reason: 'other', message: 'not allowed' };
+    if (kind === 'channels' && (typeof guild !== 'string' || guild === '')) return { ok: false, reason: 'other', message: 'Choose a server first' };
+    try {
+      return await daemon.discordList(kind, kind === 'channels' ? (guild as string) : undefined);
+    } catch (err) {
+      // No daemon, or one from before Discord: the picker says why.
       return { ok: false, reason: 'other', message: (err as Error).message };
     }
   });

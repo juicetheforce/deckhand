@@ -1,4 +1,4 @@
-import type { ObsStatus, TwitchStatus, VtsApprovalState, VtsStatus } from '../../../src/control/protocol.js';
+import type { DiscordApprovalState, DiscordStatus, ObsStatus, TwitchStatus, VtsApprovalState, VtsStatus } from '../../../src/control/protocol.js';
 
 /**
  * What the settings window says about each integration, in one place: the
@@ -55,6 +55,27 @@ export function twitchView(status: TwitchStatus): StatusView {
   if (status.link === 'not-set-up') return { dot: 'unset', text: 'Not linked' };
   if (status.link === 'refused') return FAILED;
   return { dot: 'ok', text: `Linked as ${status.login}` };
+}
+
+/** Connect's outcomes that mean it did not get an authorization. */
+const DISCORD_REFUSED_OUTCOMES = new Set<DiscordApprovalState>(['denied', 'not-running', 'failed']);
+
+/**
+ * Discord. Authorizing wins: Connect again is authorizing until it ends.
+ * Set up and not connected follows OBS: "Waiting for Discord" — not
+ * running, or no Discord key in the profile — except while its slow
+ * handshake runs, which says it is connecting. Couldn't connect: Discord no
+ * longer accepts the authorization, or — with none saved — the last
+ * Connect did not get one.
+ */
+export function discordView(status: DiscordStatus): StatusView {
+  if (status.approval.state === 'waiting') return { dot: 'waiting', text: 'Waiting for you to authorize' };
+  if (status.approval.state === 'checking') return { dot: 'waiting', text: 'Connecting…' };
+  if (!status.setUp) return DISCORD_REFUSED_OUTCOMES.has(status.approval.state) ? FAILED : NOT_SET_UP;
+  if (status.connection === 'connected') return { dot: 'ok', text: status.userName ? `Connected as ${status.userName}` : 'Connected' };
+  if (status.connection === 'refused') return FAILED;
+  if (status.connection === 'connecting') return { dot: 'waiting', text: 'Connecting…' };
+  return { dot: 'waiting', text: 'Waiting for Discord' };
 }
 
 /** What each permission Deckhand asks Twitch for shows as, in order: one permission covers title, category and markers. */

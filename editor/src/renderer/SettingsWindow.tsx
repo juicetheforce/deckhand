@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
-import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
+import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection } from '../shared/bridge.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { NO_UPDATE_STATE, type UpdateState } from '../shared/updates.js';
-import { importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
+import { discordView, importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
 import { VirtualDecks } from './VirtualDecksSettings.js';
+import { DiscordSettings } from './DiscordSettings.js';
 import { ObsSettings } from './ObsSettings.js';
 import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, StatusDot, Switch } from './settings-ui.js';
 import { TwitchSettings } from './TwitchSettings.js';
@@ -14,13 +15,13 @@ import { VtsSettings } from './VtsSettings.js';
 
 /**
  * The settings window (the design mockups): a sidebar of pages —
- * General, Decks, the integrations (OBS Studio, VTube Studio, Twitch, each
- * with a status dot), Backups and About — one page at a time, and a footer.
- * Every change is saved at once and reaches the editor behind it at once,
- * except OBS's connection (its own Save), VTube Studio's port (saved by
- * Connect) and an import, which waits for its review — so the footer says
- * "Changes save automatically" only on the pages where that is true, and
- * Done only closes the window.
+ * General, Decks, the integrations (OBS Studio, VTube Studio, Twitch,
+ * Discord, each with a status dot), Backups and About — one page at a time,
+ * and a footer. Every change is saved at once and reaches the editor behind
+ * it at once, except OBS's connection (its own Save), VTube Studio's port
+ * and Discord's Application ID (each saved by Connect) and an import, which
+ * waits for its review — so the footer says "Changes save automatically"
+ * only on the pages where that is true, and Done only closes the window.
  *
  * It runs in its own window, a child of the editor's, frameless, under its
  * own title bar with a close button only (main.tsx, TitleBar.tsx). Opened at
@@ -37,6 +38,7 @@ const INTEGRATION_PAGES: ReadonlyArray<{ page: SettingsSection; name: string; ic
   { page: 'obs', name: 'OBS Studio', icon: 'obs-stream' },
   { page: 'vts', name: 'VTube Studio', icon: 'vts-model' },
   { page: 'twitch', name: 'Twitch', icon: 'twitch-chat' },
+  { page: 'discord', name: 'Discord', icon: 'discord-deafen' },
 ];
 const LATER_PAGES: ReadonlyArray<{ page: Page; name: string }> = [
   { page: 'backups', name: 'Backups' },
@@ -45,7 +47,7 @@ const LATER_PAGES: ReadonlyArray<{ page: Page; name: string }> = [
 /** Where "Changes save automatically" is true. */
 const SAVES_AUTOMATICALLY = new Set<Page>(['general', 'decks']);
 
-const isSection = (value: string | null): value is SettingsSection => value === 'obs' || value === 'vts' || value === 'twitch';
+const isSection = (value: string | null): value is SettingsSection => value === 'obs' || value === 'vts' || value === 'twitch' || value === 'discord';
 const ALL_PAGES = new Set<string>([...PAGES, ...INTEGRATION_PAGES, ...LATER_PAGES].map((p) => p.page));
 /** `?page=`: a page to open at — set only by the screenshot script (`--settings --page backups`). */
 const requestedPage = (value: string | null): Page | null => (value !== null && ALL_PAGES.has(value) ? (value as Page) : null);
@@ -182,6 +184,7 @@ export function SettingsWindow() {
           {page === 'obs' && <ObsSettings focus={focus} />}
           {page === 'vts' && <VtsSettings focus={focus} />}
           {page === 'twitch' && <TwitchSettings focus={focus} />}
+          {page === 'discord' && <DiscordSettings focus={focus} />}
           {page === 'backups' && <BackupsPage />}
           {page === 'about' && <AboutPage update={update} />}
         </div>
@@ -235,11 +238,13 @@ function useIntegrationDots(): Partial<Record<SettingsSection, Dot>> {
   const [obs, setObs] = useState<ObsStatus | null>(null);
   const [vts, setVts] = useState<VtsStatus | null>(null);
   const [twitch, setTwitch] = useState<TwitchStatus | null>(null);
+  const [discord, setDiscord] = useState<DiscordStatus | null>(null);
   useEffect(() => {
     void window.deckhand.obsStatus().then(setObs);
     void window.deckhand.vtsStatus().then(setVts);
     void window.deckhand.twitchStatus().then(setTwitch);
-    const stops = [window.deckhand.onObsStatus(setObs), window.deckhand.onVtsStatus(setVts), window.deckhand.onTwitchStatus(setTwitch)];
+    void window.deckhand.discordStatus().then(setDiscord);
+    const stops = [window.deckhand.onObsStatus(setObs), window.deckhand.onVtsStatus(setVts), window.deckhand.onTwitchStatus(setTwitch), window.deckhand.onDiscordStatus(setDiscord)];
     return () => stops.forEach((stop) => stop());
   }, []);
   // No daemon: no dot, rather than one that claims to know.
@@ -247,6 +252,7 @@ function useIntegrationDots(): Partial<Record<SettingsSection, Dot>> {
     obs: obs ? obsView(obs).dot : undefined,
     vts: vts ? vtsView(vts).dot : undefined,
     twitch: twitch ? twitchView(twitch).dot : undefined,
+    discord: discord ? discordView(discord).dot : undefined,
   };
 }
 

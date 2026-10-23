@@ -289,3 +289,54 @@ export type TwitchList =
 export type VtsList =
   | { ok: true; items: Array<{ id: string; name: string; type?: string; file?: string; note?: string }> }
   | { ok: false; reason: 'not-set-up' | 'unavailable' | 'refused' | 'not-found' | 'not-loaded' | 'other'; message: string };
+
+export type DiscordConnection =
+  /** Nothing needs Discord: the active profile has no Discord key. */
+  | 'idle'
+  /** Not authorized in Deckhand's Settings. Nothing connects. */
+  | 'not-set-up'
+  /** Discord is running and answering slowly: the handshake, or the authorization after it. Keys show they are connecting. */
+  | 'connecting'
+  | 'connected'
+  /** Discord is not running (no socket where a supported Discord puts one), did not answer in time, or went away. Retried on the 60-second scan. */
+  | 'unavailable'
+  /** Discord no longer accepts Deckhand's authorization, and refreshing it was refused; or it does not know the application ID. Never retried until Connect again. */
+  | 'refused';
+
+/**
+ * Where Settings' Connect is: authorizing happens in the background, and
+ * the "discord" event says how it goes. `checking`: finding Discord and
+ * waiting for it to answer. `waiting`: Discord is showing its Authorize
+ * window. Then one outcome, kept until the next Connect: `approved` (the
+ * tokens are saved), `denied`, `cancelled` (Deckhand's Cancel), `not-running`,
+ * `failed`. `none`: never asked since the daemon started, or removed.
+ */
+export type DiscordApprovalState = 'none' | 'checking' | 'waiting' | 'approved' | 'denied' | 'cancelled' | 'not-running' | 'failed';
+
+export interface DiscordApproval {
+  state: DiscordApprovalState;
+  /** What to tell the person, for every state but `none`. */
+  message?: string;
+}
+
+/** The "discord.status" result, and what the "discord" event carries. Never a token: only whether Discord is set up, with which application, and as whom. */
+export interface DiscordStatus {
+  connection: DiscordConnection;
+  /** An authorization is saved: Discord keys can do something. */
+  setUp: boolean;
+  /** The application ID it was made with; null when not set up. Not secret: the person copied it from the Developer Portal. */
+  clientId: string | null;
+  /** The Discord account that allowed it, by name; null when not set up. */
+  userName: string | null;
+  approval: DiscordApproval;
+}
+
+/**
+ * The "discord.list" result: what a Discord key's picker offers — your
+ * servers, one server's voice channels, or the people in the voice channel
+ * you are in now — by ID, with the name to show. Not reachable is an answer,
+ * not an error, as for OBS and VTube Studio.
+ */
+export type DiscordList =
+  | { ok: true; items: Array<{ id: string; name: string }> }
+  | { ok: false; reason: 'not-set-up' | 'unavailable' | 'connecting' | 'refused' | 'no-channel' | 'other'; message: string };

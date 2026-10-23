@@ -3107,6 +3107,17 @@ body.settings-body {
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* Discord's Authorize prompt, waiting on the person: Discord's sky, as the mockups draw it. */
+.sp-banner-discord {
+  background: rgba(90, 184, 245, 0.08);
+  border: 1px solid rgba(90, 184, 245, 0.35);
+  color: #bfe3fb;
+}
+
+.sp-dot-banner-discord {
+  background: #8a8fa8;
+}
+
 .sp-info {
   width: 15px;
   height: 15px;
@@ -3149,6 +3160,45 @@ body.settings-body {
 
 .sp-disclosure[data-open='true'] .sp-disclosure-mark {
   transform: rotate(90deg);
+}
+
+/* Numbered setup steps in a disclosure (Discord's). */
+.sp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sp-step {
+  display: flex;
+  gap: 9px;
+}
+
+.sp-step-number {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: rgba(90, 184, 245, 0.16);
+  color: #bfe3fb;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.sp-step code,
+.sp-input-id {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.sp-step code {
+  color: #bfe3fb;
 }
 
 .sp-disclosure-body {
@@ -3203,6 +3253,11 @@ body.settings-body {
 .sp-tile-twitch {
   background: rgba(245, 154, 102, 0.13);
   border: 1px solid rgba(245, 154, 102, 0.35);
+}
+
+.sp-tile-discord {
+  background: rgba(90, 184, 245, 0.13);
+  border: 1px solid rgba(90, 184, 245, 0.35);
 }
 
 .sp-int-head {

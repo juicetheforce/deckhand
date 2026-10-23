@@ -35,7 +35,8 @@
     "check:multi-deck": "npm run build && node scripts/check-multi-deck.mjs",
     "check:obs": "npm run build && node scripts/check-obs.mjs",
     "check:vts": "npm run build && node scripts/check-vts.mjs",
-    "check:twitch": "npm run build && node scripts/check-twitch.mjs"
+    "check:twitch": "npm run build && node scripts/check-twitch.mjs",
+    "check:discord": "npm run build && node scripts/check-discord.mjs"
   },
   "engines": {
     "node": ">=22.12"

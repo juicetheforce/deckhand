@@ -8,7 +8,7 @@
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
 import type { UpdateState } from './updates.js';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, PairReply, ScreensReply, StatusResult, TouchState, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, DiscordList, DiscordStatus, ObsAttempt, ObsList, ObsStatus, PairReply, ScreensReply, StatusResult, TouchState, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, PanelDef } from '../../../src/types.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
@@ -83,6 +83,13 @@ export interface DaemonView {
    * the not-set-up faces. Absent or null from a daemon without Twitch.
    */
   twitch?: TwitchStatus | null;
+  /**
+   * Discord: whether it is set up, its connection, as whom (discord.status,
+   * kept current by the "discord" event). Never a token. Gates the library's
+   * Discord actions and the not-set-up faces. Absent or null from a daemon
+   * without Discord.
+   */
+  discord?: DiscordStatus | null;
 }
 
 /**
@@ -99,7 +106,7 @@ export interface ObsForm {
 export type ObsSaveResult = { ok: true; status: ObsStatus; attempt: ObsAttempt } | { ok: false; error: string };
 
 /** Where to open the settings window: its top, or one section. */
-export type SettingsSection = 'obs' | 'vts' | 'twitch';
+export type SettingsSection = 'obs' | 'vts' | 'twitch' | 'discord';
 
 export type DaemonResult = { ok: true } | { ok: false; code: string; error: string };
 
@@ -220,6 +227,12 @@ export interface DeckhandBridge {
    * Not linked or not reachable is an answer, not an error.
    */
   twitchCategories(query: string): Promise<TwitchList>;
+  /**
+   * What a Discord key's picker offers, asked of Discord now (editor window
+   * only): your servers, one server's voice channels, or the others in your
+   * voice channel. Discord not reachable is an answer — "Start Discord to choose".
+   */
+  discordList(kind: 'guilds' | 'channels' | 'users', guild?: string): Promise<DiscordList>;
   /** Ask the daemon for its app list again; the answer arrives as the daemon view's `apps`. */
   refreshApps(): Promise<void>;
 
@@ -385,6 +398,16 @@ export interface DeckhandBridge {
   twitchCancel(): Promise<{ ok: true; status: TwitchStatus } | { ok: false; error: string }>;
   /** Remove the link, and end it at Twitch (settings window only). `revoked`: Twitch confirmed ending it. */
   twitchRemove(): Promise<{ ok: true; status: TwitchStatus; revoked: boolean | null } | { ok: false; error: string }>;
+  /** Discord: set up or not, connected or not, as whom, and where Connect is (discord.status) — never a token. Null with no daemon. */
+  discordStatus(): Promise<DiscordStatus | null>;
+  /** Every change to it, Connect's progress included. Returns an unsubscribe. */
+  onDiscordStatus(callback: (status: DiscordStatus | null) => void): () => void;
+  /** Connect: authorize Deckhand in Discord with this Application ID; how it goes arrives by onDiscordStatus (settings window only). */
+  discordConnect(clientId: string): Promise<{ ok: true; started: boolean; status: DiscordStatus } | { ok: false; error: string }>;
+  /** Cancel: stop waiting for Discord's Authorize window (settings window only). */
+  discordCancel(): Promise<{ ok: true; status: DiscordStatus } | { ok: false; error: string }>;
+  /** Remove the authorization, and revoke it at Discord (settings window only). `revoked`: Discord accepted the revoke. */
+  discordRemove(): Promise<{ ok: true; status: DiscordStatus; revoked: boolean | null } | { ok: false; error: string }>;
   /** Open the kept backups' folder in the file manager (settings window only). */
   openKeptFolder(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Show one kept backup, by its file name, in the file manager (settings window only). */

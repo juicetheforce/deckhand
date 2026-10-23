@@ -326,9 +326,9 @@ if (editor.exited === null) editor.child.kill();
 
 check('Automatic opens on the first connected deck with a layout (the V2, first in config)', () => assert.equal(r.automaticOpensOn, V2));
 check('the gear opens one settings window; a second click brings it forward rather than opening another', () => assert.equal(r.windowsWithSettings, 2));
-check('it opens on General, with the sidebar: General, Decks, INTEGRATIONS (OBS Studio, VTube Studio, Twitch), Backups, About', () => {
+check('it opens on General, with the sidebar: General, Decks, INTEGRATIONS (OBS Studio, VTube Studio, Twitch, Discord), Backups, About', () => {
   assert.equal(r.layout.page, 'general');
-  assert.deepEqual(r.layout.nav, ['General', 'Decks', 'OBS Studio', 'VTube Studio', 'Twitch', 'Backups', 'About']);
+  assert.deepEqual(r.layout.nav, ['General', 'Decks', 'OBS Studio', 'VTube Studio', 'Twitch', 'Discord', 'Backups', 'About']);
   assert.equal(r.layout.heading, 'INTEGRATIONS');
 });
 check('"Changes save automatically" only where it is true: General and Decks, not OBS (its own Save) or the other pages', () => {

@@ -197,7 +197,7 @@ or keep in dotfiles.
 **Cost scales with what is on screen, not with what is in the config.** A page
 of static hotkeys costs nothing at rest: no timers, no subprocesses, no USB
 traffic. A live key (clock, now-playing, mic state) costs something only
-while it is visible. Identical images are never rewritten to USB. **A key whose face changes only on events is redrawn only then** (`redraw: 'events'` on its action): OBS, VTube Studio and Twitch keys are drawn when shown and again when their service announces a change or the key's own state does, never on the 500 ms tick's clock — before, each was redrawn every second for nothing. The tick's clock is for faces that depend on time, like a clock. "No timers
+while it is visible. Identical images are never rewritten to USB. **A key whose face changes only on events is redrawn only then** (`redraw: 'events'` on its action): OBS, VTube Studio, Twitch and Discord keys are drawn when shown and again when their service announces a change or the key's own state does, never on the 500 ms tick's clock — before, each was redrawn every second for nothing. The tick's clock is for faces that depend on time, like a clock. "No timers
 at rest" is a structural rule, not "no measurable cost", which would weaken as
 hardware gets faster. Three recurring timers are accepted exceptions:
 
@@ -236,11 +236,17 @@ listened to only inside Settings' Connect**, for a few seconds when the
 connection fails, to say why — never at rest. What an expression key shows
 is asked of VTS when the key comes into view, on a model load and after an
 expression hotkey, never polled; a Model key's press waits for VTS to say
-the model has loaded, a one-shot deadline like OBS's.
+the model has loaded, a one-shot deadline like OBS's. **Discord is the one exception: connected while Discord is running and the active profile has a Discord key on any page**, shown or not, because its handshake has taken up to 20 s, on both its clients, and would otherwise fall on the first press after a page switch. It is not a precedent: a
+future integration earns it only with a measured reason of its own. An idle
+connection costs nothing, since Discord sends events only on change; when
+Discord is not running, the next try rides the same 60-second scan, and its
+tokens are renewed only when connecting — no timer of its own. The
+`setTimeout`s in `src/services/discord-client.ts` are one-shot deadlines:
+the handshake's is 45 s.
 
 **Secrets live in one owner-only file, never in the config.** Credentials for
 the services Deckhand is a client of — OBS's WebSocket password, VTube
-Studio's token, Twitch's tokens — are kept in
+Studio's token, Twitch's and Discord's tokens — are kept in
 `~/.local/state/deckhand/credentials.json`, mode 0600, outside the config
 directory people sync, and outside everything that copies the config: an
 export bundles `config.json` and its icons, and the rolling backups copy
@@ -295,6 +301,20 @@ Deckhand gives VTS — "Deckhand" and "Open-source contributors" — are
 permanent**: VTS refuses a saved token if either changes, so changing them
 would silently disconnect everyone. Its window shows them as a title over a
 subtitle, naming no person.
+
+**Discord is reached through the official app's local RPC, with each
+person's own application.** Discord approves no shared application for
+RPC, so each person makes one in Discord's Developer Portal, as a public
+client, and gives Deckhand its ID; there is no client secret anywhere. The
+code Discord's Authorize window gives is exchanged with PKCE. Only Settings'
+Connect asks Discord to authorize. The refresh token rotates on every
+refresh, but a replaced one sent again is refused without ending the link
+(measured), unlike Twitch's; one refresh still runs at a time, saved before
+use. The RPM's Discord listens at `$XDG_RUNTIME_DIR/discord-ipc-0`, the
+Flathub Flatpak's at two paths under `$XDG_RUNTIME_DIR` (both measured);
+Vesktop is not supported. **A press never waits on Discord's handshake**:
+until it answers, Discord keys show a connecting badge, and a press is
+refused at once, notified and never marked.
 
 **VTube Studio is reached by a WebSocket client of Deckhand's own**
 (`src/services/text-socket.ts`), not Node's built-in one. VTS's server
@@ -385,6 +405,8 @@ is here so the test is not "fixed" instead.
 | `src/action-error.ts`, `DeckSession.settle()`, `src/services/notifications.ts` | **only a failure whose message tells the person what to do (`ActionNeeded`) is notified — on every failed press**, each key keeping one notification: a repeat within 10 s is counted on it, **in place only while its popup is up** (Plasma shows no update to a timed-out one) and otherwise closed and shown anew; clearing the mark (Clear, a press that works) restarts the count; `"notifications": false` is read at the moment of the failure, so a reload counts. **A press of a key whose integration is not set up (`NotSetUp`) is never marked** — its face says so, and a mark would outlast the setup — and is notified like any failed press, per key |
 | `src/services/vts.ts`, any VTS `describe()` / `iconState()` | **connected only while a shown page has a VTS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; **only `requestAccess` (Settings' Connect) ever asks VTS for a token**; a revoked token is refused and never retried until Connect; **not set up — no saved token — never connects at all**; the broadcast is listened to only inside Connect, never at rest; key faces read the state cache, fed by VTS's events, never a request in a render. **Expression state is the loaded model's only, asked when an expression key comes into view, on a model load and after an expression hotkey — never polled** — and an answer is kept only for the model it names: `ExpressionStateRequest` answers for whichever model is loaded, whatever model is asked, so the picker and the cache check. **A Model key never asks for the model already loaded**: VTS reloads it, and the avatar drops out |
 | `src/services/twitch.ts`, `src/credentials.ts`'s Twitch section | **a refresh token is single-use, and Twitch ends the whole link when a replaced one is sent** (measured): one refresh at a time, shared by the hourly check and every press, and the new pair saved — in one write — before anything uses it. **A refused refresh keeps the link**: Twitch's own faults look the same as a dead link, so the keys are marked, the tokens kept, and the hourly check keeps trying; only Remove or a new link clears it. The link keeps the client ID it was made with. The hourly check runs only while linked, and polling only while linking |
+| `src/services/discord.ts`, any Discord `describe()` / `iconState()` | **Discord is the one exception: connected while Discord is running and the active profile has a Discord key on any page**, shown or not, because its handshake has taken up to 20 s, on both its clients, and would otherwise fall on the first press after a page switch. It is not a precedent: not shown-page demand, and no other integration's; **no timer of its own** — retries ride the 60-second scan, and tokens are refreshed only when connecting, one refresh at a time, the new pair saved before use. **A press never waits on the handshake**: not connected, it starts connecting and is refused at once (`StillConnecting`, never marked); keys show the connecting badge meanwhile. **Only `requestAccess` (Settings' Connect) ever asks Discord to authorize**; refused — the authorization revoked and its refresh refused, or the application ID unknown — is never retried until Connect. Key faces read the state cache, fed by `VOICE_SETTINGS_UPDATE` and `VOICE_STATE_*`, never a request in a render; a channel's people are subscribed only while the profile has a User volume key. **A join brings no `VOICE_CHANNEL_SELECT`** (measured), so the cache follows the join's reply. Held by `smoke-discord` |
+| `src/services/discord-client.ts` | **no client secret, ever**: each person's application is a public client, and the exchange is proved with PKCE. The handshake's deadline is long (45 s) because READY has taken 20 s (measured) |
 | `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |

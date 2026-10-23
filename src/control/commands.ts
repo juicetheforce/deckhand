@@ -7,6 +7,7 @@ import { ProfileNotFoundError, type Profiles } from '../profiles.js';
 import { obsCredentials, removeObsCredentials, removeVtsCredentials, setObsCredentials, vtsCredentials } from '../credentials.js';
 import { forgetApps, listApps } from '../services/apps.js';
 import * as obsService from '../services/obs.js';
+import * as discordService from '../services/discord.js';
 import * as twitchService from '../services/twitch.js';
 import * as vtsService from '../services/vts.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
@@ -64,6 +65,7 @@ export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
   let lastAudio = '';
   let obsEvents = Promise.resolve();
   let vtsEvents = Promise.resolve();
+  let discordEvents = Promise.resolve();
   return {
     state: () => server.notify('state', () => stateSnapshot(deps)),
     config: () => server.notify('config', () => deps.lastReload()),
@@ -92,6 +94,13 @@ export function eventNotifiers(server: ControlServer, deps: ControlDeps) {
     },
     // From memory, not the credentials file: nothing to keep in order.
     twitch: () => server.notify('twitch', () => twitchService.status()),
+    // discord.status's reply, which reads the credentials file: read in order, as obs's is.
+    discord: () => {
+      discordEvents = discordEvents.then(async () => {
+        const status = await discordService.status().catch(() => null);
+        if (status) server.notify('discord', () => status);
+      });
+    },
   };
 }
 
@@ -471,6 +480,58 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
       const query = typeof args.query === 'string' ? args.query.trim() : '';
       if (query === '' || query.length > 100) throw new ControlError('bad_request', '"query" must be some text to search for, up to 100 characters');
       return twitchService.searchCategories(query);
+    },
+
+    /**
+     * Discord: the connection, whether an authorization is saved, with which
+     * application and as whom, and where Connect is — never a token
+     * (credentials.ts).
+     */
+    async 'discord.status'() {
+      return discordService.status();
+    },
+
+    /**
+     * Settings' Connect: authorize Deckhand in Discord with the person's own
+     * application, `clientId` (its Application ID). Replies at once —
+     * `started` false when one is already under way; how it goes comes as
+     * "discord" events (`approval`), since it waits for the person to answer
+     * Discord's window. Only this ever asks Discord to authorize.
+     */
+    async 'discord.connect'(args) {
+      const clientId = typeof args.clientId === 'string' ? args.clientId.trim() : '';
+      if (!/^\d{15,25}$/.test(clientId)) throw new ControlError('bad_request', '"clientId" must be the Application ID from the Developer Portal: a long number');
+      const started = await discordService.requestAccess(clientId);
+      return { started, ...(await discordService.status()) };
+    },
+
+    /** Settings' Cancel: stop waiting for Discord's Authorize window. Nothing is saved. */
+    async 'discord.cancel'() {
+      discordService.cancelAccess();
+      return discordService.status();
+    },
+
+    /**
+     * What a Discord key's picker offers: `kind` "guilds", "channels" of
+     * `guild` (an ID), or "users" — the others in your voice channel now.
+     * Connects as the profile does; Discord not there is an answer, not an
+     * error.
+     */
+    async 'discord.list'(args) {
+      const kind = args.kind;
+      if (kind !== 'guilds' && kind !== 'channels' && kind !== 'users') throw new ControlError('bad_request', '"kind" must be "guilds", "channels" or "users"');
+      if (kind === 'channels' && (typeof args.guild !== 'string' || args.guild === '')) throw new ControlError('bad_request', '"guild" must name a server by its ID');
+      return discordService.list(kind, kind === 'channels' ? (args.guild as string) : undefined);
+    },
+
+    /**
+     * Remove Discord's authorization: forget it, and revoke it at Discord
+     * (best effort). No key is touched. `revoked`: Discord accepted the
+     * revoke; false when it did not answer; null when nothing was saved.
+     */
+    async 'discord.remove'() {
+      const revoked = await discordService.remove();
+      return { ...(await discordService.status()), revoked };
     },
 
     /** Settings' Cancel: stop linking. The code just expires at Twitch; nothing is left behind there. */

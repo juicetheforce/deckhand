@@ -1,5 +1,5 @@
 import net from 'node:net';
-import type { AppListing, AudioList, DecksResult, ObsAttempt, ObsList, ObsStatus, PairReply, ReloadResult, ScreensReply, StateSnapshot, StatusResult, SwitchResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
+import type { AppListing, AudioList, DecksResult, DiscordList, DiscordStatus, ObsAttempt, ObsList, ObsStatus, PairReply, ReloadResult, ScreensReply, StateSnapshot, StatusResult, SwitchResult, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonView, ObsForm } from '../shared/bridge.js';
 
@@ -91,7 +91,7 @@ export class DaemonClient {
     const socket = this.socket;
     this.socket = null; // before destroy(), so its 'close' is ignored as a stale socket's
     socket?.destroy();
-    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null });
+    this.update({ connected: false, problem: 'disconnected', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null, discord: null });
   }
 
   view(): DaemonView {
@@ -158,6 +158,34 @@ export class DaemonClient {
   /** Twitch's categories matching a search (twitch.categories), for the Stream info picker. */
   async twitchCategories(query: string): Promise<TwitchList> {
     return (await this.request('twitch.categories', { query })) as TwitchList;
+  }
+
+  /** What a Discord key's picker offers (discord.list): servers, a server's voice channels, or the others in your voice channel. */
+  async discordList(kind: 'guilds' | 'channels' | 'users', guild?: string): Promise<DiscordList> {
+    return (await this.request('discord.list', kind === 'channels' ? { kind, guild } : { kind })) as DiscordList;
+  }
+
+  /** Settings' Connect: authorizes Deckhand in Discord; replies at once, and how it goes arrives as "discord" events. */
+  async discordConnect(clientId: string): Promise<DiscordStatus & { started: boolean }> {
+    const reply = (await this.request('discord.connect', { clientId })) as DiscordStatus & { started: boolean };
+    const { started: _started, ...status } = reply;
+    this.update({ discord: status });
+    return reply;
+  }
+
+  /** Settings' Cancel: stops waiting for Discord's Authorize window. */
+  async discordCancel(): Promise<DiscordStatus> {
+    const status = (await this.request('discord.cancel')) as DiscordStatus;
+    this.update({ discord: status });
+    return status;
+  }
+
+  /** Settings' Remove: the authorization goes, revoked at Discord; no key is touched. */
+  async discordRemove(): Promise<DiscordStatus & { revoked: boolean | null }> {
+    const reply = (await this.request('discord.remove')) as DiscordStatus & { revoked: boolean | null };
+    const { revoked: _revoked, ...status } = reply;
+    this.update({ discord: status });
+    return reply;
   }
 
   /** Settings' Connect: asks VTube Studio for access; replies at once, and how it goes arrives as "vts" events. */
@@ -251,7 +279,7 @@ export class DaemonClient {
   private connect(): void {
     if (this.stopped) return;
     if (this.socketPath === null) {
-      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null });
+      this.update({ connected: false, problem: 'the daemon socket is unavailable: $XDG_RUNTIME_DIR is not set', status: null, decks: null, audio: null, apps: null, obs: null, vts: null, twitch: null, discord: null });
       return; // nothing to retry: the path will not appear
     }
     const socket = net.connect(this.socketPath);
@@ -276,7 +304,8 @@ export class DaemonClient {
   private async handshake(socket: net.Socket): Promise<void> {
     try {
       // A subscribe replaces the set, and a daemon refuses one naming an event it does not know — whole: then without the newest, in turn.
-      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts', 'twitch'] })
+      await this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts', 'twitch', 'discord'] })
+        .catch(() => this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts', 'twitch'] }))
         .catch(() => this.request('subscribe', { events: ['state', 'config', 'audio', 'obs', 'vts'] }))
         .catch(() => this.request('subscribe', { events: ['state', 'config', 'audio', 'obs'] }));
       const status = (await this.request('status')) as StatusResult;
@@ -288,9 +317,11 @@ export class DaemonClient {
       const vts = ((await this.request('vts.status').catch(() => null)) as VtsStatus | null) ?? null;
       // And from before Twitch.
       const twitch = ((await this.request('twitch.status').catch(() => null)) as TwitchStatus | null) ?? null;
+      // And from before Discord.
+      const discord = ((await this.request('discord.status').catch(() => null)) as DiscordStatus | null) ?? null;
       if (socket !== this.socket) return;
       this.retryMs = this.retryInitialMs;
-      this.update({ connected: true, problem: null, status, decks, audio, obs, vts, twitch });
+      this.update({ connected: true, problem: null, status, decks, audio, obs, vts, twitch, discord });
       // After, not during: listing the apps reads every desktop entry and
       // icon theme (about half a second on the Fedora laptop), and nothing
       // else waits for it.
@@ -320,6 +351,7 @@ export class DaemonClient {
       obs: null,
       vts: null,
       twitch: null,
+      discord: null,
     });
     this.lastError = null;
     if (this.stopped) return;
@@ -399,6 +431,8 @@ export class DaemonClient {
       this.update({ vts: data as VtsStatus });
     } else if (name === 'twitch') {
       this.update({ twitch: data as TwitchStatus });
+    } else if (name === 'discord') {
+      this.update({ discord: data as DiscordStatus });
     }
   }
 

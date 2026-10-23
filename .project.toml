@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Plan the Discord integration (bring-your-own client ID; stage 0 done on both clients); virtual decks stage 2 design is still queued."
+next = "Check the Discord integration against real Discord (Flatpak on the laptop, then the RPM), then release it; virtual decks stage 2 design is still queued."
 category = "Gaming"
 paused = false
 focus = true
@@ -26,4 +26,5 @@ v0.8.0 published 2026-10-17: virtual decks (a touchscreen as a deck). A touchscr
 v0.8.1 published 2026-10-17: a virtual deck has a default size, so a profile made later never gives it zero keys (found on both machines). A 2.5 GB memory peak during a display-flapping run was investigated and is not being pursued; a smaller per-redraw native leak is logged to fix later.
 Virtual decks stage 1 complete and confirmed on both machines (2026-10-17): v0.8.1 checked on Nobara with the Xeneon Edge and already used in a game.
 Discord stage 0 (2026-10-20): each user brings their own app's client ID (Public Client + PKCE, no secret, no shared app; Discord isn't approving RPC apps). RPM and Flatpak supported, Vesktop not. Every voice action but per-user volume confirmed against the laptop's Flatpak Discord. REFERENCE gained Home Assistant and webhooks (command keys, no integration).
+Discord built (2026-10-22, not released): Mute, Deafen, Input mode, Join, Leave, User volume; connected while the profile has a Discord key on any page (its handshake can take 20 s), keys show a connecting badge meanwhile and a press never waits; Remove and the uninstaller revoke the tokens. Offline suites pass; real-Discord checks next.
 """

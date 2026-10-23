@@ -5,6 +5,7 @@ import type { PairIconField } from '../../shared/icons.js';
 import type { Choice } from '../model.js';
 import { MuteForm, VolumeForm } from './AudioForms.js';
 import { CycleForm, CycleInputsForm, InputForm, OutputForm, type AudioLists } from './DeviceForms.js';
+import { DiscordForm, DiscordJoinForm, DiscordUserVolumeForm } from './DiscordForms.js';
 import { HotkeyForm, PressReleaseForm, ToggleForm } from './HotkeyForm.js';
 import { MediaControlForm, MediaInfoForm } from './MediaForms.js';
 import { MultiForm } from './MultiForm.js';
@@ -111,6 +112,15 @@ export function ActionForm(p: ActionFormProps) {
       return <TwitchClipForm {...common} />;
     case 'twitch.streamInfo':
       return <TwitchStreamInfoForm {...common} />;
+    case 'discord.mute':
+    case 'discord.deafen':
+    case 'discord.inputMode':
+    case 'discord.leave':
+      return <DiscordForm type={p.type} />;
+    case 'discord.join':
+      return <DiscordJoinForm {...common} />;
+    case 'discord.userVolume':
+      return <DiscordUserVolumeForm {...common} />;
     default:
       return null;
   }

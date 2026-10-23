@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { DaemonView, DeckhandBridge, SettingsSection, StoreView, VirtualDecksView, WindowState } from '../shared/bridge.js';
-import type { ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
+import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import type { AppSettings } from '../shared/settings.js';
 import type { UpdateState } from '../shared/updates.js';
 
@@ -31,6 +31,7 @@ const bridge: DeckhandBridge = {
   obsList: (kind, scene) => ipcRenderer.invoke('obsList', kind, scene),
   vtsList: (kind, model) => ipcRenderer.invoke('vtsList', kind, model),
   twitchCategories: (query) => ipcRenderer.invoke('twitchCategories', query),
+  discordList: (kind, guild) => ipcRenderer.invoke('discordList', kind, guild),
   collapsedLibrary: () => ipcRenderer.invoke('collapsedLibrary'),
   setCollapsedLibrary: (groups) => ipcRenderer.invoke('setCollapsedLibrary', groups),
   shownDecks: () => ipcRenderer.invoke('shownDecks'),
@@ -94,6 +95,11 @@ const bridge: DeckhandBridge = {
   twitchCancel: () => ipcRenderer.invoke('twitchCancel'),
   twitchRemove: () => ipcRenderer.invoke('twitchRemove'),
   twitchOpenActivate: () => ipcRenderer.invoke('twitchOpenActivate'),
+  discordStatus: () => ipcRenderer.invoke('discordStatus'),
+  onDiscordStatus: (callback) => subscribe<DiscordStatus | null>('discordStatus', callback),
+  discordConnect: (clientId) => ipcRenderer.invoke('discordConnect', clientId),
+  discordCancel: () => ipcRenderer.invoke('discordCancel'),
+  discordRemove: () => ipcRenderer.invoke('discordRemove'),
   openKeptFolder: () => ipcRenderer.invoke('openKeptFolder'),
   showKeptFile: (file) => ipcRenderer.invoke('showKeptFile', file),
   closeSettings: () => ipcRenderer.invoke('closeSettings'),

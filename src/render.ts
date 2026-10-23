@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
 import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
 import { expandPath } from './config.js';
-import { failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
+import { connectingBadgeSvg, failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
 import { readIconFile } from './icon-file.js';
 import type { Display } from './types.js';
@@ -64,6 +64,11 @@ function failedBadge(size: number): OverlayOptions {
 function unsetBadge(size: number): OverlayOptions {
   const { diameter, inset } = failedBadgePlacement(size);
   return { input: Buffer.from(unsetBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
+}
+
+function connectingBadge(size: number): OverlayOptions {
+  const { diameter, inset } = failedBadgePlacement(size);
+  return { input: Buffer.from(connectingBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
 }
 
 /** An icon layer at 40% opacity: a key whose integration is not set up, as app-launch-unset is drawn. */
@@ -200,8 +205,10 @@ export async function renderButton(display: Display, size: number, strictIcon = 
   // Last, so it is over the label as well as the icon. `failed` is part of the
   // cache key (JSON.stringify(display), above), so a marked face and a clean
   // one are two entries and never stand in for each other.
-  // Not set up says why the key cannot work, so it stands in for a failure mark.
+  // Not set up says why the key cannot work, so it stands in for a failure mark;
+  // connecting says it will work in a moment, so it does too, until connected.
   if (display.unset) layers.push(unsetBadge(size));
+  else if (display.connecting) layers.push(connectingBadge(size));
   else if (display.failed) layers.push(failedBadge(size));
 
   if (layers.length > 0) base = base.composite(layers);

@@ -15,6 +15,7 @@ import * as audioService from './services/audio.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as sessionLock from './services/session-lock.js';
+import * as discordService from './services/discord.js';
 import * as obsService from './services/obs.js';
 import * as twitchService from './services/twitch.js';
 import * as vtsService from './services/vts.js';
@@ -78,7 +79,9 @@ let events: ReturnType<typeof eventNotifiers> | null = null;
  * After anything that can change what a deck shows — a page, a profile, a
  * layout, a deck attached or gone — and after a reload: OBS and VTube Studio
  * are connected only while a shown page has one of their keys
- * (services/obs.ts, services/vts.ts). A scan of the shown pages' keys; no
+ * (services/obs.ts, services/vts.ts). **Discord is the one exception**:
+ * connected while the profile the decks show has a Discord key on any page
+ * (services/discord.ts; its handshake is slow). A scan of the keys; no
  * timer.
  */
 const syncServiceDemand = () => {
@@ -87,6 +90,11 @@ const syncServiceDemand = () => {
   vtsService.setWanted(
     [...sessions.values()].some((s) => s.shows('vts.')),
     [...sessions.values()].some((s) => s.shows('vts.expression')),
+  );
+  const discordKeys = [...sessions.values()].flatMap((s) => s.layoutActions('discord.'));
+  discordService.setWanted(
+    discordKeys.length > 0,
+    discordKeys.some((a) => a.type === 'discord.userVolume'),
   );
 };
 
@@ -466,6 +474,10 @@ async function main(): Promise<void> {
     sessions.forEach((s) => s.invalidateByType(['vts.hotkey', 'vts.model', 'vts.expression']));
     events?.vts();
   });
+  const stopDiscord = discordService.subscribe(() => {
+    sessions.forEach((s) => s.invalidateByType(['discord.mute', 'discord.deafen', 'discord.inputMode', 'discord.join', 'discord.leave', 'discord.userVolume']));
+    events?.discord();
+  });
   const stopTwitch = twitchService.subscribe(() => {
     sessions.forEach((s) => s.invalidateByType(['twitch.chat', 'twitch.marker', 'twitch.clip', 'twitch.streamInfo']));
     events?.twitch();
@@ -487,8 +499,8 @@ async function main(): Promise<void> {
 
   await requestScan();
   // The same tick retries a lost session bus (mpris.ts retryLostBus), an
-  // OBS or a VTube Studio that was not there while a key wanted it (obs.ts,
-  // vts.ts retry), and logind for a virtual deck's lock state
+  // OBS, a VTube Studio or a Discord that was not there while a key wanted it
+  // (obs.ts, vts.ts, discord.ts retry), and logind for a virtual deck's lock state
   // (session-lock.ts), so none needs a timer of its own; each does nothing
   // while there is nothing to retry.
   const scanner = setInterval(() => {
@@ -496,6 +508,7 @@ async function main(): Promise<void> {
     mprisService.retryLostBus();
     obsService.retry();
     vtsService.retry();
+    discordService.retry();
     sessionLock.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
   // A virtual deck's touch state is in the socket's "state": a lock or an
@@ -536,6 +549,8 @@ async function main(): Promise<void> {
       obsService.setWanted(false);
       stopVts();
       vtsService.setWanted(false);
+      stopDiscord();
+      discordService.setWanted(false);
       stopTwitch();
       twitchService.stop();
       void shutdown(signal);

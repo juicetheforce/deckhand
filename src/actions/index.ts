@@ -3,6 +3,7 @@ import type { IconState } from '../default-icons.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import * as keyboard from './keyboard.js';
 import * as audio from './audio.js';
+import * as discord from './discord.js';
 import * as media from './media.js';
 import * as obs from './obs.js';
 import * as system from './system.js';
@@ -53,6 +54,12 @@ export const registry: Record<string, ActionHandler> = {
   'twitch.marker': twitch.marker,
   'twitch.clip': twitch.clip,
   'twitch.streamInfo': twitch.streamInfo,
+  'discord.mute': discord.mute,
+  'discord.deafen': discord.deafen,
+  'discord.inputMode': discord.inputMode,
+  'discord.join': discord.join,
+  'discord.leave': discord.leave,
+  'discord.userVolume': discord.userVolume,
 };
 
 /**

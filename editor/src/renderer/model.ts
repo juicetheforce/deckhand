@@ -24,7 +24,7 @@ export type DeckGeometryWithSerial = DecksResult[number];
  * a page stays failed while the deck is elsewhere.
  */
 /** The services whose keys need setting up before they can do anything. */
-export type Integration = 'obs' | 'vts' | 'twitch';
+export type Integration = 'obs' | 'vts' | 'twitch' | 'discord';
 
 /**
  * The integration an action needs set up before it can do anything: OBS's
@@ -35,6 +35,7 @@ export function integrationOf(type: string | undefined): Integration | null {
   if (type?.startsWith('obs.')) return 'obs';
   if (type?.startsWith('vts.')) return 'vts';
   if (type?.startsWith('twitch.')) return 'twitch';
+  if (type?.startsWith('discord.')) return 'discord';
   return null;
 }
 
@@ -51,6 +52,7 @@ export function notSetUp(daemon: DaemonView, type: string | undefined): boolean 
   if (integration === 'obs') return daemon.obs?.setUp === false;
   if (integration === 'vts') return daemon.vts?.setUp === false;
   if (integration === 'twitch') return daemon.twitch?.setUp === false;
+  if (integration === 'discord') return daemon.discord?.setUp === false;
   return false;
 }
 
@@ -59,6 +61,7 @@ export const INTEGRATIONS: Record<Integration, { name: string; notSetUp: string 
   obs: { name: 'OBS', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
   vts: { name: 'VTube Studio', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
   twitch: { name: 'Twitch', notSetUp: 'Its keys do nothing until an account is linked in Settings › Integrations.' },
+  discord: { name: 'Discord', notSetUp: 'Its keys do nothing until it is connected in Settings › Integrations.' },
 };
 
 /** What a not-set-up action says, whole: "OBS is not set up. Its keys do nothing until…". Null for a set-up one. */
@@ -681,6 +684,14 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'twitch.clip': ['title', 'duration'],
   // The category picked from Twitch's search, by ID; its name kept to show.
   'twitch.streamInfo': ['title', 'category', 'categoryName'],
+  // Nothing to set: what they act on is Discord itself.
+  'discord.mute': [],
+  'discord.deafen': [],
+  'discord.inputMode': [],
+  'discord.leave': [],
+  // Picked from Discord's own lists, by ID; the names kept to show (inspector/DiscordForms.tsx).
+  'discord.join': ['guild', 'channel', 'guildName', 'channelName'],
+  'discord.userVolume': ['user', 'userName', 'delta', 'showLevel'],
 };
 
 /** Whether the inspector has a form for this action type (src/renderer/inspector/). */
@@ -795,6 +806,10 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
     // Marker and Clip need nothing set.
     case 'twitch.streamInfo':
       return !nonEmpty(action.title) && !nonEmpty(action.category);
+    case 'discord.join':
+      return !nonEmpty(action.channel);
+    case 'discord.userVolume':
+      return !nonEmpty(action.user);
     default:
       return false;
   }

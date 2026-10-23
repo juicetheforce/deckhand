@@ -110,6 +110,17 @@ export const CATALOGUE: CatalogueGroup[] = [
     ],
   },
   {
+    name: 'Discord',
+    entries: [
+      { type: 'discord.mute', name: 'Mute', description: 'Mute or unmute your mic in Discord, shown on the key', aliases: ['microphone', 'voice', 'talk'] },
+      { type: 'discord.deafen', name: 'Deafen', description: 'Deafen or undeafen in Discord, shown on the key', aliases: ['headset', 'hear', 'voice', 'silence'] },
+      { type: 'discord.inputMode', name: 'Input mode', description: 'Switch Discord between push-to-talk and voice activity', aliases: ['ptt', 'push to talk', 'open mic', 'vad'] },
+      { type: 'discord.join', name: 'Join channel', description: 'Join a Discord voice channel', aliases: ['call', 'connect', 'room', 'hop in'] },
+      { type: 'discord.leave', name: 'Leave channel', description: 'Leave the Discord voice channel you are in', aliases: ['disconnect', 'hang up', 'call'] },
+      { type: 'discord.userVolume', name: 'User volume', description: 'Make one person in your voice channel louder or quieter, for you', aliases: ['friend', 'call', 'too loud', 'too quiet'] },
+    ],
+  },
+  {
     name: 'System',
     entries: [
       { type: 'app', name: 'Open app', description: 'Start an installed application', aliases: ['launch', 'program', 'desktop', 'run'] },

@@ -83,6 +83,26 @@ out="$(end_twitch_link 2>&1)"; status=$?
 grep -n 'end_twitch_link$' "$REPO/scripts/install.sh" | head -1 | cut -d: -f1 > "$S/call-line"
 grep -n 'Stopping and disabling the service' "$REPO/scripts/install.sh" | cut -d: -f1 > "$S/stop-line"
 [ "$(cat "$S/call-line")" -lt "$(cat "$S/stop-line")" ] && ok "cmd_uninstall ends the Twitch link before it stops the service, which holds the tokens" || no "end_twitch_link is not called before the service stops"
+# end_discord_authorization: the same, for Discord's tokens, through the same stub.
+cat > "$APP_DIR/runtime/node" <<STUB
+#!/bin/bash
+echo "\$*" >> '$CALLS'
+printf '%s' "\$DISCORD_REPLY"
+STUB
+chmod +x "$APP_DIR/runtime/node"
+rm -f "$CALLS"
+printf '{\n  "twitch": { "refreshToken": "r" }\n}\n' > "$STATE_DIR/credentials.json"
+out="$(end_discord_authorization 2>&1)"; [ -z "$out" ] && [ ! -e "$CALLS" ] && ok "end_discord_authorization: other secrets but no Discord — asks nothing" || no "no Discord: $out"
+printf '{\n  "discord": { "refreshToken": "r" }\n}\n' > "$STATE_DIR/credentials.json"
+out="$(DISCORD_REPLY='{ "setUp": false, "revoked": true }' end_discord_authorization 2>&1)"; status=$?
+[ "$status" = 0 ] && grep -q 'Revoked .*at Discord' <<<"$out" && grep -qx "$APP_DIR/dist/cli.js discord remove --json" "$CALLS" \
+  && ok "end_discord_authorization: set up — runs deckhand discord remove, and says Discord revoked it" || no "set up ($status): $out / $(cat "$CALLS" 2>/dev/null)"
+out="$(DISCORD_REPLY='{ "setUp": false, "revoked": false }' end_discord_authorization 2>&1)"; status=$?
+[ "$status" = 0 ] && grep -q 'did not confirm' <<<"$out" && grep -q 'Authorized Apps' <<<"$out" \
+  && ok "end_discord_authorization: Discord did not confirm — says so and where to remove it, and the uninstall goes on" || no "unconfirmed ($status): $out"
+rm -f "$APP_DIR/runtime/node"
+grep -n 'end_discord_authorization$' "$REPO/scripts/install.sh" | head -1 | cut -d: -f1 > "$S/call-line"
+[ "$(cat "$S/call-line")" -lt "$(cat "$S/stop-line")" ] && ok "cmd_uninstall revokes Discord's authorization before it stops the service" || no "end_discord_authorization is not called before the service stops"
 # Uninstalling removes Deckhand's rule, every paired touchscreen's rule and the
 # pairing helper; sudo and udevadm stand-ins, access re-applied (not run here).
 mkdir -p "$S/etc"

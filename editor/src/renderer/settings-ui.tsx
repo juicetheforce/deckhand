@@ -66,7 +66,7 @@ export function StatusDot({ dot }: { dot: Dot }) {
 }
 
 /** A line across the page that says how something went. */
-export function Banner({ kind, children, action, ...data }: { kind: 'ok' | 'error' | 'warn' | 'info'; children: ReactNode; action?: ReactNode } & Record<`data-${string}`, string | undefined>) {
+export function Banner({ kind, children, action, ...data }: { kind: 'ok' | 'error' | 'warn' | 'info' | 'discord'; children: ReactNode; action?: ReactNode } & Record<`data-${string}`, string | undefined>) {
   return (
     <div className={`sp-banner sp-banner-${kind}`} role="status" {...data}>
       <span className={`sp-dot sp-dot-banner-${kind}`} aria-hidden="true" />
@@ -111,7 +111,7 @@ export function Disclosure({ summary, initiallyOpen, children }: { summary: stri
 }
 
 /** An integration's built-in icon, on its tinted tile: the sidebar's and the page header's. */
-export function IntegrationIcon({ icon, tint, size }: { icon: string; tint: 'obs' | 'vts' | 'twitch'; size: 'nav' | 'page' }) {
+export function IntegrationIcon({ icon, tint, size }: { icon: string; tint: 'obs' | 'vts' | 'twitch' | 'discord'; size: 'nav' | 'page' }) {
   return (
     <span className={`sp-tile sp-tile-${tint} sp-tile-${size}`} aria-hidden="true">
       <img src={iconUrl(`builtin:${icon}`)} alt="" />
@@ -128,7 +128,7 @@ export function IntegrationHeader({
   status,
   children,
   ...data
-}: { icon: string; tint: 'obs' | 'vts' | 'twitch'; name: string; dot: Dot; status: string; children?: ReactNode } & Record<`data-${string}`, string | undefined>) {
+}: { icon: string; tint: 'obs' | 'vts' | 'twitch' | 'discord'; name: string; dot: Dot; status: string; children?: ReactNode } & Record<`data-${string}`, string | undefined>) {
   return (
     <div className="sp-int-head">
       <IntegrationIcon icon={icon} tint={tint} size="page" />
