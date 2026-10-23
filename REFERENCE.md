@@ -407,11 +407,12 @@ stays blank), `null` for no icon, a path to an image file, or
 can't be drawn shows a dashed "missing" icon.
 
 **Built-in icons are drawn smaller than the key**, centred, at
-`defaults.builtinIconSize` percent of it: 53 unless set, from 20 to 100 (100
-fills the key, as before `v0.10.0`). It applies to every built-in — an
-action's own, one chosen by name, the "missing" icon — and never to an image
-file you chose, which fills the key as `iconFit` says. Change it in
-`config.json` and the decks and the editor redraw on save.
+`defaults.builtinIconSize` percent of it: 45 unless set, from 30 to 70 — what
+**Settings › General › Icon size** sets, in steps of 5. It applies to every
+built-in — an action's own, one chosen by name, the "missing" icon — and
+never to an image file you chose, which fills the key as `iconFit` says. The
+decks and the editor redraw when the slider is let go, or when `config.json`
+is saved.
 
 ## Actions
 
@@ -430,7 +431,7 @@ file you chose, which fills the key as `iconFit` says. Change it in
 | `brightness` | `value` or `delta`; `showLevel: true` shows the level |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
-| `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on or the daemon restarts |
+| `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconOn` / `iconOff` |
 | `audio.sink` | `node` (from `deckhand sinks`), `label` — sets the default output and moves playing streams to it. Highlights when active |
 | `audio.cycle` | `devices: [{ node, label }, …]` — steps through outputs from one key |
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
@@ -438,7 +439,7 @@ file you chose, which fills the key as `iconFit` says. Change it in
 | `audio.micMute` | Toggles the default input's mute; `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level |
 | `audio.mute` | Toggles output mute; `iconMuted` / `iconUnmuted` |
-| `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping |
+| `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconOn` (playing) / `iconOff` |
 | `sound.stopAll` | Stops every sound Deckhand is playing |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconPlaying` / `iconPaused` |
 | `media.info` | Live now-playing key, with album art via `showArt`. `maxChars` cuts the title and artist at a number of characters instead of at the key's width |
@@ -449,20 +450,21 @@ file you chose, which fills the key as `iconFit` says. Change it in
 | `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`). `iconMuted` / `iconUnmuted` |
 | `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first. `iconOn` (shown) / `iconOff` (hidden) |
 | `vts.hotkey` | `model`, `hotkey` (IDs) — runs one of a model's hotkeys in VTube Studio, as set up there. Dashed while another model is loaded |
-| `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on |
-| `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded |
+| `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on. `iconOn` / `iconOff` |
+| `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded. `iconOn` (loaded) / `iconOff` |
 | `twitch.marker` | optional `description` (up to 140 characters) — adds a stream marker to your live stream |
 | `twitch.clip` | optional `title`, `duration` (5–60 seconds; Twitch's default is 30) — clips your live stream |
 | `twitch.chat` | `message` (up to 500 characters) — sends it to your own channel's chat, as you |
 | `twitch.streamInfo` | `title` (up to 140 characters) and/or `category` (Twitch's ID, with `categoryName` to show) — sets your channel's title and category; one left out stays as it is |
-| `discord.mute` | Mutes and unmutes your microphone in Discord. Red while muted |
-| `discord.deafen` | Deafens and undeafens you in Discord. Red while deafened |
-| `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity |
+| `discord.mute` | Mutes and unmutes your microphone in Discord. Red while muted. `iconMuted` / `iconUnmuted` |
+| `discord.deafen` | Deafens and undeafens you in Discord. Red while deafened. `iconOn` (deafened) / `iconOff` |
+| `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconOn` (voice activity) / `iconOff` (push-to-talk) |
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
 | `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level — the volume you hear one person at, 0–200 % |
 
-**A state's own icon** (`iconMuted`, `iconOn`, …) is drawn in that state; a
+**A state's own icon** (`iconMuted`, `iconOn`, …) is drawn in that state —
+every key that shows a state has them, chosen in the editor's Icon tab; a
 state without one draws the key's own icon, or else the action's built-in
 for that state, so setting one never loses the other. A stream reconnecting
 and a recording paused always draw their built-ins.
@@ -1011,7 +1013,7 @@ session is locked from logind, so it ignores touches.
 
 **A virtual deck shows nothing.** `deckhand status` says `turned off` if a
 Virtual deck on/off key (or Settings, or `deckhand virtual off`) turned it
-off: turn it on again. `deckhand decks` lists it only while its
+off — which lasts across restarts: turn it on again. `deckhand decks` lists it only while its
 screen is connected. The journal says whether its display helper started;
 virtual decks need a Wayland session.
 

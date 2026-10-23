@@ -34,8 +34,10 @@ It's one person's project, used every day.
   one key takes the whole desk from work to a game.
 - **Icons are just files on disk.** Point a key at any image. Nothing is
   copied or imported; edit the file and the key updates. A key without an
-  icon draws a built-in one for its action. A label can stack its words on
-  more than one line.
+  icon draws a built-in one for its action, as large as you like (Settings ›
+  General › Icon size). A key that shows a state — muted, live, playing —
+  takes an icon of yours for each. A label can stack its words on more than
+  one line.
 
 ## How it treats your hardware
 
@@ -90,7 +92,7 @@ touch panel.
   virtual deck, hides the panel and gives its screen and touchscreen back to
   the desktop; pressed again, the panel comes back where it was. Settings ›
   Decks has the same, and so does `deckhand virtual off` and `on`. It stays
-  off until you turn it on or Deckhand restarts, and turning it on asks for
+  off until you turn it on, restarts included, and turning it on asks for
   no password. While it's off, your desktop decides where the touchscreen's
   touches go: on KDE Plasma, set **System Settings › Touchscreen › Target
   display** to that screen, or they may land on another.

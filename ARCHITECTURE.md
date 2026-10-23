@@ -183,7 +183,9 @@ different profiles.
   session closes, its helper quits, the grab ends and every held key is let
   go — nothing runs for it at rest. Its pairing, layouts and touchscreen
   access are kept, so on is instant, with no password, and returns to the
-  page it was on. Off lasts for this run of the daemon; nothing is written.
+  page it was on. **Off lasts until it is turned on, across restarts** —
+  the person's intent — kept in the state directory (`virtual-off.json`),
+  never `config.json`, which the daemon does not write.
 - **Whether the screen is plugged in is the kernel's to say; whether the
   panel can be shown is the compositor's.** KWin removes a screen's output
   when it wakes from power saving and adds it back a moment later, with
@@ -362,7 +364,8 @@ An app key with no icon draws its app's own icon, found through the
 desktop's icon theme when the key is drawn — the daemon does that lookup
 itself, having neither GTK nor Qt — and never written to the config either.
 **Built-in icons are drawn smaller than the key** (`defaults.builtinIconSize`,
-53% unless set), so their glyphs sit as the editor's design draws them; an
+45% unless set, 30–70: Settings › General › Icon size), so their glyphs sit
+as the editor's design draws them; an
 image file someone chose is never resized by it.
 
 **Audio follows one rule: you pick from the devices the system reports, and
@@ -430,7 +433,7 @@ is here so the test is not "fixed" instead.
 | `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/services/sounds.ts`, `src/actions/sound.ts` | **a sound's player is the daemon's child on purpose** — the one exception to the row below; **its key's face changes only when a player starts or ends**, never on a clock; a loop restarts on the exit, never under 250 ms of play; **a player Deckhand stopped is not a failure** — pw-play exits 1 on SIGTERM, paplay 0 (measured), so it is known by being stopped, not by its code; **a chosen output that is not there fails the press** — pw-play silently plays an unknown target on the default output (measured). Held by `smoke-sounds` |
-| `src/services/virtual-power.ts`, the virtual driver's `list()` | **a virtual deck turned off is left out of every scan**, so it closes as an unplugged screen does: helper quit, grab ended, keys let go, nothing at rest; its touchscreen's access kept. Held by `smoke-virtual-daemon` |
+| `src/services/virtual-power.ts`, the virtual driver's `list()` | **a virtual deck turned off is left out of every scan**, so it closes as an unplugged screen does: helper quit, grab ended, keys let go, nothing at rest; its touchscreen's access kept; **kept off across restarts** in the state directory's `virtual-off.json` — an unreadable file is ignored, never a deck left dark for good. Held by `smoke-virtual-daemon` |
 | `src/render.ts`'s built-in size, `editor/src/renderer/model.ts`'s `iconScale` | **only built-ins** — an action's default, one chosen by name, the missing icon — are drawn at `builtinIconSize`; an icon file is never resized by it. The editor's grid draws the same size from the same default. Held by `smoke-defaults` and the editor's unit tests |
 | `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
