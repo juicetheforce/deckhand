@@ -87,13 +87,35 @@ export function socketCandidates(runtimeDir = process.env.XDG_RUNTIME_DIR): stri
   return dirs.flatMap((dir) => Array.from({ length: 10 }, (_, n) => path.join(dir, `discord-ipc-${n}`)));
 }
 
-/** The first candidate that is a socket now, or null: Discord is not running (or runs somewhere not supported). Reads the file system only. */
+/**
+ * The first candidate something listens on now, or null: Discord is not
+ * running (or runs somewhere not supported). **A socket file is not
+ * enough**: the Flatpak leaves its own runtime directory's
+ * `discord-ipc-0` behind when Discord quits (seen 2026-10-22), so each
+ * one that exists is connected to, and let go at once. Connecting is
+ * immediate; only Discord's handshake, after it, is slow.
+ */
 export async function findSocket(runtimeDir?: string): Promise<string | null> {
   for (const candidate of socketCandidates(runtimeDir)) {
     const stat = await fs.stat(candidate).catch(() => null);
-    if (stat?.isSocket()) return candidate;
+    if (stat?.isSocket() && (await listening(candidate))) return candidate;
   }
   return null;
+}
+
+/** Whether something accepts a connection at this socket: refused (a file left behind) or no answer within a second is no. */
+function listening(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection(path);
+    const done = (answer: boolean) => {
+      clearTimeout(deadline);
+      socket.destroy();
+      resolve(answer);
+    };
+    const deadline = setTimeout(() => done(false), 1000);
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
+  });
 }
 
 export interface DiscordClientOptions {

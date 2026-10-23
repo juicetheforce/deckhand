@@ -101,6 +101,13 @@ const plainFile = path.join(RUN, 'discord-ipc-0');
 await fs.writeFile(plainFile, '');
 check('a file that is not a socket is passed over', (await findSocket()) === SOCKET);
 await fs.rm(plainFile);
+// What the Flatpak leaves in its own runtime directory when Discord quits: a socket file nobody listens on.
+const stalePath = path.join(RUN, 'discord-ipc-1');
+spawnSync('python3', ['-I', '-c', 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])', stalePath]);
+check('a socket file left behind (nothing listening) is passed over', (await fs.stat(stalePath)).isSocket() && (await findSocket()) === SOCKET);
+await fake.quit();
+check('…and with Discord gone, only it left: not running', (await findSocket()) === null);
+await fake.start();
 
 console.log('\nthe client');
 const refusedClient = await thrown(() => DiscordClient.connect({ path: SOCKET, clientId: '1111', onEvent() {}, onClose() {} }));
@@ -227,6 +234,7 @@ await fake.quit();
 check('the connection goes: unavailable', await until(() => discord.cachedState().connection === 'unavailable'));
 check('faces: nothing live known, no badge', discord.cachedState().mute === null && (await describeAction(ctx, MUTE)) === null);
 const notRunning = await thrown(() => runActionOrThrow(ctx, MUTE));
+// The stale file from above is still there: a press must not take it for Discord.
 check('a press: Discord is not running, notified', notRunning instanceof ActionNeeded && !(notRunning instanceof NotSetUp) && /not running/.test(notRunning.message));
 // A picker during a handshake slower than the editor waits for any reply (10 s): it answers first.
 fake.readyDelayMs = 9000;
