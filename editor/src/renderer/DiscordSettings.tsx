@@ -12,9 +12,11 @@ import { Banner, Disclosure, Group, IntegrationHeader } from './settings-ui.js';
  * window, and Authorize there saves the tokens. Remove forgets them, revokes
  * them at Discord, and touches no key.
  *
- * **Cancel exists here**, as in the mockups: it stops waiting, and nothing is
- * saved. Whether Discord's own window closes with it is not known yet, so the
- * message says to close it there if it is still open.
+ * **Cancel exists here**, as in the mockups: it stops waiting, nothing is
+ * saved, and Discord's Authorize window closes with it — Discord then shows
+ * an error saying the authorization was cancelled, which the message says
+ * is expected (seen by Ryan, 2026-10-22). Unlike VTube Studio's window,
+ * which a closed request does not take back: that page has no Cancel.
  *
  * Two states the mockups do not draw follow OBS's page: "Waiting for
  * Discord" (set up, Discord not running or no Discord key in the profile),

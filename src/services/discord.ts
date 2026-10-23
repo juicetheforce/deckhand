@@ -697,13 +697,18 @@ function authorizeFailure(err: unknown): DiscordApproval {
   return { state: 'failed', message: 'Discord closed before the authorization was answered. Connect again once it is running.' };
 }
 
-/** Settings' Cancel: stop waiting for the Authorize window. Nothing was saved. */
+/**
+ * Settings' Cancel: stop waiting. Closing the connection closes Discord's
+ * Authorize window, and Discord then shows its own error, "Authorization
+ * flow cancelled because your browser window was closed" (seen by Ryan,
+ * 2026-10-22) — so the message says that is expected. Nothing was saved.
+ */
 export function cancelAccess(): void {
   const waiting = asking;
   if (!waiting) return;
   asking = null;
   waiting.close();
-  update({ approval: { state: 'cancelled', message: 'Cancelled. If Discord still shows its Authorize window, close it there.' } });
+  update({ approval: { state: 'cancelled', message: 'Cancelled. Discord says the authorization was cancelled; that’s expected.' } });
 }
 
 /**
