@@ -2,6 +2,7 @@ import { ActionNeeded } from '../action-error.js';
 import * as vts from '../services/vts.js';
 import { VtsError } from '../services/vts-client.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+import { stateIcon, withStateIcon } from './state-icon.js';
 
 /**
  * VTube Studio keys, through
@@ -98,7 +99,8 @@ export const model: ActionHandler = {
 
   iconState: (params) => ({ active: vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // iconOn while its model is the one loaded, iconOff otherwise (state-icon.ts).
+  describe: async (_ctx, params) => withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model)),
 };
 
 /**
@@ -135,5 +137,10 @@ export const expression: ActionHandler = {
     return { active: s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true };
   },
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // iconOn while the expression is on, iconOff while off (state-icon.ts).
+  describe: async (_ctx, params) => {
+    const s = vts.cachedState();
+    const on = s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true;
+    return withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, on));
+  },
 };

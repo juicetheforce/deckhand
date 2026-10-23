@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ObsList } from '../../../../src/control/protocol.js';
 import type { ButtonDef } from '../../../../src/types.js';
-import { pairIconFields, type PairIconField } from '../../shared/icons.js';
-import { PairIcons, actionOf, nextAction, type FormProps } from './controls.js';
+import type { PairIconField } from '../../shared/icons.js';
+import { StateIcons, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
  * The OBS keys. Stream, Record and Pause
@@ -29,16 +29,6 @@ const ABOUT: Record<string, { heading: string; text: string }> = {
     text: 'Press to pause what Record is recording, and again to resume. Recordings only: OBS cannot pause a stream. OBS cannot pause a recording that shares the stream\'s settings either (Settings › Output › Recording Quality "Same as stream", its default) — the key is marked as failed and says so.',
   },
 };
-
-/**
- * An icon of the person's own for each of the key's states, as Elgato's
- * two-state keys have; a state left unset keeps its built-in. Absent for a
- * Multi step, which has no face.
- */
-function StateIcons({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
-  if (!onChooseIcon) return null;
-  return <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />;
-}
 
 type ObsFormProps = FormProps & { onChooseIcon?: (field: PairIconField) => void };
 

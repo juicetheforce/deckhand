@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
+import micIconUrl from '../../../assets/icons/mic.svg';
+import { BUILTIN_ICON_SIZE, DEFAULTS } from '../../../src/config-common.js';
 import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection } from '../shared/bridge.js';
@@ -9,7 +11,7 @@ import { discordView, importedLine, obsView, twitchView, vtsView, type Dot } fro
 import { VirtualDecks } from './VirtualDecksSettings.js';
 import { DiscordSettings } from './DiscordSettings.js';
 import { ObsSettings } from './ObsSettings.js';
-import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, StatusDot, Switch } from './settings-ui.js';
+import { Banner, Divider, Group, InfoTip, IntegrationIcon, LinkButton, PageTitle, Row, Slider, StatusDot, Switch } from './settings-ui.js';
 import { TwitchSettings } from './TwitchSettings.js';
 import { VtsSettings } from './VtsSettings.js';
 
@@ -57,6 +59,10 @@ export function SettingsWindow() {
   const [decks, setDecks] = useState<DeckOption[]>([]);
   /** In config.json, not with the settings above; null while it is not open. */
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
+  /** Built-in icons' size, also in config.json; null while it is not open. */
+  const [iconSize, setIconSize] = useState<number | null>(null);
+  /** Icon size's sample while the slider moves: live, though nothing is saved until it is let go. */
+  const [iconSample, setIconSample] = useState<number | null>(null);
   const params = new URLSearchParams(window.location.search);
   const opening = params.get('section');
   const [page, setPage] = useState<Page>(() => (isSection(opening) ? opening : (requestedPage(params.get('page')) ?? 'general')));
@@ -73,6 +79,7 @@ export function SettingsWindow() {
       void window.deckhand.settingsDecks().then(setDecks);
       // config.json edited by hand while the window is open shows the next time it is looked at.
       void window.deckhand.notifications().then(setNotificationsState);
+      void window.deckhand.builtinIconSize().then(setIconSize);
     };
     refreshDecks();
     // A deck plugged in while the window is open shows the next time it is looked at.
@@ -92,6 +99,13 @@ export function SettingsWindow() {
   if (!settings) return null;
   const change = (patch: Partial<AppSettings>) => void window.deckhand.setAppSettings(patch).then(setSettings);
   const changeNotifications = (on: boolean) => void window.deckhand.setNotifications(on).then(setNotificationsState);
+  // Saved on release: the decks and the editor's grid redraw then, not while it moves.
+  const changeIconSize = (percent: number | null) =>
+    void window.deckhand.setBuiltinIconSize(percent).then((saved) => {
+      setIconSize(saved);
+      setIconSample(null);
+    });
+  const sampleSize = iconSample ?? iconSize ?? DEFAULTS.builtinIconSize;
   const navItem = (item: { page: Page; name: string }, extra?: { icon?: string; dot?: Dot; update?: boolean }) => (
     <button
       key={item.page}
@@ -155,6 +169,25 @@ export function SettingsWindow() {
                     ))}
                   </div>
                 </Row>
+                <Divider />
+                {/* Claude Design's 16a–16c: global, percent of the key, built-in icons only. */}
+                <Row title="Icon size" detail={iconSize === null ? 'Needs config.json to be open' : 'Built-in icons on keys'}>
+                  <Slider
+                    label="Icon size"
+                    value={iconSize ?? DEFAULTS.builtinIconSize}
+                    min={BUILTIN_ICON_SIZE.min}
+                    max={BUILTIN_ICON_SIZE.max}
+                    step={BUILTIN_ICON_SIZE.step}
+                    unit="%"
+                    disabled={iconSize === null}
+                    onPreview={setIconSample}
+                    onCommit={changeIconSize}
+                  >
+                    <span className="sp-icon-sample" data-settings="icon-sample">
+                      <img src={micIconUrl} alt="" width={Math.round((56 * sampleSize) / 100)} height={Math.round((56 * sampleSize) / 100)} />
+                    </span>
+                  </Slider>
+                </Row>
               </Group>
             </div>
           )}
@@ -192,13 +225,14 @@ export function SettingsWindow() {
 
       {confirmingReset ? (
         <div className="settings-footer settings-footer-confirm" data-settings-confirm="reset">
-          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, notifications and accent color to their defaults?</span>
+          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, notifications, accent color and icon size to their defaults?</span>
           <button
             className="sp-button sp-button-danger-solid"
             onClick={() => {
               setConfirmingReset(false);
               void window.deckhand.resetAppSettings().then(setSettings);
               if (notifications === false) changeNotifications(true);
+              if (iconSize !== null && iconSize !== DEFAULTS.builtinIconSize) changeIconSize(null);
             }}
             data-settings="confirm-reset"
           >

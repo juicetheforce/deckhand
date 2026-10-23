@@ -327,6 +327,10 @@ export interface DeckhandBridge {
   openUpdate(): Promise<{ ok: true } | { ok: false; error: string }>;
   /** Turn them on or off; resolves with the setting as it now is. */
   setNotifications(on: boolean): Promise<boolean | null>;
+  /** Built-in icons' size, percent of the key (config.json's defaults); null while config.json is not open. */
+  builtinIconSize(): Promise<number | null>;
+  /** Save it (null: the default). Settings › General's slider, on release. */
+  setBuiltinIconSize(percent: number | null): Promise<number | null>;
   /** Settings › Decks' virtual decks, and the profile a new one is added to (settings window only). */
   virtualDecks(): Promise<VirtualDecksView>;
   onVirtualDecks(callback: (view: VirtualDecksView) => void): () => void;

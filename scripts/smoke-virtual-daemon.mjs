@@ -20,7 +20,9 @@
  * - turned off (`virtual.power`, the CLI, or the virtual.power action on the
  *   deck itself): closed and its helper quit, `status` says off, a scan
  *   leaves it off; turned on, attached again on the page it was on;
- * - stopping the daemon quits the helper.
+ * - stopping the daemon quits the helper;
+ * - a virtual deck turned off stays off when the daemon starts again (its
+ *   state directory's virtual-off.json), until it is turned on.
  *
  * The child gets scripts/test/fake-decks.mjs with no Stream Decks plugged in
  * (SIGUSR2 forces its scan), scripts/test/fake-panel.mjs as the helper, a
@@ -127,7 +129,8 @@ for (const node of ILITEK_NODES) await sysfs.inputNode(node);
 await fs.mkdir(SOCKS);
 const logind = await startFakeLogind(process.env.DBUS_SESSION_BUS_ADDRESS);
 
-const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], {
+/** The real daemon, on the scratch config, state, sysfs and buses: started again later, for a restart. */
+const spawnDaemon = () => spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], {
   env: {
     ...process.env,
     DECKHAND_CONFIG_DIR: CONFIG_DIR,
@@ -149,6 +152,7 @@ const child = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
+const child = spawnDaemon();
 const output = [];
 child.stdout.setEncoding('utf8');
 child.stderr.setEncoding('utf8');
@@ -290,6 +294,43 @@ try {
   child.kill('SIGTERM');
   const code = await exited;
   check('stopping the daemon quits the helper', code === 0 && (await until(async () => (await frames()).filter((f) => f.type === 'Q').length > quitsBefore)));
+
+  // Off, then the daemon stopped and started again: off is the person's intent, kept.
+  const first = spawnDaemon();
+  const firstOutput = [];
+  first.stdout.setEncoding('utf8');
+  first.stdout.on('data', (c) => firstOutput.push(c));
+  const firstExited = new Promise((resolve) => first.on('exit', (c) => resolve(c)));
+  await until(() => /attached Test panel/.test(firstOutput.join('')));
+  const firstClient = await connect(SOCKET);
+  await firstClient.request('virtual.power', { deck: KEY, on: false });
+  await until(() => /closed: it is turned off/.test(firstOutput.join('')));
+  firstClient.close();
+  first.kill('SIGTERM');
+  await firstExited;
+  const kept = JSON.parse(await fs.readFile(path.join(TMP, 'state', 'virtual-off.json'), 'utf8'));
+  check('the deck turned off is kept in the state directory, never config.json', JSON.stringify(kept) === JSON.stringify({ off: [KEY] }) && !(await fs.readFile(CONFIG_PATH, 'utf8')).includes('"off"'));
+
+  console.log('turned off, across a restart');
+  const second = spawnDaemon();
+  const secondOutput = [];
+  second.stdout.setEncoding('utf8');
+  second.stderr.setEncoding('utf8');
+  second.stdout.on('data', (c) => secondOutput.push(c));
+  second.stderr.on('data', (c) => secondOutput.push(c));
+  const secondExited = new Promise((resolve) => second.on('exit', (c) => resolve(c)));
+  const secondLog = () => secondOutput.join('');
+  check('started again: it says the deck was left off', await until(() => /turned off, as left: GRA-6e4e/.test(secondLog())), secondLog().slice(-600));
+  const restarted = await until(() => /\[control\] listening on/.test(secondLog()));
+  const client2 = await connect(SOCKET);
+  const status2 = async () => (await client2.request('status')).result.decks.find((d) => d.serial === KEY);
+  await sleep(800);
+  check('…and it stays off: not attached, status off', restarted && !/attached Test panel/.test(secondLog()) && (await status2())?.off === true, JSON.stringify(await status2()));
+  await client2.request('virtual.power', { deck: KEY, on: true });
+  check('turned on: attached, and nothing left off on disk', (await until(() => /attached Test panel/.test(secondLog()))) && (await until(async () => JSON.parse(await fs.readFile(path.join(TMP, 'state', 'virtual-off.json'), 'utf8')).off.length === 0)));
+  client2.close();
+  second.kill('SIGTERM');
+  await secondExited;
 } finally {
   child.kill('SIGKILL');
   await logind.stop().catch(() => undefined);

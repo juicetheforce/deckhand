@@ -490,6 +490,9 @@ async function main(): Promise<void> {
   // A virtual deck turned on or off: the scan closes or opens it, and every
   // key that shows its state is redrawn (services/virtual-power.ts).
   virtualPower.setKnownDecks(() => new Set(Object.entries(config?.decks ?? {}).filter(([, d]) => d.virtual).map(([id]) => id)));
+  // Off stays off across a restart: read before the first scan opens anything.
+  virtualPower.load();
+  virtualPower.forgetMissing();
   const stopPower = virtualPower.subscribe((deck) => {
     console.log(virtualPower.isOff(deck) ? `[main] virtual deck ${deck} turned off: its screen and touchscreen go back to the desktop` : `[main] virtual deck ${deck} turned on`);
     void requestScan();

@@ -265,8 +265,6 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
   check(`a built-in's glyph is at most the built-in size (${DEFAULTS.builtinIconSize}% of the key): ${Math.round(asBuiltin.height * 100)}%`, asBuiltin.height <= DEFAULTS.builtinIconSize / 100 + 0.02 && asBuiltin.height > 0.3);
   check('...centred', asBuiltin.centre.every((c) => Math.abs(c - 0.5) < 0.04));
   check(`the same drawing chosen as a file is drawn as before, filling the key: ${Math.round(asFile.height * 100)}%`, asFile.height > 0.75);
-  const full = inkOf(await renderButton(display({ icon: 'builtin:mic', builtinIconSize: 100 }), 96));
-  check('builtinIconSize 100 draws a built-in edge to edge again, as a file is', Math.abs(full.height - asFile.height) < 0.02);
   const bigger = inkOf(await renderButton(display({ icon: 'builtin:mic', builtinIconSize: 70 }), 96));
   check('a larger builtinIconSize draws it larger', bigger.height > asBuiltin.height + 0.1);
   check('the missing placeholder is a built-in too, drawn at its size', same(await renderButton(display({ icon: 'builtin:nope' }), 96), await builtinKey('missing')));
@@ -278,8 +276,8 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
       return err.message.includes('builtinIconSize');
     }
   };
-  check('the config refuses a builtinIconSize outside 20–100, or not a number', refusedSize(10) && refusedSize(101) && refusedSize('53'));
-  check('...and takes one within it', !refusedSize(60) && !refusedSize(20) && !refusedSize(100));
+  check('the config refuses a builtinIconSize outside 30–70 (the slider\'s range), or not a number', refusedSize(25) && refusedSize(75) && refusedSize('45'));
+  check('...and takes one within it, a hand-edited one between steps too', !refusedSize(30) && !refusedSize(70) && !refusedSize(53));
 }
 
 console.error = originalError;

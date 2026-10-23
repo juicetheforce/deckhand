@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { AppListing } from '../../../../src/control/protocol.js';
 import { iconUrl } from '../../shared/icons.js';
-import { Checkbox, NumberSetting, Row, Segmented, actionOf, nextAction, type FormProps } from './controls.js';
+import type { PairIconField } from '../../shared/icons.js';
+import { Checkbox, NumberSetting, Row, Segmented, StateIcons, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
  * The small System forms: Clock, Nothing, Brightness and Virtual deck on/off. Grouped
@@ -154,7 +155,7 @@ export function AppForm({ at, button, disabled, run, apps }: FormProps & { apps:
  * on that same virtual deck, it can turn it off but not back on — said, as
  * decided (scope §7, the polish release), not refused: someone may want just that.
  */
-export function VirtualPowerForm({ at, button, disabled, run, decks }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }> }) {
+export function VirtualPowerForm({ at, button, disabled, run, decks, onChooseIcon }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }>; onChooseIcon?: (field: PairIconField) => void }) {
   const action = actionOf('virtual.power', button);
   const chosen = typeof action?.deck === 'string' && action.deck !== '' ? action.deck : null;
   const known = chosen === null || decks.some((d) => d.id === chosen);
@@ -194,6 +195,7 @@ export function VirtualPowerForm({ at, button, disabled, run, decks }: FormProps
         </p>
       )}
       {chosen === null && decks.length > 0 && <p className="muted small">Pick the virtual deck this key turns off and on.</p>}
+      <StateIcons type="virtual.power" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }

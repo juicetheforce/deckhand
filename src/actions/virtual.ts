@@ -1,5 +1,6 @@
 import * as power from '../services/virtual-power.js';
 import type { ActionDef, ActionHandler } from '../types.js';
+import { stateIcon } from './state-icon.js';
 
 /**
  * virtual.power — turn a virtual deck's panel off and on, for a screen that
@@ -32,5 +33,14 @@ export const powerAction: ActionHandler = {
   iconState: (params) => {
     const deck = deckOf(params);
     return { active: deck === null || !power.isOff(deck) };
+  },
+
+  // Its own icon for each state (state-icon.ts): iconOn while the deck is on,
+  // iconOff while off. Drawn again when it is turned on or off (index.ts).
+  redraw: 'events',
+  describe: async (_ctx, params) => {
+    const deck = deckOf(params);
+    const icon = stateIcon(params, deck === null || !power.isOff(deck));
+    return icon === undefined ? null : { icon };
   },
 };

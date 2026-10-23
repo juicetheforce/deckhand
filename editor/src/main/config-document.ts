@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { CONTROL_ID, resolvePage, resolveProfile } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
@@ -383,6 +383,21 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       // the whole config, so it moves rather than the delete failing.
       if (layout.startPage !== undefined && resolvePage(layout, layout.startPage) === null) {
         layout.startPage = remaining[0];
+      }
+      return {};
+    }
+    case 'setBuiltinIconSize': {
+      const { min, max } = BUILTIN_ICON_SIZE;
+      if (edit.percent !== null && (typeof edit.percent !== 'number' || !(edit.percent >= min && edit.percent <= max))) {
+        throw new EditError(`icon size must be from ${min} to ${max}%`);
+      }
+      if (edit.percent === null || edit.percent === DEFAULTS.builtinIconSize) {
+        if (config.defaults) {
+          delete config.defaults.builtinIconSize;
+          if (Object.keys(config.defaults).length === 0) delete config.defaults;
+        }
+      } else {
+        config.defaults = { ...config.defaults, builtinIconSize: edit.percent };
       }
       return {};
     }

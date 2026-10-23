@@ -75,7 +75,7 @@ export function ActionForm(p: ActionFormProps) {
     case 'brightness':
       return <BrightnessForm {...common} />;
     case 'virtual.power':
-      return <VirtualPowerForm {...common} decks={p.virtualDecks} />;
+      return <VirtualPowerForm {...common} decks={p.virtualDecks} onChooseIcon={p.onChooseIcon} />;
     case 'media.control':
       return <MediaControlForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'media.info':
@@ -95,7 +95,7 @@ export function ActionForm(p: ActionFormProps) {
       return <CycleInputsForm {...common} audio={p.audio} />;
     // A Multi step is the one form given no onChooseIcon: it has no face.
     case 'sound.play':
-      return <SoundForm {...common} audio={p.audio} inStep={p.onChooseIcon === undefined} />;
+      return <SoundForm {...common} audio={p.audio} inStep={p.onChooseIcon === undefined} onChooseIcon={p.onChooseIcon} />;
     case 'sound.stopAll':
       return <StopAllSoundsForm />;
     case 'obs.stream':
@@ -111,9 +111,9 @@ export function ActionForm(p: ActionFormProps) {
     case 'vts.hotkey':
       return <VtsHotkeyForm {...common} />;
     case 'vts.model':
-      return <VtsModelForm {...common} />;
+      return <VtsModelForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'vts.expression':
-      return <VtsExpressionForm {...common} />;
+      return <VtsExpressionForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'twitch.chat':
       return <TwitchChatForm {...common} />;
     case 'twitch.marker':
@@ -126,7 +126,7 @@ export function ActionForm(p: ActionFormProps) {
     case 'discord.deafen':
     case 'discord.inputMode':
     case 'discord.leave':
-      return <DiscordForm type={p.type} />;
+      return <DiscordForm type={p.type} button={p.button} disabled={p.disabled} onChooseIcon={p.onChooseIcon} />;
     case 'discord.join':
       return <DiscordJoinForm {...common} />;
     case 'discord.userVolume':

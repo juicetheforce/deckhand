@@ -1,6 +1,7 @@
 import { ActionNeeded } from '../action-error.js';
 import * as obs from '../services/obs.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+import { MUTED_UNMUTED, ON_OFF, stateIcon, withStateIcon } from './state-icon.js';
 
 /**
  * OBS Studio keys, through
@@ -17,20 +18,13 @@ const UNSET: DisplayPatch = { unset: true };
 const notSetUp = () => obs.cachedState().connection === 'not-set-up';
 
 /**
- * An OBS key's face: an icon of the person's own for each of its two states,
- * as Elgato's two-state keys have — `iconOn` and `iconOff` (Mute's are
- * `iconMuted` and `iconUnmuted`, as audio's are). The state's own icon wins;
- * a state without one falls back to the key's own icon, then the built-in
- * pair (src/deck.ts), so setting an icon for one state never loses the
- * other's. `on` null: a third face the built-ins draw — a stream
- * reconnecting, a recording paused — which no custom icon hides. Not set up:
- * dimmed, whatever is drawn.
+ * An OBS key's face: its own icon for the state it is in (state-icon.ts) —
+ * `on` null for a third face the built-ins draw, a stream reconnecting or a
+ * recording paused, which no custom icon hides. Not set up: dimmed, whatever
+ * is drawn.
  */
-function faceOf(params: ActionDef, on: boolean | null, fields: readonly [string, string] = ['iconOn', 'iconOff']): DisplayPatch | null {
-  const patch: DisplayPatch = notSetUp() ? { ...UNSET } : {};
-  const icon = on === null ? undefined : params[on ? fields[0] : fields[1]];
-  if (typeof icon === 'string' && icon !== '') patch.icon = icon;
-  return Object.keys(patch).length > 0 ? patch : null;
+function faceOf(params: ActionDef, on: boolean | null, fields: readonly [string, string] = ON_OFF): DisplayPatch | null {
+  return withStateIcon(notSetUp() ? UNSET : null, stateIcon(params, on, fields));
 }
 
 /**
@@ -251,7 +245,7 @@ export const mute: ActionHandler = {
 
   iconState: (params) => ({ muted: obs.cachedState().inputMuted[String(params.input)] === true }),
 
-  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true, ['iconMuted', 'iconUnmuted']),
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true, MUTED_UNMUTED),
 };
 
 /**

@@ -110,6 +110,12 @@ export type Edit =
    */
   | { kind: 'setNotifications'; on: boolean }
   /**
+   * Built-in icons' size, percent of the key (Settings › General › Icon
+   * size). In config.json because the daemon draws them; null, or the
+   * default, removes the field, so a default config does not carry it.
+   */
+  | { kind: 'setBuiltinIconSize'; percent: number | null }
+  /**
    * Rename a page.
    *
    * Pages resolve by ID first and then by name, and the editor writes

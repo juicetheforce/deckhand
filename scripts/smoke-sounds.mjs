@@ -79,9 +79,12 @@ console.log('Play/Stop, the default');
   check('...through pw-play, at the file\'s own level, on the default output', (await starts())[0] === `pw-play --volume 1.000 ${LONG}`);
   check('...and its start is announced', changes > before);
   check('its face is the playing block', defaultIconFor(action, registry['sound.play'].iconState(action)) === 'sound-playing');
+  check('…or, with its own icons, its "while playing" one', (await registry['sound.play'].describe(ctx, { ...action, iconOn: '~/p.png', iconOff: '~/i.png' }))?.icon === '~/p.png');
   check('a second press stops it', (await press(action)) === null && (await ended(id)));
   check('...starting nothing', (await starts()).length === 1);
   check('...and its face is the idle pad again', defaultIconFor(action, registry['sound.play'].iconState(action)) === 'sound-play');
+  check('…or its own "while not playing" icon', (await registry['sound.play'].describe(ctx, { ...action, iconOn: '~/p.png', iconOff: '~/i.png' }))?.icon === '~/i.png');
+  check('the sound key is redrawn on events only, never on the clock', registry['sound.play'].redraw === 'events');
   check('a stopped pw-play (exit 1 on SIGTERM) is not taken for a failure', !errors.some((l) => l.includes('could not play')));
 }
 

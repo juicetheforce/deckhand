@@ -15,16 +15,19 @@ import type { Config, Defaults, LayoutDef } from './types.js';
  */
 export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
+/** Icon size's slider (Settings › General; Claude Design's 16c): what `defaults.builtinIconSize` may be. */
+export const BUILTIN_ICON_SIZE = { min: 30, max: 70, step: 5 } as const;
+
 export const DEFAULTS: Required<Defaults> = {
   background: '#101014',
   labelColor: '#ffffff',
   labelSize: 14,
   labelPosition: 'bottom',
   iconFit: 'cover',
-  // A built-in's drawing at 53% of the key puts its glyph — a median 83% of
-  // the drawing, measured over every built-in — at about 44% of the key, as
-  // the mockups draw it. One number to change: the editor's grid follows it too.
-  builtinIconSize: 53,
+  // A built-in's drawing, as a percent of the key: Settings › General › Icon
+  // size (Claude Design's 16c: 30–70, step 5, default 45). The editor's grid
+  // follows it too.
+  builtinIconSize: 45,
   brightness: 70,
   refreshMs: 1000,
 };

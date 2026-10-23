@@ -280,6 +280,34 @@ await inPage(editor, 'settings', clickIn('#settings-notifications'));
 r.notificationsOffSaved = await until(async () => (await configJson()).notifications === false);
 r.notificationsNotInPrefs = !('notifications' in (await prefs()));
 
+// Icon size (Claude Design's 16a–16c): a slider in Appearance, in config.json
+// because the daemon draws the icons. The sample follows every move; config.json
+// changes only on release — a key let go, or the end of a drag.
+const slider = "document.querySelector('[role=slider][aria-label=\"Icon size\"]')";
+const sliderState = `(() => { const s = ${slider}; const img = document.querySelector('[data-settings=icon-sample] img'); return { now: s.getAttribute('aria-valuenow'), text: s.getAttribute('aria-valuetext'), min: s.getAttribute('aria-valuemin'), max: s.getAttribute('aria-valuemax'), value: s.parentElement.querySelector('.sp-slider-value').textContent, ticks: s.querySelectorAll('.sp-slider-tick').length, sample: img.getAttribute('width'), row: s.closest('.sp-row')?.textContent ?? '' }; })()`;
+const key = (type, k) => `(() => { ${slider}.dispatchEvent(new KeyboardEvent('${type}', { key: '${k}', bubbles: true, cancelable: true })); return true; })()`;
+const iconSizeOnDisk = async () => (await configJson()).defaults?.builtinIconSize ?? 'absent';
+r.iconSizeAtRest = await inPage(editor, 'settings', sliderState);
+await inPage(editor, 'settings', key('keydown', 'ArrowRight'));
+await sleep(100);
+await inPage(editor, 'settings', key('keydown', 'ArrowRight'));
+// Longer than the store's 400 ms autosave: a value saved too early would be on disk by now.
+await sleep(900);
+r.iconSizeWhileHeld = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
+await inPage(editor, 'settings', key('keyup', 'ArrowRight'));
+r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 55);
+await inPage(editor, 'settings', key('keydown', 'End'));
+await inPage(editor, 'settings', key('keyup', 'End'));
+r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 70);
+// A drag, by pointer: down at the left end, move to the middle, up.
+const pointer = (type, fraction) => `(() => { const s = ${slider}; const r = s.getBoundingClientRect(); s.dispatchEvent(new PointerEvent('${type}', { bubbles: true, pointerId: 1, button: 0, clientX: r.left + r.width * ${fraction}, clientY: r.top + 12 })); return true; })()`;
+await inPage(editor, 'settings', pointer('pointerdown', 0.02));
+await inPage(editor, 'settings', pointer('pointermove', 0.5));
+await sleep(900);
+r.iconSizeWhileDragging = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
+await inPage(editor, 'settings', pointer('pointerup', 0.5));
+r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 50);
+
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
 r.resetButton = await inPage(
   editor,
@@ -298,6 +326,7 @@ r.keepKeeps = JSON.stringify(await prefs()) === prefsBeforeReset && (await inPag
 await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
 await inPage(editor, 'settings', clickIn('[data-settings=confirm-reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
+r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '45';
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
@@ -388,11 +417,26 @@ check('Notifications starts ticked; unticking writes "notifications": false to c
 });
 check('Reset to defaults is a button, without an ellipsis, and asks first: one click changes nothing, Keep keeps', () => {
   assert.deepEqual(r.resetButton, { text: 'Reset to defaults', tag: 'BUTTON', quiet: false });
-  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, notifications and accent color to their defaults\?ResetKeep$/);
+  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, notifications, accent color and icon size to their defaults\?ResetKeep$/);
   assert.equal(r.oneClickChangesNothing, true);
   assert.equal(r.keepKeeps, true);
 });
 check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
+check('Icon size: a slider in Appearance, 30–70% in steps of 5 with nine ticks, at 45% by default, its sample a 56 px key\'s icon at 45%', () => {
+  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '45', text: '45%', min: '30', max: '70', value: '45%', ticks: 9, sample: '25', row: undefined });
+  assert.match(r.iconSizeAtRest.row, /^Icon sizeBuilt-in icons on keys/);
+});
+check('Icon size by keyboard: the sample follows each step at once, and config.json changes only when the key is let go; End is the top', () => {
+  assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '55', value: '55%', sample: '31' }, onDisk: 'absent' });
+  assert.equal(r.iconSizeKeySaved, true);
+  assert.equal(r.iconSizeEnd, true);
+});
+check('Icon size by dragging: snapped to the step, the sample live, nothing saved until the pointer is let go', () => {
+  assert.equal(r.iconSizeWhileDragging.shown.now, '50');
+  assert.equal(r.iconSizeWhileDragging.onDisk, 70);
+  assert.equal(r.iconSizeDragSaved, true);
+});
+check('Reset to defaults puts Icon size back to 45%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
 check('each change is saved at once; the accent reaches the editor behind it live, and the settings window too', () => {
   assert.equal(r.deckSaved, true);
   assert.equal(r.accentSaved, true);

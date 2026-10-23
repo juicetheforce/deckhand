@@ -616,8 +616,9 @@ export function faceIcon(button: ButtonDef | undefined, latched = false, appIcon
 
 /**
  * The state icon the grid shows for each state pair, which has no state in
- * the editor: the resting half — unmuted, paused, off; an OBS source shown,
- * as the built-in pair's plain face is. A toggle's is the deck's own state.
+ * the editor: the resting half — unmuted, paused, off; an OBS source shown
+ * and a virtual deck on, as the built-in pair's plain face is. A toggle's is
+ * the deck's own state.
  */
 const RESTING_ICON: Record<string, string> = {
   'media.control': 'iconPaused',
@@ -629,6 +630,14 @@ const RESTING_ICON: Record<string, string> = {
   'obs.recordPause': 'iconOff',
   'obs.scene': 'iconOff',
   'obs.source': 'iconOn',
+  'discord.mute': 'iconUnmuted',
+  'discord.deafen': 'iconOff',
+  'discord.inputMode': 'iconOff',
+  'vts.model': 'iconOff',
+  'vts.expression': 'iconOff',
+  'sound.play': 'iconOff',
+  // On, as the grid draws its built-in: the editor does not know it is off.
+  'virtual.power': 'iconOn',
 };
 
 /**
@@ -698,14 +707,14 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'media.control': ['method', 'iconPlaying', 'iconPaused'],
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
   // By its key under "decks" (inspector/SystemForms.tsx).
-  'virtual.power': ['deck'],
+  'virtual.power': ['deck', 'iconOn', 'iconOff'],
   // `match` / `matches` are hand-edited config only: a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
   'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
   // The soundboard (inspector/SoundForms.tsx): the output as Output device stores it, node and label.
-  'sound.play': ['file', 'node', 'label', 'volume', 'mode'],
+  'sound.play': ['file', 'node', 'label', 'volume', 'mode', 'iconOn', 'iconOff'],
   'sound.stopAll': [],
   // With an icon of the person's own for each state (shared/icons.ts pairIconFields).
   'obs.stream': ['iconOn', 'iconOff'],
@@ -717,18 +726,19 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'obs.source': ['scene', 'source', 'iconOn', 'iconOff'],
   // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
-  'vts.model': ['model', 'modelName'],
-  'vts.expression': ['model', 'expression', 'modelName', 'expressionName'],
+  'vts.model': ['model', 'modelName', 'iconOn', 'iconOff'],
+  'vts.expression': ['model', 'expression', 'modelName', 'expressionName', 'iconOn', 'iconOff'],
   // Written in the form (inspector/TwitchForms.tsx).
   'twitch.chat': ['message'],
   'twitch.marker': ['description'],
   'twitch.clip': ['title', 'duration'],
   // The category picked from Twitch's search, by ID; its name kept to show.
   'twitch.streamInfo': ['title', 'category', 'categoryName'],
-  // Nothing to set: what they act on is Discord itself.
-  'discord.mute': [],
-  'discord.deafen': [],
-  'discord.inputMode': [],
+  // Nothing else to set: what they act on is Discord itself.
+  // Mute, Deafen and Input mode: an icon of the person's own for each state (shared/icons.ts pairIconFields).
+  'discord.mute': ['iconMuted', 'iconUnmuted'],
+  'discord.deafen': ['iconOn', 'iconOff'],
+  'discord.inputMode': ['iconOn', 'iconOff'],
   'discord.leave': [],
   // Picked from Discord's own lists, by ID; the names kept to show (inspector/DiscordForms.tsx).
   'discord.join': ['guild', 'channel', 'guildName', 'channelName'],

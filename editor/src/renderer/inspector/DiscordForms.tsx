@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { DiscordList } from '../../../../src/control/protocol.js';
-import { actionOf, Checkbox, nextAction, NumberSetting, Row, Segmented, type FormProps } from './controls.js';
+import type { ButtonDef } from '../../../../src/types.js';
+import type { PairIconField } from '../../shared/icons.js';
+import { actionOf, Checkbox, nextAction, NumberSetting, Row, Segmented, StateIcons, type FormProps } from './controls.js';
 
 /**
  * The Discord keys. What a key acts on is **picked from Discord's own
@@ -37,13 +39,15 @@ function Needs() {
 }
 
 /** discord.mute, discord.deafen, discord.inputMode, discord.leave: nothing to set. */
-export function DiscordForm({ type }: { type: string }) {
+export function DiscordForm({ type, button, disabled, onChooseIcon }: { type: string; button?: ButtonDef; disabled?: boolean; onChooseIcon?: (field: PairIconField) => void }) {
   const about = ABOUT[type];
   if (!about) return null;
   return (
     <section className="inspector-section">
       <h3 className="section-heading">{about.heading}</h3>
       <p className="muted small">{about.text}</p>
+      {/* Mute, Deafen and Input mode: an icon of your own for each state; Leave has one face. */}
+      <StateIcons type={type} button={button} disabled={disabled ?? false} onChooseIcon={onChooseIcon} />
       <Needs />
     </section>
   );

@@ -1,6 +1,7 @@
 import { ActionNeeded } from '../action-error.js';
 import * as discord from '../services/discord.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+import { MUTED_UNMUTED, stateIcon, withStateIcon } from './state-icon.js';
 
 /**
  * Discord keys, through services/discord.ts. Faces read its cached state,
@@ -33,7 +34,8 @@ export const mute: ActionHandler = {
     await discord.toggleMute();
   },
   iconState: () => ({ muted: discord.cachedState().connection === 'connected' && discord.cachedState().mute === true }),
-  describe: async () => shared(),
+  // Its own icon for each state (state-icon.ts): iconMuted / iconUnmuted.
+  describe: async (_ctx, params) => withStateIcon(shared(), stateIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().mute === true, MUTED_UNMUTED)),
 };
 
 /** discord.deafen — deafen or undeafen in Discord (Discord mutes with it); lit red while deafened. */
@@ -43,7 +45,8 @@ export const deafen: ActionHandler = {
     await discord.toggleDeaf();
   },
   iconState: () => ({ muted: discord.cachedState().connection === 'connected' && discord.cachedState().deaf === true }),
-  describe: async () => shared(),
+  // iconOn while deafened, iconOff while not.
+  describe: async (_ctx, params) => withStateIcon(shared(), stateIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().deaf === true)),
 };
 
 /**
@@ -57,7 +60,8 @@ export const inputMode: ActionHandler = {
     await discord.toggleInputMode();
   },
   iconState: () => ({ active: discord.cachedState().connection === 'connected' && discord.cachedState().mode === 'VOICE_ACTIVITY' }),
-  describe: async () => shared(),
+  // iconOn on voice activity, iconOff on push-to-talk.
+  describe: async (_ctx, params) => withStateIcon(shared(), stateIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().mode === 'VOICE_ACTIVITY')),
 };
 
 /**

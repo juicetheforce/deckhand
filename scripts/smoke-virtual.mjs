@@ -30,6 +30,8 @@ process.env.FAKE_PANEL_LOG = LOG;
 // No logind here: the lock state is unknown, as it must be for a test that
 // reads nothing of this machine (smoke-virtual-touch.mjs has a fake one).
 process.env.DBUS_SYSTEM_BUS_ADDRESS = `unix:path=${path.join(TMP, 'no-bus')}`;
+// Turning a virtual deck off writes to the state directory: a scratch one, never this machine's.
+process.env.DECKHAND_STATE_DIR = path.join(TMP, 'state');
 
 const { createVirtualDriver } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
 const { listScreens } = await import(path.join(REPO, 'dist/screens.js'));
@@ -315,6 +317,23 @@ await settle('quit', async () => {
   await sleep(200);
   check('a close the daemon asked for is not a failure: no scan asked', asked.length === askedBefore);
 });
+
+console.log('Virtual deck on/off: its own icon for each state');
+{
+  const power = await import(path.join(REPO, 'dist/services/virtual-power.js'));
+  const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
+  const { defaultIconFor } = await import(path.join(REPO, 'dist/default-icons.js'));
+  power.setKnownDecks(() => new Set(['GRA-6e4e']));
+  const key = { type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png', iconOff: '~/off.png' };
+  const face = async (a) => (await registry['virtual.power'].describe({}, a))?.icon;
+  check('on: its "while on" icon', (await face(key)) === '~/on.png');
+  power.setPower('GRA-6e4e', false);
+  await power.saved();
+  check('off: its "while off" icon', (await face(key)) === '~/off.png');
+  check('off, with no icon of its own for it: the built-in faded deck', (await face({ type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png' })) === undefined && defaultIconFor(key, registry['virtual.power'].iconState(key)) === 'virtual-deck-off');
+  check('drawn on events only, never on the clock', registry['virtual.power'].redraw === 'events');
+  check('the off state written to the scratch state directory', JSON.parse(await fs.readFile(path.join(TMP, 'state', 'virtual-off.json'), 'utf8')).off[0] === 'GRA-6e4e');
+}
 
 await fs.rm(TMP, { recursive: true, force: true });
 console.log(failures === 0 ? '\nvirtual: all checks passed' : `\n${failures} check(s) failed`);

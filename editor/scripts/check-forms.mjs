@@ -214,8 +214,14 @@ if (r && !r.error) {
       off: 'default (obs-stream)',
     });
   });
-  check('Virtual deck on/off: lists the virtual decks by name, writes the one picked; no warning on another deck', () => {
-    assert.deepEqual(r.virtualPower, { listed: ['Side panel'], saved: { type: 'virtual.power', deck: 'GRA-6e4e' }, selfWarning: false });
+  check('Virtual deck on/off: lists the virtual decks by name, writes the one picked; no warning on another deck; an icon of its own for on and off', () => {
+    assert.deepEqual(r.virtualPower, {
+      listed: ['Side panel'],
+      saved: { type: 'virtual.power', deck: 'GRA-6e4e' },
+      selfWarning: false,
+      powerRows: ['While on', 'While off'],
+      powerSlots: ['Key icon', 'While on', 'While off'],
+    });
   });
   check("Play sound's picker: the icon picker's browsing over sounds only; ▶ plays one first through the daemon, ■ stops it, and choosing writes its path", () => {
     assert.deepEqual(r.sound.picker, {

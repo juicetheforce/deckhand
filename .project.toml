@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks the v0.10.0 polish build on the laptop (the test list in code-state); then release it; then virtual decks stage 2 design."
+next = "Ryan checks v0.10.0 round 2 on the laptop (icon size slider, off across restarts, state icons); then release it; then virtual decks stage 2 design."
 category = "Gaming"
 paused = false
 focus = true
@@ -30,4 +30,5 @@ Discord built (2026-10-22): Mute, Deafen, Input mode, Join, Leave, User volume; 
 v0.9.0 published 2026-10-22: Discord. Checked on the laptop's Flatpak (one bug found and fixed: a dead socket file left by the Flatpak). Keeps all three Discord scopes (rpc is required and broad); Nobara's RPM checks come after the release.
 Discord checked on Nobara's RPM too (2026-10-22): everything as on the Flatpak, the join event sent, no slow handshake. Discord work closed.
 v0.10.0 polish built (2026-10-22), not released: soundboard (pw-play, else paplay; Elgato's five press modes), line breaks in labels, built-in icons drawn at 53% of the key (tunable in config), virtual deck on/off as a key (session-only), profile delete beside the rename field, OBS custom icons per state. The output-loss "leak" was not reproduced; per-draw pixel copies removed. Dim and sleep designed only, awaiting Ryan's decisions.
+Round 1 confirmed by Ryan on the laptop (2026-10-23). Round 2: built-in icon size is a Settings slider (Claude Design 16; 30-70%, default 45%; the pattern for every future slider); a virtual deck turned off stays off across restarts (state dir); own state icons on every two-state key. Dim and sleep is not in v0.10.0.
 """

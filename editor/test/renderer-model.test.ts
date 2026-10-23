@@ -494,6 +494,23 @@ await check('a built-in is drawn at the deck\'s built-in size and an icon file f
   assert.equal(face({ icon: '~/a.png' }, tuned).builtinScale, 0.7, 'the missing placeholder follows it too');
 });
 
+await check('every two-state key has its own icon for each state; the grid shows its resting half', async () => {
+  const { pairIconFields } = await import('../src/shared/icons.js');
+  const onOff = ['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'discord.deafen', 'discord.inputMode', 'vts.model', 'vts.expression', 'sound.play', 'virtual.power'];
+  for (const type of onOff) assert.deepEqual(pairIconFields({ type }), ['iconOn', 'iconOff'], type);
+  for (const type of ['audio.micMute', 'audio.mute', 'obs.mute', 'discord.mute']) assert.deepEqual(pairIconFields({ type }), ['iconMuted', 'iconUnmuted'], type);
+  for (const type of ['discord.join', 'discord.leave', 'sound.stopAll', 'vts.hotkey']) assert.deepEqual(pairIconFields({ type }), [], `${type} has one face`);
+  // The editor has no live state: off, unmuted, not playing — a virtual deck on, as its built-in is drawn.
+  const resting = (action: ActionDef) => faceIcon({ action });
+  assert.equal(resting({ type: 'discord.mute', iconMuted: '~/m.png', iconUnmuted: '~/u.png' }), '~/u.png');
+  assert.equal(resting({ type: 'discord.deafen', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
+  assert.equal(resting({ type: 'vts.model', model: 'm', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
+  assert.equal(resting({ type: 'sound.play', file: '~/a.wav', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/off.png');
+  assert.equal(resting({ type: 'virtual.power', deck: 'GRA-6e4e', iconOn: '~/on.png', iconOff: '~/off.png' }), '~/on.png');
+  assert.equal(resting({ type: 'sound.play', file: '~/a.wav', iconOn: '~/on.png' }), 'builtin:sound-play', 'no resting icon of its own: the built-in');
+  for (const type of [...onOff, 'discord.mute']) assert.equal(actionEditable({ action: { type, ...Object.fromEntries(pairIconFields({ type }).map((f) => [f, '~/x.png'])) } } as never, type), true, `${type} with its icons stays editable`);
+});
+
 await check("key faces draw the action's default when no icon is set, as the deck does", () => {
   const icon = (button: Parameters<typeof keyFace>[1]) => keyFace(EXAMPLE, button, 96).icon;
   const hotkey = { type: 'hotkey', keys: 'ctrl+1' };

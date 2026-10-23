@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { SoundPicker } from '../SoundPicker.js';
 import { DeviceButton, type AudioLists } from './DeviceForms.js';
-import { NumberSetting, Row, Segmented, actionOf, nextAction, type FormProps } from './controls.js';
+import type { PairIconField } from '../../shared/icons.js';
+import { NumberSetting, Row, Segmented, StateIcons, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
  * The soundboard's forms: Play sound and Stop all sounds (src/actions/sound.ts).
@@ -24,7 +25,7 @@ function modeOf(value: unknown): Mode {
   return MODES.some((m) => m.value === value) ? (value as Mode) : 'playStop';
 }
 
-export function SoundForm({ at, button, disabled, run, audio, inStep }: FormProps & { audio: AudioLists; inStep: boolean }) {
+export function SoundForm({ at, button, disabled, run, audio, inStep, onChooseIcon }: FormProps & { audio: AudioLists; inStep: boolean; onChooseIcon?: (field: PairIconField) => void }) {
   const action = actionOf('sound.play', button);
   const file = typeof action?.file === 'string' ? action.file : '';
   const node = typeof action?.node === 'string' && action.node !== '' ? action.node : null;
@@ -103,6 +104,7 @@ export function SoundForm({ at, button, disabled, run, audio, inStep }: FormProp
       )}
       {nodeMissing && <p className="warning-text">“{label || node}” is not present now. The key does nothing until it is back, or pick another.</p>}
       <p className="muted small">A virtual output you have made yourself is listed here too.</p>
+      <StateIcons type="sound.play" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }

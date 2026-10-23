@@ -176,15 +176,20 @@ check('faces: live mic, hearing, voice activity', defaultIconFor(MUTE, iconState
 check('no badge once connected', (await describeAction(ctx, MUTE)) === null);
 await runActionOrThrow(ctx, MUTE);
 check('Mute: muted in Discord, and the face follows', fake.voice.mute === true && (await until(() => defaultIconFor(MUTE, iconStateOf(MUTE)) === 'discord-muted')));
+// Own icons for each state (src/actions/state-icon.ts).
+check('muted, a Mute key with its own icons draws its muted one', (await describeAction(ctx, { ...MUTE, iconMuted: '~/m.png', iconUnmuted: '~/u.png' }))?.icon === '~/m.png');
+check('…and one with only an unmuted icon draws the built-in muted face', (await describeAction(ctx, { ...MUTE, iconUnmuted: '~/u.png' })) === null);
 fake.setVoice({ mute: false });
 check('unmuted in Discord itself: the face follows its event', await until(() => defaultIconFor(MUTE, iconStateOf(MUTE)) === 'discord-mute'));
 await runActionOrThrow(ctx, DEAF);
 check('Deafen: deafened (Discord mutes with it)', fake.voice.deaf === true && (await until(() => defaultIconFor(DEAF, iconStateOf(DEAF)) === 'discord-deafened' && discord.cachedState().mute === true)));
+check('deafened, a Deafen key\'s own "on" icon', (await describeAction(ctx, { ...DEAF, iconOn: '~/d.png', iconOff: '~/h.png' }))?.icon === '~/d.png');
 await runActionOrThrow(ctx, DEAF);
 await runActionOrThrow(ctx, MODE);
 const modeSet = fake.commands.filter((x) => x.cmd === 'SET_VOICE_SETTINGS' && x.args.mode).at(-1);
 check('Input mode: push-to-talk, the type alone sent, the rest of the mode kept', fake.voice.mode.type === 'PUSH_TO_TALK' && JSON.stringify(modeSet.args) === '{"mode":{"type":"PUSH_TO_TALK"}}' && fake.voice.mode.threshold === -60);
 check('the face: push-to-talk', await until(() => defaultIconFor(MODE, iconStateOf(MODE)) === 'discord-push-to-talk'));
+check('on push-to-talk, an Input mode key\'s own "off" icon', (await describeAction(ctx, { ...MODE, iconOn: '~/va.png', iconOff: '~/ptt.png' }))?.icon === '~/ptt.png');
 await runActionOrThrow(ctx, MODE);
 check('and back to voice activity', fake.voice.mode.type === 'VOICE_ACTIVITY');
 

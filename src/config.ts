@@ -1,13 +1,13 @@
 import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
 import type { Config, LayoutDef } from './types.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
 // daemon code keeps importing from config.js.
-export { CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
+export { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, startPageOf, startProfileOf } from './config-common.js';
 
 export const CONFIG_DIR =
   process.env.DECKHAND_CONFIG_DIR ??
@@ -154,8 +154,8 @@ export function validateConfig(config: unknown): Config {
 
   if (config.defaults !== undefined && !isObject(config.defaults)) throw new Error('"defaults" must be an object');
   const builtinIconSize = isObject(config.defaults) ? config.defaults.builtinIconSize : undefined;
-  if (builtinIconSize !== undefined && (typeof builtinIconSize !== 'number' || !(builtinIconSize >= 20 && builtinIconSize <= 100))) {
-    throw new Error('"defaults.builtinIconSize" must be a number from 20 to 100: the percent of the key a built-in icon is drawn at');
+  if (builtinIconSize !== undefined && (typeof builtinIconSize !== 'number' || !(builtinIconSize >= BUILTIN_ICON_SIZE.min && builtinIconSize <= BUILTIN_ICON_SIZE.max))) {
+    throw new Error(`"defaults.builtinIconSize" must be a number from ${BUILTIN_ICON_SIZE.min} to ${BUILTIN_ICON_SIZE.max}: the percent of the key a built-in icon is drawn at (Settings › General › Icon size)`);
   }
 
   if (config.notifications !== undefined && typeof config.notifications !== 'boolean') {

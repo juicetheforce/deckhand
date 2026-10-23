@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, shell, type IpcMainInvo
 // The daemon's own modules, imported rather than copied. Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
 import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
-import { CONFIG_PATH, expandPath, loadConfig } from '../../../src/config.js';
+import { CONFIG_PATH, DEFAULTS, expandPath, loadConfig } from '../../../src/config.js';
 import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { DiscordList, ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
@@ -777,6 +777,17 @@ function registerIpc(): void {
     return view ? view.config.notifications !== false : null;
   };
   ipcMain.handle('notifications', (event) => (fromSettingsWindow(event) ? notificationsOn() : null));
+  // Built-in icons' size, in config.json too: the daemon draws them. Null while config.json is not open.
+  const builtinIconSize = (): number | null => {
+    const view = store?.state();
+    return view ? (view.config.defaults?.builtinIconSize ?? DEFAULTS.builtinIconSize) : null;
+  };
+  ipcMain.handle('builtinIconSize', (event) => (fromSettingsWindow(event) ? builtinIconSize() : null));
+  ipcMain.handle('setBuiltinIconSize', (event, percent: unknown) => {
+    if (!fromSettingsWindow(event) || !store || (percent !== null && typeof percent !== 'number')) return builtinIconSize();
+    store.apply({ kind: 'setBuiltinIconSize', percent: percent as number | null });
+    return builtinIconSize();
+  });
   // ABOUT: the installed version, the releases page in the browser, and the update check (updates.ts).
   ipcMain.handle('appVersion', (event) => (fromSettingsWindow(event) ? installedVersion() : null));
   ipcMain.handle('updateState', (event) => (fromSettingsWindow(event) ? updates.state() : null));

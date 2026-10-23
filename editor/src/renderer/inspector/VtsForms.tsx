@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { VtsList } from '../../../../src/control/protocol.js';
-import { actionOf, nextAction, type FormProps } from './controls.js';
+import type { PairIconField } from '../../shared/icons.js';
+import { StateIcons, actionOf, nextAction, type FormProps } from './controls.js';
+
+type WithIcons = FormProps & { onChooseIcon?: (field: PairIconField) => void };
 
 /**
  * The VTube Studio keys. What a key acts
@@ -171,7 +174,7 @@ export function VtsHotkeyForm({ at, button, disabled, run }: FormProps) {
 }
 
 /** vts.model: load a model in VTube Studio — one picker. */
-export function VtsModelForm({ at, button, disabled, run }: FormProps) {
+export function VtsModelForm({ at, button, disabled, run, onChooseIcon }: WithIcons) {
   const [ask, setAsk] = useState(0);
   const action = actionOf('vts.model', button);
   const models = useVtsList('models', null, ask);
@@ -190,6 +193,7 @@ export function VtsModelForm({ at, button, disabled, run }: FormProps) {
         onChoose={(model) => void run({ kind: 'setAction', at, action: nextAction('vts.model', button, { model: model.id, modelName: model.name }) })}
         onRefresh={() => setAsk((n) => n + 1)}
       />
+      <StateIcons type="vts.model" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }
@@ -199,7 +203,7 @@ export function VtsModelForm({ at, button, disabled, run }: FormProps) {
  * first, then its expressions. VTS lists only the loaded model's
  * expressions: for another, the picker says to load it.
  */
-export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
+export function VtsExpressionForm({ at, button, disabled, run, onChooseIcon }: WithIcons) {
   const [ask, setAsk] = useState(0);
   const action = actionOf('vts.expression', button);
   const storedModel = text(action?.model);
@@ -248,6 +252,7 @@ export function VtsExpressionForm({ at, button, disabled, run }: FormProps) {
           />
         </>
       )}
+      <StateIcons type="vts.expression" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }

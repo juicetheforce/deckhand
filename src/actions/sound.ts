@@ -2,6 +2,7 @@ import { expandPath } from '../config.js';
 import * as audio from '../services/audio.js';
 import * as sounds from '../services/sounds.js';
 import type { ActionDef, ActionHandler } from '../types.js';
+import { stateIcon } from './state-icon.js';
 
 /**
  * The soundboard: two actions in the Audio section, after Elgato's Soundboard
@@ -97,8 +98,15 @@ export const play: ActionHandler = {
     if (id === null) return { playing: false };
     return { playing: sounds.isPlaying(id), looping: sounds.isLooping(id) };
   },
-  // No describe(): the face is its icon, which changes only when a player
-  // starts or ends — index.ts marks the keys stale then, so nothing is on the clock.
+  // Its own icon for each state (state-icon.ts): iconOn while it plays, a
+  // loop included; iconOff while it does not. Drawn again only when a player
+  // starts or ends — index.ts marks the keys stale then — never on the clock.
+  redraw: 'events',
+  describe: async (_ctx, params) => {
+    const id = idOf(params);
+    const icon = stateIcon(params, id !== null && sounds.isPlaying(id));
+    return icon === undefined ? null : { icon };
+  },
 };
 
 /**

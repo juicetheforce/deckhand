@@ -2552,7 +2552,12 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const listed = [...document.querySelectorAll('[data-virtual-power] .target-name')].map((n) => n.textContent);
   document.querySelector<HTMLButtonElement>('[data-virtual-power] .target[data-deck="GRA-6e4e"]')!.click();
   const saved = await actionAs(23, { type: 'virtual.power', deck: 'GRA-6e4e' });
-  out.virtualPower = { listed, saved, selfWarning: document.querySelector('[data-virtual-power-self]') !== null };
+  const powerRows = pairRows();
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  await until(() => document.querySelector('.icon-slots') !== null);
+  const powerSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  out.virtualPower = { listed, saved, selfWarning: document.querySelector('[data-virtual-power-self]') !== null, powerRows, powerSlots };
 
   // Now playing.
   await selectKey(5);

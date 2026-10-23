@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { defaultIconFor, type IconState } from '../../../../src/default-icons.js';
 import type { ActionDef, ButtonDef } from '../../../../src/types.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
-import { builtinName, type PairIconField } from '../../shared/icons.js';
+import { builtinName, pairIconFields, type PairIconField } from '../../shared/icons.js';
 
 /** What every action form is given. */
 export interface FormProps {
@@ -181,30 +181,37 @@ const PAIR_STATES: Record<PairIconField, IconState> = {
 };
 
 /**
- * The OBS keys' on and off, in their own words: on is live, recording,
- * paused, on air, shown. Their state for the built-in fallback, too.
+ * Each on/off key's two states, in its own words — on is live, recording,
+ * on air, deafened, loaded, playing… — and its state for the built-in
+ * fallback. The mute keys use PAIR_LABELS' muted and unmuted.
  */
-const OBS_PAIRS: Record<string, { on: string; off: string; onState: IconState; offState: IconState }> = {
+const ON_OFF_PAIRS: Record<string, { on: string; off: string; onState: IconState; offState: IconState }> = {
   'obs.stream': { on: 'While live', off: 'While off', onState: { live: true }, offState: { live: false } },
   'obs.record': { on: 'While recording', off: 'While not recording', onState: { live: true }, offState: { live: false } },
   'obs.recordPause': { on: 'While paused', off: 'While not paused', onState: { paused: true }, offState: { paused: false } },
   'obs.scene': { on: 'While on air', off: 'While not on air', onState: { active: true }, offState: { active: false } },
   'obs.source': { on: 'While shown', off: 'While hidden', onState: { hidden: false }, offState: { hidden: true } },
+  'discord.deafen': { on: 'While deafened', off: 'While not deafened', onState: { muted: true }, offState: { muted: false } },
+  'discord.inputMode': { on: 'On voice activity', off: 'On push-to-talk', onState: { active: true }, offState: { active: false } },
+  'vts.model': { on: 'While loaded', off: 'While not loaded', onState: { active: true }, offState: { active: false } },
+  'vts.expression': { on: 'While on', off: 'While off', onState: { active: true }, offState: { active: false } },
+  'sound.play': { on: 'While playing', off: 'While not playing', onState: { playing: true }, offState: { playing: false } },
+  'virtual.power': { on: 'While on', off: 'While off', onState: { active: true }, offState: { active: false } },
 };
 
 /** A state icon's name in the inspector, for the key's action. */
 export function pairLabel(field: PairIconField, type?: string): string {
-  const obs = type === undefined ? undefined : OBS_PAIRS[type];
-  if (obs && field === 'iconOn') return obs.on;
-  if (obs && field === 'iconOff') return obs.off;
+  const pair = type === undefined ? undefined : ON_OFF_PAIRS[type];
+  if (pair && field === 'iconOn') return pair.on;
+  if (pair && field === 'iconOff') return pair.off;
   return PAIR_LABELS[field];
 }
 
 /** The state a state icon is shown in, for the built-in it falls back to. */
 function pairState(field: PairIconField, type: string | undefined): IconState {
-  const obs = type === undefined ? undefined : OBS_PAIRS[type];
-  if (obs && field === 'iconOn') return obs.onState;
-  if (obs && field === 'iconOff') return obs.offState;
+  const pair = type === undefined ? undefined : ON_OFF_PAIRS[type];
+  if (pair && field === 'iconOn') return pair.onState;
+  if (pair && field === 'iconOff') return pair.offState;
   return PAIR_STATES[field];
 }
 
@@ -254,4 +261,14 @@ export function PairIcons({
       )}
     </div>
   );
+}
+
+/**
+ * A two-state key's own icon for each state (src/actions/state-icon.ts),
+ * listed in its form; each "Choose…" opens the Icon tab on that state. Absent
+ * for a Multi step, which has no face.
+ */
+export function StateIcons({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+  if (!onChooseIcon) return null;
+  return <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />;
 }

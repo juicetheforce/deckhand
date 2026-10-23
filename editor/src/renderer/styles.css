@@ -3626,3 +3626,112 @@ body.settings-body {
   border-color: var(--accent);
   color: #fff;
 }
+
+/* The settings slider (settings-ui.tsx Slider; Claude Design's 16b), the
+   pattern for every slider in Settings. */
+.sp-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.sp-slider {
+  position: relative;
+  width: 168px;
+  height: 24px;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.sp-slider-track,
+.sp-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.sp-slider-track {
+  right: 0;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.sp-slider-fill {
+  background: var(--accent);
+}
+
+.sp-slider-tick {
+  position: absolute;
+  top: 19px;
+  width: 2px;
+  height: 4px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.sp-slider-thumb {
+  position: absolute;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.sp-slider:hover .sp-slider-thumb {
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.1), 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.sp-slider:focus-visible .sp-slider-thumb {
+  box-shadow: 0 0 0 2px #131628, 0 0 0 4px var(--accent-glyph);
+}
+
+.sp-slider-dragging .sp-slider-thumb,
+.sp-slider-dragging:hover .sp-slider-thumb {
+  box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.sp-slider-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sp-slider-disabled .sp-slider-thumb,
+.sp-slider-disabled:hover .sp-slider-thumb {
+  box-shadow: none;
+}
+
+/* Always shown, in mono with its unit, at a fixed width: the row never shifts. */
+.sp-slider-value {
+  width: 36px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef0fa;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+/* Icon size's live sample: a key, with the built-in mic drawn at the size chosen. */
+.sp-icon-sample {
+  width: 56px;
+  height: 56px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #151722;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.sp-icon-sample img {
+  display: block;
+}

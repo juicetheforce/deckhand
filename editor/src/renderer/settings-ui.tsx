@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { iconUrl } from '../shared/icons.js';
 import type { Dot } from './integration-status.js';
 
@@ -140,6 +140,129 @@ export function IntegrationHeader({
         </span>
       </div>
       {children && <div className="sp-int-actions">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * **The settings slider — the pattern for every slider in Settings** (Claude
+ * Design's 16b; scope §10): on the right of a row, like a switch, the label
+ * and sub-line staying on the left. A fixed 168 px track, 4 px tall, filled in
+ * the accent from the minimum to the thumb; a 16 px white thumb, no value
+ * bubble; the value always shown to its right, in mono with its unit, at a
+ * fixed width so the row never shifts. It snaps to the step while dragging,
+ * never between, with tick marks only for 12 steps or fewer. ← → or ↓ ↑ one
+ * step, Page Up / Down two, Home / End the ends.
+ *
+ * **`onPreview` follows every move; `onCommit` only the release** — the end
+ * of a drag, or a key let go — which is when the value is saved, as every
+ * other change is: no Apply button. A visual setting may show a live sample
+ * (`children`) right of the value. Reset is the footer's Reset to defaults;
+ * no slider has one of its own.
+ */
+export function Slider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  disabled,
+  onPreview,
+  onCommit,
+  children,
+}: {
+  /** Its accessible name: the row's title. */
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  disabled?: boolean;
+  onPreview?: (value: number) => void;
+  onCommit: (value: number) => void;
+  /** A live sample, right of the value. */
+  children?: ReactNode;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  /** What the slider shows while it is being moved; null when it shows `value`. */
+  const [moving, setMoving] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const shown = moving ?? value;
+  const snap = (v: number) => Math.min(max, Math.max(min, min + Math.round((v - min) / step) * step));
+  const steps = Math.round((max - min) / step);
+  const at = ((shown - min) / (max - min)) * 100;
+
+  const move = (v: number) => {
+    const next = snap(v);
+    if (next === shown) return;
+    setMoving(next);
+    onPreview?.(next);
+  };
+  const fromPointer = (clientX: number) => {
+    const rect = track.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    move(min + ((clientX - rect.left) / rect.width) * (max - min));
+  };
+  const release = () => {
+    setDragging(false);
+    // Saved: it goes on showing what was chosen until the saved value comes back.
+    if (moving !== null && moving !== value) onCommit(moving);
+    else setMoving(null);
+  };
+  useEffect(() => setMoving(null), [value]);
+
+  return (
+    <div className="sp-slider-row">
+      <div
+        ref={track}
+        className={`sp-slider${dragging ? ' sp-slider-dragging' : ''}${disabled ? ' sp-slider-disabled' : ''}`}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={shown}
+        aria-valuetext={`${shown}${unit}`}
+        aria-disabled={disabled || undefined}
+        onPointerDown={(e) => {
+          if (disabled || e.button !== 0) return;
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            // a synthetic pointer (the checks) has none to capture
+          }
+          setDragging(true);
+          fromPointer(e.clientX);
+        }}
+        onPointerMove={(e) => dragging && fromPointer(e.clientX)}
+        onPointerUp={() => dragging && release()}
+        onPointerCancel={() => dragging && release()}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          const by: Record<string, number> = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step, PageUp: 2 * step, PageDown: -2 * step };
+          if (e.key in by) move(shown + by[e.key]);
+          else if (e.key === 'Home') move(min);
+          else if (e.key === 'End') move(max);
+          else return;
+          e.preventDefault();
+        }}
+        // Saved when the key is let go: a held arrow key is one change, not one per repeat.
+        onKeyUp={() => !dragging && release()}
+        onBlur={() => !dragging && release()}
+      >
+        <span className="sp-slider-track" />
+        {steps <= 12 &&
+          Array.from({ length: steps + 1 }, (_, i) => <span key={i} className="sp-slider-tick" style={{ left: `${(i / steps) * 100}%` }} />)}
+        <span className="sp-slider-fill" style={{ width: `${at}%` }} />
+        <span className="sp-slider-thumb" style={{ left: `${at}%` }} />
+      </div>
+      <span className="sp-slider-value">
+        {shown}
+        {unit}
+      </span>
+      {children}
     </div>
   );
 }
