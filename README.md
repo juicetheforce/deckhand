@@ -6,8 +6,8 @@
 
 Stream Deck software for Linux. A small background service drives the decks,
 and an editor lets you set them up: hotkeys, opening apps, audio device
-switching, media controls, OBS Studio, VTube Studio, Twitch, Discord, pages
-and profiles.
+switching, a soundboard, media controls, OBS Studio, VTube Studio, Twitch,
+Discord, pages and profiles.
 
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
@@ -34,7 +34,8 @@ It's one person's project, used every day.
   one key takes the whole desk from work to a game.
 - **Icons are just files on disk.** Point a key at any image. Nothing is
   copied or imported; edit the file and the key updates. A key without an
-  icon draws a built-in one for its action.
+  icon draws a built-in one for its action. A label can stack its words on
+  more than one line.
 
 ## How it treats your hardware
 
@@ -84,9 +85,38 @@ touch panel.
   Settings).
 - **Each profile can give the screen its own key size**, in Settings ›
   Decks.
+- **Turn it off when you want the screen back**, for a screen that also
+  shows widgets. A **Virtual deck on/off** key, on a Stream Deck or another
+  virtual deck, hides the panel and gives its screen and touchscreen back to
+  the desktop; pressed again, the panel comes back where it was. Settings ›
+  Decks has the same, and so does `deckhand virtual off` and `on`. It stays
+  off until you turn it on or Deckhand restarts, and turning it on asks for
+  no password. While it's off, your desktop decides where the touchscreen's
+  touches go: on KDE Plasma, set **System Settings › Touchscreen › Target
+  display** to that screen, or they may land on another.
 
 A virtual deck is a real monitor, so it uses one of the few displays your
 graphics card can drive at once. It covers the whole screen.
+
+## Soundboard
+
+**Play sound** keys play a sound file (WAV, MP3, Ogg or FLAC) from wherever
+it is on disk, through any output Deckhand lists or the system default, at
+the key's own volume. Each key chooses what a press does, as Elgato's
+soundboard does: **Play/Stop**, **Play/Restart**, **Play/Overlap**,
+**Loop/Stop**, or **Hold to play**, which plays only while the key is held.
+The key shows when its sound is playing or looping. **Stop all sounds**
+stops everything Deckhand is playing.
+
+You choose the file the way you choose an icon: browse your folders, use the
+same bookmarks, filter, and press ▶ to hear a clip before choosing it. The
+key keeps the file's path; nothing is copied, and if the file is moved or
+deleted, the key is marked when you press it.
+
+It plays through `pw-play`, or `paplay` where that is missing, which
+comes with the `pactl` Deckhand already needs. Playing into your
+microphone or your stream is not built in; a virtual output you have made
+yourself is listed with the others.
 
 ## OBS Studio
 
@@ -100,6 +130,11 @@ key turns red.
   end a stream.
 - **Scenes, inputs and sources are picked from OBS's own lists**, never
   typed, so OBS needs to be running while you set those keys up.
+- **Your own icon for each state.** In the Icon tab, a Stream key has an
+  icon for while live and one for while off; Record, Pause, Scene, Mute and
+  Show/hide source keys have theirs. A state you leave alone keeps the
+  built-in icon, so your own icon never hides whether you're live.
+  Reconnecting and paused always show their built-in warning.
 - **Deckhand talks to OBS only while a deck shows an OBS key.** Start OBS
   after Deckhand and the keys catch up within a minute, or at once when you
   press one.

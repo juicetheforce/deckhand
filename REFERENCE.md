@@ -277,6 +277,7 @@ deckhand status                     # active profile, decks, whether the last co
 deckhand decks                      # connected decks: serial, model, keys
 deckhand profile Gaming             # switch every deck to a profile, by ID or name
 deckhand repaint                    # repaint all decks (or: deckhand repaint <serial>)
+deckhand virtual off <screen key>   # turn a virtual deck off, giving its screen and touchscreen to the desktop (on, toggle)
 deckhand run --deck <serial> '{"type":"hotkey","keys":"ctrl+1"}'   # run an action without saving it
 deckhand sinks                      # audio outputs you can pick (* = current default)
 deckhand sources                    # audio inputs you can pick
@@ -315,7 +316,7 @@ scripts. `config.example.json` shows a complete file — its serials and audio
 ```jsonc
 {
   "defaults": { /* background, labelColor, labelSize, labelPosition,
-                   iconFit, brightness, refreshMs */ },
+                   iconFit, brightness, refreshMs, builtinIconSize */ },
 
   "decks": {                                   // per deck, optional for a Stream Deck
     "<serial>": { "name": "XL", "brightness": 70 },
@@ -364,7 +365,8 @@ its layout's start page.
 index as a string: 0 is top-left, counting across rows. On a virtual deck it
 is the ID of one of its panel's controls (below). A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
 `labelColor`, `labelSize`, `labelPosition`, `background`, `action`,
-`onRelease` and `refreshMs`. `\n` in a label gives a second line. A line
+`onRelease` and `refreshMs`. `\n` in a label starts a new line (Enter, in
+the editor's label field); blank lines are dropped. A line
 too wide for the key is cut and ends in `…`, each line on its own, so a
 short second line stays whole under a long first one. A button
 index past the deck's last key is accepted and never shown; the editor never
@@ -404,6 +406,13 @@ stays blank), `null` for no icon, a path to an image file, or
 `"builtin:<name>"` for one of the icons in `assets/icons/`. An icon that
 can't be drawn shows a dashed "missing" icon.
 
+**Built-in icons are drawn smaller than the key**, centred, at
+`defaults.builtinIconSize` percent of it: 53 unless set, from 20 to 100 (100
+fills the key, as before `v0.10.0`). It applies to every built-in — an
+action's own, one chosen by name, the "missing" icon — and never to an image
+file you chose, which fills the key as `iconFit` says. Change it in
+`config.json` and the decks and the editor redraw on save.
+
 ## Actions
 
 | type | what it does |
@@ -421,6 +430,7 @@ can't be drawn shows a dashed "missing" icon.
 | `brightness` | `value` or `delta`; `showLevel: true` shows the level |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
+| `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on or the daemon restarts |
 | `audio.sink` | `node` (from `deckhand sinks`), `label` — sets the default output and moves playing streams to it. Highlights when active |
 | `audio.cycle` | `devices: [{ node, label }, …]` — steps through outputs from one key |
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
@@ -428,14 +438,16 @@ can't be drawn shows a dashed "missing" icon.
 | `audio.micMute` | Toggles the default input's mute; `iconMuted` / `iconUnmuted` |
 | `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level |
 | `audio.mute` | Toggles output mute; `iconMuted` / `iconUnmuted` |
+| `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping |
+| `sound.stopAll` | Stops every sound Deckhand is playing |
 | `media.control` | `method: playpause \| next \| previous \| stop \| play \| pause`; `iconPlaying` / `iconPaused` |
 | `media.info` | Live now-playing key, with album art via `showArt`. `maxChars` cuts the title and artist at a number of characters instead of at the key's width |
-| `obs.stream` | Goes live in OBS on a press; stops only when held for a second. Red while live, amber with broken arcs while OBS reconnects |
-| `obs.record` | Starts and stops recording in OBS. Red while recording, amber while paused |
-| `obs.recordPause` | Pauses and resumes OBS's recording |
-| `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air |
-| `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`) |
-| `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first |
+| `obs.stream` | Goes live in OBS on a press; stops only when held for a second. Red while live, amber with broken arcs while OBS reconnects. `iconOn` (live) / `iconOff` |
+| `obs.record` | Starts and stops recording in OBS. Red while recording, amber while paused. `iconOn` (recording) / `iconOff` |
+| `obs.recordPause` | Pauses and resumes OBS's recording. `iconOn` (paused) / `iconOff` |
+| `obs.scene` | `scene: "<name>"` — switches OBS's program scene. Lit while that scene is on air. `iconOn` (on air) / `iconOff` |
+| `obs.mute` | `input: "<name>"` — mutes and unmutes one of OBS's audio inputs: OBS's own mute, not the system's (that is `audio.micMute`). `iconMuted` / `iconUnmuted` |
+| `obs.source` | `scene`, `source` — shows and hides a source in one scene. A source in the scene twice: the first. `iconOn` (shown) / `iconOff` (hidden) |
 | `vts.hotkey` | `model`, `hotkey` (IDs) — runs one of a model's hotkeys in VTube Studio, as set up there. Dashed while another model is loaded |
 | `vts.expression` | `model` (ID), `expression` (its file, e.g. `EyesLove.exp3.json`) — turns an expression on and off. Lit while it is on |
 | `vts.model` | `model` (ID) — loads a model in VTube Studio. Lit while it is loaded |
@@ -449,6 +461,20 @@ can't be drawn shows a dashed "missing" icon.
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
 | `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level — the volume you hear one person at, 0–200 % |
+
+**A state's own icon** (`iconMuted`, `iconOn`, …) is drawn in that state; a
+state without one draws the key's own icon, or else the action's built-in
+for that state, so setting one never loses the other. A stream reconnecting
+and a recording paused always draw their built-ins.
+
+**Play sound** plays through `pw-play`, or `paplay` where that is missing
+(it comes with `pactl`). Two keys with the same file, output, volume and
+`mode` are one sound: either stops what the other started. A chosen output
+that isn't there fails the press rather than play somewhere else. A file
+the player can't read marks the key, with the player's own words. A loop is
+the file played again each time it ends; one shorter than a quarter of a
+second is not looped. Hold to play in a `multi` step plays to the end.
+Sounds stop when the daemon stops. An export doesn't include sound files.
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -894,10 +920,12 @@ run concurrently and replies are matched by it. `args` is optional. A reply is
 
 | cmd | args | does |
 | --- | --- | --- |
-| `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`) |
+| `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`); `off: true` on a virtual deck turned off; `previewingSound`, the clip `sound.preview` is playing |
 | `decks` | | connected decks: serial, model, geometry (each key's ID, place and size: grid cells on a Stream Deck, pixels of the canvas on a virtual deck), unsupported controls |
 | `screens` | | connected screens, each with its key, EDID details, native resolution, whether it is built in (`eDP`, `LVDS`, `DSI`) and the virtual deck on it if any; and the touchscreens |
 | `virtual.pair` | `output` (a connector) | shows "Tap this screen" on that screen and waits up to 30 s for a tap — the touchscreens must already be readable, which the editor arranges; replies with the screen's key, the touchscreen tapped and the screen's size. Writes nothing. Cancelled if this connection closes |
+| `sound.preview` | `file`, optional `node`, `label`, `volume`; or `stop: true` | plays a clip once, as a Play sound key with those settings would — the editor's ▶ — replacing any clip it was playing; replies when it has started. `status` and the `state` event carry `previewingSound` while it plays |
+| `virtual.power` | `deck` (a screen key), optional `on` (true or false; absent: the other way) | turns a virtual deck on or off, as its key does; replies `{ deck, on }`. `not_found` for a screen that is not a virtual deck |
 | `repaint` | `serial` (optional) | redraws one deck, or all |
 | `profile.switch` | `to` | switches every deck to a profile, by ID or name |
 | `action.run` | `serial`, `action`, optional `onRelease` and `holdMs` | runs an action as if pressed on that deck, without saving it |
@@ -981,9 +1009,21 @@ touchscreen's rule afresh. The install line reports, per touchscreen,
 whether it is readable; only paired ones should be. `unknown`: Deckhand can't read whether the
 session is locked from logind, so it ignores touches.
 
-**A virtual deck shows nothing.** `deckhand decks` lists it only while its
+**A virtual deck shows nothing.** `deckhand status` says `turned off` if a
+Virtual deck on/off key (or Settings, or `deckhand virtual off`) turned it
+off: turn it on again. `deckhand decks` lists it only while its
 screen is connected. The journal says whether its display helper started;
 virtual decks need a Wayland session.
+
+**A virtual deck's touchscreen touches the wrong screen while the deck is
+off.** Off, its touches belong to the desktop again, which sends them where
+its own setting says: on KDE Plasma, **System Settings › Touchscreen ›
+Target display**. Unset, they may land on another screen.
+
+**A Play sound key is silent.** The journal says why the press failed: the
+file not there, an output not present (compare `deckhand sinks`), or what
+`pw-play` said. A key that plays but you can't hear: check the output it
+names, and its volume.
 
 **`deckhand` says the daemon isn't running.** `systemctl --user status
 deckhand`. If the service is up, look for `[control] listening on …` in its
@@ -1036,7 +1076,10 @@ can plug and unplug while the daemon runs. For virtual decks,
 (`DECKHAND_PANEL_BIN`), `fake-sysfs.mjs` builds a scratch `/sys/class/drm`,
 `/sys/class/input` and udev database of screens and touchscreens, and
 `fake-logind.mjs` puts a session that can be locked on a private bus
-standing in for the system bus. `scripts/smoke-panel.mjs` runs the real
+standing in for the system bus. `scripts/test/fake-sound-player.sh`
+stands in for `pw-play` and `paplay` (`scripts/smoke-sounds.mjs`): it plays
+nothing, for as many milliseconds as the file's text says, and exits on
+SIGTERM as each real one does. `scripts/smoke-panel.mjs` runs the real
 helper, `panel/deckhand-panel`, under a headless KWin (`kwin_wayland
 --virtual`) on a sealed bus, feeds it recorded touches, and compares what it
 drew pixel by pixel; without `kwin_wayland` or a built helper it says
