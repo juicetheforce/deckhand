@@ -291,6 +291,8 @@ deckhand vts remove                 # forget VTube Studio's access
 deckhand twitch                     # Twitch: linked or not, as whom, what the link allows
 deckhand twitch link                # link a Twitch account: prints a code to approve at twitch.tv/activate, and waits (Ctrl+C cancels)
 deckhand twitch remove              # forget the Twitch link, and end it at Twitch
+deckhand discord                    # Discord: set up or not, connected or not, as whom
+deckhand discord remove             # forget Discord's authorization, and revoke it at Discord
 deckhand watch                      # print changes as they happen, until Ctrl+C
 deckhand raw '<request>'            # send one request as JSON and print the reply
 ```
@@ -441,6 +443,12 @@ can't be drawn shows a dashed "missing" icon.
 | `twitch.clip` | optional `title`, `duration` (5–60 seconds; Twitch's default is 30) — clips your live stream |
 | `twitch.chat` | `message` (up to 500 characters) — sends it to your own channel's chat, as you |
 | `twitch.streamInfo` | `title` (up to 140 characters) and/or `category` (Twitch's ID, with `categoryName` to show) — sets your channel's title and category; one left out stays as it is |
+| `discord.mute` | Mutes and unmutes your microphone in Discord. Red while muted |
+| `discord.deafen` | Deafens and undeafens you in Discord. Red while deafened |
+| `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity |
+| `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
+| `discord.leave` | Leaves the voice channel you are in |
+| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level — the volume you hear one person at, 0–200 % |
 
 Audio keys name the exact device: `node` is its system name, and `label` is
 only for showing. If that device isn't present, a press logs it and does
@@ -721,6 +729,103 @@ application to have its own.
 - **No ads, raids or chat modes yet.**
 - **A clip Twitch accepts and then fails to make** isn't reported, as above.
 
+## Discord
+
+Deckhand works with the Discord app on your computer, through the local
+connection Discord offers other programs. Its keys mute and deafen you,
+switch between push-to-talk and voice activity, join and leave voice
+channels, and make one person louder or quieter for you. Mute, Deafen and
+Input mode show Discord's own state, including changes you make in Discord.
+
+**Which Discord.** The Discord app: the Flathub Flatpak
+(`com.discordapp.Discord`), or a package that installs Discord itself, such
+as Fedora's from the Terra repository; both are supported. Discord's own
+`.deb` and `.tar.gz` put their connection in the same place as Terra's
+package, but haven't been tried. **Vesktop isn't supported**,
+and neither are other third-party Discord apps or Discord in a browser:
+Deckhand needs the official app's connection. If Vesktop is the Discord you
+run, Deckhand's Discord keys won't work with it.
+
+**Setting it up.** Discord doesn't let one registration serve everyone's
+copy of an app like Deckhand, so you make your own. It takes a couple of
+minutes and costs nothing:
+
+1. At discord.com/developers/applications, choose **New Application**. Any
+   name will do: it's what Discord's Authorize window will show.
+2. Under **OAuth2**, turn on **Public Client**, add `http://127.0.0.1`
+   under **Redirects**, and **Save Changes**. Nothing is ever sent to that
+   address, but Discord won't authorize without one.
+3. Under **General Information**, copy the **Application ID**.
+
+Then, in Deckhand's editor, open **Settings › Integrations › Discord**,
+paste the ID into **Application ID**, and press **Connect**. Discord shows
+an Authorize window naming your application; choose **Authorize**, and
+Settings says "Connected as …". **Cancel** stops waiting. There's no client
+secret anywhere: Deckhand never needs one, and never asks for one. Because
+the application is yours, your own account needs nothing more; anyone else
+makes their own.
+
+Deckhand asks Discord for `rpc`, `rpc.voice.read` and `rpc.voice.write`:
+the voice controls, and nothing else.
+
+**The keys.**
+
+- **Mute** mutes and unmutes your microphone. The key turns into a solid
+  red disc while you're muted.
+- **Deafen** deafens and undeafens you; Discord mutes you with it. Red
+  while you're deafened.
+- **Input mode** switches between push-to-talk and voice activity. The rest
+  of your voice settings, like the push-to-talk shortcut and the
+  sensitivity, stay as they are in Discord. The key is a solid disc on voice
+  activity and a ring on push-to-talk.
+- **Join channel** joins a voice channel, picked in the editor from your
+  servers and their voice channels. It moves you from the channel you're in;
+  already in that one, it does nothing.
+- **Leave channel** leaves the voice channel you're in. In none, it does
+  nothing.
+- **User volume** makes one person louder or quieter, only for you, as the
+  volume slider in Discord's menu for them does: 5 % a press unless you
+  choose another step, between 0 and 200 %. Pick the person in the editor
+  from the voice channel you're in; they have to be in your voice channel
+  when you press it. **Show the level on the key** shows their level, as
+  Discord reports it.
+
+**When it's connected.** While Discord is running and the profile on your
+decks has a Discord key on any page. Keys are ready as soon as the profile
+is, but starting Discord or switching to a profile with Discord keys can
+take a few seconds, occasionally longer, before they respond, because
+Discord itself is slow to accept connections. Until it answers, the keys
+show a grey badge with three dots: they're connecting, not broken. A key
+pressed then does nothing and a notification says Discord is still
+connecting. If Discord isn't running, Deckhand tries again within a
+minute, or as soon as a Discord key is pressed. Connected, it waits for
+Discord's events and asks nothing until a key is pressed.
+
+**Staying connected.** Discord's authorization lasts a week at a time.
+Deckhand renews it when it connects to Discord with less than two days
+left, so it stays authorized while you use it. If it's removed in Discord
+(**User Settings › Authorized Apps**), the keys are marked and a
+notification says to connect again; Deckhand doesn't ask again until you
+press **Connect**.
+
+**Remove** in Settings forgets the authorization and revokes it at Discord.
+The keys stay where they are, dimmed, and work again once Discord is
+connected. Uninstalling Deckhand revokes it too.
+
+**Where it's kept.** The tokens are in the same file as the OBS password,
+`~/.local/state/deckhand/credentials.json`, readable only by you, and never
+in `config.json`, an export or a backup ([SECURITY.md](SECURITY.md)).
+Deckhand talks to `discord.com` only to authorize, to renew, and to revoke
+([PRIVACY.md](PRIVACY.md)); everything else goes to the Discord app on your
+computer.
+
+**Known gaps.**
+
+- **Vesktop and other third-party clients**, as above.
+- **Voice channels in servers only**: Join channel can't call a direct
+  message or a group.
+- **User volume works only on someone in your voice channel.**
+
 ## Home Assistant and webhooks
 
 Deckhand has no Home Assistant integration. A `command` key running `curl`
@@ -932,7 +1037,11 @@ standing in for the system bus. `scripts/smoke-panel.mjs` runs the real
 helper, `panel/deckhand-panel`, under a headless KWin (`kwin_wayland
 --virtual`) on a sealed bus, feeds it recorded touches, and compares what it
 drew pixel by pixel; without `kwin_wayland` or a built helper it says
-"skipped" and passes, so read its output.
+"skipped" and passes, so read its output. `scripts/test/fake-discord.mjs`
+is the Discord app's local socket and Discord's token endpoint
+(`DECKHAND_DISCORD_API_URL`), behaving as real Discord was measured to;
+`scripts/smoke-discord.mjs` and `check:discord` point `XDG_RUNTIME_DIR` at a
+scratch directory, so a Discord running on the machine is never found.
 
 The checks:
 
@@ -943,7 +1052,7 @@ The checks:
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
   `check:tray`, `check:settings`, `check:virtual`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
-  `check:obs`, `check:vts`, `check:twitch` — real
+  `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
 - **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
   through `scripts/hooks/pre-commit`, once a clone has run `git config

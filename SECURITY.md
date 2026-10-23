@@ -36,12 +36,15 @@ usually within a few days. Only the latest release is supported.
   udev rule and, on some distributions, an AppArmor profile for the editor.
 - **Config import** in the editor, which writes icon files from an archive:
   anything that writes outside the places it shows you before importing.
-- **The secrets** Deckhand keeps, the OBS password, VTube Studio's token and
-  Twitch's tokens: anything that puts one anywhere but its own file, or lets
-  another user read it.
+- **The secrets** Deckhand keeps, the OBS password, VTube Studio's token,
+  and Twitch's and Discord's tokens: anything that puts one anywhere but its
+  own file, or lets another user read it.
 - **Twitch**: anything that sends a Twitch token anywhere but `id.twitch.tv`
   and `api.twitch.tv`, or makes Deckhand act on Twitch without a key press,
   beyond the hourly check Twitch requires and linking you started.
+- **Discord**: anything that sends a Discord token anywhere but `discord.com`
+  and the Discord app's own local socket, or makes Deckhand change your
+  voice settings or channel without a key press.
 
 ## Device access
 
@@ -92,9 +95,10 @@ reports it, and nothing while Deckhand cannot tell.
 
 ## Secrets
 
-Deckhand keeps three kinds of secret: the password for OBS's WebSocket
-server, the token VTube Studio gives Deckhand when you allow it, and the
-tokens Twitch gives Deckhand when you link your account. All are kept the
+Deckhand keeps four kinds of secret: the password for OBS's WebSocket
+server, the token VTube Studio gives Deckhand when you allow it, the tokens
+Twitch gives Deckhand when you link your account, and the tokens Discord
+gives your own Discord application when you authorize it. All are kept the
 same way.
 
 - They live in `~/.local/state/deckhand/credentials.json` (under
@@ -109,8 +113,9 @@ same way.
   over the control socket (mode `0600`), or from `deckhand obs password`,
   which reads it from the terminal or stdin, never from an argument, which
   every process could see. VTube Studio's token comes from VTube Studio
-  itself, when you allow Deckhand in its window, and Twitch's from Twitch,
-  when you approve Deckhand at twitch.tv/activate. **The socket never
+  itself, when you allow Deckhand in its window, Twitch's from Twitch,
+  when you approve Deckhand at twitch.tv/activate, and Discord's from
+  Discord, when you choose Authorize in the Discord app's window. **The socket never
   returns any of them**, only whether one is set.
 - They are not encrypted at rest, and not kept in the desktop keyring: the
   keyring would not separate them from your other programs either, and the
@@ -146,6 +151,22 @@ HTTPS: when a key is pressed, once an hour while an account is linked
 seconds while a linking code waits to be approved. It is a public client:
 no secret ships with it, and none is needed. Who it sends what to is in
 [PRIVACY.md](PRIVACY.md).
+
+## Discord
+
+Discord's tokens let a program control your voice through the Discord app:
+mute and deafen you, change your input mode, move you between voice
+channels, and change how loud you hear people. Anything that can read the
+credentials file can do that, until the authorization is revoked. Whether a
+stolen token works with a Discord app on another computer has not been
+tested; treat it as if it does. Revoke it with **Remove** in Deckhand's
+Settings, or in Discord's **User Settings › Authorized Apps**.
+
+The application is your own, made in Discord's Developer Portal, as a
+public client: there is no client secret, in Deckhand or anywhere else.
+Deckhand talks to Discord's servers only at `discord.com`, over HTTPS, to
+authorize, renew and revoke ([PRIVACY.md](PRIVACY.md)); everything else goes
+to the Discord app on your computer, over its local socket.
 
 Out of scope: that a user's own processes can use `/dev/uinput` once the rule
 is installed (that is what it is for), and anything that needs root already.
