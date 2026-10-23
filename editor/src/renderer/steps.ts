@@ -29,6 +29,8 @@ export const STEP_TYPES: readonly string[] = [
   'audio.micMute',
   'audio.volume',
   'audio.mute',
+  'sound.play',
+  'sound.stopAll',
 ];
 
 /** A step without its delay: what its own form edits. */
@@ -76,6 +78,8 @@ export function stepSummary(step: ActionDef, pages: Choice[], profiles: Choice[]
       const delta = typeof step.delta === 'number' ? step.delta : 5;
       return `${delta > 0 ? '+' : '−'}${Math.abs(delta)}%`;
     }
+    case 'sound.play':
+      return String(step.file).split('/').pop() ?? '';
     default:
       return '';
   }

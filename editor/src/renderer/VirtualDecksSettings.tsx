@@ -195,6 +195,11 @@ export function VirtualDecks() {
     setNotice(result.ok ? { kind: 'ok', text: `${deck.label} is no longer a virtual deck. Its layouts are kept: set the same screen up again and they are used.` } : { kind: 'error', text: result.error });
   };
 
+  const power = async (deck: VirtualDeckRow, on: boolean) => {
+    const result = await window.deckhand.virtualPower(deck.key, on);
+    if (!result.ok) setNotice({ kind: 'error', text: result.error });
+  };
+
   return (
     <Group heading="Virtual decks" data-settings-group="virtual-decks" extra={<InfoTip text="A touchscreen used as a deck: its keys are pressed by touch, as a Stream Deck's are. Its keys are edited in the editor, never on the screen." />}>
       {notice && (
@@ -211,7 +216,7 @@ export function VirtualDecks() {
                 <StatusDot dot={deck.connected ? (deck.touch === 'ready' ? 'ok' : 'waiting') : 'unset'} /> {deck.label}
               </>
             }
-            detail={`${deck.output} · ${deck.connected ? TOUCH_WORDS[deck.touch ?? 'unknown'] : 'not connected'}`}
+            detail={`${deck.output} · ${deck.off ? 'turned off: its screen and touchscreen are the desktop\'s until it is turned on' : deck.connected ? TOUCH_WORDS[deck.touch ?? 'unknown'] : 'not connected'}`}
           >
             {removing === deck.key ? (
               <span className="vd-confirm" data-vd-confirm="remove">
@@ -232,6 +237,15 @@ export function VirtualDecks() {
               </span>
             ) : (
               <span className="vd-actions">
+                <button
+                  className="sp-button"
+                  disabled={(!deck.connected && !deck.off) || tapping !== null}
+                  title={deck.off ? 'Show its panel again, where it was' : 'Hide its panel and give its screen and touchscreen back to the desktop, until it is turned on'}
+                  onClick={() => void power(deck, deck.off)}
+                  data-vd="power"
+                >
+                  {deck.off ? 'Turn on' : 'Turn off'}
+                </button>
                 <button className="sp-button" disabled={!deck.connected || tapping !== null || add.step === 'tap'} title={deck.connected ? 'Pair it with its touchscreen again: after its USB cable moves to another port, say' : 'Its screen is not connected'} onClick={() => void tapAgain(deck)} data-vd="tap-again">
                   Tap again
                 </button>

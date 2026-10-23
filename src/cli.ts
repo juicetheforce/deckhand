@@ -30,6 +30,9 @@ const USAGE = `usage: deckhand <command> [--json]
   decks                               connected decks and their keys
   profile <id or name>                switch the active profile
   repaint [serial]                    repaint one deck, or all
+  virtual on|off|toggle <deck>        turn a virtual deck's panel on or off, by its
+                                        key in "decks" (as status lists it); off gives
+                                        its screen and touchscreen back to the desktop
   run [--deck <serial>] '<action>'    run an action without saving it, e.g.
                                         deckhand run '{"type":"hotkey","keys":"ctrl+1"}'
   sinks                               audio outputs you can pick
@@ -355,7 +358,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
     throw new CliExit(command === undefined ? 2 : 0, USAGE);
   }
-  const known = ['status', 'decks', 'profile', 'repaint', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'twitch', 'discord', 'watch', 'raw'];
+  const known = ['status', 'decks', 'profile', 'repaint', 'virtual', 'run', 'sinks', 'sources', 'apps', 'obs', 'vts', 'twitch', 'discord', 'watch', 'raw'];
   if (!known.includes(command)) throw new CliExit(2, `unknown command "${command}"\n\n${USAGE}`);
 
   const path = socketPath();
@@ -384,7 +387,7 @@ async function main(argv: string[]): Promise<void> {
           lines.push('decks:');
           for (const d of s.decks) {
             const where = d.page !== undefined ? `profile ${d.profile}, page ${d.page}, brightness ${d.brightness}` : '';
-            const flags = [d.connected ? 'connected' : 'not connected', d.configured ? '' : 'no layout'].filter(Boolean).join(', ');
+            const flags = [d.off ? 'turned off' : d.connected ? 'connected' : 'not connected', d.configured ? '' : 'no layout'].filter(Boolean).join(', ');
             const previews = d.previews?.length ? `, previewing keys ${d.previews.join(' ')}` : '';
             lines.push(`  ${d.serial}  ${flags}${where ? ` — ${where}` : ''}${previews}`);
             if (d.touch !== undefined) lines.push(`    touch: ${TOUCH_WORDS[d.touch] ?? d.touch}`);
@@ -414,6 +417,14 @@ async function main(argv: string[]): Promise<void> {
         if (args[1] === undefined) throw new CliExit(2, `missing profile\n\n${USAGE}`);
         const r = resultOf<SwitchResult>(await client.request('profile.switch', { to: args[1] }));
         print(json, r, () => `${r.changed ? 'switched to' : 'already on'} ${r.active.name ?? r.active.id} (${r.active.id})`);
+        break;
+      }
+      case 'virtual': {
+        const how = args[1];
+        const deck = args[2];
+        if ((how !== 'on' && how !== 'off' && how !== 'toggle') || deck === undefined) throw new CliExit(2, `usage: deckhand virtual on|off|toggle <deck>\n\n${USAGE}`);
+        const r = resultOf<{ deck: string; on: boolean }>(await client.request('virtual.power', how === 'toggle' ? { deck } : { deck, on: how === 'on' }));
+        print(json, r, () => `virtual deck ${r.deck} is ${r.on ? 'on' : 'off'}`);
         break;
       }
       case 'repaint': {

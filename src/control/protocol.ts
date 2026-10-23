@@ -57,6 +57,8 @@ export interface DeckStatus {
   failed?: KeyFailure[];
   /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */
   touch?: TouchState;
+  /** A virtual deck turned off (the virtual.power action, or `virtual.power`): not connected, on purpose. Absent when on. */
+  off?: true;
 }
 
 /**
@@ -121,6 +123,8 @@ export interface KeyFailure {
 export interface StateSnapshot {
   activeProfile: { id: string; name: string | null } | null;
   decks: DeckStatus[];
+  /** The clip `sound.preview` is playing, as it was given; absent when none is. */
+  previewingSound?: string;
 }
 
 /** The "status" result. */

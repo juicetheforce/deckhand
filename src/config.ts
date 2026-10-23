@@ -152,6 +152,12 @@ export function validateConfig(config: unknown): Config {
     }
   }
 
+  if (config.defaults !== undefined && !isObject(config.defaults)) throw new Error('"defaults" must be an object');
+  const builtinIconSize = isObject(config.defaults) ? config.defaults.builtinIconSize : undefined;
+  if (builtinIconSize !== undefined && (typeof builtinIconSize !== 'number' || !(builtinIconSize >= 20 && builtinIconSize <= 100))) {
+    throw new Error('"defaults.builtinIconSize" must be a number from 20 to 100: the percent of the key a built-in icon is drawn at');
+  }
+
   if (config.notifications !== undefined && typeof config.notifications !== 'boolean') {
     throw new Error('"notifications" must be true or false');
   }

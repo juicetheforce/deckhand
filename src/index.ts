@@ -15,6 +15,8 @@ import * as audioService from './services/audio.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as sessionLock from './services/session-lock.js';
+import * as soundService from './services/sounds.js';
+import * as virtualPower from './services/virtual-power.js';
 import * as discordService from './services/discord.js';
 import * as obsService from './services/obs.js';
 import * as twitchService from './services/twitch.js';
@@ -116,6 +118,13 @@ const notifyState = () => {
 };
 /** Keys whose last press failed, for every deck, kept across unplugging (src/key-failures.ts). */
 const keyFailures = new KeyFailures();
+
+/**
+ * Where a virtual deck turned off was — its profile and page — so turning it
+ * on brings it back there (services/virtual-power.ts). Kept until it is on
+ * again; memory only, as the off state is.
+ */
+const resumeAt = new Map<string, { profile: string; page: string }>();
 
 /** Every driver's devices, as one list. A driver whose listing fails is logged and left out of this scan. */
 async function listDevices(): Promise<FoundDevice[] | null> {
@@ -253,6 +262,9 @@ async function attach(found: FoundDevice): Promise<void> {
   // It never does after main() sets it.
   const profileState = profiles;
   const hardware = config.decks?.[serial] ?? {};
+  // A virtual deck turned back on: the page it was on, if it shows the same profile.
+  const resume = resumeAt.get(serial);
+  resumeAt.delete(serial);
   const session = new DeckSession(device, {
     serial,
     hardware,
@@ -267,13 +279,16 @@ async function attach(found: FoundDevice): Promise<void> {
     onActionNeeded: (failure) => {
       if (config?.notifications === false) return;
       const deck = config?.decks?.[serial]?.name ?? device.geometry.productName;
-      void notifications.notify(failure.slot, `${deck}: ${failure.label ?? failure.keyName}`, failure.message);
+      // A label of several lines is one line in a notification's title.
+      const key = failure.label?.split('\n').join(' ') ?? failure.keyName;
+      void notifications.notify(failure.slot, `${deck}: ${key}`, failure.message);
     },
     onFailureCleared: (slot) => notifications.forget(slot),
     failures: keyFailures,
     // Recorded as shown only once the deck has started (below), so until then
     // it is the profile it was attached with.
     profileOf: () => profileState.shownProfileFor(serial) ?? profileId,
+    page: resume?.profile === profileId ? resume.page : undefined,
   });
 
   try {
@@ -320,7 +335,12 @@ async function scan(): Promise<void> {
 
   for (const [serial, session] of sessions) {
     if (!seen.has(serial)) {
-      console.log(`[main] deck ${serial} disconnected`);
+      if (virtualPower.isOff(serial)) {
+        resumeAt.set(serial, { profile: profiles?.shownProfileFor(serial) ?? '', page: session.currentPage() });
+        console.log(`[main] virtual deck ${serial} closed: it is turned off`);
+      } else {
+        console.log(`[main] deck ${serial} disconnected`);
+      }
       await session.close();
       sessions.delete(serial);
       notifyState();
@@ -378,6 +398,7 @@ async function reload(): Promise<void> {
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
+    virtualPower.forgetMissing();
     // An edited key is not the key that failed: its mark goes before the decks
     // redraw with the new layout.
     if (keyFailures.prune(next)) notifyState();
@@ -418,6 +439,9 @@ async function shutdown(signal: string): Promise<void> {
   await control?.stop();
   for (const session of sessions.values()) await session.close();
   sessions.clear();
+  // The soundboard's players are the daemon's children; a daemon run in a
+  // terminal would otherwise leave them playing after it.
+  soundService.stopAll();
   input.stop();
   mprisService.disconnect();
   process.exit(0);
@@ -462,6 +486,26 @@ async function main(): Promise<void> {
   const stopAudio = audioService.subscribe(() => {
     sessions.forEach((s) => s.invalidateByType(['audio.sink', 'audio.cycle', 'audio.source', 'audio.micMute', 'audio.volume', 'audio.mute']));
     events?.audio();
+  });
+  // A virtual deck turned on or off: the scan closes or opens it, and every
+  // key that shows its state is redrawn (services/virtual-power.ts).
+  virtualPower.setKnownDecks(() => new Set(Object.entries(config?.decks ?? {}).filter(([, d]) => d.virtual).map(([id]) => id)));
+  const stopPower = virtualPower.subscribe((deck) => {
+    console.log(virtualPower.isOff(deck) ? `[main] virtual deck ${deck} turned off: its screen and touchscreen go back to the desktop` : `[main] virtual deck ${deck} turned on`);
+    void requestScan();
+    sessions.forEach((s) => s.invalidateByType(['virtual.power']));
+    events?.state();
+  });
+  // A sound key's face follows its player starting and ending (services/sounds.ts).
+  // And the editor's preview of a clip is in "state" while it plays.
+  let previewWas: string | null = null;
+  const stopSounds = soundService.subscribe(() => {
+    sessions.forEach((s) => s.invalidateByType(['sound.play']));
+    const previewing = soundService.previewing();
+    if (previewing !== previewWas) {
+      previewWas = previewing;
+      events?.state();
+    }
   });
   const stopMpris = mprisService.subscribe(() =>
     sessions.forEach((s) => s.invalidateByType(['media.control', 'media.info'])),
@@ -544,6 +588,8 @@ async function main(): Promise<void> {
       for (const stop of stopWatchers) stop();
       stopWatching();
       stopAudio();
+      stopPower();
+      stopSounds();
       stopMpris();
       stopObs();
       obsService.setWanted(false);

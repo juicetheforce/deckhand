@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ObsList } from '../../../../src/control/protocol.js';
-import { actionOf, nextAction, type FormProps } from './controls.js';
+import type { ButtonDef } from '../../../../src/types.js';
+import { pairIconFields, type PairIconField } from '../../shared/icons.js';
+import { PairIcons, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
  * The OBS keys. Stream, Record and Pause
@@ -28,13 +30,26 @@ const ABOUT: Record<string, { heading: string; text: string }> = {
   },
 };
 
-export function ObsForm({ type }: { type: string }) {
+/**
+ * An icon of the person's own for each of the key's states, as Elgato's
+ * two-state keys have; a state left unset keeps its built-in. Absent for a
+ * Multi step, which has no face.
+ */
+function StateIcons({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
+  if (!onChooseIcon) return null;
+  return <PairIcons fields={pairIconFields(button?.action ?? { type })} button={button} disabled={disabled} onChoose={onChooseIcon} />;
+}
+
+type ObsFormProps = FormProps & { onChooseIcon?: (field: PairIconField) => void };
+
+export function ObsForm({ type, button, disabled, onChooseIcon }: { type: string; button: ButtonDef | undefined; disabled: boolean; onChooseIcon?: (field: PairIconField) => void }) {
   const about = ABOUT[type];
   if (!about) return null;
   return (
     <section className="inspector-section">
       <h3 className="section-heading">{about.heading}</h3>
       <p className="muted small">{about.text}</p>
+      <StateIcons type={type} button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
       <p className="muted small">
         Needs OBS running with its WebSocket server on (OBS: Tools › WebSocket Server Settings), and OBS set up in Deckhand's{' '}
         <button className="link-button" onClick={() => void window.deckhand.openSettings('obs')}>
@@ -127,7 +142,7 @@ function NamePicker({
 }
 
 /** obs.scene: switch OBS to one scene. */
-export function ObsSceneForm({ at, button, disabled, run }: FormProps) {
+export function ObsSceneForm({ at, button, disabled, run, onChooseIcon }: ObsFormProps) {
   const [ask, setAsk] = useState(0);
   const list = useObsList('scenes', null, ask);
   const stored = nameOf(actionOf('obs.scene', button)?.scene);
@@ -146,12 +161,13 @@ export function ObsSceneForm({ at, button, disabled, run }: FormProps) {
         onChoose={(scene) => void run({ kind: 'setAction', at, action: nextAction('obs.scene', button, { scene }) })}
         onRefresh={() => setAsk((n) => n + 1)}
       />
+      <StateIcons type="obs.scene" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }
 
 /** obs.mute: mute and unmute one of OBS's audio inputs. */
-export function ObsMuteForm({ at, button, disabled, run }: FormProps) {
+export function ObsMuteForm({ at, button, disabled, run, onChooseIcon }: ObsFormProps) {
   const [ask, setAsk] = useState(0);
   const list = useObsList('inputs', null, ask);
   const stored = nameOf(actionOf('obs.mute', button)?.input);
@@ -170,12 +186,13 @@ export function ObsMuteForm({ at, button, disabled, run }: FormProps) {
         onChoose={(input) => void run({ kind: 'setAction', at, action: nextAction('obs.mute', button, { input }) })}
         onRefresh={() => setAsk((n) => n + 1)}
       />
+      <StateIcons type="obs.mute" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }
 
 /** obs.source: show and hide a source in a scene — the scene first, then its sources. */
-export function ObsSourceForm({ at, button, disabled, run }: FormProps) {
+export function ObsSourceForm({ at, button, disabled, run, onChooseIcon }: ObsFormProps) {
   const [ask, setAsk] = useState(0);
   const action = actionOf('obs.source', button);
   const storedScene = nameOf(action?.scene);
@@ -203,6 +220,7 @@ export function ObsSourceForm({ at, button, disabled, run }: FormProps) {
           />
         </>
       )}
+      <StateIcons type="obs.source" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
     </section>
   );
 }

@@ -36,7 +36,7 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { canvasFrame, imageFrame, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { canvasFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
@@ -161,7 +161,12 @@ try {
 
   // A 960 × 360 canvas on a 1920 × 720 screen: drawn at twice its size.
   h.proc.stdin.write(canvasFrame(960, 360, [10, 20, 30]));
-  h.proc.stdin.write(imageFrame(100, 50, 10, 10, Buffer.alloc(10 * 10 * 4).fill(Buffer.from([255, 0, 0, 255]))));
+  // As the daemon sends a key (imageFrameParts): its head, then its pixels, in
+  // two writes — here a moment apart, so the helper gets them in two reads.
+  const [redHead, redPixels] = imageFrameParts(100, 50, 10, 10, Buffer.alloc(10 * 10 * 4).fill(Buffer.from([255, 0, 0, 255])));
+  h.proc.stdin.write(redHead);
+  await sleep(150);
+  h.proc.stdin.write(redPixels);
   h.proc.stdin.write(imageFrame(300, 100, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 255, 0, 128]))));
   const drawn = await until(() => h.events.filter((e) => e.ev === 'drawn').length === 2);
   check('each image answered "drawn"', drawn, JSON.stringify(h.events));

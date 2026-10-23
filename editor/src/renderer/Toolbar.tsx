@@ -67,10 +67,12 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         <RenameControl
           key={`profile:${selection.profile}`}
           fieldLabel="Profile name"
-          buttonLabel={`Rename profile "${config.profiles[selection.profile].name ?? selection.profile}"`}
+          buttonLabel={`Rename or delete profile "${config.profiles[selection.profile].name ?? selection.profile}"`}
           name={config.profiles[selection.profile].name ?? ''}
           disabled={editingBlocked}
           onRename={(name) => onRenameProfile(selection.profile, name)}
+          deleteLabel="Delete profile…"
+          onDelete={() => onDeleteProfile(selection.profile)}
         />
       )}
       <span className="crumb-sep">›</span>
@@ -551,9 +553,10 @@ function AddMenu({
 
 /**
  * The Profile dropdown, and the right-click that deletes. Rename is the pencil
- * beside it; delete hides behind the gesture, deliberately: a permanent delete
- * control in the toolbar sits one misclick from wiping a profile, and deleting
- * a profile is an operation on something already on screen. The same menu a page tab has.
+ * beside it, and its field offers Delete too, so delete can be found by
+ * someone who never thinks to right-click (Ryan, 2026-10-17, who could not).
+ * Still no permanent delete control in the toolbar: that sits one misclick
+ * from wiping a profile. The same right-click menu a page tab has.
  */
 function ProfileCrumb({
   config,
@@ -614,7 +617,9 @@ function ProfileCrumb({
 /**
  * Rename by pencil — the one control for profile, device and page: a visible
  * pencil beside the thing, which becomes a field in its place. Enter or leaving the field saves; Escape cancels; a refusal (a name
- * already in use, a blank one) stays open and says why.
+ * already in use, a blank one) stays open and says why. With `onDelete`, the
+ * field has a Delete beside it (the profile's): two deliberate clicks from
+ * the toolbar, and then the confirmation, never one.
  */
 function RenameControl({
   fieldLabel,
@@ -624,6 +629,8 @@ function RenameControl({
   hint,
   disabled,
   onRename,
+  deleteLabel,
+  onDelete,
 }: {
   /** The field's accessible name: "Profile name", "Deck name", "Page name". */
   fieldLabel: string;
@@ -637,6 +644,10 @@ function RenameControl({
   disabled: boolean;
   /** Returns an error to show, or null when renamed. */
   onRename: (name: string) => Promise<string | null>;
+  /** "Delete profile…": shown beside the field. */
+  deleteLabel?: string;
+  /** Ask to delete it; the caller confirms. The rename is dropped, not saved. */
+  onDelete?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
@@ -688,6 +699,20 @@ function RenameControl({
       />
       {hint && <span className="muted small">{hint}</span>}
       {error && <span className="field-error">{error}</span>}
+      {onDelete && (
+        <button
+          className="link-button rename-delete"
+          // Not a blur first: leaving the field saves it, which would close it under the click.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setEditing(false);
+            setError(null);
+            onDelete();
+          }}
+        >
+          {deleteLabel ?? 'Delete…'}
+        </button>
+      )}
     </span>
   );
 }

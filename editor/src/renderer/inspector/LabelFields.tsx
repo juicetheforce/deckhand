@@ -2,7 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import type { ButtonDef } from '../../../../src/types.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
 
-/** Saves when typing pauses, on Enter, and on leaving the field. An empty label removes it. */
+/**
+ * A label as the config keeps it: blank lines dropped (the deck skips them),
+ * and nothing after the last line, so a new line typed and left empty saves
+ * nothing extra.
+ */
+export function tidyLabel(value: string): string {
+  return value
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .join('\n');
+}
+
+/**
+ * Saves when typing pauses, and on leaving the field. An empty label removes
+ * it. **Enter starts a new line**: a label can stack its words, one line under
+ * another, each fitted to the key on its own as the deck draws it
+ * (src/render.ts) — so a text area, which keeps a line break where an input
+ * drops it.
+ */
 export function LabelField({ label, disabled, onSave }: { label: string; disabled: boolean; onSave: (label: string) => void }) {
   const [text, setText] = useState(label);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -15,16 +33,20 @@ export function LabelField({ label, disabled, onSave }: { label: string; disable
   const save = (value: string) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    if (value !== label) onSave(value);
+    const tidy = tidyLabel(value);
+    if (tidy !== label) onSave(tidy);
   };
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
+  // As many rows as it has lines, from one to four, so a one-line label looks as it did.
+  const rows = Math.min(4, Math.max(1, text.split('\n').length));
   return (
-    <input
+    <textarea
       className="label-input"
       aria-label="Label"
       placeholder="No label"
+      rows={rows}
       value={text}
       disabled={disabled}
       onChange={(e) => {
@@ -37,8 +59,8 @@ export function LabelField({ label, disabled, onSave }: { label: string; disable
       onBlur={() => {
         focused.current = false;
         save(text);
+        setText(tidyLabel(text));
       }}
-      onKeyDown={(e) => e.key === 'Enter' && save(text)}
     />
   );
 }

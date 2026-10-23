@@ -29,8 +29,15 @@ process.env.HOME = home;
 const PACTL_STATE = path.join(scratch, 'pactl-state.json');
 await fs.mkdir(path.join(scratch, 'bin'));
 await fs.symlink(path.join(repoRoot, 'scripts/test/fake-pactl.mjs'), path.join(scratch, 'bin', 'pactl'));
+// And a pw-play that plays nothing, for Play sound's ▶ (the daemon runs in this process).
+await fs.symlink(path.join(repoRoot, 'scripts/test/fake-sound-player.sh'), path.join(scratch, 'bin', 'pw-play'));
 process.env.PATH = `${path.join(scratch, 'bin')}:${process.env.PATH}`;
 process.env.FAKE_PACTL_STATE = PACTL_STATE;
+// Sounds to pick, in ~/Music: the fake "plays" each for as many ms as its text says.
+await fs.mkdir(path.join(home, 'Music', 'sfx'), { recursive: true });
+await fs.writeFile(path.join(home, 'Music', 'horn.mp3'), '20000');
+await fs.writeFile(path.join(home, 'Music', 'sfx', 'boom.wav'), '20000');
+await fs.writeFile(path.join(home, 'Music', 'cover.png'), 'not a sound');
 await fs.writeFile(PACTL_STATE, '{}');
 // Installed applications, for the App form: two desktop entries and a hicolor
 // icon, under scratch XDG directories the daemon (in this process) reads.
@@ -86,10 +93,14 @@ const BUTTONS = {
   14: { action: { type: 'hotkey', keys: 'ctrl+1' } },
   17: { action: { type: 'keyHold', keys: 'f24', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f23', state: 'up' } },
   19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 50 }, { type: 'media.control', method: 'next' }] } },
+  22: { action: { type: 'sound.play' } },
+  23: { action: { type: 'virtual.power' } },
   30: { action: { type: 'toggle', keys: 'shift' } },
+  31: { action: { type: 'obs.stream' } },
 };
 const CONFIG = {
-  decks: { [SERIAL]: {} },
+  // A virtual deck that is not connected: what Virtual deck on/off lists.
+  decks: { [SERIAL]: {}, 'GRA-6e4e': { name: 'Side panel', virtual: { output: 'DP-4' } } },
   startProfile: 'default',
   profiles: { default: { name: 'Default', layouts: { [SERIAL]: { startPage: 'main', pages: { main: { name: 'Main', buttons: BUTTONS } } } } } },
 };
@@ -192,6 +203,42 @@ if (r && !r.error) {
       toggleOn: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset' },
       toggleBoth: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' },
     });
+  });
+  check("OBS: the Stream key's icon for each state is chosen through the Icon tab's slots, named for its states; the grid shows the resting half", () => {
+    assert.deepEqual(r.obsIcons, {
+      obsRowsOnKeyTab: ['While live', 'While off'],
+      obsSlots: ['Key icon', 'While live', 'While off'],
+      obsLive: { type: 'obs.stream', iconOn: 'builtin:headset' },
+      obsGridResting: true,
+      live: 'Built-in: headset',
+      off: 'default (obs-stream)',
+    });
+  });
+  check('Virtual deck on/off: lists the virtual decks by name, writes the one picked; no warning on another deck', () => {
+    assert.deepEqual(r.virtualPower, { listed: ['Side panel'], saved: { type: 'virtual.power', deck: 'GRA-6e4e' }, selfWarning: false });
+  });
+  check("Play sound's picker: the icon picker's browsing over sounds only; ▶ plays one first through the daemon, ■ stops it, and choosing writes its path", () => {
+    assert.deepEqual(r.sound.picker, {
+      listed: ['sfx', 'horn.mp3'],
+      playing: true,
+      previewingInState: true,
+      stopped: true,
+      notChosenByPlay: true,
+      filterFindsBelow: ['boom.wav'],
+    });
+  });
+  check('Play sound: the file from the picker, the press behaviour, the volume, the output and back to the default — each written as chosen', () => {
+    const file = '~/Music/horn.mp3';
+    const headset = 'alsa_output.usb-Example_Headset-00.analog-stereo';
+    assert.deepEqual(r.sound.soundSteps, [
+      { type: 'sound.play', file },
+      { type: 'sound.play', file, mode: 'loopStop' },
+      { type: 'sound.play', file, mode: 'loopStop', volume: 60 },
+      { type: 'sound.play', file, mode: 'loopStop', volume: 60, node: headset, label: 'Example Headset Analog Stereo' },
+      { type: 'sound.play', file, mode: 'loopStop', volume: 60 },
+      { type: 'sound.play', file, volume: 60 },
+    ]);
+    assert.match(r.sound.soundSays, /over and over/);
   });
   check("every pair icon field gets past main's guard (only the key's action may refuse one); an unlisted field does not", () => {
     assert.deepEqual(r.pairGuard, {
@@ -352,7 +399,10 @@ check('the saved file holds exactly what the forms wrote', () => {
     17: BUTTONS[17],
     18: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: 'ctrl+2', delayMs: 200 }] } },
     19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] } },
+    22: { action: { type: 'sound.play', file: '~/Music/horn.mp3', volume: 60 } },
+    23: { action: { type: 'virtual.power', deck: 'GRA-6e4e' } },
     30: { action: { type: 'toggle', keys: 'shift', iconOn: 'builtin:headset', iconOff: 'builtin:mic' } },
+    31: { action: { type: 'obs.stream', iconOn: 'builtin:headset' } },
   };
   assert.deepEqual(saved, expected);
 });

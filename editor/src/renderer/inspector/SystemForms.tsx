@@ -4,7 +4,7 @@ import { iconUrl } from '../../shared/icons.js';
 import { Checkbox, NumberSetting, Row, Segmented, actionOf, nextAction, type FormProps } from './controls.js';
 
 /**
- * The small System forms: Clock, Nothing and Brightness. Grouped
+ * The small System forms: Clock, Nothing, Brightness and Virtual deck on/off. Grouped
  * by the library section they sit in, since each is a few controls.
  */
 
@@ -145,6 +145,55 @@ export function AppForm({ at, button, disabled, run, apps }: FormProps & { apps:
       {storedMissing && <p className="warning-text">“{stored}” is not installed now. The key fails when pressed until it is, or pick another.</p>}
       {stored === null && apps != null && <p className="muted small">Pick the application this key opens.</p>}
       <p className="muted small">To go to a page or profile once the app is open, put both in a Multi action, with a pause after the app long enough for its window to appear.</p>
+    </section>
+  );
+}
+
+/**
+ * virtual.power: which virtual deck a press turns off, and on again. Placed
+ * on that same virtual deck, it can turn it off but not back on — said, as
+ * decided (scope §7, the polish release), not refused: someone may want just that.
+ */
+export function VirtualPowerForm({ at, button, disabled, run, decks }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }> }) {
+  const action = actionOf('virtual.power', button);
+  const chosen = typeof action?.deck === 'string' && action.deck !== '' ? action.deck : null;
+  const known = chosen === null || decks.some((d) => d.id === chosen);
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Virtual deck on/off</h3>
+      <p className="muted small">
+        Each press turns the virtual deck off or on. Off, its panel is gone and its touchscreen works on the desktop again, for a screen that also
+        shows widgets; on, it comes back where it was. The key shows which. Turned off, it stays off until it is turned on, or Deckhand restarts.
+      </p>
+      {decks.length === 0 ? (
+        <p className="warning-text">There is no virtual deck to turn off. Add one in Settings › Decks.</p>
+      ) : (
+        <ul className="target-list" data-virtual-power>
+          {!known && (
+            <li>
+              <button className="target target-selected" disabled data-deck={chosen}>
+                <span className="target-name">{chosen}</span>
+                <span className="target-note">not a virtual deck now</span>
+              </button>
+            </li>
+          )}
+          {decks.map((d) => (
+            <li key={d.id}>
+              <button className={chosen === d.id ? 'target target-selected' : 'target'} disabled={disabled} data-deck={d.id} onClick={() => void run({ kind: 'setAction', at, action: nextAction('virtual.power', button, { deck: d.id }) })}>
+                <span className="target-name">{d.label}</span>
+                <span className="target-note">{d.id}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {chosen !== null && chosen === at.serial && (
+        <p className="warning-text" data-virtual-power-self>
+          This key is on the deck it turns off: it can turn it off, but not back on. Put a key that turns it on somewhere else — on a Stream Deck or
+          another virtual deck — or use Settings › Decks.
+        </p>
+      )}
+      {chosen === null && decks.length > 0 && <p className="muted small">Pick the virtual deck this key turns off and on.</p>}
     </section>
   );
 }

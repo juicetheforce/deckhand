@@ -43,6 +43,8 @@ export interface DeckSessionOptions {
   failures: KeyFailures;
   /** The profile this deck is showing, which the failed keys are keyed by. */
   profileOf: () => string;
+  /** The page to start on instead of the layout's start page, if the layout has it: a virtual deck turned back on. */
+  page?: string;
   /** A key's failure mark was cleared (a press that worked, the editor's Clear): its next failure notifies as a first one. */
   onFailureCleared?: (slot: string) => void;
 }
@@ -131,7 +133,7 @@ export class DeckSession implements DeckHandle {
     this.keyCount = 0;
     this.iconSize = null;
     this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
-    this.page = startPageOf(this.layout);
+    this.page = options.page !== undefined && this.layout.pages[options.page] ? options.page : startPageOf(this.layout);
     this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
   }
 
@@ -477,6 +479,7 @@ export class DeckSession implements DeckHandle {
       // here; drawKey() gives an absent one the action's default.
       icon: button?.icon ?? undefined,
       iconFit: button?.iconFit ?? this.defaults.iconFit,
+      builtinIconSize: this.defaults.builtinIconSize,
       label: button?.label,
       labelColor: button?.labelColor ?? this.defaults.labelColor,
       labelSize: button?.labelSize ?? this.defaults.labelSize,

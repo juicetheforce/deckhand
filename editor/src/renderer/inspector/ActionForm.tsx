@@ -12,7 +12,8 @@ import { MultiForm } from './MultiForm.js';
 import { ObsForm, ObsMuteForm, ObsSceneForm, ObsSourceForm } from './ObsForms.js';
 import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
-import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm } from './SystemForms.js';
+import { SoundForm, StopAllSoundsForm } from './SoundForms.js';
+import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm, VirtualPowerForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
 import { TwitchChatForm, TwitchClipForm, TwitchMarkerForm, TwitchStreamInfoForm } from './TwitchForms.js';
 import { VtsExpressionForm, VtsHotkeyForm, VtsModelForm } from './VtsForms.js';
@@ -27,6 +28,8 @@ export interface ActionFormProps {
   run: (edit: Edit) => Promise<boolean>;
   pages: Choice[];
   profiles: Choice[];
+  /** Every virtual deck, for Virtual deck on/off. */
+  virtualDecks: Choice[];
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   audio: AudioLists;
   /** The daemon's installed applications, for the App form. */
@@ -71,6 +74,8 @@ export function ActionForm(p: ActionFormProps) {
       return <EditorForm />;
     case 'brightness':
       return <BrightnessForm {...common} />;
+    case 'virtual.power':
+      return <VirtualPowerForm {...common} decks={p.virtualDecks} />;
     case 'media.control':
       return <MediaControlForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'media.info':
@@ -88,16 +93,21 @@ export function ActionForm(p: ActionFormProps) {
       return <CycleForm {...common} audio={p.audio} />;
     case 'audio.cycleSource':
       return <CycleInputsForm {...common} audio={p.audio} />;
+    // A Multi step is the one form given no onChooseIcon: it has no face.
+    case 'sound.play':
+      return <SoundForm {...common} audio={p.audio} inStep={p.onChooseIcon === undefined} />;
+    case 'sound.stopAll':
+      return <StopAllSoundsForm />;
     case 'obs.stream':
     case 'obs.record':
     case 'obs.recordPause':
-      return <ObsForm type={p.type} />;
+      return <ObsForm type={p.type} button={p.button} disabled={p.disabled} onChooseIcon={p.onChooseIcon} />;
     case 'obs.scene':
-      return <ObsSceneForm {...common} />;
+      return <ObsSceneForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'obs.mute':
-      return <ObsMuteForm {...common} />;
+      return <ObsMuteForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'obs.source':
-      return <ObsSourceForm {...common} />;
+      return <ObsSourceForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'vts.hotkey':
       return <VtsHotkeyForm {...common} />;
     case 'vts.model':

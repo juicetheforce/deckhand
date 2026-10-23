@@ -17,6 +17,9 @@
  *   deck, and its coming back draws the panel again;
  * - the screen unplugged: the next scan disconnects the deck and quits the
  *   helper; plugged in again, the next scan attaches it again;
+ * - turned off (`virtual.power`, the CLI, or the virtual.power action on the
+ *   deck itself): closed and its helper quit, `status` says off, a scan
+ *   leaves it off; turned on, attached again on the page it was on;
  * - stopping the daemon quits the helper.
  *
  * The child gets scripts/test/fake-decks.mjs with no Stream Decks plugged in
@@ -244,6 +247,43 @@ try {
   process.kill(child.pid, 'SIGUSR2');
   check('plugged in again, the next scan attaches it again', await until(() => (log().match(/attached Test panel/g) ?? []).length === 3), log().slice(-600));
   check('three attaches, and the unread sibling said once, never as "cannot open"', (log().match(/not grabbing event16/g) ?? []).length === 1 && !/cannot open .*event16/.test(log()));
+
+  console.log('turned off and on');
+  const attaches = () => (log().match(/attached Test panel/g) ?? []).length;
+  const deckStatus = async () => (await client.request('status')).result.decks.find((d) => d.serial === KEY);
+  const quitCount = async () => (await frames()).filter((f) => f.type === 'Q').length;
+  await client.request('action.run', { serial: KEY, action: { type: 'page', to: 'two' } });
+  const quitsBeforeOff = await quitCount();
+  const attachesBeforeOff = attaches();
+  const offReply = await client.request('virtual.power', { deck: KEY });
+  check('virtual.power with no "on" turns it the other way: off', offReply.ok && offReply.result.on === false, JSON.stringify(offReply));
+  check('…its helper is quit, so the grab ends with it', await until(async () => (await quitCount()) > quitsBeforeOff));
+  check('…status: off, and not connected', await until(async () => (await deckStatus())?.off === true && (await deckStatus())?.connected === false), JSON.stringify(await deckStatus()));
+  check('…the log says so', /virtual deck GRA-6e4e turned off/.test(log()) && /virtual deck GRA-6e4e closed: it is turned off/.test(log()));
+  check('…deckhand status says "turned off"', /GRA-6e4e {2}turned off/.test(cliStatus()), cliStatus());
+  process.kill(child.pid, 'SIGUSR2');
+  await sleep(500);
+  check('…a scan with its screen connected leaves it off', attaches() === attachesBeforeOff);
+  const cli = (...args) => spawnSync(process.execPath, [path.join(REPO, 'dist/cli.js'), ...args], { env: { ...process.env, DECKHAND_SOCKET: SOCKET } });
+  const on = cli('virtual', 'on', KEY);
+  check('deckhand virtual on: turned on', on.status === 0 && /virtual deck GRA-6e4e is on/.test(on.stdout.toString()), on.stdout.toString() + on.stderr.toString());
+  check('…attached again', await until(() => attaches() === attachesBeforeOff + 1), log().slice(-400));
+  check('…on the page it was on, not its start page', await until(async () => (await deckStatus())?.page === 'two'), JSON.stringify(await deckStatus()));
+  check('…and status no longer says off', (await deckStatus())?.off === undefined);
+  const again = cli('virtual', 'on', KEY);
+  check('turning on a deck that is on changes nothing', again.status === 0 && attaches() === attachesBeforeOff + 1);
+  const quitsBeforeKey = await quitCount();
+  const pressed = await client.request('action.run', { serial: KEY, action: { type: 'virtual.power', deck: KEY } });
+  check('the virtual.power action, run on the deck it turns off: done', pressed.ok, JSON.stringify(pressed));
+  check('…and the deck goes', await until(async () => (await deckStatus())?.off === true) && (await until(async () => (await quitCount()) > quitsBeforeKey)));
+  await client.request('virtual.power', { deck: KEY, on: true });
+  check('…on again', await until(() => attaches() === attachesBeforeOff + 2));
+  const unknown = await client.request('virtual.power', { deck: 'HPN-3469-CNK8231CGN' });
+  check('a screen that is not a virtual deck: not found', unknown.ok === false && unknown.error.code === 'not_found', JSON.stringify(unknown));
+  const badOn = await client.request('virtual.power', { deck: KEY, on: 'yes' });
+  check('"on" that is not true or false: bad request', badOn.ok === false && badOn.error.code === 'bad_request');
+  const usage = cli('virtual', 'sideways', KEY);
+  check('deckhand virtual with anything but on, off or toggle: a usage error', usage.status === 2);
 
   client.close();
   const quitsBefore = (await frames()).filter((f) => f.type === 'Q').length;

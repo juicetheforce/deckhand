@@ -21,6 +21,10 @@ export const DEFAULTS: Required<Defaults> = {
   labelSize: 14,
   labelPosition: 'bottom',
   iconFit: 'cover',
+  // A built-in's drawing at 53% of the key puts its glyph — a median 83% of
+  // the drawing, measured over every built-in — at about 44% of the key, as
+  // the mockups draw it. One number to change: the editor's grid follows it too.
+  builtinIconSize: 53,
   brightness: 70,
   refreshMs: 1000,
 };

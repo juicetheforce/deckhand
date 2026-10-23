@@ -67,7 +67,8 @@ body {
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -1007,14 +1008,16 @@ button:disabled {
 }
 
 .button-row button,
-.inspector input {
+.inspector input,
+.inspector textarea {
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid var(--glass-border);
   border-radius: 9px;
   padding: 6px 11px;
 }
 
-.inspector input {
+.inspector input,
+.inspector textarea {
   width: 100%;
   background: rgba(0, 0, 0, 0.35);
 }
@@ -1097,6 +1100,10 @@ button:disabled {
 
 .label-input {
   width: 100%;
+  /* Its rows follow its lines (LabelFields.tsx); never dragged to a size. */
+  resize: none;
+  display: block;
+  line-height: 1.35;
 }
 
 .facts {
@@ -2307,6 +2314,12 @@ button:disabled {
   padding: 5px 8px;
   width: 190px;
   color: var(--text);
+}
+
+/* The profile's Delete, beside its rename field: a quiet red link, not a button that shouts. */
+.rename-delete {
+  color: var(--red);
+  white-space: nowrap;
 }
 
 /* Navigation guards */
@@ -3542,4 +3555,74 @@ body.settings-body {
 
 .vd-warning {
   color: var(--amber);
+}
+
+/* Play sound's file picker (SoundPicker.tsx): the icon picker's bands over a
+   list of sounds, one to a row, each with ▶ to hear it before choosing it.
+   Inside the Key tab's form, so it does not take the inspector's height. */
+.sound-picker {
+  flex: none;
+}
+
+.sound-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sound-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sound-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.sound-row:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* The key's file now, as the icon picker marks its icon. */
+.sound-item-current .sound-row {
+  box-shadow: inset 0 0 0 2px var(--green);
+}
+
+.sound-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-play {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+}
+
+.sound-play-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }

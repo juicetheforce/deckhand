@@ -23,6 +23,7 @@ process.env.FAKE_PACTL_STATE = PACTL_STATE;
 const { BUILTIN_ICONS, defaultIconFor } = await import(path.join(REPO, 'dist/default-icons.js'));
 const { builtinIconDir, builtinRefPath } = await import(path.join(REPO, 'dist/builtin-icons.js'));
 const { renderButton } = await import(path.join(REPO, 'dist/render.js'));
+const { DEFAULTS, validateConfig } = await import(path.join(REPO, 'dist/config.js'));
 const audio = await import(path.join(REPO, 'dist/services/audio.js'));
 
 const ICONS = path.join(REPO, 'assets', 'icons');
@@ -128,15 +129,24 @@ console.log('builtin: references');
 
 // --- through a real DeckSession ---------------------------------------------
 
-async function expected(file, { fit = 'cover', background = BACKGROUND } = {}) {
+/**
+ * A key as sharp alone draws it: `file` on the background, filling the key —
+ * an icon file a key was given — or, with `builtin`, at the built-in size
+ * (DEFAULTS.builtinIconSize, percent of the key), centred.
+ */
+async function expected(file, { fit = 'cover', background = BACKGROUND, builtin = false, percent = DEFAULTS.builtinIconSize } = {}) {
   const base = sharp({ create: { width: 96, height: 96, channels: 4, background } });
   if (!file) return base.raw().toBuffer();
+  const side = builtin ? Math.round((96 * percent) / 100) : 96;
   const layer = await sharp(await fs.readFile(file))
-    .resize(96, 96, { fit, position: 'centre', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(side, side, { fit: builtin ? 'contain' : fit, position: 'centre', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
-  return base.composite([{ input: layer, top: 0, left: 0 }]).raw().toBuffer();
+  const at = Math.floor((96 - side) / 2);
+  return base.composite([{ input: layer, top: at, left: at }]).raw().toBuffer();
 }
+/** A built-in, as the deck draws one. */
+const builtinKey = (name, options = {}) => expected(icon(name), { ...options, builtin: true });
 const same = (a, b) => a !== undefined && Buffer.compare(a, b) === 0;
 
 /** A key rendered through renderButton with the deck defaults, for faces with a label. */
@@ -188,30 +198,30 @@ const key = (i) => deck.images.get(i);
 console.log('which icon a key draws');
 {
   const bare = await expected(null);
-  check('an action with no icon set draws its default', same(key(0), await expected(icon('key-combo'))));
+  check('an action with no icon set draws its default', same(key(0), await builtinKey('key-combo')));
   check('icon: null draws no icon — deliberately none', same(key(1), bare));
   check('a path wins over the default', same(key(2), await expected(GOOD)));
-  check('builtin:<name> draws that built-in', same(key(3), await expected(icon('pause'))));
-  check('an unknown built-in draws missing', same(key(4), await expected(icon('missing'), { fit: 'contain' })));
-  check('a malformed built-in name draws missing', same(key(5), await expected(icon('missing'), { fit: 'contain' })));
+  check('builtin:<name> draws that built-in', same(key(3), await builtinKey('pause')));
+  check('an unknown built-in draws missing', same(key(4), await builtinKey('missing')));
+  check('a malformed built-in name draws missing', same(key(5), await builtinKey('missing')));
   check('a key with no action gets no default: its label alone', same(key(6), await renderButton(display({ label: 'x' }), 96)));
   check('noop draws nothing', same(key(7), bare));
-  check('page back draws back', same(key(8), await expected(icon('back'))));
-  check('volume down draws volume-down, with no level label by default', same(key(9), await expected(icon('volume-down'))));
-  check('showLevel: true still draws the level over the icon', !same(key(10), await expected(icon('speaker'))));
-  check('brightness up draws brightness-up, with no level label by default', same(key(11), await expected(icon('brightness-up'))));
+  check('page back draws back', same(key(8), await builtinKey('back')));
+  check('volume down draws volume-down, with no level label by default', same(key(9), await builtinKey('volume-down')));
+  check('showLevel: true still draws the level over the icon', !same(key(10), await builtinKey('speaker')));
+  check('brightness up draws brightness-up, with no level label by default', same(key(11), await builtinKey('brightness-up')));
   // fake-pactl's default input starts muted.
-  check('mic mute, muted: mic-muted, with its muted background', same(key(12), await expected(icon('mic-muted'), { background: '#5a1d1d' })));
+  check('mic mute, muted: mic-muted, with its muted background', same(key(12), await builtinKey('mic-muted', { background: '#5a1d1d' })));
   check('an explicit iconMuted wins over the default', same(key(13), await expected(GOOD, { background: '#5a1d1d' })));
-  check('output mute, unmuted: speaker', same(key(14), await expected(icon('speaker'))));
-  check('media next draws next', same(key(15), await expected(icon('next'))));
-  check('play/pause with nothing playing draws play', same(key(16), await expected(icon('play'))));
+  check('output mute, unmuted: speaker', same(key(14), await builtinKey('speaker')));
+  check('media next draws next', same(key(15), await builtinKey('next')));
+  check('play/pause with nothing playing draws play', same(key(16), await builtinKey('play')));
   check('an idle now-playing key keeps its own icon, with no label', same(key(17), await expected(GOOD)));
-  check('an idle now-playing key with no icon draws now-playing and no label', same(key(22), await expected(icon('now-playing'))));
-  check('idleLabel puts a label back over it', same(key(23), await renderButton(display({ icon: icon('now-playing'), label: 'Quiet' }), 96)));
-  check('Press/Release (keyHold) draws press-release', same(key(18), await expected(icon('press-release'))));
-  check('a profile key draws profile under its label', same(key(19), await renderButton(display({ icon: icon('profile'), label: 'FFXIV' }), 96)));
-  check('builtin:<name> on a key with no action draws too', same(key(20), await expected(icon('pause'))));
+  check('an idle now-playing key with no icon draws now-playing and no label', same(key(22), await builtinKey('now-playing')));
+  check('idleLabel puts a label back over it', same(key(23), await renderButton(display({ icon: 'builtin:now-playing', label: 'Quiet' }), 96)));
+  check('Press/Release (keyHold) draws press-release', same(key(18), await builtinKey('press-release')));
+  check('a profile key draws profile under its label', same(key(19), await renderButton(display({ icon: 'builtin:profile', label: 'FFXIV' }), 96)));
+  check('builtin:<name> on a key with no action draws too', same(key(20), await builtinKey('pause')));
   check('a label-only key (icon: null) draws the label with no default', same(key(21), await renderButton(display({ label: 'Only a label' }), 96)));
 }
 
@@ -221,13 +231,13 @@ console.log('state pairs follow the cache');
   await fs.writeFile(PACTL_STATE, JSON.stringify({ muted: { [sink]: true, 'alsa_input.usb-Example_Headset-00.mono-fallback': false } }));
   await audio.refreshCache();
   await session.repaint();
-  check('output muted: speaker-muted', same(key(14), await expected(icon('speaker-muted'))));
-  check('mic unmuted: mic', same(key(12), await expected(icon('mic'))));
+  check('output muted: speaker-muted', same(key(14), await builtinKey('speaker-muted')));
+  check('mic unmuted: mic', same(key(12), await builtinKey('mic')));
 }
 
 console.log('previews');
 {
-  check('a strict render of builtin:pause draws', same(await renderButton(display({ icon: 'builtin:pause' }), 96, true), await expected(icon('pause'))));
+  check('a strict render of builtin:pause draws', same(await renderButton(display({ icon: 'builtin:pause' }), 96, true), await builtinKey('pause')));
   let refused = false;
   try {
     await renderButton(display({ icon: 'builtin:nope' }), 96, true);
@@ -235,6 +245,41 @@ console.log('previews');
     refused = true;
   }
   check('a strict render of an unknown built-in refuses (render_failed)', refused);
+}
+
+console.log('built-in icons are drawn smaller than the key; icon files are not');
+{
+  /** The bounding box of what is drawn over the bare background, as fractions of the key. */
+  const inkOf = (image) => {
+    let l = 96, r = -1, t = 96, b = -1;
+    const bare = [0x10, 0x10, 0x14];
+    for (let y = 0; y < 96; y++) for (let x = 0; x < 96; x++) {
+      const at = (y * 96 + x) * 4;
+      if (Math.abs(image[at] - bare[0]) + Math.abs(image[at + 1] - bare[1]) + Math.abs(image[at + 2] - bare[2]) < 12) continue;
+      l = Math.min(l, x); r = Math.max(r, x); t = Math.min(t, y); b = Math.max(b, y);
+    }
+    return { width: (r - l + 1) / 96, height: (b - t + 1) / 96, centre: [(l + r) / 2 / 96, (t + b) / 2 / 96] };
+  };
+  const asBuiltin = inkOf(await renderButton(display({ icon: 'builtin:mic' }), 96));
+  const asFile = inkOf(await renderButton(display({ icon: icon('mic'), iconFit: 'contain' }), 96));
+  check(`a built-in's glyph is at most the built-in size (${DEFAULTS.builtinIconSize}% of the key): ${Math.round(asBuiltin.height * 100)}%`, asBuiltin.height <= DEFAULTS.builtinIconSize / 100 + 0.02 && asBuiltin.height > 0.3);
+  check('...centred', asBuiltin.centre.every((c) => Math.abs(c - 0.5) < 0.04));
+  check(`the same drawing chosen as a file is drawn as before, filling the key: ${Math.round(asFile.height * 100)}%`, asFile.height > 0.75);
+  const full = inkOf(await renderButton(display({ icon: 'builtin:mic', builtinIconSize: 100 }), 96));
+  check('builtinIconSize 100 draws a built-in edge to edge again, as a file is', Math.abs(full.height - asFile.height) < 0.02);
+  const bigger = inkOf(await renderButton(display({ icon: 'builtin:mic', builtinIconSize: 70 }), 96));
+  check('a larger builtinIconSize draws it larger', bigger.height > asBuiltin.height + 0.1);
+  check('the missing placeholder is a built-in too, drawn at its size', same(await renderButton(display({ icon: 'builtin:nope' }), 96), await builtinKey('missing')));
+  const refusedSize = (v) => {
+    try {
+      validateConfig({ defaults: { builtinIconSize: v }, profiles: { p: { layouts: {} } } });
+      return false;
+    } catch (err) {
+      return err.message.includes('builtinIconSize');
+    }
+  };
+  check('the config refuses a builtinIconSize outside 20–100, or not a number', refusedSize(10) && refusedSize(101) && refusedSize('53'));
+  check('...and takes one within it', !refusedSize(60) && !refusedSize(20) && !refusedSize(100));
 }
 
 console.error = originalError;

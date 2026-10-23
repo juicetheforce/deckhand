@@ -279,7 +279,7 @@ const picker = (what) =>
       selected: [...ul.querySelectorAll('.target-selected')].map((b) => b.dataset.obsName),
       missing: [...ul.querySelectorAll('.target-note')].map((n) => n.textContent),
       unavailable: document.querySelector('.inspector [data-obs-list]')?.textContent ?? null,
-      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea') !== null,
+      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea:not(.label-input)') !== null, /* the key's own label is not a picker */
     }; })()`,
   );
 const pickName = (what, name) => inPage(editor, 'editor', clickIn(`.inspector [data-obs-picker=${what}] [data-obs-name="${name}"]`));

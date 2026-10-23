@@ -191,12 +191,12 @@ check('the deleted page is gone, and the key that pointed at it kept its label b
 check('rename is a visible pencil for profile, device and page, with no note and no right-click', () => {
   assert.deepEqual(
     r?.pencils?.map((l) => l.replace(/"[^"]*"/, '"…"')),
-    ['Rename profile "…"', 'Rename "…"', 'Rename page "…"'],
+    ['Rename or delete profile "…"', 'Rename "…"', 'Rename page "…"'],
     'expected one pencil each for profile, device and the selected page',
   );
   assert.deepEqual(r?.profileMenuOnRightClick, ['Delete profile…'], 'the Profile dropdown right-click should offer Delete alone: rename is the pencil');
   assert.equal(r?.profileFieldStartsWith, 'Default');
-  assert.equal(r?.profileRenameExtras, '', 'something besides the field is shown while renaming a profile');
+  assert.equal(r?.profileRenameExtras, 'Delete profile…', 'something besides the field and its Delete is shown while renaming a profile (no note: Ryan, 2026-09-19)');
   assert.equal(r?.profileClashError, 'there is already a profile called "Other"');
   assert.equal(r?.profileRenamed, true, 'the dropdown never showed the new name, or the field stayed open');
   assert.equal(r?.profileStillShown, 'default', 'renaming moved the breadcrumb to another profile');
@@ -218,6 +218,13 @@ check('the renamed page: a name link on another page follows it', () => {
   assert.equal(layout.pages.main.name, 'Start');
   assert.deepEqual(layout.pages.third.buttons['2'].action, { type: 'page', to: 'Start' });
   assert.equal(layout.startPage, 'main', 'startPage by ID was rewritten');
+});
+
+check("the profile's pencil offers Delete beside its field: the same confirmation, the field closed, the rename typed dropped", () => {
+  assert.equal(r?.pencilDeleteText, 'Delete profile…');
+  assert.equal(r?.pencilDeleteOpens, true, 'the confirmation did not open, or the press blurred the field first');
+  assert.equal(r?.pencilDeleteFieldClosed, true);
+  assert.equal(r?.pencilDeleteRenamedNothing, true, 'the name typed before Delete was saved');
 });
 
 check('deleting a profile names what it changes, and Cancel changes nothing', () => {

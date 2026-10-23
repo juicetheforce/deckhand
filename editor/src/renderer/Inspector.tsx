@@ -32,6 +32,8 @@ interface Props {
   pages: Choice[];
   /** Every profile, as "Switch profile" targets. */
   profiles: Choice[];
+  /** Every virtual deck, as "Virtual deck on/off" targets. */
+  virtualDecks: Choice[];
   /** Which decks a profile covers, and which connected decks it leaves out. */
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   /** What the label inherits when the key sets nothing: config `defaults`, then the daemon's. */
@@ -63,7 +65,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -98,6 +100,7 @@ export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure,
       pick={pick}
       pages={pages}
       profiles={profiles}
+      virtualDecks={virtualDecks}
       coverage={coverage}
       labelDefaults={labelDefaults}
       canPreview={canPreview}
@@ -159,7 +162,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -258,7 +261,7 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
                 aria-pressed={field === slot}
                 onClick={() => setSlot(field)}
               >
-                {field === null ? 'Key icon' : pairLabel(field)}
+                {field === null ? 'Key icon' : pairLabel(field, button?.action?.type)}
               </button>
             ))}
           </div>
@@ -279,6 +282,7 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
           run={run}
           pages={pages}
           profiles={profiles}
+          virtualDecks={virtualDecks}
           coverage={coverage}
           audio={audio}
           apps={apps}

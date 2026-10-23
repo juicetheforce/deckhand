@@ -3,6 +3,7 @@ import path from 'node:path';
 import { BUILTIN_ICONS } from '../../../src/default-icons.js';
 import type { IconFolderEntry, IconFolderListing, IconSearchMatch } from '../shared/bridge.js';
 import { BUILTIN_FOLDER, builtinRef, isShownIcon } from '../shared/icons.js';
+import { isSoundFile } from '../shared/sounds.js';
 import { toConfigPath } from './config-document.js';
 import { stamp } from './icon-files.js';
 
@@ -14,7 +15,18 @@ import { stamp } from './icon-files.js';
  *
  * Icons are plain paths. Nothing here copies, imports or indexes
  * anything: every listing and search reads the file system as it is now.
+ *
+ * The sound picker (Play sound's file) browses with the same code: `kind`
+ * 'sound' lists sound files where 'icon' lists images. A listing's `images`
+ * are then sounds — the files that picker offers.
  */
+
+export type BrowseKind = 'icon' | 'sound';
+
+/** Whether a file is one this picker offers. */
+function offered(name: string, kind: BrowseKind): boolean {
+  return kind === 'sound' ? isSoundFile(name) : isShownIcon(name);
+}
 
 /** A search walks at most this many directory entries (files and folders)... */
 export const MAX_SEARCH_ENTRIES = 20_000;
@@ -37,10 +49,10 @@ function entry(folder: string, name: string, homeDir: string): IconFolderEntry {
  * so the number matches what opening it would list. An unreadable folder
  * counts as nothing rather than failing the listing around it.
  */
-async function countItems(folder: string): Promise<number> {
+async function countItems(folder: string, kind: BrowseKind): Promise<number> {
   try {
     const dirents = await fs.readdir(folder, { withFileTypes: true });
-    return dirents.filter((d) => !d.name.startsWith('.') && (d.isDirectory() || isShownIcon(d.name))).length;
+    return dirents.filter((d) => !d.name.startsWith('.') && (d.isDirectory() || offered(d.name, kind))).length;
   } catch {
     return 0;
   }
@@ -52,7 +64,7 @@ async function countItems(folder: string): Promise<number> {
  * (ICON_CONTENT_TYPES). A symlink is listed as what it points to; a broken one
  * is left out.
  */
-export async function listFolder(folder: string, homeDir: string): Promise<IconFolderListing> {
+export async function listFolder(folder: string, homeDir: string, kind: BrowseKind = 'icon'): Promise<IconFolderListing> {
   if (!path.isAbsolute(folder)) throw new Error(`not an absolute path: ${folder}`);
   const dirents = await fs.readdir(folder, { withFileTypes: true });
   const folders: IconFolderEntry[] = [];
@@ -70,8 +82,11 @@ export async function listFolder(folder: string, homeDir: string): Promise<IconF
         continue;
       }
     }
-    if (isDirectory) folders.push({ ...entry(folder, d.name, homeDir), items: await countItems(path.join(folder, d.name)) });
-    else if (isFile && isShownIcon(d.name)) images.push({ ...entry(folder, d.name, homeDir), stamp: await stamp(path.join(folder, d.name)) });
+    if (isDirectory) folders.push({ ...entry(folder, d.name, homeDir), items: await countItems(path.join(folder, d.name), kind) });
+    else if (isFile && offered(d.name, kind)) {
+      // A sound has no thumbnail, so no stamp to make its URL change.
+      images.push(kind === 'sound' ? entry(folder, d.name, homeDir) : { ...entry(folder, d.name, homeDir), stamp: await stamp(path.join(folder, d.name)) });
+    }
   }
   folders.sort((a, b) => compareNames(a.name, b.name));
   images.sort((a, b) => compareNames(a.name, b.name));
@@ -106,6 +121,7 @@ export async function searchFolder(
   homeDir: string,
   stillWanted: () => boolean = () => true,
   limits: SearchLimits = {},
+  kind: BrowseKind = 'icon',
 ): Promise<SearchOutcome> {
   if (!path.isAbsolute(root)) throw new Error(`not an absolute path: ${root}`);
   const maxEntries = limits.maxEntries ?? MAX_SEARCH_ENTRIES;
@@ -131,7 +147,7 @@ export async function searchFolder(
       if (++walked > maxEntries) return { matches: sortMatches(matches), truncated: true, cancelled: false };
       if (d.isDirectory()) {
         pending.push(path.join(folder, d.name));
-      } else if ((d.isFile() || d.isSymbolicLink()) && isShownIcon(d.name) && d.name.toLowerCase().includes(needle)) {
+      } else if ((d.isFile() || d.isSymbolicLink()) && offered(d.name, kind) && d.name.toLowerCase().includes(needle)) {
         const relative = path.relative(root, folder);
         matches.push({ ...entry(folder, d.name, homeDir), folder: relative });
         if (matches.length >= maxMatches) return { matches: sortMatches(matches), truncated: true, cancelled: false };

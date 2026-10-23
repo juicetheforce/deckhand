@@ -30,7 +30,7 @@ function NotRead() {
 }
 
 /** One device as a choice: its description, its node underneath, and what the daemon knows about it. */
-function DeviceButton({
+export function DeviceButton({
   device,
   selected,
   isDefault,

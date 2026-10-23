@@ -11,6 +11,7 @@ import type { DaemonView } from '../src/shared/bridge.js';
 import { iconUrl } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
 import { BUILTIN_ICONS } from '../../src/default-icons.js';
+import { DEFAULTS } from '../../src/config-common.js';
 import { CATALOGUE, libraryIcon, searchCatalogue } from '../src/renderer/catalogue.js';
 import { STEP_TYPES, multiTotal, stepEditable, stepSummary } from '../src/renderer/steps.js';
 import {
@@ -126,7 +127,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'discord.deafen', 'discord.inputMode', 'discord.join', 'discord.leave', 'discord.mute', 'discord.userVolume', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'text', 'toggle', 'twitch.chat', 'twitch.clip', 'twitch.marker', 'twitch.streamInfo', 'vts.expression', 'vts.hotkey', 'vts.model']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'discord.deafen', 'discord.inputMode', 'discord.join', 'discord.leave', 'discord.mute', 'discord.userVolume', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'sound.play', 'sound.stopAll', 'text', 'toggle', 'twitch.chat', 'twitch.clip', 'twitch.marker', 'twitch.streamInfo', 'virtual.power', 'vts.expression', 'vts.hotkey', 'vts.model']);
 });
 
 console.log('the navigation guard');
@@ -480,6 +481,17 @@ await check("key faces use the button's values, then config defaults, then the d
   assert.equal(withDefaults.labelScale, 20 / 72);
   const own = keyFace(EXAMPLE, { background: '#2a1f3d', labelPosition: 'top', icon: '~/a.png', iconFit: 'contain' }, 96);
   assert.deepEqual([own.background, own.labelPosition, own.icon, own.iconFit], ['#2a1f3d', 'top', '~/a.png', 'contain']);
+});
+
+await check('a built-in is drawn at the deck\'s built-in size and an icon file fills the key, as on the deck', () => {
+  const face = (button: Parameters<typeof keyFace>[1], config: Config = EXAMPLE) => keyFace(config, button, 96);
+  const hotkey = { type: 'hotkey', keys: 'ctrl+1' };
+  assert.equal(face({ action: hotkey }).iconScale, DEFAULTS.builtinIconSize / 100, 'a default built-in');
+  assert.equal(face({ icon: 'builtin:pause', action: hotkey }).iconScale, DEFAULTS.builtinIconSize / 100, 'a chosen built-in');
+  assert.equal(face({ icon: '~/a.png', action: hotkey }).iconScale, 1, 'a file is never resized');
+  const tuned = { ...EXAMPLE, defaults: { ...EXAMPLE.defaults, builtinIconSize: 70 } } as Config;
+  assert.equal(face({ action: hotkey }, tuned).iconScale, 0.7, 'defaults.builtinIconSize moves it');
+  assert.equal(face({ icon: '~/a.png' }, tuned).builtinScale, 0.7, 'the missing placeholder follows it too');
 });
 
 await check("key faces draw the action's default when no icon is set, as the deck does", () => {

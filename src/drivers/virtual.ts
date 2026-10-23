@@ -8,12 +8,13 @@ import { controlAt, type HitControl } from '../hit-test.js';
 import { renderMessage } from '../render.js';
 import { findScreen, listScreens, type Screen } from '../screens.js';
 import * as sessionLock from '../services/session-lock.js';
+import * as power from '../services/virtual-power.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
 import { defaultPanelOf, makePanel } from '../panel-presets.js';
 import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
-import { canvasFrame, clearFrame, imageFrame, quitFrame, touchFrame } from './panel-frames.js';
+import { canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
  * Virtual decks: a screen the config names as one — `decks["<screen key>"]`
@@ -84,7 +85,7 @@ class PanelDevice implements DeckDevice {
   private rects = new Map<string, { x: number; y: number; w: number; h: number }>();
   private controls: HitControl[] = [];
   /** The newest image for each key not yet sent: a key drawn twice before the first went keeps only the second. */
-  private pending = new Map<string, Buffer>();
+  private pending = new Map<string, Buffer[]>();
   private inFlight = false;
   private canvas: Buffer | null = null;
   private redrawListeners: Array<() => void> = [];
@@ -257,10 +258,10 @@ class PanelDevice implements DeckDevice {
     if (this.inFlight) return;
     const next = this.pending.entries().next();
     if (next.done) return;
-    const [control, frame] = next.value;
+    const [control, parts] = next.value;
     this.pending.delete(control);
     this.inFlight = true;
-    this.write(frame);
+    for (const part of parts) this.write(part);
   }
 
   /**
@@ -370,7 +371,7 @@ class PanelDevice implements DeckDevice {
   async draw(control: string, rgba: Buffer): Promise<void> {
     const rect = this.rects.get(control);
     if (!rect) throw new Error(`no key "${control}" on this panel`);
-    this.pending.set(control, imageFrame(rect.x, rect.y, rect.w, rect.h, rgba));
+    this.pending.set(control, imageFrameParts(rect.x, rect.y, rect.w, rect.h, rgba));
     this.sendNext();
   }
 
@@ -500,6 +501,9 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
       const inputNodes = () => (nodes ??= listInputNodes());
       for (const [id, deck] of Object.entries(config()?.decks ?? {})) {
         if (!deck.virtual) continue;
+        // Turned off (services/virtual-power.ts): left out, so its session
+        // closes and its helper quits, as if its screen were unplugged.
+        if (power.isOff(id)) continue;
         const screen = findScreen(screens, id, deck.virtual.output);
         if (screen === 'ambiguous') {
           if (!warnedAmbiguous.has(id)) {

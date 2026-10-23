@@ -180,8 +180,32 @@ const PAIR_STATES: Record<PairIconField, IconState> = {
   iconOff: { latched: false },
 };
 
-export function pairLabel(field: PairIconField): string {
+/**
+ * The OBS keys' on and off, in their own words: on is live, recording,
+ * paused, on air, shown. Their state for the built-in fallback, too.
+ */
+const OBS_PAIRS: Record<string, { on: string; off: string; onState: IconState; offState: IconState }> = {
+  'obs.stream': { on: 'While live', off: 'While off', onState: { live: true }, offState: { live: false } },
+  'obs.record': { on: 'While recording', off: 'While not recording', onState: { live: true }, offState: { live: false } },
+  'obs.recordPause': { on: 'While paused', off: 'While not paused', onState: { paused: true }, offState: { paused: false } },
+  'obs.scene': { on: 'While on air', off: 'While not on air', onState: { active: true }, offState: { active: false } },
+  'obs.source': { on: 'While shown', off: 'While hidden', onState: { hidden: false }, offState: { hidden: true } },
+};
+
+/** A state icon's name in the inspector, for the key's action. */
+export function pairLabel(field: PairIconField, type?: string): string {
+  const obs = type === undefined ? undefined : OBS_PAIRS[type];
+  if (obs && field === 'iconOn') return obs.on;
+  if (obs && field === 'iconOff') return obs.off;
   return PAIR_LABELS[field];
+}
+
+/** The state a state icon is shown in, for the built-in it falls back to. */
+function pairState(field: PairIconField, type: string | undefined): IconState {
+  const obs = type === undefined ? undefined : OBS_PAIRS[type];
+  if (obs && field === 'iconOn') return obs.onState;
+  if (obs && field === 'iconOff') return obs.offState;
+  return PAIR_STATES[field];
 }
 
 /** How a stored icon reads in the inspector: a built-in by name, a file by its path. */
@@ -213,9 +237,9 @@ export function PairIcons({
     <div className="pair-icons">
       {fields.map((field) => {
         const set = typeof action?.[field] === 'string' ? (action[field] as string) : null;
-        const fallback = own !== null ? `the key's own icon (${iconText(own)})` : `default (${defaultIconFor(action, PAIR_STATES[field]) ?? 'none'})`;
+        const fallback = own !== null ? `the key's own icon (${iconText(own)})` : `default (${defaultIconFor(action, pairState(field, action?.type)) ?? 'none'})`;
         return (
-          <Row key={field} name={pairLabel(field)}>
+          <Row key={field} name={pairLabel(field, action?.type)}>
             <span className="form-value" data-pair={field}>
               {set !== null ? iconText(set) : fallback}
             </span>

@@ -10,6 +10,9 @@ import * as obsService from '../services/obs.js';
 import * as discordService from '../services/discord.js';
 import * as twitchService from '../services/twitch.js';
 import * as vtsService from '../services/vts.js';
+import * as virtualPower from '../services/virtual-power.js';
+import * as soundService from '../services/sounds.js';
+import { preview as previewSound } from '../actions/sound.js';
 import { pickableDevices, type AudioState } from '../services/audio.js';
 import { resolveIcon } from '../services/icon-theme.js';
 import type { ActionDef, ButtonDef } from '../types.js';
@@ -131,6 +134,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       connected: session !== undefined || unattached.has(serial),
       configured: configured.has(serial),
     };
+    // A virtual deck turned off: not connected, on purpose (services/virtual-power.ts).
+    if (virtualPower.isOff(serial)) entry.off = true;
     if (session) {
       entry.profile = profiles?.shownProfileFor(serial);
       entry.page = session.currentPage();
@@ -145,9 +150,11 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
   });
 
   const activeId = profiles?.activeProfile();
+  const previewing = soundService.previewing();
   return {
     activeProfile: activeId === undefined ? null : { id: activeId, name: profiles?.profileName(activeId) ?? null },
     decks,
+    ...(previewing !== null ? { previewingSound: previewing } : {}),
   };
 }
 
@@ -236,6 +243,38 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
         if (err instanceof PairingError) throw new ControlError(err.code, err.message);
         throw err;
       }
+    },
+
+    /**
+     * Turn a virtual deck on or off (services/virtual-power.ts): `on` true or
+     * false, or absent to turn it the other way. For Settings › Decks and
+     * `deckhand virtual`; a key does it with the virtual.power action.
+     */
+    async 'virtual.power'(args) {
+      const deck = requireString(args, 'deck');
+      if (args.on !== undefined && typeof args.on !== 'boolean') throw new ControlError('bad_request', '"on" must be true or false');
+      try {
+        return { deck, on: virtualPower.setPower(deck, args.on as boolean | undefined) };
+      } catch (err) {
+        throw new ControlError('not_found', (err as Error).message);
+      }
+    },
+
+    /**
+     * Play a clip before it is chosen — the editor's ▶ beside a sound file:
+     * `file`, and optionally the key's `node` and `volume`; or `stop: true`.
+     * Replies once it has started; `status`'s `previewingSound` says when it
+     * has ended.
+     */
+    async 'sound.preview'(args) {
+      if (args.stop === true) return { stopped: soundService.stopPreview() };
+      requireString(args, 'file');
+      try {
+        await previewSound({ type: 'sound.play', file: args.file, node: args.node, label: args.label, volume: args.volume });
+      } catch (err) {
+        throw new ControlError('action_failed', (err as Error).message);
+      }
+      return { playing: true };
     },
 
     async repaint(args) {

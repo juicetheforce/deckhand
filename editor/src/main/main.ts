@@ -30,7 +30,7 @@ import { keyNamed } from '../shared/bulk.js';
 import type { PanelDef } from '../../../src/types.js';
 import { buildExport, suggestedExportName, writeExport } from './export-bundle.js';
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
-import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder } from './icon-browser.js';
+import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder, type BrowseKind } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
 import { oneAtATime } from './one-at-a-time.js';
 import { editorVersion, openInBrowser, openReleases } from './about.js';
@@ -192,6 +192,7 @@ function virtualDecksView(): VirtualDecksView {
       label: deck.name ?? geometry?.productName ?? key,
       output: deck.virtual.output,
       connected: status?.connected === true,
+      off: status?.off === true,
       touch: status?.touch ?? null,
       paired: deck.virtual.touch !== undefined,
       defaultSize: fallback ? sizeOf(fallback) : null,
@@ -349,14 +350,14 @@ const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps
 /** Bumped by every search; a walk still running for an older number stops. */
 let searchGeneration = 0;
 
-async function listIconFolder(folder: string): Promise<IconFolderResult> {
-  // The pinned Built-in section: listed from the checkout, nothing to watch.
-  if (folder === BUILTIN_FOLDER) {
+async function listIconFolder(folder: string, kind: BrowseKind): Promise<IconFolderResult> {
+  // The pinned Built-in section: listed from the checkout, nothing to watch. Icons only.
+  if (folder === BUILTIN_FOLDER && kind === 'icon') {
     folderWatcher.close();
     return { ok: true, listing: await listBuiltinFolder() };
   }
   try {
-    const listing = await listFolder(folder, os.homedir());
+    const listing = await listFolder(folder, os.homedir(), kind);
     folderWatcher.watch(folder);
     return { ok: true, listing };
   } catch (err) {
@@ -365,11 +366,11 @@ async function listIconFolder(folder: string): Promise<IconFolderResult> {
   }
 }
 
-async function searchIcons(folder: string, query: string): Promise<IconSearchResult> {
+async function searchIcons(folder: string, query: string, kind: BrowseKind): Promise<IconSearchResult> {
   const mine = ++searchGeneration;
-  if (folder === BUILTIN_FOLDER) return { ok: true, matches: await searchBuiltins(query), truncated: false };
+  if (folder === BUILTIN_FOLDER && kind === 'icon') return { ok: true, matches: await searchBuiltins(query), truncated: false };
   try {
-    const outcome = await searchFolder(folder, query, os.homedir(), () => mine === searchGeneration);
+    const outcome = await searchFolder(folder, query, os.homedir(), () => mine === searchGeneration, {}, kind);
     if (outcome.cancelled || mine !== searchGeneration) return { ok: false, superseded: true };
     return { ok: true, matches: outcome.matches, truncated: outcome.truncated };
   } catch (err) {
@@ -808,6 +809,14 @@ function registerIpc(): void {
     sentVirtual = JSON.stringify(view);
     return view;
   });
+  ipcMain.handle('virtualPower', async (event, key: unknown, on: unknown) => {
+    if (!fromSettingsWindow(event) || typeof key !== 'string' || key === '' || typeof on !== 'boolean') return { ok: false, error: 'not allowed' };
+    try {
+      return { ok: true, on: await daemon.virtualPower(key, on) };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  });
   ipcMain.handle('virtualScreens', async (event) => {
     if (!fromSettingsWindow(event)) return { ok: false, error: 'not allowed' };
     try {
@@ -1120,6 +1129,12 @@ function registerIpc(): void {
     }
     return deckAction(() => testRun(serial, a as ActionDef));
   });
+  ipcMain.handle('previewSound', (event, sound: unknown) => {
+    const v = sound as { file?: unknown; node?: unknown; label?: unknown; volume?: unknown } | null;
+    if (!fromOurWindow(event) || typeof v !== 'object' || v === null || typeof v.file !== 'string' || v.file === '') return { ok: false, code: 'not_allowed', error: 'not allowed' };
+    return daemonCall(() => daemon.previewSound({ file: v.file as string, node: typeof v.node === 'string' ? v.node : undefined, label: typeof v.label === 'string' ? v.label : undefined, volume: typeof v.volume === 'number' ? v.volume : undefined }));
+  });
+  ipcMain.handle('stopSoundPreview', (event) => (fromOurWindow(event) ? daemonCall(() => daemon.stopSoundPreview()) : { ok: false, code: 'not_allowed', error: 'not allowed' }));
   ipcMain.handle('obsList', async (event, kind: unknown, scene: unknown): Promise<ObsList> => {
     if (!fromOurWindow(event) || (kind !== 'scenes' && kind !== 'inputs' && kind !== 'sources')) return { ok: false, reason: 'other', message: 'not allowed' };
     if (kind === 'sources' && (typeof scene !== 'string' || scene === '')) return { ok: false, reason: 'other', message: 'Choose a scene first' };
@@ -1179,24 +1194,26 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || !Array.isArray(configPaths) || configPaths.some((p) => typeof p !== 'string')) return {};
     return iconFiles.watchFiles(configPaths as string[]);
   });
-  ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown) => {
+  ipcMain.handle('iconStartFolder', async (event, currentIcon: unknown, kind: unknown) => {
     if (!fromOurWindow(event)) return os.homedir();
+    const sound = kind === 'sound';
     // A key showing a built-in opens on the Built-in section, as a file opens on its folder.
-    if (typeof currentIcon === 'string' && currentIcon.startsWith(BUILTIN_PREFIX)) return BUILTIN_FOLDER;
+    if (!sound && typeof currentIcon === 'string' && currentIcon.startsWith(BUILTIN_PREFIX)) return BUILTIN_FOLDER;
     const icon = typeof currentIcon === 'string' && currentIcon !== '' ? expandPath(currentIcon) : null;
     // Newest bookmark first: the list is kept oldest-first for the row's order.
+    // The same bookmarks for sounds as for icons: one row of saved places.
     const saved = [...(await bookmarks.list())].reverse();
-    return startFolder(icon, saved, [app.getPath('pictures'), os.homedir()]);
+    return startFolder(icon, saved, [app.getPath(sound ? 'music' : 'pictures'), os.homedir()]);
   });
-  ipcMain.handle('listIconFolder', (event, folder: unknown) =>
-    fromOurWindow(event) && typeof folder === 'string' ? listIconFolder(folder) : { ok: false, error: 'not allowed' },
+  ipcMain.handle('listIconFolder', (event, folder: unknown, kind: unknown) =>
+    fromOurWindow(event) && typeof folder === 'string' ? listIconFolder(folder, kind === 'sound' ? 'sound' : 'icon') : { ok: false, error: 'not allowed' },
   );
   ipcMain.handle('stopIconWatch', (event) => {
     if (fromOurWindow(event)) folderWatcher.close();
   });
-  ipcMain.handle('searchIcons', (event, folder: unknown, query: unknown) =>
+  ipcMain.handle('searchIcons', (event, folder: unknown, query: unknown, kind: unknown) =>
     fromOurWindow(event) && typeof folder === 'string' && typeof query === 'string' && query.length < 200
-      ? searchIcons(folder, query)
+      ? searchIcons(folder, query, kind === 'sound' ? 'sound' : 'icon')
       : { ok: false, error: 'not allowed' },
   );
   ipcMain.handle('collapsedLibrary', async (event) => {

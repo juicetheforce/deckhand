@@ -17,6 +17,23 @@ const UNSET: DisplayPatch = { unset: true };
 const notSetUp = () => obs.cachedState().connection === 'not-set-up';
 
 /**
+ * An OBS key's face: an icon of the person's own for each of its two states,
+ * as Elgato's two-state keys have — `iconOn` and `iconOff` (Mute's are
+ * `iconMuted` and `iconUnmuted`, as audio's are). The state's own icon wins;
+ * a state without one falls back to the key's own icon, then the built-in
+ * pair (src/deck.ts), so setting an icon for one state never loses the
+ * other's. `on` null: a third face the built-ins draw — a stream
+ * reconnecting, a recording paused — which no custom icon hides. Not set up:
+ * dimmed, whatever is drawn.
+ */
+function faceOf(params: ActionDef, on: boolean | null, fields: readonly [string, string] = ['iconOn', 'iconOff']): DisplayPatch | null {
+  const patch: DisplayPatch = notSetUp() ? { ...UNSET } : {};
+  const icon = on === null ? undefined : params[on ? fields[0] : fields[1]];
+  if (typeof icon === 'string' && icon !== '') patch.icon = icon;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/**
  * Stream keys whose press found the stream running, so their release may stop
  * it — by deck and key. A press that started the stream is not here, so
  * holding that press does not stop what it just started.
@@ -113,9 +130,10 @@ export const stream: ActionHandler = {
 
   iconState: () => ({ live: running(obs.cachedState().stream), reconnecting: obs.cachedState().stream === 'reconnecting' }),
 
-  async describe(): Promise<DisplayPatch | null> {
-    // The icons carry state on their own, reconnecting included: keys keep their own background.
-    return notSetUp() ? UNSET : null;
+  // The icons carry state on their own, reconnecting included: keys keep their own background.
+  async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
+    const stream = obs.cachedState().stream;
+    return faceOf(params, stream === 'reconnecting' ? null : running(stream));
   },
 };
 
@@ -138,7 +156,11 @@ export const record: ActionHandler = {
 
   iconState: () => ({ live: running(obs.cachedState().record), paused: obs.cachedState().recordPaused }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // On: recording; paused draws the built-in paused face.
+  describe: async (_ctx, params) => {
+    const { record: phase, recordPaused } = obs.cachedState();
+    return faceOf(params, running(phase) && recordPaused ? null : running(phase));
+  },
 };
 
 /** How long a Pause press waits for OBS to say it paused or resumed. */
@@ -180,7 +202,8 @@ export const recordPause: ActionHandler = {
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // On: paused.
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().recordPaused === true),
 };
 
 const CHOOSE_AGAIN = 'renamed or deleted in OBS? Choose it again in the editor';
@@ -206,7 +229,8 @@ export const scene: ActionHandler = {
 
   iconState: (params) => ({ active: named(params.scene) !== null && obs.cachedState().programScene === params.scene }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // On: the program scene.
+  describe: async (_ctx, params) => faceOf(params, named(params.scene) !== null && obs.cachedState().programScene === params.scene),
 };
 
 /**
@@ -227,7 +251,7 @@ export const mute: ActionHandler = {
 
   iconState: (params) => ({ muted: obs.cachedState().inputMuted[String(params.input)] === true }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true, ['iconMuted', 'iconUnmuted']),
 };
 
 /**
@@ -253,5 +277,6 @@ export const source: ActionHandler = {
 
   iconState: (params) => ({ hidden: obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false }),
 
-  describe: async () => (notSetUp() ? UNSET : null),
+  // On: shown, the state the built-in pair draws as the plain source.
+  describe: async (_ctx, params) => faceOf(params, obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] !== false),
 };

@@ -71,7 +71,7 @@ Object.assign(process.env, {
   // No logind: a virtual deck's touch would be "unknown". Nothing here touches.
   DBUS_SYSTEM_BUS_ADDRESS: `unix:path=${path.join(scratch, 'no-bus')}`,
 });
-const { FakeDeck, startDaemon, reloadLikeTheDaemon, sleep } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
+const { FakeDeck, connect, startDaemon, reloadLikeTheDaemon, sleep } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const { createVirtualDriver } = await import(pathToFileURL(path.join(repoRoot, 'dist/drivers/virtual.js')).href);
 const electronPath = (await import('electron')).default;
 
@@ -268,6 +268,20 @@ const afterResize = (await onDisk()).profiles.default.layouts[KEY];
 r.afterButtons = afterResize.pages[afterResize.startPage].buttons;
 r.kept = (await fs.readdir(path.join(stateDir, 'backups')).catch(() => [])).filter((f) => f.startsWith('before-resize-'));
 
+// TURN OFF AND ON — as a Virtual deck on/off key or `deckhand virtual off` does, then the row's button.
+const powerButton = () => inPage(editor, 'settings', `(() => { const b = document.querySelector('[data-vd-deck="${KEY}"] [data-vd=power]'); return b ? { text: b.textContent.trim(), disabled: b.disabled } : null; })()`);
+const rowDetail = () => inPage(editor, 'settings', `document.querySelector('[data-vd-deck="${KEY}"] .sp-row-detail')?.textContent ?? null`);
+r.powerWhileUnplugged = await powerButton();
+const socketClient = await connect(daemon.socket);
+await socketClient.request('virtual.power', { deck: KEY, on: false });
+r.offShown = await until(async () => /turned off/.test((await rowDetail()) ?? '') && (await powerButton())?.text === 'Turn on');
+r.offDetail = await rowDetail();
+r.offButton = await powerButton();
+await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd=power]`));
+r.onAgain = await until(async () => (await rowDetail()) === 'DP-4 · not connected');
+r.onStatus = (await socketClient.request('status')).result.decks.find((d) => d.serial === KEY)?.off ?? 'not off';
+socketClient.close();
+
 // REMOVE.
 await until(() => exists(editor, `[data-vd-deck="${KEY}"] [data-vd=remove]`));
 await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd=remove]`));
@@ -362,6 +376,14 @@ check('the list shows it, and its size in that profile', () => {
   assert.match(r.row.text, /GRA-6e4e|HD Display/);
   assert.match(r.row.detail, /^DP-4 · not connected$/);
   assert.equal(r.row.size, 'Medium, 3 × 8 keys (the default)');
+});
+check('Turn off and on: disabled with the screen not connected; turned off elsewhere, the row says so and offers Turn on, which turns it on', () => {
+  assert.deepEqual(r.powerWhileUnplugged, { text: 'Turn off', disabled: true });
+  assert.equal(r.offShown, true, `row: ${r.offDetail}`);
+  assert.equal(r.offDetail, "DP-4 · turned off: its screen and touchscreen are the desktop's until it is turned on");
+  assert.deepEqual(r.offButton, { text: 'Turn on', disabled: false });
+  assert.equal(r.onAgain, true);
+  assert.equal(r.onStatus, 'not off');
 });
 check('a new size that drops a key names it, and changes nothing until confirmed', () => {
   assert.equal(r.droppedNamed, true);

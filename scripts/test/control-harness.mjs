@@ -37,6 +37,8 @@ const obsService = await import(dist('services/obs.js'));
 const vtsService = await import(dist('services/vts.js'));
 const twitchService = await import(dist('services/twitch.js'));
 const discordService = await import(dist('services/discord.js'));
+const virtualPower = await import(dist('services/virtual-power.js'));
+const soundService = await import(dist('services/sounds.js'));
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -136,6 +138,17 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
   const stopTwitch = twitchService.subscribe(() => events.twitch());
   // And Discord's, as the "discord" event.
   const stopDiscord = discordService.subscribe(() => events.discord());
+  // As src/index.ts: the config's virtual decks can be turned off, which "state" says.
+  // (No scan here: a check attaches its decks itself.)
+  virtualPower.setKnownDecks(() => new Set(Object.entries(state.config.decks ?? {}).filter(([, d]) => d.virtual).map(([id]) => id)));
+  const stopPower = virtualPower.subscribe(() => events.state());
+  // As src/index.ts: the editor's preview of a clip is in "state" while it plays.
+  let previewWas = null;
+  const stopSounds = soundService.subscribe(() => {
+    if (soundService.previewing() === previewWas) return;
+    previewWas = soundService.previewing();
+    events.state();
+  });
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
@@ -163,6 +176,9 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
     stopVts();
     stopTwitch();
     stopDiscord();
+    stopPower();
+    stopSounds();
+    soundService.stopAll();
     await control.stop();
     for (const session of sessions.values()) await session.close();
   }

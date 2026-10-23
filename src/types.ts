@@ -128,6 +128,12 @@ export interface Defaults {
   labelSize?: number;
   labelPosition?: 'top' | 'bottom' | 'center';
   iconFit?: 'cover' | 'contain';
+  /**
+   * How big a built-in icon is drawn, in percent of the key, centred: 100
+   * fills the key edge to edge, as before `v0.10.0`. An icon file chosen for a
+   * key is never resized by it. Hand-edited only, for tuning by eye.
+   */
+  builtinIconSize?: number;
   brightness?: number;
   /** Default refresh interval for buttons that render live state. */
   refreshMs?: number;
@@ -160,6 +166,8 @@ export interface Config {
 export interface Display {
   icon?: string;
   iconFit: 'cover' | 'contain';
+  /** Percent of the key a built-in icon is drawn at (Defaults.builtinIconSize); files ignore it. */
+  builtinIconSize: number;
   label?: string;
   labelColor: string;
   labelSize: number;

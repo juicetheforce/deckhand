@@ -131,13 +131,19 @@ check('OBS going live is pushed, not polled', await until(() => obs.cachedState(
 check('and the change is announced', changes > before);
 check('the Stream key\'s default icon is the live one', defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-on');
 check('live, the Stream key keeps its own background: the icon carries the state', (await describeAction({}, { type: 'obs.stream' })) === null);
+// An icon of the person's own for each state (Elgato's two-state keys).
+const OWN_STREAM = { type: 'obs.stream', iconOn: '~/live.png', iconOff: '~/off.png' };
+check('live, a Stream key with its own state icons draws its live one', (await describeAction({}, OWN_STREAM))?.icon === '~/live.png');
+check('...and one with only an off icon draws nothing of its own live: the built-in pair\'s live face', (await describeAction({}, { type: 'obs.stream', iconOff: '~/off.png' })) === null);
 fake.event('StreamStateChanged', { outputActive: false, outputState: 'OBS_WEBSOCKET_OUTPUT_RECONNECTING' });
 check(
   'reconnecting, the Stream key draws its own icon — never the live one, and never a pulse — on its own background',
   await until(() => defaultIconFor({ type: 'obs.stream' }, iconStateOf({ type: 'obs.stream' })) === 'obs-stream-reconnecting') &&
     (await describeAction({}, { type: 'obs.stream' })) === null,
 );
+check('reconnecting, no state icon of its own hides the built-in warning', (await describeAction({}, OWN_STREAM)) === null);
 fake.setStream(false);
+check('off, its off icon', await until(async () => (await describeAction({}, OWN_STREAM))?.icon === '~/off.png'));
 await until(() => obs.cachedState().stream === 'stopped');
 check('off air, its own background again', (await describeAction({}, { type: 'obs.stream' })) === null);
 
@@ -229,6 +235,8 @@ check('Record: a press starts recording', await until(() => fake.recording && ob
 await tap(2);
 check('Pause: a press pauses it', await until(() => obs.cachedState().recordPaused));
 check('the Record key shows paused', defaultIconFor({ type: 'obs.record' }, iconStateOf({ type: 'obs.record' })) === 'obs-paused');
+check('paused, a Record key\'s own on icon gives way to the built-in paused face', (await describeAction({}, { type: 'obs.record', iconOn: '~/rec.png' })) === null);
+check('paused, a Pause key\'s own on icon is drawn', (await describeAction({}, { type: 'obs.recordPause', iconOn: '~/paused.png', iconOff: '~/pause.png' }))?.icon === '~/paused.png');
 check('the Pause key shows paused', defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-paused');
 await tap(2);
 check('Pause again: resumes, and the Pause key shows press-to-pause', await until(() => !obs.cachedState().recordPaused) && defaultIconFor({ type: 'obs.recordPause' }, iconStateOf({ type: 'obs.recordPause' })) === 'obs-pause');
@@ -318,12 +326,15 @@ check('Scene: not the program scene, its resting icon', face(SCENE_KEY) === 'obs
 await tap(3);
 check('Scene: a press switches the program scene', await until(() => fake.program === 'Gameplay'));
 check("and its key lights, from OBS's event", await until(() => face(SCENE_KEY) === 'obs-scene-active'));
+check('on air, a Scene key\'s own on icon', (await describeAction({}, { ...SCENE_KEY, iconOn: '~/on.png', iconOff: '~/off.png' }))?.icon === '~/on.png');
 fake.setProgram('BRB');
 check('OBS switching scene by itself: the key goes out', await until(() => face(SCENE_KEY) === 'obs-scene'));
+check('...to its own off icon', (await describeAction({}, { ...SCENE_KEY, iconOn: '~/on.png', iconOff: '~/off.png' }))?.icon === '~/off.png');
 
 await tap(4);
 check('Mute: a press mutes the input', await until(() => fake.inputs[0].muted === true));
 check("and shows muted, from OBS's event", await until(() => face(MUTE_KEY) === 'obs-audio-muted'));
+check('muted, a Mute key\'s own muted icon', (await describeAction({}, { ...MUTE_KEY, iconMuted: '~/m.png', iconUnmuted: '~/u.png' }))?.icon === '~/m.png');
 fake.setMuted('Mic/Aux', false);
 check('unmuted in OBS: the key follows', await until(() => face(MUTE_KEY) === 'obs-audio'));
 fake.setMuted('Desktop Audio', true);
@@ -333,6 +344,7 @@ check('an input no key names is not kept', !('Desktop Audio' in obs.cachedState(
 await tap(5);
 check('Source: a press hides it', await until(() => fake.items.Gameplay[0].enabled === false));
 check('and shows hidden', await until(() => face(SOURCE_KEY) === 'obs-source-hidden'));
+check('hidden, a Source key\'s own hidden (off) icon', (await describeAction({}, { ...SOURCE_KEY, iconOn: '~/shown.png', iconOff: '~/hidden.png' }))?.icon === '~/hidden.png');
 fake.setItemEnabled('Gameplay', 'Webcam', true);
 check('shown again in OBS: the key follows', await until(() => face(SOURCE_KEY) === 'obs-source'));
 fake.setItemEnabled('Starting', 'Countdown', false);

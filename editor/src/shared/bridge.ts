@@ -209,6 +209,9 @@ export interface DeckhandBridge {
    * never types into the editor itself.
    */
   testRun(serial: string, action: ActionDef): Promise<DaemonResult>;
+  /** Play a clip before choosing it (Play sound's picker), on the key's output and at its volume; the daemon's `previewingSound` says when it ends. */
+  previewSound(sound: { file: string; node?: string; label?: string; volume?: number }): Promise<DaemonResult>;
+  stopSoundPreview(): Promise<DaemonResult>;
   /**
    * What an OBS key's picker offers, asked of OBS now (editor window only):
    * scenes, audio inputs, or one scene's sources. OBS not reachable is an
@@ -280,12 +283,13 @@ export interface DeckhandBridge {
   onIconStamps(callback: (stamps: Record<string, string>) => void): () => void;
 
   /** The icon picker's opening folder: the current icon's folder, a bookmark, Pictures, or home. */
-  iconStartFolder(currentIcon: string | null): Promise<string>;
+  /** `kind` 'sound': Play sound's picker — sound files, the same bookmarks, no Built-in section. */
+  iconStartFolder(currentIcon: string | null, kind?: 'icon' | 'sound'): Promise<string>;
   /** List a folder, and watch it: onIconFolderChanged reports changes until another folder is listed or stopIconWatch. */
-  listIconFolder(folder: string): Promise<IconFolderResult>;
+  listIconFolder(folder: string, kind?: 'icon' | 'sound'): Promise<IconFolderResult>;
   stopIconWatch(): Promise<void>;
   /** Images below a folder whose name contains the query. A newer call supersedes an unfinished one. */
-  searchIcons(folder: string, query: string): Promise<IconSearchResult>;
+  searchIcons(folder: string, query: string, kind?: 'icon' | 'sound'): Promise<IconSearchResult>;
   /**
    * Set a key's icon to one of its three states — or, with `slot`,
    * one icon of its action's state pair — save, and once the daemon has
@@ -331,6 +335,8 @@ export interface DeckhandBridge {
   /** "Tap this screen" on a connector, waiting for the tap (`virtual.pair`); cancelPairing ends it. One at a time. */
   pairScreen(output: string): Promise<{ ok: true; result: PairReply } | { ok: false; code: string; error: string }>;
   cancelPairing(): Promise<void>;
+  /** Turn a virtual deck on or off, as a Virtual deck on/off key does (settings window only). */
+  virtualPower(key: string, on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; error: string }>;
   /** One of the virtual-deck edits (add, tap again, remove, a new size), from Settings › Decks. Any other edit is refused. */
   virtualDeckEdit(edit: Edit): Promise<{ ok: true } | { ok: false; error: string }>;
   /** A virtual deck's screen, to size a panel for it; null when it has no panel yet. Both windows. */
@@ -449,6 +455,8 @@ export interface VirtualDeckRow {
   /** The connector it was set up on. */
   output: string;
   connected: boolean;
+  /** Turned off (a Virtual deck on/off key, or here): not connected, on purpose, until turned on. */
+  off: boolean;
   /** Whether its touch works, and if not why (control/protocol.ts TouchState); null when not connected. */
   touch: TouchState | null;
   paired: boolean;

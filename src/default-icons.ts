@@ -85,8 +85,8 @@ export const BUILTIN_ICONS = [
   'press-release',
   'previous',
   'profile',
-  // A soundboard, ready for its action (not built yet, so mapped to none):
-  // idle an empty pad, playing and looping a solid block.
+  // The soundboard (sound.play, sound.stopAll): idle an empty pad, playing
+  // and looping a solid block.
   'sound-looping',
   'sound-play',
   'sound-playing',
@@ -107,6 +107,9 @@ export const BUILTIN_ICONS = [
   'twitch-clip',
   'twitch-marker',
   'twitch-stream-info',
+  // Virtual deck on/off: the panel's keys lit, and faded.
+  'virtual-deck-off',
+  'virtual-deck-on',
   'volume-down',
   // VTube Studio, in its section colour, lime: an active face is the glyph
   // filled lime, never OBS teal, so it cannot read as an OBS key. A hotkey
@@ -134,8 +137,10 @@ export type BuiltinIcon = (typeof BUILTIN_ICONS)[number];
 export interface IconState {
   /** audio.micMute: the default input is muted. audio.mute: the default output is muted. obs.mute: its OBS input is muted. discord.mute, discord.deafen: Discord says so. */
   muted?: boolean;
-  /** media.control playpause: the chosen player is playing. */
+  /** media.control playpause: the chosen player is playing. sound.play: its sound is playing. */
   playing?: boolean;
+  /** sound.play: its sound is playing in a loop. */
+  looping?: boolean;
   /** media.info: no player, or nothing with a title or artist. */
   idle?: boolean;
   /** toggle: the key is latched down. */
@@ -146,7 +151,7 @@ export interface IconState {
   paused?: boolean;
   /** obs.stream: OBS is reconnecting the stream. */
   reconnecting?: boolean;
-  /** obs.scene: its scene is OBS's program scene. vts.model: its model is the one loaded in VTube Studio. vts.expression: VTube Studio says it is on. discord.inputMode: Discord is on voice activity. */
+  /** virtual.power: its virtual deck is on. obs.scene: its scene is OBS's program scene. vts.model: its model is the one loaded in VTube Studio. vts.expression: VTube Studio says it is on. discord.inputMode: Discord is on voice activity. */
   active?: boolean;
   /** obs.source: its source is hidden in its scene. */
   hidden?: boolean;
@@ -213,6 +218,8 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       // The track and its art are the face while something plays;
       // idle, the icon alone, with no "No music" label.
       return state.idle ? 'now-playing' : null;
+    case 'virtual.power':
+      return state.active === false ? 'virtual-deck-off' : 'virtual-deck-on';
     case 'clock': // the time is the face
     case 'noop': // a spacer
       return null;
@@ -233,6 +240,12 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return typeof action.delta === 'number' && action.delta < 0 ? 'volume-down' : 'speaker';
     case 'audio.mute':
       return state.muted ? 'speaker-muted' : 'speaker';
+    // The soundboard shows what is happening: a solid block while it plays.
+    case 'sound.play':
+      if (state.looping) return 'sound-looping';
+      return state.playing ? 'sound-playing' : 'sound-play';
+    case 'sound.stopAll':
+      return 'sound-stop-all';
     // Shows what is happening, as the mute pairs do: the state is the point.
     case 'obs.stream':
       // Reconnecting has its own icon: amber, broken arcs, a hollow centre —

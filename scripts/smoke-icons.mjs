@@ -27,15 +27,17 @@ function display(fields) {
   return { ...rest, ...fields };
 }
 
-/** An icon composited on the key background by sharp alone. */
-async function expected(iconFile, size, fit) {
+/** An icon composited on the key background by sharp alone: a file fills the key; a built-in is drawn at its size, centred. */
+async function expected(iconFile, size, fit, { builtin = false } = {}) {
   const base = sharp({ create: { width: size, height: size, channels: 4, background: BACKGROUND } });
   if (!iconFile) return base.raw().toBuffer();
+  const side = builtin ? Math.round((size * DEFAULTS.builtinIconSize) / 100) : size;
   const layer = await sharp(await fs.readFile(iconFile))
-    .resize(size, size, { fit, position: 'centre', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(side, side, { fit, position: 'centre', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
-  return base.composite([{ input: layer, top: 0, left: 0 }]).raw().toBuffer();
+  const at = Math.floor((size - side) / 2);
+  return base.composite([{ input: layer, top: at, left: at }]).raw().toBuffer();
 }
 
 const same = (a, b) => Buffer.compare(a, b) === 0;
@@ -78,7 +80,7 @@ check('the built-in missing icon resolves to the repo\'s assets/icons/missing.sv
 check('assets/icons/missing.svg exists', await fs.access(MISSING_SVG).then(() => true, () => false));
 
 for (const size of [72, 96]) {
-  const placeholder = await expected(MISSING_SVG, size, 'contain');
+  const placeholder = await expected(MISSING_SVG, size, 'contain', { builtin: true });
   const cases = [
     ['a path that does not exist', gone],
     ['a file that is not an image', corrupt],
@@ -105,7 +107,7 @@ check('a broken path is logged once across renders', lines.length === 1 && lines
 
 // The label still draws over the placeholder.
 const [placeholderWithLabel] = await capturingErrors(() => renderButton(display({ icon: gone, label: 'DOVE' }), 96));
-check('a label still draws over the placeholder', !same(placeholderWithLabel, await expected(MISSING_SVG, 96, 'contain')));
+check('a label still draws over the placeholder', !same(placeholderWithLabel, await expected(MISSING_SVG, 96, 'contain', { builtin: true })));
 
 // A file that comes back draws again (the cache is keyed on the file's stamp).
 const returning = path.join(TMP, 'returning.svg');
@@ -136,7 +138,7 @@ const daemon = await startDaemon(TMP, {
 });
 const deck = new FakeDeck();
 await capturingErrors(() => daemon.attach('XL1', deck));
-check('deck key with a broken icon path shows the missing icon', same(deck.images.get(0), await expected(MISSING_SVG, 96, 'contain')));
+check('deck key with a broken icon path shows the missing icon', same(deck.images.get(0), await expected(MISSING_SVG, 96, 'contain', { builtin: true })));
 check('deck key with a good icon shows it', same(deck.images.get(1), await expected(GOOD_SVG, 96, 'cover')));
 await daemon.stop();
 

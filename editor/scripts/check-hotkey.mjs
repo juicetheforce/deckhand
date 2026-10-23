@@ -94,6 +94,7 @@ if (r && !r.error) {
   });
   check('media and sequence keys are read-only; the media key label still saves', () => {
     assert.deepEqual([r.mediaReadOnly, r.mediaLabelSaved, r.sequenceReadOnly], [true, true, true]);
+    assert.deepEqual([r.twoLineLabelSaved, r.twoLineLabelDrawn], [true, true], 'a two-line label: saved with its line break, drawn as two lines');
   });
   check('Clear button removes the whole key', () => assert.equal(r.clearButtonRemoves, true));
 }
@@ -101,7 +102,7 @@ if (r && !r.error) {
 const saved = await fs.readFile(path.join(configDir, 'config.json'), 'utf8');
 const expected = structuredClone(CONFIG);
 const b = expected.profiles.default.layouts[SERIAL].pages.main.buttons;
-b['0'].label = 'Next track';
+b['0'].label = 'Next\ntrack'; // two lines: the last thing typed there (8b)
 delete b['2'];
 b['3'] = { label: 'Bolt' };
 check('config.json holds exactly the changes the UI made, in the editor format', () => {

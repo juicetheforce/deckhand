@@ -44,6 +44,7 @@ import {
   profileLabel,
   deckLabel,
   profileChoices,
+  virtualDeckChoices,
   profileCoverage,
   reconcileSelection,
   faceIcon,
@@ -665,6 +666,7 @@ function Editor({
           pick={pick}
           pages={layout ? pageChoices(layout) : []}
           profiles={profileChoices(config)}
+          virtualDecks={virtualDeckChoices(config)}
           coverage={(profile) => profileCoverage(config, daemon, profile)}
           labelDefaults={labelDefaults(config)}
           canPreview={canSwitchDeck(daemon, selection.serial)}

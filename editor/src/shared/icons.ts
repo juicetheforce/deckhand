@@ -21,7 +21,8 @@ export const BUILTIN_FOLDER = BUILTIN_PREFIX;
  * The icons of a state pair, kept on the action: `audio.micMute`
  * and `audio.mute` swap between muted and unmuted, a play/pause
  * `media.control` between playing and paused, a latching `toggle` between
- * held down and up. The daemon draws whichever
+ * held down and up — and the OBS keys between on and off, as Elgato's
+ * two-state keys do (src/actions/obs.ts). The daemon draws whichever
  * matches the state, and falls back to the key's own icon, then the default.
  */
 export const PAIR_ICON_FIELDS = ['iconMuted', 'iconUnmuted', 'iconPlaying', 'iconPaused', 'iconOn', 'iconOff'] as const;
@@ -37,6 +38,9 @@ export function isPairIconField(value: unknown): value is PairIconField {
   return (PAIR_ICON_FIELDS as readonly unknown[]).includes(value);
 }
 
+/** The OBS keys with an on and an off icon (Mute's are muted and unmuted). */
+const OBS_TWO_STATE: readonly string[] = ['obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source'];
+
 /** Which pair icons an action has; none for every other action. */
 export function pairIconFields(action: { type: string; method?: unknown } | undefined): readonly PairIconField[] {
   if (!action) return [];
@@ -44,6 +48,9 @@ export function pairIconFields(action: { type: string; method?: unknown } | unde
   if (action.type === 'media.control' && String(action.method ?? 'playpause').toLowerCase() === 'playpause') return ['iconPlaying', 'iconPaused'];
   // The latching toggle: held down and released.
   if (action.type === 'toggle') return ['iconOn', 'iconOff'];
+  // OBS: muted and unmuted, as audio's; every other OBS key on and off.
+  if (action.type === 'obs.mute') return ['iconMuted', 'iconUnmuted'];
+  if (OBS_TWO_STATE.includes(action.type)) return ['iconOn', 'iconOff'];
   return [];
 }
 

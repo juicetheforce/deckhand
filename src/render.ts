@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import sharp from 'sharp';
 import type { OverlayOptions } from 'sharp';
 import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-icons.js';
-import { expandPath } from './config.js';
+import { DEFAULTS, expandPath } from './config.js';
 import { connectingBadgeSvg, failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
 import { readIconFile } from './icon-file.js';
@@ -101,18 +101,36 @@ async function iconLayer(filePath: string, size: number, fit: 'cover' | 'contain
     .toBuffer();
 }
 
+/**
+ * A built-in icon's drawing, `percent` of a `size` key, centred on a clear
+ * key-sized layer (Defaults.builtinIconSize): the built-ins alone are drawn
+ * smaller than the key, so their glyphs sit as the mockups draw them. An icon
+ * file the person chose is drawn by iconLayer() alone, never by this.
+ */
+async function builtinIconLayer(filePath: string, size: number, percent: number): Promise<Buffer> {
+  const side = Math.max(1, Math.min(size, Math.round((size * percent) / 100)));
+  const drawing = await iconLayer(filePath, side, 'contain');
+  if (side === size) return drawing;
+  const before = Math.floor((size - side) / 2);
+  const after = size - side - before;
+  return sharp(drawing)
+    .extend({ top: before, bottom: after, left: before, right: after, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+}
+
 /** Built-in icons resized per key size, kept for the life of the process: they change only when the app is updated, which restarts it. */
 const builtinLayers = new Map<string, Buffer>();
 const warnedBuiltin = new Set<string>();
 
-/** A built-in icon resized to the key, or null (logged once) if the file cannot be drawn — an incomplete install. */
-async function builtinLayer(name: BuiltinIcon, size: number): Promise<Buffer | null> {
+/** A built-in icon drawn for the key (builtinIconLayer), or null (logged once) if the file cannot be drawn — an incomplete install. */
+async function builtinLayer(name: BuiltinIcon, size: number, percent: number): Promise<Buffer | null> {
   const filePath = builtinIconPath(name);
-  const key = `${filePath}|${size}`;
+  const key = `${filePath}|${size}|${percent}`;
   const hit = builtinLayers.get(key);
   if (hit) return hit;
   try {
-    const layer = await iconLayer(filePath, size, 'contain');
+    const layer = await builtinIconLayer(filePath, size, percent);
     builtinLayers.set(key, layer);
     return layer;
   } catch (err) {
@@ -165,7 +183,9 @@ export async function fillScreen(face: Buffer, side: number, width: number, heig
  */
 export async function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
   // `builtin:<name>` names a shipped icon; anything else is a path, `~/` allowed.
-  const iconPath = display.icon ? (builtinRefPath(display.icon) ?? expandPath(display.icon)) : undefined;
+  const builtinPath = display.icon ? builtinRefPath(display.icon) : null;
+  const builtinSize = display.builtinIconSize ?? DEFAULTS.builtinIconSize;
+  const iconPath = display.icon ? (builtinPath ?? expandPath(display.icon)) : undefined;
   const stamp = iconPath ? await iconStamp(iconPath) : 'none';
   const cacheKey = `${size}|${stamp}|${JSON.stringify(display)}`;
 
@@ -186,7 +206,10 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 
   if (iconPath) {
     try {
-      const icon = await iconLayer(iconPath, size, display.iconFit === 'contain' ? 'contain' : 'cover');
+      // A built-in, by default or chosen by name, at its own size; a file as the person set it.
+      const icon = builtinPath !== null
+        ? await builtinIconLayer(builtinPath, size, builtinSize)
+        : await iconLayer(iconPath, size, display.iconFit === 'contain' ? 'contain' : 'cover');
       layers.push({ input: display.unset ? await dimmed(icon) : icon, top: 0, left: 0 });
     } catch (err) {
       if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
@@ -194,7 +217,7 @@ export async function renderButton(display: Display, size: number, strictIcon = 
         warnedMissing.add(iconPath);
         console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message} — showing the missing-icon placeholder`);
       }
-      const missing = await builtinLayer('missing', size);
+      const missing = await builtinLayer('missing', size, builtinSize);
       if (missing) layers.push({ input: missing, top: 0, left: 0 });
     }
   }

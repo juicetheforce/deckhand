@@ -189,7 +189,7 @@ const picker = (what) =>
       ids: [...ul.querySelectorAll('[data-discord-id]')].map((b) => b.dataset.discordId),
       names: [...ul.querySelectorAll('[data-discord-id] .target-name')].map((n) => n.textContent),
       unavailable: document.querySelector('.inspector [data-discord-list]')?.textContent ?? null,
-      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea') !== null,
+      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea:not(.label-input)') !== null, /* the key's own label is not a picker */
     }; })()`,
   );
 const pick = (what, id) => inPage(editor, 'editor', clickIn(`.inspector [data-discord-picker="${what}"] [data-discord-id="${id}"]`));

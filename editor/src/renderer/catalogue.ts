@@ -69,6 +69,8 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'audio.micMute', name: 'Mic mute', description: 'Toggle the default input, shown on the key', aliases: ['microphone', 'unmute', 'talk'] },
       { type: 'audio.volume', name: 'Volume', description: 'Nudge the output volume', aliases: ['louder', 'quieter', 'gain'] },
       { type: 'audio.mute', name: 'Mute output', description: 'Toggle output mute, shown on the key', aliases: ['silence', 'speakers'] },
+      { type: 'sound.play', name: 'Play sound', description: 'Play a sound file, shown on the key while it plays', aliases: ['soundboard', 'sfx', 'effect', 'airhorn', 'clip', 'wav', 'mp3', 'loop'] },
+      { type: 'sound.stopAll', name: 'Stop all sounds', description: 'Stop every sound Deckhand is playing', aliases: ['soundboard', 'silence', 'sfx', 'panic'] },
     ],
   },
   {
@@ -127,6 +129,12 @@ export const CATALOGUE: CatalogueGroup[] = [
       { type: 'command', name: 'Run command', description: 'Start a program or shell command', aliases: ['launch', 'execute', 'exec', 'script', 'app', 'open'] },
       { type: 'editor', name: 'Open editor', description: 'Open this editor from the deck', aliases: ['deckhand', 'settings', 'configure', 'setup'] },
       { type: 'brightness', name: 'Brightness', description: "Set or nudge this deck's brightness", aliases: ['dim', 'backlight', 'screen'] },
+      {
+        type: 'virtual.power',
+        name: 'Virtual deck on/off',
+        description: "Turn a virtual deck off, giving its screen back to the desktop's widgets, and on again",
+        aliases: ['touchscreen', 'panel', 'hide', 'show', 'power', 'xeneon'],
+      },
       { type: 'clock', name: 'Clock', description: 'The time on the key', aliases: ['watch', 'hour', 'date'] },
       { type: 'noop', name: 'Nothing', description: 'A key that does nothing', aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
     ],

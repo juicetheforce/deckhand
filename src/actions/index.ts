@@ -6,8 +6,10 @@ import * as audio from './audio.js';
 import * as discord from './discord.js';
 import * as media from './media.js';
 import * as obs from './obs.js';
+import * as sound from './sound.js';
 import * as system from './system.js';
 import * as twitch from './twitch.js';
+import * as virtual from './virtual.js';
 import * as vts from './vts.js';
 
 /**
@@ -29,6 +31,7 @@ export const registry: Record<string, ActionHandler> = {
   brightness: system.brightness,
   clock: system.clock,
   noop: system.noop,
+  'virtual.power': virtual.powerAction,
 
   'audio.sink': audio.sink,
   'audio.cycle': audio.cycle,
@@ -37,6 +40,8 @@ export const registry: Record<string, ActionHandler> = {
   'audio.micMute': audio.micMute,
   'audio.volume': audio.volume,
   'audio.mute': audio.mute,
+  'sound.play': sound.play,
+  'sound.stopAll': sound.stopAll,
 
   'media.control': media.control,
   'media.info': media.info,

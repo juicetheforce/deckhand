@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Plan the next polish release with Ryan (virtual deck on/off, profile deletion, the per-redraw leak, built-in icon size); then virtual decks stage 2 design."
+next = "Ryan checks the v0.10.0 polish build on the laptop (the test list in code-state); then release it; then virtual decks stage 2 design."
 category = "Gaming"
 paused = false
 focus = true
@@ -29,4 +29,5 @@ Discord stage 0 (2026-10-20): each user brings their own app's client ID (Public
 Discord built (2026-10-22): Mute, Deafen, Input mode, Join, Leave, User volume; connected while the profile has a Discord key on any page (its handshake can take 20 s), keys show a connecting badge meanwhile and a press never waits; Remove and the uninstaller revoke the tokens. Offline suites pass; real-Discord checks next.
 v0.9.0 published 2026-10-22: Discord. Checked on the laptop's Flatpak (one bug found and fixed: a dead socket file left by the Flatpak). Keeps all three Discord scopes (rpc is required and broad); Nobara's RPM checks come after the release.
 Discord checked on Nobara's RPM too (2026-10-22): everything as on the Flatpak, the join event sent, no slow handshake. Discord work closed.
+v0.10.0 polish built (2026-10-22), not released: soundboard (pw-play, else paplay; Elgato's five press modes), line breaks in labels, built-in icons drawn at 53% of the key (tunable in config), virtual deck on/off as a key (session-only), profile delete beside the rename field, OBS custom icons per state. The output-loss "leak" was not reproduced; per-draw pixel copies removed. Dim and sleep designed only, awaiting Ryan's decisions.
 """

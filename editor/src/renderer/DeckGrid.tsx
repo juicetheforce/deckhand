@@ -158,6 +158,14 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
   };
 }
 
+
+/** An icon drawn `scale` of the key, centred, as the deck draws a built-in (src/render.ts); 1 fills it. */
+function scaled(scale: number): CSSProperties {
+  if (scale >= 1) return {};
+  const inset = `${((1 - scale) / 2) * 100}%`;
+  return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
+}
+
 export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   const gridStyle: CSSProperties = {
@@ -281,14 +289,14 @@ function Key({ serial, config, id, number, row, column, hasScreen, iconSize, but
           className="key-icon"
           src={iconUrl(face.icon, stamp)}
           alt=""
-          style={{ objectFit: face.iconFit }}
+          style={{ objectFit: face.iconFit, ...scaled(face.iconScale) }}
           draggable={false}
           onError={() => setMissingIcon(iconId)}
         />
       )}
       {iconMissing && (
         // The same built-in the deck draws for an icon it cannot read.
-        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} draggable={false} />
+        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} style={scaled(face.builtinScale)} draggable={false} />
       )}
       {face.label && (
         <span

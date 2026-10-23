@@ -10,7 +10,7 @@ import { defaultIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
-import { builtinRef, pairIconFields } from '../shared/icons.js';
+import { BUILTIN_PREFIX, builtinRef, pairIconFields } from '../shared/icons.js';
 import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
 import { pageLinks, type PageLink } from '../shared/links.js';
 
@@ -121,6 +121,13 @@ export interface DeckChoice extends Choice {
 
 export function profileChoices(config: Config): Choice[] {
   return Object.entries(config.profiles).map(([id, p]) => ({ id, label: p.name ?? id }));
+}
+
+/** Every virtual deck in the config, by its key under "decks": what a Virtual deck on/off key can turn off. */
+export function virtualDeckChoices(config: Config): Choice[] {
+  return Object.entries(config.decks ?? {})
+    .filter(([, deck]) => deck.virtual !== undefined)
+    .map(([id, deck]) => ({ id, label: deck.name ?? `Virtual deck on ${deck.virtual?.output ?? id}` }));
 }
 
 export function layoutFor(config: Config, profile: string, serial: string): LayoutDef | null {
@@ -552,6 +559,14 @@ export interface KeyFace {
   background: string;
   icon: string | null;
   iconFit: 'cover' | 'contain';
+  /**
+   * The share of the key the icon is drawn at, centred: a built-in's is
+   * defaults.builtinIconSize, as the deck draws it (src/render.ts); an icon
+   * file fills the key (1).
+   */
+  iconScale: number;
+  /** The share of the key a built-in is drawn at: the missing placeholder's, whatever the key's icon. */
+  builtinScale: number;
   label: string | null;
   labelColor: string;
   labelPosition: 'top' | 'bottom' | 'center';
@@ -588,7 +603,7 @@ export function faceIcon(button: ButtonDef | undefined, latched = false, appIcon
   // shows the resting half's — except a toggle, whose state the daemon reports
   // per key, so the grid can show the half the deck is really showing.
   const toggleIcon = action?.type === 'toggle' ? (latched ? action.iconOn : action.iconOff) : undefined;
-  const resting = action?.type === 'media.control' ? action.iconPaused : action?.type === 'audio.micMute' || action?.type === 'audio.mute' ? action.iconUnmuted : toggleIcon;
+  const resting = action === undefined ? undefined : action.type === 'toggle' ? toggleIcon : action[RESTING_ICON[action.type] ?? ''];
   if (typeof resting === 'string' && pairIconFields(action).length > 0) return resting;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
@@ -598,6 +613,23 @@ export function faceIcon(button: ButtonDef | undefined, latched = false, appIcon
   const name = defaultIconFor(action, action?.type === 'media.info' ? { idle: true } : { latched });
   return name === null ? null : builtinRef(name);
 }
+
+/**
+ * The state icon the grid shows for each state pair, which has no state in
+ * the editor: the resting half — unmuted, paused, off; an OBS source shown,
+ * as the built-in pair's plain face is. A toggle's is the deck's own state.
+ */
+const RESTING_ICON: Record<string, string> = {
+  'media.control': 'iconPaused',
+  'audio.micMute': 'iconUnmuted',
+  'audio.mute': 'iconUnmuted',
+  'obs.mute': 'iconUnmuted',
+  'obs.stream': 'iconOff',
+  'obs.record': 'iconOff',
+  'obs.recordPause': 'iconOff',
+  'obs.scene': 'iconOff',
+  'obs.source': 'iconOn',
+};
 
 /**
  * The keys this deck is holding down right now, from the daemon's status.
@@ -618,10 +650,14 @@ export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'pr
 export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false, appIcons: AppIcons = {}): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
   const size = iconSize ?? 72;
+  const icon = faceIcon(button, latched, appIcons);
+  const builtinScale = d.builtinIconSize / 100;
   return {
     background: button?.background ?? d.background,
-    icon: faceIcon(button, latched, appIcons),
+    icon,
     iconFit: button?.iconFit ?? d.iconFit,
+    iconScale: icon !== null && icon.startsWith(BUILTIN_PREFIX) ? builtinScale : 1,
+    builtinScale,
     label: button?.label ?? null,
     labelColor: button?.labelColor ?? d.labelColor,
     labelPosition: button?.labelPosition ?? d.labelPosition,
@@ -661,19 +697,24 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'audio.mute': ['iconMuted', 'iconUnmuted', 'labelMuted', 'labelUnmuted'],
   'media.control': ['method', 'iconPlaying', 'iconPaused'],
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
+  // By its key under "decks" (inspector/SystemForms.tsx).
+  'virtual.power': ['deck'],
   // `match` / `matches` are hand-edited config only: a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label', 'moveStreams'],
   'audio.cycle': ['devices', 'showCurrent', 'moveStreams'],
   'audio.cycleSource': ['devices', 'showCurrent', 'moveStreams'],
-  // Nothing to set: what they act on is OBS itself.
-  'obs.stream': [],
-  'obs.record': [],
-  'obs.recordPause': [],
+  // The soundboard (inspector/SoundForms.tsx): the output as Output device stores it, node and label.
+  'sound.play': ['file', 'node', 'label', 'volume', 'mode'],
+  'sound.stopAll': [],
+  // With an icon of the person's own for each state (shared/icons.ts pairIconFields).
+  'obs.stream': ['iconOn', 'iconOff'],
+  'obs.record': ['iconOn', 'iconOff'],
+  'obs.recordPause': ['iconOn', 'iconOff'],
   // Picked from OBS's own lists, by name (inspector/ObsForms.tsx).
-  'obs.scene': ['scene'],
-  'obs.mute': ['input'],
-  'obs.source': ['scene', 'source'],
+  'obs.scene': ['scene', 'iconOn', 'iconOff'],
+  'obs.mute': ['input', 'iconMuted', 'iconUnmuted'],
+  'obs.source': ['scene', 'source', 'iconOn', 'iconOff'],
   // Picked from VTube Studio's own lists, by ID; the names kept to show (inspector/VtsForms.tsx).
   'vts.hotkey': ['model', 'hotkey', 'modelName', 'hotkeyName'],
   'vts.model': ['model', 'modelName'],
@@ -789,6 +830,10 @@ export function actionIncomplete(action: ActionDef | undefined): boolean {
     // No `matches` form for audio.cycleSource: it has only ever taken `devices`.
     case 'audio.cycleSource':
       return !(Array.isArray(action.devices) && action.devices.length >= 2);
+    case 'sound.play':
+      return !nonEmpty(action.file);
+    case 'virtual.power':
+      return !nonEmpty(action.deck);
     case 'obs.scene':
       return !nonEmpty(action.scene);
     case 'obs.mute':

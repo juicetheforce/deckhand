@@ -138,6 +138,22 @@ await check('listing: paths absolute, config paths as ~/..., parent given (and n
   await assert.rejects(listFolder(path.join(icons, 'no such folder'), home), /ENOENT/);
 });
 
+await check("Play sound's picker: the same listing and search over sound files only — no images, no stamps", async () => {
+  const sounds = path.join(home, 'Music');
+  for (const f of ['horn.mp3', 'Rain.OGG', 'bell.wav', 'crowd.flac', 'voice.opus', 'old.oga', 'cover.png', 'notes.txt', '.hidden.wav', 'sfx/boom.wav', 'sfx/deep/Boom Big.flac']) {
+    await fs.mkdir(path.dirname(path.join(sounds, f)), { recursive: true });
+    await fs.writeFile(path.join(sounds, f), 'x');
+  }
+  const listing = await listFolder(sounds, home, 'sound');
+  assert.deepEqual(listing.folders.map((f) => [f.name, f.items]), [['sfx', 2]], 'a folder counts its sounds and folders');
+  assert.deepEqual(listing.images.map((f) => f.name), ['bell.wav', 'crowd.flac', 'horn.mp3', 'old.oga', 'Rain.OGG', 'voice.opus']);
+  assert.equal(listing.images[0].configPath, '~/Music/bell.wav');
+  assert.ok(listing.images.every((f) => f.stamp === undefined), 'a sound has no thumbnail stamp');
+  assert.deepEqual((await searchFolder(sounds, 'boom', home, () => true, {}, 'sound')).matches.map((m) => [m.folder, m.name]), [['sfx', 'boom.wav'], ['sfx/deep', 'Boom Big.flac']]);
+  assert.equal((await searchFolder(sounds, 'cover', home, () => true, {}, 'sound')).matches.length, 0, 'an image is not a sound');
+  assert.equal((await listFolder(icons, home, 'sound')).images.length, 0, 'the icon tree has no sounds');
+});
+
 await check('search: whole subtree, case-insensitive, each match says where it lives, sorted by folder then name', async () => {
   const outcome = await searchFolder(icons, 'BOLT', home);
   const names = outcome.matches.map((m) => `${m.folder} | ${m.name}`);

@@ -451,8 +451,8 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
   /** Dispatch a key event; returns true if it was swallowed (preventDefault). */
   const press = (code: string, mods: Partial<Record<'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey', boolean>> = {}, type = 'keydown') =>
     !window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true, ...mods }));
-  const typeInto = (input: HTMLInputElement, value: string) => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+  const typeInto = (input: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
   const saved = async () => {
@@ -526,7 +526,7 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await until(() => !listening());
 
   // 6. Label, then "Clear hotkey" keeps it.
-  typeInto(document.querySelector<HTMLInputElement>('.label-input')!, 'Bolt');
+  typeInto(document.querySelector<HTMLTextAreaElement>('.label-input')!, 'Bolt');
   out.labelSaved = await until(async () => (await saved())?.['3']?.label === 'Bolt');
   await click('Clear hotkey');
   out.clearHotkeyKeepsLabel = await until(async () => {
@@ -559,8 +559,12 @@ async function hotkey(api: DeckhandBridge): Promise<Record<string, unknown>> {
   // 8. Keys whose action is read-only: no recording; the label still edits.
   await selectKey(0);
   out.mediaReadOnly = button('Record hotkey') === undefined && button('Re-record') === undefined;
-  typeInto(document.querySelector<HTMLInputElement>('.label-input')!, 'Next track');
+  typeInto(document.querySelector<HTMLTextAreaElement>('.label-input')!, 'Next track');
   out.mediaLabelSaved = await until(async () => (await saved())?.['0']?.label === 'Next track');
+  // 8b. A label of two lines keeps its line break; blank lines are dropped.
+  typeInto(document.querySelector<HTMLTextAreaElement>('.label-input')!, 'Next\n\ntrack\n');
+  out.twoLineLabelSaved = await until(async () => (await saved())?.['0']?.label === 'Next\ntrack');
+  out.twoLineLabelDrawn = await until(() => document.querySelectorAll('.key-selected .key-label-line').length === 2);
   await selectKey(1);
   out.sequenceReadOnly = button('Record hotkey') === undefined && button('Re-record') === undefined;
 
@@ -604,8 +608,8 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
     document.querySelectorAll<HTMLButtonElement>('.key')[index].click();
     await until(() => document.querySelector('.inspector-title')?.textContent === `Key ${index + 1}`);
   };
-  const typeInto = (input: HTMLInputElement, value: string) => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+  const typeInto = (input: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value')!.set!.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
   // The deck list arrives after the editor connects. Read before it, the serial
@@ -1169,7 +1173,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
     return items;
   })();
 ;
-  pencil('Rename profile')!.click();
+  pencil('Rename or delete profile')!.click();
   await until(() => document.querySelector('input[aria-label="Profile name"]') !== null);
   const profileField = () => document.querySelector<HTMLInputElement>('input[aria-label="Profile name"]')!;
   out.profileFieldStartsWith = profileField().value;
@@ -1220,6 +1224,23 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Cancel')!.click();
   await sleep(200);
   out.cancelledProfileDelete = deleteCard() === null && profileValue() === 'doomed';
+  // The same confirmation from the pencil: Delete beside the rename field,
+  // for someone who never thinks to right-click. The rename is dropped.
+  pencil('Rename or delete profile')!.click();
+  await until(() => document.querySelector('.rename-delete') !== null);
+  const typed = document.querySelector<HTMLInputElement>('input[aria-label="Profile name"]')!;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(typed, 'Not saved');
+  typed.dispatchEvent(new Event('input', { bubbles: true }));
+  const deleteLink = document.querySelector<HTMLButtonElement>('.rename-delete')!;
+  out.pencilDeleteText = deleteLink.textContent;
+  // As a real click: the press first, which would blur the field, then the click.
+  const pressed = deleteLink.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  deleteLink.click();
+  out.pencilDeleteOpens = (await until(() => deleteCard() !== null)) && !pressed;
+  out.pencilDeleteFieldClosed = document.querySelector('input[aria-label="Profile name"]') === null;
+  [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Cancel')!.click();
+  await sleep(200);
+  out.pencilDeleteRenamedNothing = profileSelect()?.selectedOptions[0]?.textContent === 'Doomed';
   profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await sleep(80);
   [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Delete profile'))!.click();
@@ -1444,7 +1465,7 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   // 7. Shortcuts do nothing while typing in a field: Delete in the label field of key 3.
   click(3);
   await until(() => title() === 'Key 4');
-  const label = document.querySelector<HTMLInputElement>('.inspector input[aria-label="Label"]') ?? document.querySelector<HTMLInputElement>('.inspector input');
+  const label = document.querySelector<HTMLTextAreaElement>('.inspector textarea[aria-label="Label"]');
   out.labelFieldFound = label !== null;
   if (label) {
     label.focus();
@@ -2321,7 +2342,11 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
     if (!(await until(() => inspectorButton(text) !== undefined && !inspectorButton(text)!.disabled))) throw new Error(`no enabled button "${text}"`);
     inspectorButton(text)!.click();
   };
-  const input = (label: string) => document.querySelector<HTMLInputElement>(`.inspector input[aria-label="${label}"]`)!;
+  const input = (label: string) => {
+    const found = document.querySelector<HTMLInputElement>(`.inspector input[aria-label="${label}"]`);
+    if (!found) throw new Error(`no field "${label}" in the inspector; headings ${JSON.stringify(headings())}`);
+    return found;
+  };
   const typeInto = (el: HTMLInputElement, value: string) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value);
     el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2458,6 +2483,77 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   out.pairGuard = pairGuard;
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
 
+  // An OBS key's own icon for each state (Elgato's two-state keys), through the same slots.
+  await selectKey(31);
+  if (!(await until(() => headings().includes('Stream')))) throw new Error(`obs: key 31 shows ${JSON.stringify(headings())}`);
+  const obsRowsOnKeyTab = pairRows();
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  if (!(await until(() => document.querySelector('.icon-slots') !== null))) throw new Error('obs: the Icon tab has no slots');
+  const obsSlots = [...document.querySelectorAll('.icon-slots .segment')].map((b) => b.textContent);
+  toggleSlot('While live').click();
+  await sleep(100);
+  await chooseBuiltin('headset');
+  const obsLive = await actionAs(31, { type: 'obs.stream', iconOn: 'builtin:headset' });
+  // The grid has no OBS state: it shows the resting half, off — the built-in, since no off icon is set.
+  const gridIcon = () => decodeURIComponent(document.querySelectorAll('.key')[31].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '');
+  const obsGridResting = await until(() => gridIcon().includes('path=builtin:obs-stream') && !gridIcon().includes('obs-stream-on'));
+  document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
+  await until(() => pairValue('iconOn') !== null);
+  out.obsIcons = { obsRowsOnKeyTab, obsSlots, obsLive, obsGridResting, live: pairValue('iconOn'), off: pairValue('iconOff') };
+
+  // Play sound: its picker (the icon picker's browsing, over sounds), ▶, then
+  // a file, how a press behaves, its volume and its output.
+  await selectKey(22);
+  if (!(await until(() => headings().includes('Play sound')))) throw new Error(`sound: key 22 shows ${JSON.stringify(headings())}`);
+  // Rows by the end of their path: the check's home is the scratch HOME, which the page does not know.
+  const soundRow = (end: string) => document.querySelector<HTMLButtonElement>(`[data-sound-picker] .sound-row[data-path$="${end}"]`);
+  const playButton = (end: string) => document.querySelector<HTMLButtonElement>(`[data-sound-picker] [data-play$="${end}"]`);
+  // It opens on Music, or home where the desktop names no Music folder: then into it.
+  if (!(await until(() => soundRow('/Music/horn.mp3') !== null || soundRow('/Music') !== null))) throw new Error('sound: the picker shows neither ~/Music nor horn.mp3');
+  if (soundRow('/Music/horn.mp3') === null) soundRow('/Music')!.click();
+  await until(() => soundRow('/Music/horn.mp3') !== null);
+  const soundsListed = [...document.querySelectorAll('[data-sound-picker] .sound-list .sound-name')].map((n) => n.textContent);
+  playButton('/Music/horn.mp3')!.click();
+  const playing = await until(() => playButton('/Music/horn.mp3')?.textContent === '■');
+  const previewingInState = (await api.snapshot()).daemon.status?.previewingSound?.endsWith('/Music/horn.mp3') === true;
+  const notChosenByPlay = (await buttons())?.['22']?.action?.file === undefined;
+  playButton('/Music/horn.mp3')!.click();
+  const stopped = await until(() => playButton('/Music/horn.mp3')?.textContent === '▶');
+  const filter = document.querySelector<HTMLInputElement>('[data-sound-picker] input[aria-label="Filter sounds"]')!;
+  typeInto(filter, 'boo');
+  await until(() => soundRow('/Music/sfx/boom.wav') !== null);
+  const filterFindsBelow = [...document.querySelectorAll('[data-sound-picker] .sound-list .sound-name')].map((n) => n.textContent);
+  typeInto(filter, '');
+  await until(() => soundRow('/Music/horn.mp3') !== null);
+  soundRow('/Music/horn.mp3')!.click();
+  const soundSteps = [await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3' })];
+  await clickButton('Loop/Stop');
+  soundSteps.push(await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3', mode: 'loopStop' }));
+  const soundSays = document.querySelector('[data-sound="mode-says"]')?.textContent ?? '';
+  if (!(await until(() => document.querySelector('.inspector input[aria-label="Sound volume"]') !== null))) {
+    throw new Error(`sound: no volume field; inputs ${JSON.stringify([...document.querySelectorAll('.inspector input')].map((i) => i.getAttribute('aria-label')))}, headings ${JSON.stringify(headings())}`);
+  }
+  typeInto(input('Sound volume'), '60');
+  soundSteps.push(await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3', mode: 'loopStop', volume: 60 }));
+  const headset = 'alsa_output.usb-Example_Headset-00.analog-stereo';
+  if (!(await until(() => document.querySelector(`.inspector .target[data-node="${headset}"]`) !== null))) throw new Error('sound: no outputs listed');
+  document.querySelector<HTMLButtonElement>(`.inspector .target[data-node="${headset}"]`)!.click();
+  soundSteps.push(await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3', mode: 'loopStop', volume: 60, node: headset, label: 'Example Headset Analog Stereo' }));
+  document.querySelector<HTMLButtonElement>('.inspector .target[data-node=""]')!.click();
+  soundSteps.push(await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3', mode: 'loopStop', volume: 60 }));
+  await clickButton('Play/Stop');
+  soundSteps.push(await actionAs(22, { type: 'sound.play', file: '~/Music/horn.mp3', volume: 60 }));
+  const picker = { listed: soundsListed, playing, previewingInState, stopped, notChosenByPlay, filterFindsBelow };
+  out.sound = { soundSteps, soundSays, picker };
+
+  // Virtual deck on/off: the config's virtual decks, by name.
+  await selectKey(23);
+  if (!(await until(() => headings().includes('Virtual deck on/off')))) throw new Error(`virtual.power: key 23 shows ${JSON.stringify(headings())}`);
+  const listed = [...document.querySelectorAll('[data-virtual-power] .target-name')].map((n) => n.textContent);
+  document.querySelector<HTMLButtonElement>('[data-virtual-power] .target[data-deck="GRA-6e4e"]')!.click();
+  const saved = await actionAs(23, { type: 'virtual.power', deck: 'GRA-6e4e' });
+  out.virtualPower = { listed, saved, selfWarning: document.querySelector('[data-virtual-power-self]') !== null };
+
   // Now playing.
   await selectKey(5);
   await until(() => headings().includes('Now playing'));
@@ -2580,7 +2676,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   };
   await selectKey(13);
   libraryClick('text');
-  await until(() => document.querySelector('.inspector textarea') !== null);
+  await until(() => document.querySelector('.inspector textarea[aria-label="Text to type"]') !== null);
   // A hidden window delivers no focus events for focus()/blur(), and React's
   // onFocus/onBlur listen for focusin/focusout: dispatch those, or a check of
   // the save-on-blur path tests nothing.

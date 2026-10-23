@@ -123,6 +123,20 @@ export class DaemonClient {
     return (await this.request('screens')) as ScreensReply;
   }
 
+  /** Play a clip before it is chosen (`sound.preview`), on the key's output and at its volume. */
+  async previewSound(sound: { file: string; node?: string; label?: string; volume?: number }): Promise<void> {
+    await this.request('sound.preview', sound);
+  }
+
+  async stopSoundPreview(): Promise<void> {
+    await this.request('sound.preview', { stop: true });
+  }
+
+  /** Turn a virtual deck on or off (`virtual.power`). Whether it is on now. */
+  async virtualPower(deck: string, on: boolean): Promise<boolean> {
+    return ((await this.request('virtual.power', { deck, on })) as { on: boolean }).on;
+  }
+
   /** Clear one key's failure mark (failure.clear). */
   async clearFailure(serial: string, profile: string, page: string, key: string): Promise<void> {
     await this.request('failure.clear', { serial, profile, page, key });
@@ -416,7 +430,7 @@ export class DaemonClient {
     if (!status) return; // before the handshake finished; status will be fresh
     if (name === 'state') {
       const snapshot = data as StateSnapshot;
-      this.update({ status: { ...status, activeProfile: snapshot.activeProfile, decks: snapshot.decks } });
+      this.update({ status: { ...status, activeProfile: snapshot.activeProfile, decks: snapshot.decks, previewingSound: snapshot.previewingSound } });
       const connected = snapshot.decks.filter((d) => d.connected).map((d) => d.serial).sort().join(',');
       const known = (this.current.decks ?? []).map((d) => d.serial).sort().join(',');
       if (connected !== known || this.hasVirtualDeck()) void this.refreshDecks();

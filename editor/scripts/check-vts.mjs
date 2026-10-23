@@ -232,7 +232,7 @@ const picker = (what) =>
       selected: [...ul.querySelectorAll('.target-selected')].map((b) => b.dataset.vtsId),
       notes: [...ul.querySelectorAll('.target-note')].map((n) => n.textContent),
       unavailable: document.querySelector('.inspector [data-vts-list]')?.textContent ?? null,
-      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea') !== null,
+      typed: document.querySelector('.inspector-section input[type=text], .inspector-section textarea:not(.label-input)') !== null, /* the key's own label is not a picker */
     }; })()`,
   );
 const pick = (what, id) => inPage(editor, 'editor', clickIn(`.inspector [data-vts-picker=${what}] [data-vts-id="${id}"]`));
