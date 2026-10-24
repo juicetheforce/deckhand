@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks v0.10.0 round 3 on the laptop (icon size shown relative to its maximum; Default icon + active-state icon on every key with states); then release it; then virtual decks stage 2 design."
+next = "Release the polish batch (v0.10.0)."
 category = "Gaming"
 paused = false
 focus = true
