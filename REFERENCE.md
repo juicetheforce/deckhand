@@ -478,7 +478,9 @@ the editor's Icon tab. With neither set the built-in pair switches; with a
 default icon and no active one, that icon stays in both states; with an
 active icon and no default, the built-in default, then your active icon;
 with both, they switch. A stream reconnecting and a recording paused always
-draw their built-in warning, over any icon of yours. A config written
+draw their built-in warning, over any icon of yours. The editor's grid
+draws each such key in the state the deck shows it in, while it shows the
+page the deck is on; on any other page, in its default state. A config written
 before `v0.10.0`, with one field per state (`iconMuted`/`iconUnmuted`,
 `iconPlaying`/`iconPaused`, `iconOn`/`iconOff`), draws as it did: the
 daemon reads it as the new shape, and the editor saves it so when it opens
