@@ -178,6 +178,14 @@ different profiles.
   daemon already runs. A display change that alters no screen Deckhand
   cares about does not rescan. A helper runs only while a virtual deck's
   screen is connected, and does nothing until the daemon sends it an image.
+- **Turning a virtual deck off is unplugging its screen, as far as the
+  daemon is concerned**: the driver leaves it out of every scan, so its
+  session closes, its helper quits, the grab ends and every held key is let
+  go — nothing runs for it at rest. Its pairing, layouts and touchscreen
+  access are kept, so on is instant, with no password, and returns to the
+  page it was on. **Off lasts until it is turned on, across restarts** —
+  the person's intent — kept in the state directory (`virtual-off.json`),
+  never `config.json`, which the daemon does not write.
 - **Whether the screen is plugged in is the kernel's to say; whether the
   panel can be shown is the compositor's.** KWin removes a screen's output
   when it wakes from power saving and adds it back a moment later, with
@@ -355,6 +363,10 @@ draws its built-in default. That default is never written to the config.
 An app key with no icon draws its app's own icon, found through the
 desktop's icon theme when the key is drawn — the daemon does that lookup
 itself, having neither GTK nor Qt — and never written to the config either.
+**Built-in icons are drawn smaller than the key** (`defaults.builtinIconSize`,
+45% unless set, 30–70: Settings › General › Icon size), so their glyphs sit
+as the editor's design draws them; an
+image file someone chose is never resized by it.
 
 **Audio follows one rule: you pick from the devices the system reports, and
 Deckhand applies no logic to the list.** It does not categorise, rank or guess.
@@ -371,6 +383,17 @@ are started through `launch()` (`src/actions/system.ts`), which runs them with
 its desktop entry to `gio launch` the same way. `KillMode=process`
 on the unit would also fix it, and would leave the input helper,
 `pactl subscribe` and `udevadm monitor` running after every stop.
+**The one deliberate exception is a soundboard sound**: its player
+(`pw-play`, or `paplay`) is the daemon's own child, as `pactl` is, because
+its life is the key's state — the key shows playing from the moment it
+starts to the moment it exits — and a stopped daemon should stop its sounds.
+
+**A sound key's face follows its player, never a clock.** A player starting
+or ending marks the sound keys to be drawn; a loop is the next player
+started when the last one ends, and a sound that ends within 250 ms is not
+started again, so a file that plays nothing cannot loop. The one
+`setTimeout` in `src/services/sounds.ts` is a one-shot wait, up to 250 ms
+after a press, for a player that fails at once.
 
 ## Invariants — before changing the code
 
@@ -398,7 +421,7 @@ is here so the test is not "fixed" instead.
 | `deckChoices()` / `knownDecks()` / `deckOptions()` | **a deck that is not plugged in is not listed, anywhere.** The editor's device lists derive from the first two, and Settings' Default deck list (`deckOptions()`, `editor/src/shared/settings.ts`) follows the same rule separately. The *stored* default may still name an absent deck. Accepted cost: unplugging the deck being edited moves the editor off it |
 | `src/services/apps.ts`, `src/services/icon-theme.ts`, an action's `defaultIcon()` | an app's icon is resolved when drawn and **never written to `config.json`**; every answer is cached, and nothing watches the disk — the socket's `apps` command, which the editor's app list asks, is the one thing that forgets and re-reads |
 | the config watcher, or anything written near `config.json` | it is safe only because it is non-recursive and filters on the file name |
-| a toggle's or any other paired icon field | one list, `PAIR_ICON_FIELDS`, held by `editor/test/pair-icons.test.ts` |
+| a toggle's or any other key with states, `src/state-icons.ts` | **two icons: the key's own `icon` (its default) and the action's `iconActive`** — a default and no active icon is that icon in both states, never switching; a warning state (OBS reconnecting, paused) draws its built-in over both. **Old configs, one field per state, are migrated by one function**: in memory by the daemon on every load, never writing `config.json`, and saved by the editor when it opens the file — so a config nobody opens in the editor draws as it did. Held by `smoke-defaults`, `config-store.test.ts` and `pair-icons.test.ts` |
 | `src/credentials.ts`, or anything that stores a password or token | **a secret is never in `config.json`, an export or a backup**, and the control socket never returns one — only whether it is set. The file is written 0600 by temp file and rename, **one change at a time** — every read-change-write waits for the one before, and each has its own temp file: two at once lost a change or left a file that was not JSON, and a lost Twitch refresh ends the link (held by `smoke-credentials`) |
 | `src/services/obs.ts`, any OBS `describe()` / `iconState()` | **connected only while a shown page has an OBS key or a press is waiting**; no timer of its own — retries ride the 60-second scan; a refused password is never retried until the credentials change — not by the scan, a key coming into view, or a press, which is refused at once pointing to Settings, as VTS's is; **not set up — no saved connection — never connects at all**, and set up means saved, not "has a password" or "has connected once"; key faces read the state cache, fed by OBS's events, never a request in a render. **What shown keys name — Mute keys' inputs, Source keys' scene items — is asked once, when first shown, then kept by events; never polled**, and forgotten when no shown key names it |
 | `src/actions/obs.ts`'s Stream key, `DeckSession`'s `holds` | **Stream starts on a press and stops only on a hold** — accidentally ending a stream is the worst thing it can do. A hold is two timestamps, not a timer; a press that started the stream cannot stop it, and a hold is dropped on every way off the page. **The release decides a hold's mark when the press armed one** (`execute` resolved `'armed'`): that press succeeding does not clear it (or every short press would flicker the badge and notify again), and a release with nothing to do leaves the press's own failure in place. A press that started the stream is judged by itself. **A start is shown, and succeeds, only once OBS says STARTED**: OBS sends STARTING and then nothing for a start that fails at once, so Stream and Record wait for STARTED or STOPPED (one-shot, `START_CONFIRM_MS`), mark the key otherwise, and correct the cached state |
@@ -409,6 +432,11 @@ is here so the test is not "fixed" instead.
 | `src/services/discord-client.ts` | **no client secret, ever**: each person's application is a public client, and the exchange is proved with PKCE. The handshake's deadline is long (45 s) because READY has taken 20 s (measured) |
 | `src/services/vts-client.ts`'s `PLUGIN_NAME` / `PLUGIN_DEVELOPER` | **permanent**: VTS refuses a saved token given for another name or developer, so a change disconnects every user without a word |
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
+| `src/services/sounds.ts`, `src/actions/sound.ts` | **a sound's player is the daemon's child on purpose** — the one exception to the row below; **its key's face changes only when a player starts or ends**, never on a clock; a loop restarts on the exit, never under 250 ms of play; **a player Deckhand stopped is not a failure** — pw-play exits 1 on SIGTERM, paplay 0 (measured), so it is known by being stopped, not by its code; **a chosen output that is not there fails the press** — pw-play silently plays an unknown target on the default output (measured). Held by `smoke-sounds` |
+| `src/services/virtual-power.ts`, the virtual driver's `list()` | **a virtual deck turned off is left out of every scan**, so it closes as an unplugged screen does: helper quit, grab ended, keys let go, nothing at rest; its touchscreen's access kept; **kept off across restarts** in the state directory's `virtual-off.json` — an unreadable file is ignored, never a deck left dark for good. Held by `smoke-virtual-daemon` |
+| `src/render.ts`'s built-in size, `editor/src/renderer/model.ts`'s `iconScale` | **only built-ins** — an action's default, one chosen by name, the missing icon — are drawn at `builtinIconSize`; an icon file is never resized by it. The editor's grid draws the same size from the same default. Held by `smoke-defaults` and the editor's unit tests |
+| an action's `active()`, `DeckSession.liveFaces()`, `editor/src/renderer/model.ts`'s `faceIcon` | **the editor's grid draws a key with states as the deck draws it**: the daemon's status reports each shown key's state — its built-in's, and whether its active icon applies, two answers because they can differ (Input mode's built-in calls voice activity active; the key calls push-to-talk its active state) — and the grid draws by the deck's rules, only while it shows the page the deck is on. `active()` is the one definition: `describe()` draws by it. A redraw in another state tells the editor — no timer of its own. Before, every such key showed its default state in the grid whatever the deck showed. Held by `smoke-live-faces` and the editor's unit tests |
+| `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
 | `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |

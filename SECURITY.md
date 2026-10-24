@@ -83,6 +83,10 @@ only from the moment you pair them**:
   is gone once removed.
 - A touchscreen with no serial number is covered by its model: an identical
   touchscreen plugged in later is covered too.
+- **Turning a virtual deck off keeps its access**, which is what lets it
+  come back on at once, with no password. While it is off, its touches go to
+  the desktop, and programs running as you can read them, exactly as while
+  it is on. Removing the virtual deck is what takes the access away.
 - Removing a virtual deck removes its touchscreen's entry and its ACL at
   once, and asks for your password to do it. Uninstalling removes every
   user's entries and the helper, and takes your access off each touchscreen
