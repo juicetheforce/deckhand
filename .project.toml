@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks v0.10.0 on Nobara (with the grid-state list); then the dark-room brightness test, and the sleep-on-lock / Sleep all decks / Brightness round."
+next = "The dark-room brightness test on both Stream Decks, then the sleep-on-lock / Sleep all decks / Brightness round."
 category = "Gaming"
 paused = false
 focus = true
@@ -34,4 +34,5 @@ Round 1 confirmed by Ryan on the laptop (2026-10-23). Round 2: built-in icon siz
 Round 3: icon size shown relative to its maximum (40-100%, default 65%); every key with states has two icons, a Default icon and one for its active state (iconActive), the pattern for every multi-state key; old configs migrated (daemon in memory, editor on open).
 v0.10.0 published 2026-10-24: the polish release, plus the editor's grid following each key's state live (it showed only the default state; found on Discord Input mode). Ship test 75/75.
 Dim and sleep decided (2026-10-24): sleep on lock first, idle dimming a later round; brightness 0 vs black keys settled by a dark-room test; first press after sleep only wakes; global settings only. New Sleep all decks action. Next round: sleep on lock, Sleep all decks, Brightness target picker with screen brightness for virtual decks through Plasma.
+Round 5 (the grid follows each key's state) confirmed on v0.10.0 (2026-10-24). Sleep all decks: a press on a dimmed deck runs its key; a press on any deck wakes them all.
 """
