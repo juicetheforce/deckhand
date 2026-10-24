@@ -12,7 +12,7 @@ import { withPosition, type DeckPositions } from '../shared/deck-positions.js';
 import { Inspector, type Pick } from './Inspector.js';
 import { Library } from './Library.js';
 import { actionName, libraryIcon } from './catalogue.js';
-import { builtinRef, iconUrl } from '../shared/icons.js';
+import { builtinRef, iconUrl, keyStates } from '../shared/icons.js';
 import { useActionDrag, type ActionDrag } from './useActionDrag.js';
 import type { KeyRef } from './keyUnder.js';
 import {
@@ -26,6 +26,7 @@ import {
   notSetUpText,
   settingsSectionOf,
   latchedKeysOn,
+  liveFacesOn,
   focusDeck,
   followDeck,
   othersToStartPages,
@@ -289,8 +290,9 @@ function Editor({
   // the icon URL; without it Chromium keeps the image it loaded first. Default
   // icons count: they are files too, in the app's assets/icons/.
   const [iconStamps, setIconStamps] = useState<Record<string, string>>({});
-  // Both halves of a state pair the daemon reports per key (a toggle), so
-  // the icon it flips to is stamped too rather than fetched unstamped.
+  // Both faces of a key with states — its default and its active state's,
+  // which the daemon's live state flips it to — so the icon it flips to is
+  // stamped too rather than fetched unstamped.
   // Not `.map(faceIcon)`: that passes the array index as the second argument.
   // Every shown deck's page: with several shown, each grid draws its icons.
   const shownPages = shown.flatMap((serial) => {
@@ -301,7 +303,10 @@ function Editor({
     ...new Set(
       shownPages
         .flatMap((p) => Object.values(p.buttons))
-        .flatMap((b) => [faceIcon(b, false, appIcons), faceIcon(b, true, appIcons)])
+        .flatMap((b) => {
+          const states = keyStates(b.action);
+          return [faceIcon(b, null, appIcons), states ? faceIcon(b, { state: states.activeState, active: true }, appIcons) : null];
+        })
         .filter((i): i is string => i !== null),
     ),
   ];
@@ -447,6 +452,7 @@ function Editor({
         appIcons={appIcons}
         failedKeys={failedKeysOn(daemon, at)}
         latchedKeys={latchedKeysOn(daemon, at)}
+        liveFaces={liveFacesOn(daemon, at)}
         notSetUp={(type) => notSetUp(daemon, type)}
         selectedKeys={focused ? selection.keys : []}
         onClickKey={(key, modifiers) =>

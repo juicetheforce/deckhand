@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import missingIconUrl from '../../../assets/icons/missing.svg';
 import { failedBadgeSvg, unsetBadgeSvg } from '../../../src/failed-badge.js';
+import type { LiveFace } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
 import { actionName } from './catalogue.js';
@@ -23,6 +24,8 @@ interface Props {
   /** Keys the deck is holding down right now (model.ts latchedKeysOn). */
   /** By control id. */
   latchedKeys: string[];
+  /** The state each key with states is in on the deck right now (model.ts liveFacesOn), so its face follows it. By control id. */
+  liveFaces: Record<string, LiveFace>;
   selectedKeys: string[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
   onClickKey: (key: string, modifiers: { ctrl: boolean; shift: boolean }) => void;
@@ -166,7 +169,7 @@ function scaled(scale: number): CSSProperties {
   return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
@@ -194,6 +197,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           failure={failedKeys[k.id]}
           unset={notSetUp(page.buttons[k.id]?.action?.type)}
           latched={latchedKeys.includes(k.id)}
+          live={liveFaces[k.id] ?? null}
           selected={selectedKeys.includes(k.id)}
           onClick={(modifiers) => {
             if (!keyDrag.takeSuppressedClick()) onClickKey(k.id, modifiers);
@@ -229,6 +233,8 @@ interface KeyProps {
   unset: boolean;
   /** This key is latched down on the deck right now. */
   latched: boolean;
+  /** The state the deck shows it in, for a key with states; null for none known. */
+  live: LiveFace | null;
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
@@ -239,11 +245,11 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ serial, config, id, number, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+function Key({ serial, config, id, number, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, live, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const unsetName = INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].name;
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
-  const face = keyFace(config, button, iconSize, latched, appIcons);
+  const face = keyFace(config, button, iconSize, live, appIcons);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
   // Which icon failed to load, by path and stamp, so a changed path — or the
   // same path whose file changed — is tried again.

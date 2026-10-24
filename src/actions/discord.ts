@@ -30,6 +30,7 @@ function shared(): DisplayPatch | null {
 }
 
 const named = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+const connected = () => discord.cachedState().connection === 'connected';
 const CHOOSE_AGAIN = 'choose it again in the editor';
 
 /** discord.mute — mute or unmute your microphone in Discord; lit red while muted, from Discord's own events. */
@@ -38,9 +39,10 @@ export const mute: ActionHandler = {
   async execute() {
     await discord.toggleMute();
   },
-  iconState: () => ({ muted: discord.cachedState().connection === 'connected' && discord.cachedState().mute === true }),
+  iconState: () => ({ muted: connected() && discord.cachedState().mute === true }),
+  active: () => connected() && discord.cachedState().mute === true,
   // Active: muted.
-  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().mute === true)),
+  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, connected() && discord.cachedState().mute === true)),
 };
 
 /** discord.deafen — deafen or undeafen in Discord (Discord mutes with it); lit red while deafened. */
@@ -49,9 +51,10 @@ export const deafen: ActionHandler = {
   async execute() {
     await discord.toggleDeaf();
   },
-  iconState: () => ({ muted: discord.cachedState().connection === 'connected' && discord.cachedState().deaf === true }),
+  iconState: () => ({ muted: connected() && discord.cachedState().deaf === true }),
   // Active: deafened.
-  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().deaf === true)),
+  active: () => connected() && discord.cachedState().deaf === true,
+  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, connected() && discord.cachedState().deaf === true)),
 };
 
 /**
@@ -64,9 +67,12 @@ export const inputMode: ActionHandler = {
   async execute() {
     await discord.toggleInputMode();
   },
-  iconState: () => ({ active: discord.cachedState().connection === 'connected' && discord.cachedState().mode === 'VOICE_ACTIVITY' }),
+  // The built-in's `active` is voice activity, its solid disc; the key's
+  // active state is push-to-talk. Both say the mode, opposite ways round.
+  iconState: () => ({ active: connected() && discord.cachedState().mode === 'VOICE_ACTIVITY' }),
   // Active: push-to-talk. Voice activity is its default.
-  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, discord.cachedState().connection === 'connected' && discord.cachedState().mode === 'PUSH_TO_TALK')),
+  active: () => connected() && discord.cachedState().mode === 'PUSH_TO_TALK',
+  describe: async (_ctx, params) => withActive(shared(), activeIcon(params, connected() && discord.cachedState().mode === 'PUSH_TO_TALK')),
 };
 
 /**

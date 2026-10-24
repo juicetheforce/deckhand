@@ -189,7 +189,7 @@ if (r && !r.error) {
     assert.deepEqual(r.micIcons, {
       afterMuted: { action: { ...labels, iconActive: 'builtin:speaker-muted' } },
       afterDefault: { action: { ...labels, iconActive: 'builtin:speaker-muted' }, icon: 'builtin:headset' },
-      gridShowsDefault: true,
+      gridShowsLiveState: true,
       slotNames: ['Default icon', 'While muted'],
       activeSlotCurrent: ['speaker-muted'],
       formSays: { default: 'Built-in: headset', iconActive: 'Built-in: speaker-muted' },

@@ -142,6 +142,7 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.brightness = session.currentBrightness();
       entry.previews = session.previewKeys();
       entry.latched = session.latchedKeys();
+      entry.live = session.liveFaces();
       entry.failed = session.failedKeys();
       const touch = session.touchState();
       if (touch !== undefined) entry.touch = touch;

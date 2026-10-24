@@ -1,14 +1,15 @@
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
-import { attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
+import { activeOf, attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
-import type { KeyFailure } from './control/protocol.js';
+import type { KeyFailure, LiveFace } from './control/protocol.js';
 import type { KeyFailures } from './key-failures.js';
 import type { DeckDevice, TouchState } from './devices.js';
 import type { DeckGeometry } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
 import { fillScreen, renderButton } from './render.js';
+import { hasStates } from './state-icons.js';
 import type {
   ActionContext,
   ActionDef,
@@ -107,6 +108,12 @@ export class DeckSession implements DeckHandle {
    * virtual keyboard new, so nothing is held.
    */
   private latched = new Map<string, string>();
+  /**
+   * Each shown key with states, as last drawn (liveFaces()): drawn in another
+   * state, the editor is told, so its grid follows the deck. Set by a redraw
+   * the key already had coming — no timer, nothing more at rest.
+   */
+  private drawnFaces = new Map<string, string>();
   /** Unsubscribe from input's keyboard-lost notice. */
   private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
@@ -264,6 +271,28 @@ export class DeckSession implements DeckHandle {
   /** The keys latched down on this deck, for the control socket's status. */
   latchedKeys(): string[] {
     return this.sorted(this.latched.keys());
+  }
+
+  /**
+   * The keys with states on the page shown, and the state each is in now —
+   * its built-in's and whether its active icon applies — for the control
+   * socket's status, so the editor's grid draws the face the deck draws.
+   * Cached state only, as a render reads it.
+   */
+  liveFaces(): Record<string, LiveFace> {
+    const faces: Record<string, LiveFace> = {};
+    for (const index of this.sorted(this.screens.keys())) {
+      const face = this.liveFaceAt(index);
+      if (face) faces[index] = face;
+    }
+    return faces;
+  }
+
+  private liveFaceAt(index: string): LiveFace | null {
+    const action = this.buttonAt(index)?.action;
+    if (!action || !hasStates(action)) return null;
+    const ctx = this.context(index);
+    return { state: iconStateOf(action, ctx), active: activeOf(action, ctx) };
   }
 
   /**
@@ -528,6 +557,14 @@ export class DeckSession implements DeckHandle {
       const name = file ? null : defaultIconFor(button.action, iconStateOf(button.action, this.context(index)));
       if (file) display.icon = file;
       else if (name) display.icon = builtinIconRef(name);
+    }
+
+    const face = this.liveFaceAt(index);
+    const drawn = face ? JSON.stringify(face) : undefined;
+    if (drawn !== this.drawnFaces.get(index)) {
+      if (drawn === undefined) this.drawnFaces.delete(index);
+      else this.drawnFaces.set(index, drawn);
+      this.onStateChange();
     }
 
     const square = await renderButton(display, side, strictIcon);

@@ -170,7 +170,7 @@ console.log('status and decks');
   check('status: protocol, pid, config', s.protocol === 2 && s.pid === process.pid && s.config.path === '/test/config.json');
   check('status: active profile id and name', s.activeProfile.id === 'home' && s.activeProfile.name === 'Home');
   const deck = (serial) => s.decks.find((d) => d.serial === serial);
-  check('attached deck carries profile, page, brightness, previews, latched keys', JSON.stringify(deck('XL1')) === JSON.stringify({ serial: 'XL1', connected: true, configured: true, profile: 'home', page: 'main', brightness: 60, previews: [], latched: [], failed: [] }));
+  check('attached deck carries profile, page, brightness, previews, latched keys, live faces', JSON.stringify(deck('XL1')) === JSON.stringify({ serial: 'XL1', connected: true, configured: true, profile: 'home', page: 'main', brightness: 60, previews: [], latched: [], live: {}, failed: [] }), JSON.stringify(deck('XL1')));
   check('a connected deck with no layout is listed', JSON.stringify(deck('NEW9')) === JSON.stringify({ serial: 'NEW9', connected: true, configured: false }));
   daemon.state.lastReload = { ok: false, at: 'now', error: 'refused' };
   check('status reports a refused reload', (await client.request('status')).result.config.lastReload.error === 'refused');

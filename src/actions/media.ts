@@ -44,6 +44,7 @@ export const control: ActionHandler = {
   iconState: (params) => ({
     playing: mpris.cachedTrackInfo(params.player ? String(params.player) : undefined)?.status === 'Playing',
   }),
+  active: (params) => String(params.method ?? 'playpause').toLowerCase() === 'playpause' && mpris.cachedTrackInfo(params.player ? String(params.player) : undefined)?.status === 'Playing',
 
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const key = String(params.method ?? 'playpause').toLowerCase();

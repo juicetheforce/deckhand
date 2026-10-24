@@ -309,3 +309,14 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       return null;
   }
 }
+
+/**
+ * A warning a key draws over any icon of its own, the person's included, or
+ * null: a stream reconnecting, a recording paused. The deck's OBS faces
+ * (src/actions/obs.ts) and the editor's grid both draw by this.
+ */
+export function warningIconFor(action: ActionDef | undefined, state: IconState): BuiltinIcon | null {
+  if (action?.type === 'obs.stream' && state.reconnecting) return 'obs-stream-reconnecting';
+  if (action?.type === 'obs.record' && state.live && state.paused) return 'obs-paused';
+  return null;
+}

@@ -8,9 +8,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ActionDef, ButtonDef, Config } from '../../src/types.js';
 import type { DaemonView } from '../src/shared/bridge.js';
-import { iconUrl } from '../src/shared/icons.js';
+import { iconUrl, KEY_STATES } from '../src/shared/icons.js';
 import { pagesWithNoWayOff } from '../src/shared/links.js';
-import { BUILTIN_ICONS } from '../../src/default-icons.js';
+import { BUILTIN_ICONS, defaultIconFor } from '../../src/default-icons.js';
 import { DEFAULTS } from '../../src/config-common.js';
 import { CATALOGUE, libraryIcon, searchCatalogue } from '../src/renderer/catalogue.js';
 import { STEP_TYPES, multiTotal, stepEditable, stepSummary } from '../src/renderer/steps.js';
@@ -44,6 +44,7 @@ import {
   shownDecks,
   failedKeysOn,
   latchedKeysOn,
+  liveFacesOn,
   faceIcon,
   appIconsOf,
   integrationOf,
@@ -1009,16 +1010,65 @@ await check('latched keys: only while the grid shows the page the deck is on', (
 });
 
 await check("a toggle's face follows the latch: its own icons, or the built-in pair", () => {
+  const up = { state: { latched: false }, active: false };
+  const down = { state: { latched: true }, active: true };
   const plain = { action: { type: 'toggle', keys: 'shift' } };
-  assert.equal(faceIcon(plain, false), 'builtin:toggle-off');
-  assert.equal(faceIcon(plain, true), 'builtin:toggle', 'the grid should show the half the deck is showing');
+  assert.equal(faceIcon(plain, up), 'builtin:toggle-off');
+  assert.equal(faceIcon(plain, down), 'builtin:toggle', 'the grid should show the half the deck is showing');
   const own = { icon: '~/off.png', action: { type: 'toggle', keys: 'shift', iconActive: '~/on.png' } };
-  assert.equal(faceIcon(own, false), '~/off.png');
-  assert.equal(faceIcon(own, true), '~/on.png');
+  assert.equal(faceIcon(own, up), '~/off.png');
+  assert.equal(faceIcon(own, down), '~/on.png');
   // A Default icon with no active icon: the same in both states — the person's call.
-  assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, true), '~/mine.png');
+  assert.equal(faceIcon({ icon: '~/mine.png', action: { type: 'toggle', keys: 'shift' } }, down), '~/mine.png');
   // An active icon with no Default: the built-in up, then the active icon.
-  assert.equal(faceIcon({ action: { type: 'toggle', keys: 'shift', iconActive: '~/on.png' } }, false), 'builtin:toggle-off');
+  assert.equal(faceIcon({ action: { type: 'toggle', keys: 'shift', iconActive: '~/on.png' } }, up), 'builtin:toggle-off');
+});
+
+await check('every key with states follows the state the deck shows it in, by the deck\'s rules', () => {
+  // One action of each type with states, filled in enough to have them.
+  const actionOf = (type: string): ActionDef => (type === 'media.control' ? { type, method: 'playpause' } : { type });
+  for (const [type, states] of Object.entries(KEY_STATES)) {
+    const action = actionOf(type);
+    const active = { state: states.activeState, active: true };
+    const resting = { state: states.defaultState, active: false };
+    // No icons of its own: the built-in for the state it is in.
+    assert.equal(faceIcon({ action }, active), `builtin:${defaultIconFor(action, states.activeState)}`, `${type}: active, built-in`);
+    assert.equal(faceIcon({ action }, resting), `builtin:${defaultIconFor(action, states.defaultState)}`, `${type}: resting, built-in`);
+    assert.notEqual(faceIcon({ action }, active), faceIcon({ action }, resting), `${type}: its two states look alike`);
+    // No live state (another page, no daemon): its default state.
+    assert.equal(faceIcon({ action }), faceIcon({ action }, resting), `${type}: no live state`);
+    // Both icons its own: switching between them.
+    const both = { icon: '~/default.png', action: { ...action, iconActive: '~/active.png' } };
+    assert.equal(faceIcon(both, active), '~/active.png', `${type}: active, its active icon`);
+    assert.equal(faceIcon(both, resting), '~/default.png', `${type}: resting, its default icon`);
+    // An active icon and no default: the built-in default, then the active icon.
+    const activeOnly = { action: { ...action, iconActive: '~/active.png' } };
+    assert.equal(faceIcon(activeOnly, resting), `builtin:${defaultIconFor(action, states.defaultState)}`, `${type}: resting, no default of its own`);
+    assert.equal(faceIcon(activeOnly, active), '~/active.png', `${type}: active, no default of its own`);
+  }
+  // The slip that was found: Input mode on push-to-talk drew voice activity.
+  const inputMode = { action: { type: 'discord.inputMode' } };
+  assert.equal(faceIcon(inputMode, { state: { active: false }, active: true }), 'builtin:discord-push-to-talk');
+  assert.equal(faceIcon(inputMode, { state: { active: true }, active: false }), 'builtin:discord-voice-activity');
+  // OBS's warnings draw over any icon, the person's included, as on the deck.
+  const stream = { icon: '~/default.png', action: { type: 'obs.stream', iconActive: '~/live.png' } };
+  assert.equal(faceIcon(stream, { state: { live: true, reconnecting: true }, active: true }), 'builtin:obs-stream-reconnecting');
+  const record = { icon: '~/default.png', action: { type: 'obs.record', iconActive: '~/rec.png' } };
+  assert.equal(faceIcon(record, { state: { live: true, paused: true }, active: true }), 'builtin:obs-paused');
+  assert.equal(faceIcon(record, { state: { live: true, paused: false }, active: true }), '~/rec.png');
+});
+
+await check("live state is drawn only on the page the deck shows: elsewhere a key has none", () => {
+  const view = daemonView([XL, V2]);
+  const xl = view.status!.decks.find((d) => d.serial === XL)!;
+  xl.profile = 'default';
+  xl.page = 'main';
+  xl.live = { '3': { state: { muted: true }, active: true } };
+  assert.deepEqual(liveFacesOn(view, { profile: 'default', serial: XL, page: 'main' }), xl.live);
+  assert.deepEqual(liveFacesOn(view, { profile: 'default', serial: XL, page: 'games' }), {});
+  assert.deepEqual(liveFacesOn(view, { profile: 'raid', serial: XL, page: 'main' }), {});
+  assert.deepEqual(liveFacesOn(view, { profile: 'default', serial: V2, page: 'main' }), {}, 'the other deck reports no page here');
+  assert.deepEqual(liveFacesOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'an older daemon sends none');
 });
 
 await check("an app key's face: the app's icon from the daemon's list, never over the key's own", () => {
@@ -1027,13 +1077,13 @@ await check("an app key's face: the app's icon from the daemon's list, never ove
     { id: 'noicon.desktop', name: 'No icon', icon: null },
   ]);
   const gimp = { type: 'app', app: 'org.gimp.GIMP.desktop' };
-  assert.equal(faceIcon({ action: gimp }, false, apps), '/usr/share/icons/hicolor/256x256/apps/org.gimp.GIMP.png');
-  assert.equal(faceIcon({ icon: '~/mine.png', action: gimp }, false, apps), '~/mine.png', 'its own icon wins');
-  assert.equal(faceIcon({ icon: null, action: gimp }, false, apps), null, 'deliberately none stays none');
-  assert.equal(faceIcon({ action: { type: 'app', app: 'noicon.desktop' } }, false, apps), 'builtin:app-launch', 'an app with no icon: the built-in');
-  assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, false, apps), 'builtin:app-launch', 'an app not listed: the built-in');
+  assert.equal(faceIcon({ action: gimp }, null, apps), '/usr/share/icons/hicolor/256x256/apps/org.gimp.GIMP.png');
+  assert.equal(faceIcon({ icon: '~/mine.png', action: gimp }, null, apps), '~/mine.png', 'its own icon wins');
+  assert.equal(faceIcon({ icon: null, action: gimp }, null, apps), null, 'deliberately none stays none');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'noicon.desktop' } }, null, apps), 'builtin:app-launch', 'an app with no icon: the built-in');
+  assert.equal(faceIcon({ action: { type: 'app', app: 'gone.desktop' } }, null, apps), 'builtin:app-launch', 'an app not listed: the built-in');
   assert.equal(faceIcon({ action: gimp }), 'builtin:app-launch', 'no list yet: the built-in');
-  assert.equal(faceIcon({ action: { type: 'app' } }, false, apps), 'builtin:app-launch-unset', 'no app chosen: the dimmed face');
+  assert.equal(faceIcon({ action: { type: 'app' } }, null, apps), 'builtin:app-launch-unset', 'no app chosen: the dimmed face');
 });
 
 await check('Twitch: its keys need a linked account, gated only when the daemon says it is not linked', () => {

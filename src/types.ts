@@ -268,6 +268,14 @@ export interface ActionHandler {
    */
   iconState?(params: ActionDef, ctx?: ActionContext): IconState;
   /**
+   * Optional, for a key with states (src/state-icons.ts): whether it is in
+   * its active state, when its `iconActive` is drawn. The one definition:
+   * describe() draws by it, and the control socket's status reports it so the
+   * editor's grid draws the same face. Cached state only — it runs on every
+   * render of the key.
+   */
+  active?(params: ActionDef, ctx?: ActionContext): boolean;
+  /**
    * Optional. A file to draw when the key has no icon of its own, found at
    * draw time and never written to the config: the app action's app icon.
    * Null falls through to the built-in default (src/default-icons.ts). Must

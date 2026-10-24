@@ -2,6 +2,7 @@ import { ActionNeeded } from '../action-error.js';
 import * as obs from '../services/obs.js';
 import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 import { builtinIconRef } from '../builtin-icons.js';
+import { warningIconFor, type BuiltinIcon } from '../default-icons.js';
 import { activeIcon } from '../state-icons.js';
 
 /**
@@ -25,7 +26,7 @@ const notSetUp = () => obs.cachedState().connection === 'not-set-up';
  * paused — draws its built-in over any custom icon, the key's own included.
  * Not set up: dimmed, whatever is drawn.
  */
-function faceOf(params: ActionDef, active: boolean, warning: 'obs-stream-reconnecting' | 'obs-paused' | null = null): DisplayPatch | null {
+function faceOf(params: ActionDef, active: boolean, warning: BuiltinIcon | null = null): DisplayPatch | null {
   const icon = warning !== null ? builtinIconRef(warning) : activeIcon(params, active);
   const patch: DisplayPatch = notSetUp() ? { ...UNSET } : {};
   if (icon !== undefined) patch.icon = icon;
@@ -128,11 +129,12 @@ export const stream: ActionHandler = {
   },
 
   iconState: () => ({ live: running(obs.cachedState().stream), reconnecting: obs.cachedState().stream === 'reconnecting' }),
+  active: () => running(obs.cachedState().stream),
 
   // The icons carry state on their own, reconnecting included: keys keep their own background.
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const stream = obs.cachedState().stream;
-    return faceOf(params, running(stream), stream === 'reconnecting' ? 'obs-stream-reconnecting' : null);
+    return faceOf(params, running(stream), warningIconFor(params, { reconnecting: stream === 'reconnecting' }));
   },
 };
 
@@ -154,11 +156,12 @@ export const record: ActionHandler = {
   },
 
   iconState: () => ({ live: running(obs.cachedState().record), paused: obs.cachedState().recordPaused }),
+  active: () => running(obs.cachedState().record),
 
   // Active: recording; paused draws the built-in paused face over any custom icon.
   describe: async (_ctx, params) => {
     const { record: phase, recordPaused } = obs.cachedState();
-    return faceOf(params, running(phase), running(phase) && recordPaused ? 'obs-paused' : null);
+    return faceOf(params, running(phase), warningIconFor(params, { live: running(phase), paused: recordPaused }));
   },
 };
 
@@ -200,6 +203,7 @@ export const recordPause: ActionHandler = {
   },
 
   iconState: () => ({ paused: obs.cachedState().recordPaused }),
+  active: () => obs.cachedState().recordPaused === true,
 
   // Active: paused.
   describe: async (_ctx, params) => faceOf(params, obs.cachedState().recordPaused === true),
@@ -207,6 +211,9 @@ export const recordPause: ActionHandler = {
 
 const CHOOSE_AGAIN = 'renamed or deleted in OBS? Choose it again in the editor';
 const named = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+const onAir = (params: ActionDef) => named(params.scene) !== null && obs.cachedState().programScene === params.scene;
+const inputMuted = (params: ActionDef) => obs.cachedState().inputMuted[String(params.input)] === true;
+const itemHidden = (params: ActionDef) => obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false;
 
 /**
  * obs.scene — switch OBS's program scene.
@@ -226,10 +233,11 @@ export const scene: ActionHandler = {
     await obs.request('SetCurrentProgramScene', { sceneName }, `OBS has no scene named "${sceneName}": ${CHOOSE_AGAIN}`);
   },
 
-  iconState: (params) => ({ active: named(params.scene) !== null && obs.cachedState().programScene === params.scene }),
+  iconState: (params) => ({ active: onAir(params) }),
+  active: (params) => onAir(params),
 
   // Active: the program scene, on air.
-  describe: async (_ctx, params) => faceOf(params, named(params.scene) !== null && obs.cachedState().programScene === params.scene),
+  describe: async (_ctx, params) => faceOf(params, onAir(params)),
 };
 
 /**
@@ -248,9 +256,10 @@ export const mute: ActionHandler = {
     await obs.request('ToggleInputMute', { inputName }, `OBS has no input named "${inputName}": ${CHOOSE_AGAIN}`);
   },
 
-  iconState: (params) => ({ muted: obs.cachedState().inputMuted[String(params.input)] === true }),
+  iconState: (params) => ({ muted: inputMuted(params) }),
+  active: (params) => inputMuted(params),
 
-  describe: async (_ctx, params) => faceOf(params, obs.cachedState().inputMuted[String(params.input)] === true),
+  describe: async (_ctx, params) => faceOf(params, inputMuted(params)),
 };
 
 /**
@@ -274,8 +283,9 @@ export const source: ActionHandler = {
     await obs.request('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: sceneItemEnabled !== true }, missing);
   },
 
-  iconState: (params) => ({ hidden: obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false }),
+  iconState: (params) => ({ hidden: itemHidden(params) }),
+  active: (params) => itemHidden(params),
 
   // Active: hidden. Shown is its default.
-  describe: async (_ctx, params) => faceOf(params, obs.cachedState().itemEnabled[obs.itemKey(String(params.scene), String(params.source))] === false),
+  describe: async (_ctx, params) => faceOf(params, itemHidden(params)),
 };

@@ -92,6 +92,7 @@ export const toggle: ActionHandler = {
 
   // Reads the session's own state; no I/O, so it costs nothing per render.
   iconState: (_params: ActionDef, ctx) => ({ latched: ctx ? ctx.deck.isLatched(ctx.key) : false }),
+  active: (_params: ActionDef, ctx) => (ctx ? ctx.deck.isLatched(ctx.key) : false),
 
   async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
     const latched = ctx.deck.isLatched(ctx.key);

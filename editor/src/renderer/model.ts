@@ -6,8 +6,8 @@
  * are read from `decks` geometry, never assumed.
  */
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
-import { defaultIconFor } from '../../../src/default-icons.js';
-import type { AppListing, DecksResult } from '../../../src/control/protocol.js';
+import { defaultIconFor, warningIconFor } from '../../../src/default-icons.js';
+import type { AppListing, DecksResult, LiveFace } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { BUILTIN_PREFIX, builtinRef, keyStates } from '../shared/icons.js';
@@ -592,24 +592,26 @@ export function appIconsOf(apps: AppListing[] | null | undefined): AppIcons {
  * An app key with no icon shows its app's icon from `appIcons` (the daemon's
  * app list, appIconsOf()), as the deck does; it is never written either.
  *
- * The editor has no mute or play state, so a state pair shows its resting
- * half (`mic`, `speaker`, `play`), and now playing shows its idle icon. The
- * deck is the truth.
+ * A key with states (src/state-icons.ts) draws the state the daemon says
+ * the deck shows it in (`live`, liveFacesOn()): its active icon while
+ * active, a warning over any icon (warningIconFor), else its own icon or the
+ * built-in for that state — the deck's rules. With no live state — another
+ * page, no daemon — it shows its default state. Now playing shows its idle
+ * icon. The deck is the truth.
  */
-export function faceIcon(button: ButtonDef | undefined, latched = false, appIcons: AppIcons = {}): string | null {
+export function faceIcon(button: ButtonDef | undefined, live: LiveFace | null = null, appIcons: AppIcons = {}): string | null {
   if (!button) return null;
   const action = button.action;
-  // The grid has no live state, so a key with states shows its Default icon
-  // (src/state-icons.ts) — except a toggle, whose state the daemon reports
-  // per key: held down, it shows its active icon, as the deck does.
-  if (action?.type === 'toggle' && latched && typeof action.iconActive === 'string' && action.iconActive !== '') return action.iconActive;
+  const warning = live ? warningIconFor(action, live.state) : null;
+  if (warning) return builtinRef(warning);
+  if (live?.active && typeof action?.iconActive === 'string' && action.iconActive !== '') return action.iconActive;
   // Present-but-null is "deliberately none"; `in` tells it from absent, which `??` cannot.
   if ('icon' in button) return typeof button.icon === 'string' ? button.icon : null;
   // An app key draws its app's icon, as the daemon resolved it; the built-in only when it has none.
   const appIcon = action?.type === 'app' && typeof action.app === 'string' ? appIcons[action.app] : undefined;
   if (appIcon) return appIcon;
   // The built-in for the state the key is in: its default state, having no live one.
-  const state = action?.type === 'media.info' ? { idle: true } : action?.type === 'toggle' ? { latched } : (keyStates(action)?.defaultState ?? {});
+  const state = action?.type === 'media.info' ? { idle: true } : (live?.state ?? keyStates(action)?.defaultState ?? {});
   const name = defaultIconFor(action, state);
   return name === null ? null : builtinRef(name);
 }
@@ -627,13 +629,25 @@ export function latchedKeysOn(daemon: DaemonView, selection: Pick<Selection, 'pr
 }
 
 /**
+ * The state each key with states is in on this deck right now, by control
+ * id, from the daemon's status — only while the grid shows the page the deck
+ * is on, as latchedKeysOn(): elsewhere a key has no live state, and drawing
+ * one would be a lie. The deck is the truth.
+ */
+export function liveFacesOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<string, LiveFace> {
+  const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
+  if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return {};
+  return deck.live ?? {};
+}
+
+/**
  * An approximation of the key face; the deck is the truth. Live faces — clock
  * time, track, active output — are not drawn; default icons are (faceIcon).
  */
-export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, latched = false, appIcons: AppIcons = {}): KeyFace {
+export function keyFace(config: Config, button: ButtonDef | undefined, iconSize: number | null, live: LiveFace | null = null, appIcons: AppIcons = {}): KeyFace {
   const d = { ...DEFAULTS, ...config.defaults };
   const size = iconSize ?? 72;
-  const icon = faceIcon(button, latched, appIcons);
+  const icon = faceIcon(button, live, appIcons);
   const builtinScale = d.builtinIconSize / 100;
   return {
     background: button?.background ?? d.background,

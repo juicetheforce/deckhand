@@ -330,6 +330,7 @@ export const micMute: ActionHandler = {
   },
 
   iconState: () => ({ muted: audio.cachedState()?.defaultSourceMuted === true }),
+  active: () => audio.cachedState()?.defaultSourceMuted === true,
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {
@@ -393,6 +394,7 @@ export const mute: ActionHandler = {
   },
 
   iconState: () => ({ muted: audio.cachedState()?.defaultSinkMuted === true }),
+  active: () => audio.cachedState()?.defaultSinkMuted === true,
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).
   async describe(_ctx, params: ActionDef): Promise<DisplayPatch | null> {

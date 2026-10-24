@@ -2436,8 +2436,10 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   await sleep(100);
   await chooseBuiltin('headset');
   const afterDefault = await savedAs(4, { icon: 'builtin:headset', action: { ...labels, iconActive: 'builtin:speaker-muted' } });
-  const gridShowsDefault = await until(() =>
-    decodeURIComponent(document.querySelectorAll('.key')[4].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '').includes('path=builtin:headset'),
+  // The fake pactl's default mic is muted, so the grid follows the deck: the
+  // active icon, not the Default icon it drew before it had live state.
+  const gridShowsLiveState = await until(() =>
+    decodeURIComponent(document.querySelectorAll('.key')[4].querySelector<HTMLImageElement>('img.key-icon')?.src ?? '').includes('path=builtin:speaker-muted'),
   );
   [...document.querySelectorAll<HTMLButtonElement>('.icon-slots .icon-slot')].find((b) => b.textContent === 'While muted')!.click();
   await sleep(200);
@@ -2456,7 +2458,7 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   document.querySelector<HTMLButtonElement>('.inspector-tab:not(.inspector-tab-selected)')!.click();
   await until(() => pairValue('iconActive') !== null);
   const activeUnsetSays = pairValue('iconActive');
-  out.micIcons = { afterMuted, afterDefault, gridShowsDefault, slotNames, activeSlotCurrent, formSays, cleared, activeUnsetSays };
+  out.micIcons = { afterMuted, afterDefault, gridShowsLiveState, slotNames, activeSlotCurrent, formSays, cleared, activeUnsetSays };
 
   // A latching toggle's two icons, chosen through the Icon tab's slots.
   await selectKey(30);

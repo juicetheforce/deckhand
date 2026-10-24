@@ -224,3 +224,8 @@ export async function defaultIconFileOf(action: ActionDef, size: number): Promis
 export function iconStateOf(action: ActionDef, ctx?: ActionContext): IconState {
   return registry[action.type]?.iconState?.(action, ctx) ?? {};
 }
+
+/** Whether a key with states is in its active state, from cached state only; false for actions with one face. */
+export function activeOf(action: ActionDef, ctx?: ActionContext): boolean {
+  return registry[action.type]?.active?.(action, ctx) ?? false;
+}

@@ -51,6 +51,12 @@ function idOf(params: ActionDef): string | null {
   }
 }
 
+/** Its sound is playing, a loop included: the key's active state. */
+function playing(params: ActionDef): boolean {
+  const id = idOf(params);
+  return id !== null && sounds.isPlaying(id);
+}
+
 /** The chosen output must be there, read from the audio cache (no pactl spawned); with no cache, the player decides. */
 function checkOutput(params: ActionDef, node: string | null): void {
   if (node === null) return;
@@ -98,13 +104,13 @@ export const play: ActionHandler = {
     if (id === null) return { playing: false };
     return { playing: sounds.isPlaying(id), looping: sounds.isLooping(id) };
   },
+  active: (params) => playing(params),
   // Active: playing, a loop included (src/state-icons.ts). Drawn again only
   // when a player starts or ends — index.ts marks the keys stale then — never
   // on the clock.
   redraw: 'events',
   describe: async (_ctx, params) => {
-    const id = idOf(params);
-    const icon = activeIcon(params, id !== null && sounds.isPlaying(id));
+    const icon = activeIcon(params, playing(params));
     return icon === undefined ? null : { icon };
   },
 };

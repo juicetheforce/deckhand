@@ -1,11 +1,12 @@
 import type { DeckGeometry } from '../geometry.js';
+import type { IconState } from '../default-icons.js';
 
 /**
  * The shapes the control socket sends, for
  * every client: the CLI and the editor.
  *
  * Types only, and this file must import nothing but other import-free type
- * files (geometry.ts is one). The editor's renderer imports it; a type-only
+ * files (geometry.ts is one; default-icons.ts, the renderer's own, another). The editor's renderer imports it; a type-only
  * import of a file that imports Node or daemon code drags that code's types —
  * @types/node, sharp, dbus-next — into the renderer's type check, which then
  * lets renderer code use `process` or `Buffer` without complaint.
@@ -53,12 +54,25 @@ export interface DeckStatus {
   previews?: string[];
   /** Keys latched down by a toggle, by control id, so the editor's grid can show it. */
   latched?: string[];
+  /** The keys with states on the page shown, by control id, and the state each is in (DeckSession.liveFaces), so the editor's grid draws what the deck draws. */
+  live?: Record<string, LiveFace>;
   /** Keys whose last press failed, on any page or profile. */
   failed?: KeyFailure[];
   /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */
   touch?: TouchState;
   /** A virtual deck turned off (the virtual.power action, or `virtual.power`): not connected, on purpose. Absent when on. */
   off?: true;
+}
+
+/**
+ * A key with states as the deck draws it now (src/state-icons.ts): `state`
+ * picks its built-in (src/default-icons.ts), and `active` says whether its
+ * active icon applies. Two, because they can differ: Input mode's built-in
+ * calls voice activity active, the key calls push-to-talk its active state.
+ */
+export interface LiveFace {
+  state: IconState;
+  active: boolean;
 }
 
 /**

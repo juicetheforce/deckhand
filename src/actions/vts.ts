@@ -20,6 +20,11 @@ const UNSET: DisplayPatch = { unset: true };
 const notSetUp = () => vts.cachedState().connection === 'not-set-up';
 
 const named = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+const modelLoaded = (params: ActionDef) => vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model;
+const expressionOn = (params: ActionDef) => {
+  const s = vts.cachedState();
+  return s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true;
+};
 const CHOOSE_AGAIN = 'deleted in VTube Studio? Choose it again in the editor';
 
 /**
@@ -102,10 +107,10 @@ export const model: ActionHandler = {
     if (outcome === 'unconfirmed') throw new Error(`VTube Studio did not say ${modelName} had loaded`);
   },
 
-  iconState: (params) => ({ active: vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model }),
-
+  iconState: (params) => ({ active: modelLoaded(params) }),
   // Active: its model loaded. Not loaded is its default.
-  describe: async (_ctx, params) => withActive(notSetUp() ? UNSET : null, activeIcon(params, vts.cachedState().connection === 'connected' && vts.cachedState().modelId === params.model)),
+  active: (params) => modelLoaded(params),
+  describe: async (_ctx, params) => withActive(notSetUp() ? UNSET : null, activeIcon(params, modelLoaded(params))),
 };
 
 /**
@@ -137,15 +142,9 @@ export const expression: ActionHandler = {
     }
   },
 
-  iconState: (params) => {
-    const s = vts.cachedState();
-    return { active: s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true };
-  },
+  iconState: (params) => ({ active: expressionOn(params) }),
 
   // Active: the expression on. Off is its default.
-  describe: async (_ctx, params) => {
-    const s = vts.cachedState();
-    const on = s.connection === 'connected' && s.expressionsModel === params.model && s.expressions[String(params.expression)] === true;
-    return withActive(notSetUp() ? UNSET : null, activeIcon(params, on));
-  },
+  active: (params) => expressionOn(params),
+  describe: async (_ctx, params) => withActive(notSetUp() ? UNSET : null, activeIcon(params, expressionOn(params))),
 };

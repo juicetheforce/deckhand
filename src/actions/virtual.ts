@@ -22,6 +22,12 @@ function deckOf(params: ActionDef): string | null {
   return typeof params.deck === 'string' && params.deck !== '' ? params.deck : null;
 }
 
+/** Its virtual deck is turned off: the key's active state. */
+function isOff(params: ActionDef): boolean {
+  const deck = deckOf(params);
+  return deck !== null && power.isOff(deck);
+}
+
 export const powerAction: ActionHandler = {
   async execute(ctx, params) {
     const deck = deckOf(params);
@@ -34,13 +40,13 @@ export const powerAction: ActionHandler = {
     const deck = deckOf(params);
     return { active: deck === null || !power.isOff(deck) };
   },
+  active: (params) => isOff(params),
 
   // Active: the deck off; on is its default (src/state-icons.ts). Drawn
   // again when it is turned on or off (index.ts).
   redraw: 'events',
   describe: async (_ctx, params) => {
-    const deck = deckOf(params);
-    const icon = activeIcon(params, deck !== null && power.isOff(deck));
+    const icon = activeIcon(params, isOff(params));
     return icon === undefined ? null : { icon };
   },
 };
