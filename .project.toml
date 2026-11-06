@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "The Sleep all decks icon from Claude Design, then idle dimming or virtual decks stage 2."
+next = "Test PR #4 (idle dimming, the update notice, the Sleep all decks icons) and answer its reviews."
 category = "Gaming"
 paused = false
 focus = true
