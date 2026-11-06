@@ -66,7 +66,6 @@ body {
 }
 
 button,
-select,
 input,
 textarea {
   font: inherit;
@@ -216,17 +215,6 @@ button:disabled {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-
-.crumb select {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: 9px;
-  padding: 5px 8px;
-}
-
-.crumb select option {
-  background: #16172a;
 }
 
 .crumb-sep {
@@ -688,17 +676,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.deck-panel-page select {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--glass-border);
-  border-radius: 7px;
-  padding: 3px 6px;
-}
-
-.deck-panel-page select option {
-  background: #16172a;
-}
-
 .deck-panel .no-layout {
   align-self: center;
   padding: 18px 0 6px;
@@ -706,7 +683,8 @@ button:disabled {
 
 /* SHOW IN EDITOR: the Device crumb with two or more decks connected (8b). */
 
-.show-in-editor-trigger {
+.show-in-editor-trigger,
+.dropdown-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2964,14 +2942,8 @@ body.settings-body {
 }
 
 .sp-select {
+  /* Its look is every dropdown's (.dropdown-trigger). The width lines Settings' rows up. */
   width: 170px;
-  height: 30px;
-  padding: 0 11px;
-  border-radius: 9px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  font-size: 12px;
-  color: #eef0fa;
   flex-shrink: 0;
 }
 
@@ -3985,4 +3957,62 @@ body.settings-body {
 .update-panel-later:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #e6e8f5;
+}
+
+/* Every dropdown (Dropdown.tsx): Show in editor's trigger and panel, for choosing one thing. */
+.dropdown-trigger {
+  justify-content: space-between;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dropdown-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dropdown-shown {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 16px));
+  overflow-y: auto;
+}
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dropdown-option:hover,
+.dropdown-option:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dropdown-mark {
+  color: var(--accent-glyph);
 }

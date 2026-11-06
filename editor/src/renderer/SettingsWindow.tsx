@@ -9,6 +9,7 @@ import type { SleepSettingsPatch } from '../shared/edits.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { NO_UPDATE_STATE, type UpdateState } from '../shared/updates.js';
 import { discordView, importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
+import { Dropdown } from './Dropdown.js';
 import { VirtualDecks } from './VirtualDecksSettings.js';
 import { DiscordSettings } from './DiscordSettings.js';
 import { ObsSettings } from './ObsSettings.js';
@@ -182,7 +183,7 @@ export function SettingsWindow() {
                 </Row>
                 <Divider />
                 <Row title="Dim after" detail="When the desktop has been idle this long" htmlFor="settings-dim-after">
-                  <IdleSelect id="settings-dim-after" value={sleepSettings?.dimAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ dimAfter: seconds })} />
+                  <IdleSelect id="settings-dim-after" label="Dim after" value={sleepSettings?.dimAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ dimAfter: seconds })} />
                 </Row>
                 <Divider />
                 <Row title="Dim to" detail="How bright the decks stay while dimmed">
@@ -199,7 +200,7 @@ export function SettingsWindow() {
                 </Row>
                 <Divider />
                 <Row title="Sleep after" detail="Dark, until a press or you come back" htmlFor="settings-sleep-after">
-                  <IdleSelect id="settings-sleep-after" value={sleepSettings?.sleepAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ sleepAfter: seconds })} />
+                  <IdleSelect id="settings-sleep-after" label="Sleep after" value={sleepSettings?.sleepAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ sleepAfter: seconds })} />
                 </Row>
                 {idleAvailable === false && (
                   <p className="settings-note" data-settings="idle-unavailable">
@@ -277,19 +278,14 @@ export function SettingsWindow() {
               <PageTitle>Decks</PageTitle>
               <Group heading="Editor">
                 <Row title="Default deck" detail="Opens when the editor starts" htmlFor="settings-default-deck">
-                  <select
+                  <Dropdown
                     id="settings-default-deck"
+                    aria-label="Default deck"
                     className="sp-select"
                     value={decks.some((d) => d.serial === settings.defaultDeck) ? settings.defaultDeck! : ''}
-                    onChange={(e) => change({ defaultDeck: e.target.value === '' ? null : e.target.value })}
-                  >
-                    <option value="">Automatic</option>
-                    {decks.map((d) => (
-                      <option key={d.serial} value={d.serial}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={[{ value: '', label: 'Automatic' }, ...decks.map((d) => ({ value: d.serial, label: d.label }))]}
+                    onChange={(deck) => change({ defaultDeck: deck === '' ? null : deck })}
+                  />
                 </Row>
               </Group>
               <VirtualDecks />
@@ -445,17 +441,18 @@ function idleLabel(seconds: number): string {
 }
 
 /** Off, or how long the desktop has been idle. A time set by hand stays on the list. */
-function IdleSelect({ id, value, disabled, onChange }: { id: string; value: number | undefined; disabled: boolean; onChange: (seconds: number | null) => void }) {
+function IdleSelect({ id, label, value, disabled, onChange }: { id: string; label: string; value: number | undefined; disabled: boolean; onChange: (seconds: number | null) => void }) {
   const choices = value === undefined || IDLE_CHOICES.includes(value) ? IDLE_CHOICES : [...IDLE_CHOICES, value].sort((a, b) => a - b);
   return (
-    <select id={id} className="sp-select" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}>
-      <option value="">Off</option>
-      {choices.map((seconds) => (
-        <option key={seconds} value={seconds}>
-          {idleLabel(seconds)}
-        </option>
-      ))}
-    </select>
+    <Dropdown
+      id={id}
+      aria-label={label}
+      className="sp-select"
+      value={value === undefined ? '' : String(value)}
+      options={[{ value: '', label: 'Off' }, ...choices.map((seconds) => ({ value: String(seconds), label: idleLabel(seconds) }))]}
+      disabled={disabled}
+      onChange={(chosen) => onChange(chosen === '' ? null : Number(chosen))}
+    />
   );
 }
 

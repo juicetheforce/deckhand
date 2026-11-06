@@ -358,6 +358,40 @@ await daemon.stop();
 await fs.rm(TMP, { recursive: true, force: true });
 console.log('the Sleep all decks icons');
 {
+  // The whole path: a key with a background set in the config, drawn by a deck session, asleep.
+  {
+    const fs = await import('node:fs/promises');
+    const { sleep: sleepCoordinator } = await import(path.join(REPO, 'dist/sleep.js'));
+    const sharpModule = (await import('sharp')).default;
+    const dir = await scratchDir();
+    const config = { decks: { BG: {} }, profiles: { home: { name: 'Home', layouts: { BG: { pages: { main: { buttons: { 0: { background: '#ff00ff', action: { type: 'sleep.all', mode: 'dim', level: 50 } } } } } } } } } };
+    const bgDaemon = await startDaemon(dir, config);
+    const deck = new FakeDeck();
+    await bgDaemon.attach('BG', deck);
+    const SIZE = 96;
+    // A built-in is drawn at 45.5% of the key, centred: this is the point (9, 15) of the icon's 24-unit grid.
+    const drawn = Math.round((SIZE * 45.5) / 100);
+    const at = (unit) => Math.floor((SIZE - drawn) / 2 + (unit * drawn) / 24);
+    const rawAt = (buffer, x, y) => {
+      const channels = buffer.length / (SIZE * SIZE);
+      const i = (y * SIZE + x) * channels;
+      return [...buffer.subarray(i, i + 3)];
+    };
+    const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 12);
+    sleepCoordinator.toggleAll({ mode: 'dim', level: 50 });
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const face = deck.images.get(0);
+    check('asleep, on a key with its own background: the moon shows that background, not a dark moon', near(rawAt(face, at(9), at(15)), [255, 0, 255]), JSON.stringify(rawAt(face, at(9), at(15))));
+    check('…the deck around it is amber', near(rawAt(face, at(4), at(19)), [232, 180, 90]), JSON.stringify(rawAt(face, at(4), at(19))));
+    check('…and the key outside the icon is that background', near(rawAt(face, 3, 3), [255, 0, 255]), JSON.stringify(rawAt(face, 3, 3)));
+    if (process.env.DECKHAND_SMOKE_DUMP) {
+      const channels = face.length / (SIZE * SIZE);
+      await sharpModule(Buffer.from(face), { raw: { width: SIZE, height: SIZE, channels } }).resize(384, 384, { kernel: 'nearest' }).png().toFile(process.env.DECKHAND_SMOKE_DUMP);
+    }
+    sleepCoordinator.toggleAll({ mode: 'dim', level: 50 });
+    await bgDaemon.close?.();
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
   const sharp = (await import('sharp')).default;
   // Over a colour no icon uses, at the size of the design's viewBox × 10: x and y are the viewBox's × 10.
   const pixel = async (name, x, y) => {

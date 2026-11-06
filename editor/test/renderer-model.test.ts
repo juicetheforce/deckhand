@@ -122,6 +122,17 @@ await check("every action in the daemon's registry is in the catalogue: nothing 
   assert.deepEqual(Object.keys(registry).filter((type) => !listed.has(type)), []);
 });
 
+await check('no native dropdown anywhere in the renderer: its popup is the system\'s to draw, so every one is Dropdown.tsx', async () => {
+  const { promises: fs } = await import('node:fs');
+  const nodePath = await import('node:path');
+  const root = nodePath.resolve(import.meta.dirname, '../../src/renderer');
+  const files = (await fs.readdir(root, { recursive: true })).filter((f) => /\.tsx$/.test(String(f)));
+  const found = [];
+  for (const f of files) if (/<select[\s>]/.test((await fs.readFile(nodePath.join(root, String(f)), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, ''))) found.push(f);
+  assert.ok(files.length > 10, 'the renderer was not found');
+  assert.deepEqual(found, []);
+});
+
 await check('every library entry has a form, and its form accepts a bare key', () => {
   const types = CATALOGUE.flatMap((g) => g.entries).map((e) => e.type);
   for (const type of types) {

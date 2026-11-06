@@ -25,15 +25,29 @@ function sharedImports(): SharedImportReport {
  */
 function editedDeck(): string | null {
   const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
-  if (device instanceof HTMLSelectElement) return device.value;
-  return device?.dataset.deck ?? null;
+  return device?.dataset.deck ?? device?.dataset.value ?? null;
+}
+
+/** A dropdown's list, opened and closed to read it (Dropdown.tsx opens synchronously). */
+function dropdownOptions(trigger: HTMLElement): { value: string; label: string }[] {
+  if ((trigger as HTMLButtonElement).disabled) return [{ value: trigger.dataset.value ?? '', label: trigger.querySelector('.dropdown-shown')?.textContent ?? '' }];
+  trigger.click();
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-dropdown-menu] [role="option"]')].map((o) => ({ value: o.dataset.value ?? '', label: o.querySelector('.dropdown-shown')?.textContent ?? '' }));
+  trigger.click();
+  return rows;
+}
+
+/** Choose in a dropdown, the way a person does. */
+function chooseInDropdown(trigger: HTMLElement, value: string): void {
+  trigger.click();
+  document.querySelector<HTMLButtonElement>(`[data-dropdown-menu] [role="option"][data-value="${CSS.escape(value)}"]`)!.click();
 }
 
 /** The decks the Device control offers, by name: the dropdown's options, or SHOW IN EDITOR's rows (opened and closed to read them). */
 async function deviceList(): Promise<{ serial: string; label: string }[] | null> {
-  const device = document.querySelector('[data-crumb="device"]');
+  const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
   if (device === null) return null;
-  if (device instanceof HTMLSelectElement) return [...device.options].map((o) => ({ serial: o.value, label: o.textContent ?? '' }));
+  if (device.hasAttribute('data-dropdown')) return dropdownOptions(device).map((o) => ({ serial: o.value, label: o.label }));
   await openShowInEditor();
   const rows = [...document.querySelectorAll<HTMLElement>('[data-show-deck]')].map((r) => ({
     serial: r.dataset.showDeck ?? '',
@@ -57,10 +71,9 @@ async function openShowInEditor(): Promise<void> {
  * deck alone.
  */
 async function chooseDeck(serial: string): Promise<void> {
-  const device = document.querySelector('[data-crumb="device"]');
-  if (device instanceof HTMLSelectElement) {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(device, serial);
-    device.dispatchEvent(new Event('change', { bubbles: true }));
+  const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
+  if (device?.hasAttribute('data-dropdown')) {
+    chooseInDropdown(device, serial);
   } else {
     await openShowInEditor();
     document.querySelector<HTMLButtonElement>(`[data-show-deck="${serial}"] .show-in-editor-name`)!.click();
@@ -318,9 +331,7 @@ async function live(api: DeckhandBridge): Promise<Record<string, unknown>> {
   const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
   const deck = async () => (await api.snapshot()).daemon.status?.decks[0];
   const chooseProfile = (id: string) => {
-    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, id);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    chooseInDropdown(document.querySelector<HTMLElement>('[data-crumb="profile"]')!, id);
   };
   // Record every tab the breadcrumb shows, to catch it jumping back mid-switch.
   const tabHistory: string[] = [];
@@ -1033,7 +1044,7 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
 
   const card = document.querySelector('[data-empty-state]');
   const pill = document.querySelector('[data-connection]');
-  const device = document.querySelector<HTMLSelectElement>('select[data-crumb="device"]');
+  const device = document.querySelector<HTMLButtonElement>('[data-dropdown][data-crumb="device"]');
   const devices = await deviceList();
   const notices = [...document.querySelectorAll('.notice')].map((n) => n.textContent ?? '');
 
@@ -1044,7 +1055,7 @@ async function empty(_api: DeckhandBridge, selectOther = false): Promise<Record<
   return {
     gridDeck: grid?.dataset.deck ?? null,
     gridKeys: grid ? grid.querySelectorAll('.key').length : 0,
-    profileCrumb: document.querySelector<HTMLSelectElement>('select[data-crumb="profile"]')?.value ?? null,
+    profileCrumb: document.querySelector<HTMLElement>('[data-crumb="profile"]')?.dataset.value ?? null,
     kind: document.querySelector('[data-empty-state]')?.getAttribute('data-empty-state') ?? null,
     title: card?.querySelector('.empty-title')?.textContent ?? null,
     detail: card?.querySelector('.muted')?.textContent ?? null,
@@ -1082,11 +1093,9 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   const deckAt = async (serial: string) => (await decks()).find((d) => d.serial === serial);
   const selectedTab = () => document.querySelector('.tab-selected')?.getAttribute('data-tab') ?? null;
   const tab = (label: string) => document.querySelector<HTMLButtonElement>(`.tab[data-tab="${label}"]`) ?? undefined;
-  const profileValue = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0].value;
+  const profileValue = () => document.querySelector<HTMLElement>('[data-crumb="profile"]')!.dataset.value;
   const chooseProfile = (id: string) => {
-    const select = document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, id);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    chooseInDropdown(document.querySelector<HTMLElement>('[data-crumb="profile"]')!, id);
   };
 
   await until(() => document.querySelector('.grid') !== null);
@@ -1155,7 +1164,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   //    visible pencil for profile, device and page).
   //    The script's config links to it by name from the other profile; the
   //    Node side checks that link followed.
-  const profileSelect = () => document.querySelectorAll<HTMLSelectElement>('.toolbar select')[0];
+  const profileSelect = () => document.querySelector<HTMLElement>('[data-crumb="profile"]')!;
   const pencil = (labelStart: string) => document.querySelector<HTMLButtonElement>(`.toolbar button.icon-button[aria-label^="${labelStart}"]`);
   const typeAndEnter = async (field: HTMLInputElement, text: string) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, text);
@@ -1183,7 +1192,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   await until(() => profileField()?.parentElement?.querySelector('.field-error') != null);
   out.profileClashError = profileField()?.parentElement?.querySelector('.field-error')?.textContent ?? null;
   await typeAndEnter(profileField(), 'Home');
-  out.profileRenamed = await until(() => profileSelect()?.selectedOptions[0]?.textContent === 'Home' && document.querySelector('input[aria-label="Profile name"]') === null);
+  out.profileRenamed = await until(() => profileSelect()?.querySelector('.dropdown-shown')?.textContent === 'Home' && document.querySelector('input[aria-label="Profile name"]') === null);
   out.profileStillShown = profileValue();
 
   // 8. Rename a page with the pencil beside its tab; a key on another page
@@ -1240,7 +1249,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
   out.pencilDeleteFieldClosed = document.querySelector('input[aria-label="Profile name"]') === null;
   [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Cancel')!.click();
   await sleep(200);
-  out.pencilDeleteRenamedNothing = profileSelect()?.selectedOptions[0]?.textContent === 'Doomed';
+  out.pencilDeleteRenamedNothing = profileSelect()?.querySelector('.dropdown-shown')?.textContent === 'Doomed';
   profileSelect().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   await sleep(80);
   [...document.querySelectorAll<HTMLButtonElement>('.tab-menu-item')].find((b) => b.textContent?.startsWith('Delete profile'))!.click();
@@ -1251,7 +1260,7 @@ async function structure(api: DeckhandBridge): Promise<Record<string, unknown>> 
     : null;
   [...(deleteCard()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === 'Close')?.click();
   await sleep(200);
-  out.profilesAfterDelete = [...profileSelect().options].map((o) => o.textContent);
+  out.profilesAfterDelete = dropdownOptions(profileSelect()).map((o) => o.label);
   out.profileAfterDelete = profileValue();
   await sleep(300);
 
@@ -1474,6 +1483,28 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
     await sleep(700);
   }
   out.afterTypingShortcuts = await savedKeys();
+  (document.activeElement as HTMLElement | null)?.blur();
+
+  // 7b. Nor in a dropdown, open or closed, as a native one never let them: Delete there must not clear key 3.
+  const profileTrigger = document.querySelector<HTMLElement>('[data-crumb="profile"]')!;
+  profileTrigger.click();
+  const option = document.querySelector<HTMLElement>('[data-dropdown-menu] [role="option"]');
+  out.dropdownOptionFound = option !== null;
+  if (option) {
+    press('Delete', {}, option);
+    press('KeyD', { ctrlKey: true }, option);
+    press('KeyV', { ctrlKey: true }, option);
+    await sleep(700);
+    out.afterDropdownOpenShortcuts = await savedKeys();
+    press('Escape', {}, option);
+    await sleep(100);
+    out.dropdownClosedByEscape = document.querySelector('[data-dropdown-menu]') === null;
+  }
+  press('Delete', {}, profileTrigger);
+  press('KeyD', { ctrlKey: true }, profileTrigger);
+  await sleep(700);
+  out.afterDropdownTriggerShortcuts = await savedKeys();
+  out.selectionAfterDropdown = selected();
   (document.activeElement as HTMLElement | null)?.blur();
 
   // 8. And nothing while the hotkey inspector is recording: Delete is recorded as the combo, not a clear.
@@ -1729,17 +1760,17 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   await until(() => document.querySelectorAll('.key').length > 0 && document.querySelector('.pill')?.textContent === 'Connected');
 
   // 1. What makes it a one-deck editor.
-  const device = document.querySelector('[data-crumb="device"]');
+  const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
   const crumbs = [...document.querySelectorAll('.toolbar .crumb-label')].map((l) => l.textContent);
   out.structure = {
     grids: document.querySelectorAll('.grid').length,
     keys: document.querySelectorAll('.grid .key').length,
     multideck: document.querySelectorAll('[data-multideck]').length,
-    deviceTag: device?.tagName ?? null,
-    deviceOptions: device instanceof HTMLSelectElement ? [...device.options].map((o) => ({ value: o.value, label: o.textContent })) : null,
-    deviceValue: device instanceof HTMLSelectElement ? device.value : null,
+    deviceIsDropdown: device?.hasAttribute('data-dropdown') ?? false,
+    deviceOptions: device?.hasAttribute('data-dropdown') ? dropdownOptions(device) : null,
+    deviceValue: device?.dataset.value ?? null,
     crumbs,
-    profileSelect: document.querySelector('.toolbar .crumb select[data-crumb="profile"]') !== null,
+    profileSelect: document.querySelector('.toolbar .crumb [data-dropdown][data-crumb="profile"]') !== null,
     deckRename: document.querySelector('.toolbar button[aria-label^="Rename \\"Little deck\\""]') !== null,
     tabs: [...document.querySelectorAll('.tabs .tab:not(.tab-add)')].map((t) => t.textContent),
     selectedTab: document.querySelector('.tab-selected')?.textContent ?? null,
@@ -1860,7 +1891,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     panels: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].map((p) => p.dataset.deckPanel),
     focused: document.querySelector<HTMLElement>('.deck-panel-focused')?.dataset.deckPanel ?? null,
     editing: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-editing')).map((p) => p.dataset.deckPanel),
-    pageMenus: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-page select')).map((p) => p.dataset.deckPanel),
+    pageMenus: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].filter((p) => p.querySelector('.deck-panel-page [data-dropdown]')).map((p) => p.dataset.deckPanel),
     trigger: document.querySelector('button[data-crumb="device"]')?.textContent?.replace(/[▾▴]/g, '').trim() ?? null,
     edited: editedDeck(),
   });
@@ -1886,7 +1917,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   await sleep(300);
 
   // 1. Opt-in: two decks connected, one shown — today's editor, with SHOW IN EDITOR for the Device crumb.
-  out.opens = { ...layout(), deviceIsSelect: document.querySelector('select[data-crumb="device"]') !== null };
+  out.opens = { ...layout(), deviceIsSelect: document.querySelector('[data-dropdown][data-crumb="device"]') !== null };
 
   // 2. SHOW IN EDITOR lists both, only the shown one ticked, and it cannot be unticked.
   await openShowInEditor();
@@ -1908,9 +1939,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   out.ticked = { ...layout(), tabs: tabs(), sizes: [...document.querySelectorAll('.deck-panel-size')].map((s) => s.textContent) };
 
   // 4. The V2's Page ▾ moves only the V2, on screen and on the deck.
-  const v2Page = panel(V2)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(v2Page, 'extra');
-  v2Page.dispatchEvent(new Event('change', { bubbles: true }));
+  chooseInDropdown(panel(V2)!.querySelector<HTMLElement>('.deck-panel-page [data-dropdown]')!, 'extra');
   out.pageMenu = {
     deck: await until(async () => (await deckPage(V2)) === 'extra'),
     face: await until(() => keyOn(V2, 0).textContent?.includes('Extra key') ?? false),
@@ -1930,7 +1959,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     tabs: tabs(),
     selectedTab: selectedTab(),
     title: document.querySelector('.inspector-title')?.textContent ?? null,
-    xlPageMenu: panel(XL)?.querySelector<HTMLSelectElement>('.deck-panel-page select')?.value ?? null,
+    xlPageMenu: panel(XL)?.querySelector<HTMLElement>('.deck-panel-page [data-dropdown]')?.dataset.value ?? null,
   };
 
   // 6. Ctrl+click on the other deck does not span decks: it focuses the XL with that key alone.
@@ -1957,9 +1986,7 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   const dropTargets = () => [...document.querySelectorAll<HTMLElement>('.key-drop-target')].map((k) => `${k.dataset.deck}:${k.dataset.key}`);
   const bulkMessage = () => document.querySelector('.bulk-message')?.firstChild?.textContent ?? null;
   const setPageMenu = async (serial: string, pageId: string) => {
-    const select = panel(serial)!.querySelector<HTMLSelectElement>('.deck-panel-page select')!;
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, pageId);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    chooseInDropdown(panel(serial)!.querySelector<HTMLElement>('.deck-panel-page [data-dropdown]')!, pageId);
     await until(async () => (await deckPage(serial)) === pageId);
   };
   // 8a. The XL's Jump onto the V2's empty key 2, with the XL focused. Mid-drag, the V2's key is the drop target, and only it.
@@ -2079,16 +2106,14 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
   await until(() => document.querySelectorAll('.grid').length === 2);
   click(keyOn(XL, 0));
   await until(() => layout().focused === XL);
-  const profile = document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')!;
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(profile, 'solo');
-  profile.dispatchEvent(new Event('change', { bubbles: true }));
+  chooseInDropdown(document.querySelector<HTMLElement>('[data-crumb="profile"]')!, 'solo');
   out.layoutAdded = await until(() => !!panel(V2)?.querySelector('.grid .key'));
   await sleep(200);
   out.noLayout = {
     ...layout(),
     card: panel(V2)?.querySelector('[data-empty-state]') !== null && panel(V2)?.querySelector('[data-empty-state]') !== undefined,
     v2Keys: panel(V2)?.querySelectorAll('.grid .key').length ?? 0,
-    profile: document.querySelector<HTMLSelectElement>('.toolbar select[data-crumb="profile"]')?.value ?? null,
+    profile: document.querySelector<HTMLElement>('[data-crumb="profile"]')?.dataset.value ?? null,
   };
   await sleep(700); // past the autosave
 

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Placement } from './DeckCanvas.js';
+import { Dropdown } from './Dropdown.js';
 import { LockIcon } from './icons.js';
 import type { Choice } from './model.js';
 
@@ -56,13 +57,7 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
         {!focused && pages.length > 0 && (
           <label className="deck-panel-page">
             <span className="muted">Page</span>
-            <select aria-label={`Page on ${name}`} value={page} disabled={disabled} onChange={(e) => onPage(e.target.value)}>
-              {pages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+            <Dropdown aria-label={`Page on ${name}`} value={page} options={pages.map((p) => ({ value: p.id, label: p.label }))} disabled={disabled} onChange={onPage} />
           </label>
         )}
         <button
