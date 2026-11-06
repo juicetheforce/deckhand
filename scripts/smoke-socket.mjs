@@ -15,6 +15,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -387,6 +388,33 @@ console.log('subscribe and events');
   reset(); await daemon.profiles.switchTo('home', daemon.sessions); await sleep(50);
   check('re-subscribing replaces the set', of('state').length === 0);
   sub.close(); quiet.close();
+}
+
+// ---------------------------------------------------------------------------
+console.log('outstanding requests are bounded');
+{
+  // An endpoint that accepts and never answers: each obs.test waits for its deadline.
+  const sockets = new Set();
+  let accepted = 0;
+  const silent = net.createServer((s) => { accepted++; sockets.add(s); s.on('error', () => undefined); });
+  await new Promise((resolve) => silent.listen(0, '127.0.0.1', resolve));
+  const args = { host: '127.0.0.1', port: silent.address().port, password: 'x' };
+  const c = await connect(daemon.socket);
+  const replies = Array.from({ length: 1000 }, () => c.request('obs.test', args));
+  await sleep(1000);
+  const busy = c.lines.filter((l) => l.error?.code === 'busy').length;
+  check(`one client: work started is bounded (${accepted} started, ${busy} refused busy)`, accepted <= 128 && accepted > 0 && busy === 1000 - accepted);
+  const others = await Promise.all(Array.from({ length: 5 }, () => connect(daemon.socket)));
+  const moreReplies = others.flatMap((o) => Array.from({ length: 128 }, () => o.request('obs.test', args)));
+  await sleep(1000);
+  check(`every client together: bounded too (${accepted} started)`, accepted <= 512);
+  check('a request after the bound is reached says busy', (await client.request('status')).error?.code === 'busy');
+  for (const s of sockets) s.destroy();
+  silent.close();
+  await Promise.all([...replies, ...moreReplies]);
+  check('finished work frees its place: requests run again', (await client.request('status')).ok);
+  c.close();
+  for (const o of others) o.close();
 }
 
 // ---------------------------------------------------------------------------

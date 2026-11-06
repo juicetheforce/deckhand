@@ -935,7 +935,9 @@ A request is one line:
 `id` is a string or a number, echoed in the reply; requests on one connection
 run concurrently and replies are matched by it. `args` is optional. A reply is
 `{"id": 1, "ok": true, "result": {…}}` or
-`{"id": 1, "ok": false, "error": {"code": "…", "message": "…"}}`.
+`{"id": 1, "ok": false, "error": {"code": "…", "message": "…"}}`. A request
+over the limit on what may run at once, 128 on a connection and 512 in all, is
+answered with the code `busy`.
 
 | cmd | args | does |
 | --- | --- | --- |
