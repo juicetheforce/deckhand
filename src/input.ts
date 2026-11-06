@@ -22,6 +22,9 @@ interface Pending {
  * be released when it finishes, without releasing a key a physical deck
  * press is holding.
  */
+/** The most keycodes the helper takes in one command (MAX_CODES in helper/deckhand-input.c). */
+const MAX_CODES_PER_COMMAND = 16;
+
 export type InputSource = 'deck' | 'socket';
 
 /**
@@ -162,13 +165,23 @@ class InputBridge {
   /**
    * Release every key `source` still holds, except any key another source is
    * also holding (a physical push-to-talk must not be cut off by a socket
-   * action finishing). Returns the keycodes released.
+   * action finishing). In commands the helper accepts, and each key tracked
+   * until its command has succeeded, so a release that fails throws and can
+   * be tried again. Returns the keycodes released.
    */
   async releaseAllHeldBy(source: InputSource): Promise<number[]> {
     const other: InputSource = source === 'socket' ? 'deck' : 'socket';
-    const codes = [...this.held[source]].filter((code) => !this.held[other].has(code));
-    this.held[source].clear();
-    if (codes.length > 0) await this.send(`UP ${codes.join(' ')}`);
+    const held = this.held[source];
+    const codes = [...held].filter((code) => {
+      if (!this.held[other].has(code)) return true;
+      held.delete(code);
+      return false;
+    });
+    for (let i = 0; i < codes.length; i += MAX_CODES_PER_COMMAND) {
+      const batch = codes.slice(i, i + MAX_CODES_PER_COMMAND);
+      await this.send(`UP ${batch.join(' ')}`);
+      for (const code of batch) held.delete(code);
+    }
     return codes;
   }
 

@@ -25,6 +25,8 @@ const TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-'));
 const INPUT_LOG = path.join(TMP, 'input.log');
 process.env.DECKHAND_INPUT_BIN = path.join(REPO, 'scripts/test/fake-input-helper.mjs');
 process.env.FAKE_INPUT_LOG = INPUT_LOG;
+const REFUSE_UP = path.join(TMP, 'refuse-up');
+process.env.FAKE_INPUT_REFUSE_UP = REFUSE_UP;
 const PACTL_LOG = path.join(TMP, 'pactl.log');
 await fs.mkdir(path.join(TMP, 'bin'));
 await fs.symlink(path.join(REPO, 'scripts/test/fake-pactl.mjs'), path.join(TMP, 'bin', 'pactl'));
@@ -309,6 +311,20 @@ console.log('stuck keys — no socket client can leave a key held down');
   check('an onRelease that releases the wrong key: the pressed key released anyway', (await keysDown()).length === 0);
   const thrown = await run({ action: { type: 'test.downThenThrow' } });
   check('an action that throws after pressing: action_failed, key released', thrown.error?.code === 'action_failed' && (await keysDown()).length === 0);
+
+  // The helper takes at most 16 keycodes a command (MAX_CODES).
+  const seventeen = { type: 'multi', steps: Array.from({ length: 17 }, (_, i) => ({ type: 'keyHold', keys: `f${i + 1}`, state: 'down' })) };
+  const logBefore = (await helperLog()).length;
+  const many = await run({ action: seventeen });
+  const ups = (await helperLog()).slice(logBefore).filter((e) => e.cmd === 'UP');
+  check('17 keys held: all released, in commands the helper accepts', many.ok && (await keysDown()).length === 0 && ups.length === 2 && ups.every((e) => e.codes.length <= 16));
+
+  await fs.writeFile(REFUSE_UP, '');
+  const refused = await run({ action: seventeen });
+  const stillDown = (await keysDown()).length;
+  check('a release that fails is reported, not a success', refused.error?.code === 'action_failed' && stillDown === 17);
+  await fs.rm(REFUSE_UP);
+  check('…and the keys are still tracked: the next action releases them', (await run({ action: { type: 'noop' } })).ok && (await keysDown()).length === 0);
 
   const quitter = await connect(daemon.socket);
   quitter.write(JSON.stringify({ id: 1, cmd: 'action.run', args: { serial: 'XL1', action: { type: 'keyHold', keys: 'f22', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f22', state: 'up' }, holdMs: 800 } }) + '\n');
