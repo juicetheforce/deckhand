@@ -111,6 +111,15 @@ for bad in '222a:0001:*' '222a:0001:a"b' '222A:0001' '222a:01' '222a:0001:has sp
 done
 ok "bad entries refused, nothing written: a glob, a quote, upper case, short IDs, a space, a newline"
 
+# A serial is compared as text: "." is a legal serial character, not a wildcard.
+# The rule file's own match is literal, so the grant made at once must be too.
+node event20 1111 2222 '' ID_INPUT_TOUCHSCREEN=1 ID_SERIAL_SHORT=ABC.123
+node event21 1111 2222 '' ID_INPUT_TOUCHSCREEN=1 ID_SERIAL_SHORT=ABCx123
+run bash "$HELPER" set 1111:2222:ABC.123 >/dev/null
+[ "$(acl event20)" = 'user:1000:r--' ] && [ -z "$(acl event21)" ] \
+  && ok "a serial with a dot covers that touchscreen only, not one whose serial differs at the dot" || no "serial as a pattern — ABC.123:$(acl event20) ABCx123:$(acl event21)"
+run bash "$HELPER" set >/dev/null
+
 # Never as root in test mode: the test variables are ignored by root (read, not run).
 grep -q '"$(id -u)" != 0 ] && \[ -n "${DECKHAND_TOUCH_ACCESS_TEST' "$HELPER" && ok "the test paths apply only when not root" || no "test paths not limited to non-root"
 
