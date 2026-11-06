@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, LABEL_SIZE, resolvePage, resolveProfile } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, DIM_TO, LABEL_SIZE, resolvePage, resolveProfile } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
@@ -416,14 +416,29 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       }
       return {};
     }
-    case 'setSleepOnLock': {
-      if (edit.on) {
-        if (config.defaults) {
-          delete config.defaults.sleep;
-          if (Object.keys(config.defaults).length === 0) delete config.defaults;
-        }
-      } else {
-        config.defaults = { ...config.defaults, sleep: { onLock: false } };
+    case 'setSleep': {
+      const { onLock, dimAfter, dimTo, sleepAfter } = edit.patch;
+      const next: NonNullable<NonNullable<Config['defaults']>['sleep']> = { ...config.defaults?.sleep };
+      if (onLock !== undefined) {
+        if (typeof onLock !== 'boolean') throw new EditError('"Sleep when the screen locks" must be on or off');
+        if (onLock) delete next.onLock;
+        else next.onLock = false;
+      }
+      for (const [field, value] of [['dimAfter', dimAfter], ['sleepAfter', sleepAfter]] as const) {
+        if (value === undefined) continue;
+        if (value !== null && (!Number.isInteger(value) || value < 1 || value > 86400)) throw new EditError('an idle time must be from 1 second to a day');
+        if (value === null) delete next[field];
+        else next[field] = value;
+      }
+      if (dimTo !== undefined) {
+        if (dimTo !== null && (typeof dimTo !== 'number' || !(dimTo >= 1 && dimTo <= 100))) throw new EditError('"Dim to" must be from 1 to 100%');
+        if (dimTo === null || dimTo === DIM_TO.default) delete next.dimTo;
+        else next.dimTo = dimTo;
+      }
+      if (Object.keys(next).length > 0) config.defaults = { ...config.defaults, sleep: next };
+      else if (config.defaults) {
+        delete config.defaults.sleep;
+        if (Object.keys(config.defaults).length === 0) delete config.defaults;
       }
       return {};
     }

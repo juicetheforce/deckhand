@@ -52,7 +52,9 @@ It's one person's project, used every day.
 - **They sleep when your screen locks.** Every Stream Deck goes dark until you
   unlock, or press a key on it; that press only wakes it. You can turn that off in
   Settings. A **Sleep all decks** key dims them all, or turns them off, until
-  the next press.
+  the next press. They can also dim, then sleep, after your desktop has been idle
+  for a while, if you set that up in Settings; a playing video or a game keeps
+  them lit. That part needs a desktop that offers it, which KDE Plasma does.
 - **Several decks in one editor.** With more than one plugged in, show them
   side by side and arrange them to match your desk. Drag a key onto another
   deck to copy it there.
@@ -304,8 +306,8 @@ from the same GitHub release as the download, so they don't prove who made it.
 `sudo` is asked for once, to add a udev rule that gives you access to the
 decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then open **Deckhand** from your application menu.
 
-To update, run the same line again; the editor's **Settings › About** says
-when a newer release is out. To remove it: `deckhand-uninstall`.
+To update, run the same line again; an **Update** pill appears in the editor
+when a newer release is out, with the line to copy. To remove it: `deckhand-uninstall`.
 
 I use it every day on Fedora 44 (KDE Plasma), and it has run on Ubuntu 26.04
 (GNOME). Each release is checked to load on AlmaLinux 8, Debian 11 and 12,

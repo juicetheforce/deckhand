@@ -37,13 +37,14 @@ Only what you set up, and only to the service you set it up for:
   Discord does with it.
 - **Album art.** When a media player shares a picture's web address for the
   track that is playing, Deckhand downloads it to show on a key.
-- **The update check.** Each time the editor opens, it asks GitHub
-  (`api.github.com`) for the newest release of Deckhand, so that **Settings ›
-  About** can say when one is out. The request carries nothing about you or
-  your setup — not even which version you have, which is compared on your
-  computer — and GitHub sees the address it comes from, as for any request.
-  Nothing is downloaded or installed. Turn it off with **Check for updates**
-  in Settings › About; the daemon never makes this request.
+- **The update check.** Each time the editor's window opens, it asks GitHub
+  (`api.github.com`) for the latest release of Deckhand, so that it can show an
+  **Update** pill when a newer one is out, with the start of that release's notes.
+  The request carries nothing about you or your setup — not even which version
+  you have, which is compared on your computer — and GitHub sees the address it
+  comes from, as for any request. Nothing is downloaded or installed. Turn it off
+  with **Check for updates** in **Settings › General**; the daemon never makes
+  this request.
 
 OBS Studio and VTube Studio are reached on your own computer or network,
 not the internet.

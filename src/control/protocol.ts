@@ -50,8 +50,8 @@ export interface DeckStatus {
   profile?: string;
   page?: string;
   brightness?: number;
-  /** Why it is dark or dimmed now, if it is: the screen locked, or Sleep all decks. */
-  sleep?: 'lock' | 'all';
+  /** Why it is dark or dimmed now, if it is: the screen locked, the desktop idle, or Sleep all decks. */
+  sleep?: 'lock' | 'idle' | 'all';
   /** Keys showing a preview, by control id. */
   previews?: string[];
   /** Keys latched down by a toggle, by control id, so the editor's grid can show it. */

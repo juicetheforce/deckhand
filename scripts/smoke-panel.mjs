@@ -277,6 +277,26 @@ try {
     check('a level above 100 is refused', (await bad.exited) === 5 && bad.events.some((e) => e.ev === 'error'), JSON.stringify(bad.events));
   }
 
+  console.log('idle notifications, from this compositor');
+  {
+    const probe = helper(['--idle-probe']);
+    check('the probe: this compositor offers it', (await probe.exited) === 0 && probe.events[0]?.ev === 'available', JSON.stringify(probe.events));
+    const absent = helper(['--idle', '300', '0', '--idle-test-protocol', 'no_such_interface']);
+    check('a compositor without it: says so, exit 3', (await absent.exited) === 3 && absent.events[0]?.ev === 'unavailable', JSON.stringify(absent.events));
+    const idle = helper(['--idle', '300', '700']);
+    check('ready', await until(() => idle.events.some((e) => e.ev === 'ready')));
+    check('dim, then sleep, as their timeouts pass', await until(() => idle.events.filter((e) => e.ev === 'idled').map((e) => e.level).join() === 'dim,sleep', 3000), JSON.stringify(idle.events));
+    const ticks = async () => (await fs.readFile(`/proc/${idle.proc.pid}/stat`, 'utf8')).split(' ').slice(13, 15).map(Number).reduce((x, y) => x + y);
+    const t0 = await ticks();
+    await sleep(2000);
+    const t1 = await ticks();
+    check(`waiting for 2 s: no CPU time used (${t1 - t0} ticks)`, t1 === t0);
+    idle.proc.stdin.end();
+    check('its stdin closed: it quits', (await Promise.race([idle.exited, sleep(2000).then(() => 'still running')])) === 0);
+    const bad = helper(['--idle', 'soon', '0']);
+    check('a timeout that is not a number is refused', (await bad.exited) === 1);
+  }
+
   console.log('an image frame whose size overflows');
   {
     const o = helper(['--output', 'Virtual-1']);

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { SettingsGlyph } from './SettingsWindow.js';
+import { UpdatePill } from './UpdatePill.js';
 import type { Config } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { connectionPill, deckChoices, geometryFor, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
@@ -154,6 +155,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
         />
       </nav>
       <span className="toolbar-spacer" />
+      <UpdatePill />
       {/* App settings: its own window, a child of this one. */}
       <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
         <SettingsGlyph size={18} />

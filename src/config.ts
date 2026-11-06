@@ -159,6 +159,18 @@ export function validateConfig(config: unknown): Config {
   if (sleep !== undefined && (!isObject(sleep) || (sleep.onLock !== undefined && typeof sleep.onLock !== 'boolean'))) {
     throw new Error('"defaults.sleep" must be an object, with "onLock" true or false');
   }
+  if (isObject(sleep)) {
+    for (const field of ['dimAfter', 'sleepAfter'] as const) {
+      const value = sleep[field];
+      if (value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 86400)) {
+        throw new Error(`"defaults.sleep.${field}" must be a whole number of seconds, from 1 to 86400`);
+      }
+    }
+    const dimTo = sleep.dimTo;
+    if (dimTo !== undefined && (typeof dimTo !== 'number' || !(dimTo >= 1 && dimTo <= 100))) {
+      throw new Error('"defaults.sleep.dimTo" must be a percent, from 1 to 100');
+    }
+  }
   const builtinIconSize = isObject(config.defaults) ? config.defaults.builtinIconSize : undefined;
   if (builtinIconSize !== undefined && (typeof builtinIconSize !== 'number' || !(builtinIconSize >= BUILTIN_ICON_SIZE.min && builtinIconSize <= BUILTIN_ICON_SIZE.max))) {
     throw new Error(`"defaults.builtinIconSize" must be a number from ${BUILTIN_ICON_SIZE.min} to ${BUILTIN_ICON_SIZE.max}: the percent of the key a built-in icon is drawn at (Settings › General › Icon size)`);

@@ -3,7 +3,7 @@ import { promises as fs, appendFileSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import readline from 'node:readline';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, shell, type IpcMainInvokeEvent } from 'electron';
 // The daemon's own modules, imported rather than copied. Only modules with no dependencies beyond Node built-ins
 // may be imported for their values; anything else is `import type` only.
 import { BACKUP_DIR, STATE_DIR } from '../../../src/backups.js';
@@ -12,13 +12,13 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { DiscordList, ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
+import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SleepSettings, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
-import type { ApplyResult, ButtonLocation, Edit, IconChoice } from '../shared/edits.js';
+import type { ApplyResult, ButtonLocation, Edit, IconChoice, SleepSettingsPatch } from '../shared/edits.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
@@ -470,7 +470,7 @@ function installedVersion(): string | null {
 }
 
 /**
- * Settings › About's update check (updates.ts): once each time the window
+ * The update check (updates.ts), for the Update pill and Settings › About: once each time the window
  * opens (createWindow), never on a timer. A check asks only a server it names
  * itself, and nothing otherwise — never GitHub.
  */
@@ -478,8 +478,12 @@ const updates = new UpdateChecker({
   url: CHECK === null ? LATEST_RELEASE_URL : (process.env.DECKHAND_CHECK_UPDATE_URL ?? null),
   version: installedVersion,
   enabled: async () => (await preferences.read()).checkForUpdates !== false,
+  dismissed: async () => {
+    const version = (await preferences.read()).dismissedUpdate;
+    return typeof version === 'string' ? version : null;
+  },
   onChange: (state) => {
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('updateState', state);
+    for (const w of [window, settingsWindow]) if (w && !w.isDestroyed()) w.webContents.send('updateState', state);
   },
 });
 
@@ -799,19 +803,43 @@ function registerIpc(): void {
     store.apply({ kind: 'setLabelSize', size: size as number | null });
     return labelSize();
   });
-  const sleepOnLock = (): boolean | null => {
+  const sleepSettings = (): SleepSettings | null => {
     const view = store?.state();
-    return view ? view.config.defaults?.sleep?.onLock !== false : null;
+    return view ? (view.config.defaults?.sleep ?? {}) : null;
   };
-  ipcMain.handle('sleepOnLock', (event) => (fromSettingsWindow(event) ? sleepOnLock() : null));
-  ipcMain.handle('setSleepOnLock', (event, on: unknown) => {
-    if (!fromSettingsWindow(event) || !store || typeof on !== 'boolean') return sleepOnLock();
-    store.apply({ kind: 'setSleepOnLock', on });
-    return sleepOnLock();
+  ipcMain.handle('sleepSettings', (event) => (fromSettingsWindow(event) ? sleepSettings() : null));
+  ipcMain.handle('setSleepSettings', (event, patch: unknown) => {
+    if (!fromSettingsWindow(event) || !store || typeof patch !== 'object' || patch === null) return sleepSettings();
+    store.apply({ kind: 'setSleep', patch: patch as SleepSettingsPatch });
+    return sleepSettings();
+  });
+  // Asked of the daemon, which asks the compositor once. Null if it cannot be told.
+  ipcMain.handle('idleAvailable', async (event) => {
+    if (!fromSettingsWindow(event)) return null;
+    try {
+      return await daemon.idleAvailable();
+    } catch {
+      return null;
+    }
   });
   // ABOUT: the installed version, the releases page in the browser, and the update check (updates.ts).
   ipcMain.handle('appVersion', (event) => (fromSettingsWindow(event) ? installedVersion() : null));
-  ipcMain.handle('updateState', (event) => (fromSettingsWindow(event) ? updates.state() : null));
+  ipcMain.handle('updateState', (event) => (fromOurWindow(event) || fromSettingsWindow(event) ? updates.state() : null));
+  // The pill's panel. Only ever what the check found: a page sends nothing here.
+  ipcMain.handle('copyUpdateLine', async (event) => {
+    const { updateLine } = updates.state();
+    if (!fromOurWindow(event) || updateLine === null) return false;
+    // A check never touches the real clipboard: it may name a file to see what would have been copied.
+    if (CHECK !== null) await fs.appendFile(process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null', `copied ${updateLine}\n`);
+    else clipboard.writeText(updateLine);
+    return true;
+  });
+  ipcMain.handle('hideUpdate', async (event) => {
+    const { latest } = updates.state();
+    if (!fromOurWindow(event) || latest === null) return;
+    await preferences.set({ dismissedUpdate: latest });
+    updates.hide();
+  });
   ipcMain.handle('setUpdateCheck', async (event, on: unknown) => {
     if (!fromSettingsWindow(event) || typeof on !== 'boolean') return updates.state();
     await preferences.set({ checkForUpdates: on });
@@ -821,7 +849,7 @@ function registerIpc(): void {
   ipcMain.handle('openUpdate', (event) => {
     // The page found by the check — this repository's release page, checked in shared/updates.ts — never one a page sends.
     const { url } = updates.state();
-    if (!fromSettingsWindow(event) || url === null) return { ok: false, error: 'no update to show' };
+    if (!(fromOurWindow(event) || fromSettingsWindow(event)) || url === null) return { ok: false, error: 'no update to show' };
     return openInBrowser(url, CHECK === null ? null : (process.env.DECKHAND_CHECK_OPEN_LOG ?? '/dev/null'));
   });
   ipcMain.handle('openReleases', (event) => {
