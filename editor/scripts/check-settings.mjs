@@ -105,12 +105,14 @@ const prefs = async () => {
 async function openDeck(editor) {
   await until(async () => (await inPage(editor, 'editor', "document.querySelector('.toolbar .pill-connected') !== null")) === true);
   await sleep(300);
-  return inPage(editor, 'editor', "(() => { const d = document.querySelector('[data-crumb=\"device\"]'); return d instanceof HTMLSelectElement ? d.value : d.dataset.deck; })()");
+  return inPage(editor, 'editor', "(() => { const d = document.querySelector('[data-crumb=\"device\"]'); return d.dataset.deck ?? d.dataset.value; })()");
 }
 const editorAccent = (editor) => inPage(editor, 'editor', "document.documentElement.dataset.accent ?? 'blue'");
 const clickGear = (editor) => inPage(editor, 'editor', "document.querySelector('.toolbar-settings').click(), true");
-const setSelect = (value) =>
-  `(() => { const s = document.querySelector('#settings-default-deck'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(value)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
+// A dropdown from a page string: its list, opened and closed to read it; and a choice, as a person makes it.
+const listOf = (id) => `(() => { const t = document.querySelector('${id}'); t.click(); const rows = [...document.querySelectorAll('[data-dropdown-menu] [role=option]')].map((o) => o.querySelector('.dropdown-shown').textContent); t.click(); return rows; })()`;
+const pickIn = (id, value) => `(() => { const t = document.querySelector('${id}'); t.click(); document.querySelector('[data-dropdown-menu] [role=option][data-value=' + JSON.stringify(${JSON.stringify(value)}) + ']').click(); return true; })()`;
+const setSelect = (value) => pickIn('#settings-default-deck', value);
 const clickIn = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('no ' + ${JSON.stringify(selector)}); el.click(); return true; })()`;
 const clickButton = (text) =>
   `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(text)}); if (!b) throw new Error('no button ' + ${JSON.stringify(text)}); b.click(); return true; })()`;
@@ -169,8 +171,8 @@ Object.assign(
     editor,
     'settings',
     `({
-      deckOptions: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent),
-      deckValue: document.querySelector('#settings-default-deck').value,
+      deckOptions: ${listOf('#settings-default-deck')},
+      deckValue: document.querySelector('#settings-default-deck').dataset.value,
       decksNote: document.querySelector('.settings-note').textContent,
     })`,
   ),
@@ -316,7 +318,7 @@ await nav(editor, 'decks');
 r.unpluggedShown = await inPage(
   editor,
   'settings',
-  `({ options: [...document.querySelectorAll('#settings-default-deck option')].map((o) => o.textContent), value: document.querySelector('#settings-default-deck').value })`,
+  `({ options: ${listOf('#settings-default-deck')}, value: document.querySelector('#settings-default-deck').dataset.value })`,
 );
 r.unpluggedStillSaved = (await prefs()).defaultDeck;
 await inPage(editor, 'settings', clickClosing('Done'));
@@ -376,15 +378,15 @@ r.sleepOffSaved = await until(async () => (await configJson()).defaults?.sleep?.
 
 // Idle dimming: a desktop that offers it (a stand-in says so), then one that doesn't.
 const idleView = `(() => ({
-  dimAfter: document.querySelector('#settings-dim-after').value,
+  dimAfter: document.querySelector('#settings-dim-after').dataset.value,
   dimDisabled: document.querySelector('#settings-dim-after').disabled,
   sleepDisabled: document.querySelector('#settings-sleep-after').disabled,
   dimToDisabled: String(document.querySelector('[role=slider][aria-label="Dim to"]').closest('.sp-slider, [class*=sp-slider]')?.className.includes('sp-slider-disabled') ?? null),
   dimToNow: document.querySelector('[role=slider][aria-label="Dim to"]').getAttribute('aria-valuenow'),
   note: document.querySelector('[data-settings=idle-unavailable]')?.textContent ?? null,
-  options: [...document.querySelector('#settings-dim-after').options].map((o) => o.textContent),
+  options: document.querySelector('#settings-dim-after').disabled ? null : ${listOf('#settings-dim-after')},
 }))()`;
-const choose = (id, value) => `(() => { const s = document.querySelector('${id}'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, '${value}'); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
+const choose = pickIn;
 const sleepOnDisk = async () => (await configJson()).defaults?.sleep ?? null;
 r.idleAtRest = await inPage(editor, 'settings', idleView);
 await inPage(editor, 'settings', choose('#settings-dim-after', '60'));
@@ -416,29 +418,42 @@ r.labelWhileHeld = { shown: await inPage(editor, 'settings', labelState), onDisk
 await inPage(editor, 'settings', labelKey('keyup', 'End'));
 r.labelSaved = await until(async () => (await labelOnDisk()) === 28);
 
-// Dropdowns: a <select>'s popup is painted from its <option>s' colours. With none set
-// it comes from the system's theme under this page's light text, unreadable.
-const optionColours = `(() => {
+// Dropdowns: none is native, whose popup is the system's, and each looks like Show in
+// editor's trigger and panel: the Device crumb here, with two decks connected.
+const look = `const lookOf = (el) => { const c = getComputedStyle(el); return [c.display, c.backgroundColor, c.borderTopWidth, c.borderTopColor, c.borderTopLeftRadius, c.paddingTop, c.paddingLeft, c.fontSize].join(' '); };`;
+r.deviceLook = await inPage(editor, 'editor', `(() => { ${look} const d = document.querySelector('.show-in-editor-trigger'); d.click(); return new Promise((done) => setTimeout(() => { const p = document.querySelector('.show-in-editor'); const c = getComputedStyle(p); const out = { trigger: lookOf(d), panel: [c.backgroundColor, c.borderTopLeftRadius, c.borderTopWidth, c.borderTopColor, c.boxShadow].join(' '), multideck: d.closest('[data-multideck]') !== null }; d.click(); done(out); }, 80)); })()`);
+const dropdownsIn = `(() => { ${look}
   const rgb = (c) => (c.match(/[\\d.]+/g) || []).map(Number);
   const lum = (c) => { const v = rgb(c).slice(0, 3).map((x) => { const s = x / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
-  const of = (select, name) => {
-    const o = select.querySelector('option') ?? select.appendChild(document.createElement('option'));
-    const st = getComputedStyle(o);
-    const bg = rgb(st.backgroundColor);
-    const opaque = bg.length === 3 || bg[3] === 1;
-    const a = lum(st.backgroundColor), b = lum(st.color);
-    return { name, opaque, contrast: opaque ? Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 10) / 10 : 0 };
-  };
-  const shown = [...document.querySelectorAll('select')].map((x) => of(x, x.id || x.getAttribute('aria-label') || x.dataset.crumb || 'a select'));
-  /* One made here, with no class: a dropdown added later is covered without being named. */
-  const fresh = document.createElement('select');
-  document.body.appendChild(fresh);
-  const anyNew = of(fresh, 'a new dropdown');
-  fresh.remove();
-  return [...shown, anyNew];
+  const seen = [...document.querySelectorAll('[data-dropdown]')].map((t) => {
+    const name = t.id || t.dataset.crumb || t.getAttribute('aria-label');
+    const trigger = lookOf(t);
+    if (t.disabled) return { name, trigger, panel: null };
+    t.click();
+    const m = document.querySelector('[data-dropdown-menu]');
+    const c = getComputedStyle(m);
+    const o = getComputedStyle(m.querySelector('[role=option]'));
+    const a = lum(c.backgroundColor), b = lum(o.color);
+    const box = m.getBoundingClientRect();
+    const out = { name, trigger, panel: [c.backgroundColor, c.borderTopLeftRadius, c.borderTopWidth, c.borderTopColor, c.boxShadow].join(' '), contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), inWindow: box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight, onTop: m.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)) };
+    t.click();
+    return out;
+  });
+  return { native: document.querySelectorAll('select').length, seen };
 })()`;
-r.dropdownsSettings = await inPage(editor, 'settings', optionColours);
-r.dropdownsEditor = await inPage(editor, 'editor', optionColours);
+r.dropdownsSettings = await inPage(editor, 'settings', dropdownsIn);
+r.dropdownsEditor = await inPage(editor, 'editor', dropdownsIn);
+// By keyboard: an arrow opens it on the selection, an arrow moves, Enter picks, and Esc only closes.
+const keys = (id, key) => `(() => { const el = document.activeElement; el.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true })); return true; })()`;
+await inPage(editor, 'settings', "(document.querySelector('#settings-sleep-after').focus(), true)");
+await inPage(editor, 'settings', keys('', 'ArrowDown'));
+r.keyboardOpen = await inPage(editor, 'settings', "document.activeElement?.getAttribute('role')");
+await inPage(editor, 'settings', keys('', 'ArrowDown'));
+r.keyboardMoved = await inPage(editor, 'settings', "document.activeElement?.dataset.value");
+await inPage(editor, 'settings', keys('', 'Escape'));
+await sleep(100);
+r.keyboardEscaped = await inPage(editor, 'settings', "({ open: document.querySelector('[data-dropdown-menu]') !== null, focus: document.activeElement?.id, value: document.querySelector('#settings-sleep-after').dataset.value })");
+
 
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
 r.resetButton = await inPage(
@@ -467,7 +482,7 @@ r.reset = await until(async () => {
 });
 r.accentAfterReset = await until(async () => (await editorAccent(editor)) === 'blue');
 r.resetShown = [
-  await nav(editor, 'decks').then(() => inPage(editor, 'settings', "document.querySelector('#settings-default-deck').value")),
+  await nav(editor, 'decks').then(() => inPage(editor, 'settings', "document.querySelector('#settings-default-deck').dataset.value")),
   await nav(editor, 'general').then(() => inPage(editor, 'settings', "document.querySelector('#settings-close-to-tray').checked")),
 ];
 
@@ -618,14 +633,28 @@ check('a desktop without idle notifications: the controls greyed out, and the se
   assert.equal(r.idleUnavailable.dimToDisabled, 'true');
   assert.equal(r.idleUnavailable.note, 'Dimming after idle isn’t available on this desktop; the decks still sleep when the screen locks.');
 });
-check('every dropdown, in both windows and any added later, has a popup of its own colours that can be read', () => {
-  const all = [...r.dropdownsSettings, ...r.dropdownsEditor];
+check('no dropdown is native, in either window: a native popup is the system\'s to draw', () => {
+  assert.equal(r.dropdownsSettings.native, 0);
+  assert.equal(r.dropdownsEditor.native, 0);
+});
+check('every dropdown looks like Show in editor: its trigger and its panel, readable, whole and on top', () => {
+  assert.equal(r.deviceLook.multideck, true);
+  const all = [...r.dropdownsSettings.seen, ...r.dropdownsEditor.seen];
   const names = all.map((d) => d.name);
-  for (const name of ['settings-dim-after', 'settings-sleep-after', 'profile', 'a new dropdown']) assert.ok(names.includes(name), `${name} was not looked at: ${names.join()}`);
+  for (const name of ['settings-dim-after', 'settings-sleep-after', 'profile']) assert.ok(names.includes(name), `${name} was not looked at: ${names.join()}`);
   for (const d of all) {
-    assert.equal(d.opaque, true, `${d.name}: its options have no background of their own, so the system theme paints the popup`);
+    assert.equal(d.trigger, r.deviceLook.trigger, `${d.name}: trigger`);
+    if (d.panel === null) continue;
+    assert.equal(d.panel, r.deviceLook.panel, `${d.name}: panel`);
     assert.ok(d.contrast >= 4.5, `${d.name}: contrast ${d.contrast}`);
+    assert.equal(d.inWindow, true, `${d.name}: outside the window`);
+    assert.equal(d.onTop, true, `${d.name}: covered`);
   }
+});
+check('a dropdown by keyboard: an arrow opens it on an option, an arrow moves, Esc closes it, changes nothing, and returns to it', () => {
+  assert.equal(r.keyboardOpen, 'option');
+  assert.equal(r.keyboardMoved, '60');
+  assert.deepEqual(r.keyboardEscaped, { open: false, focus: 'settings-sleep-after', value: '' });
 });
 check('Sleep when the screen locks: on by default, off saved in config.json, and Reset to defaults turns it on', () => {
   assert.deepEqual(r.sleepShown, [true, false]);

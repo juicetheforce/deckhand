@@ -89,7 +89,7 @@ if (r && !r.error) {
   });
   check('no multi-deck element at all ([data-multideck])', () => assert.equal(s.multideck, 0));
   check('the Device control is the plain dropdown, with the one connected deck as its only option', () => {
-    assert.equal(s.deviceTag, 'SELECT');
+    assert.equal(s.deviceIsDropdown, true, 'the plain Device dropdown');
     assert.deepEqual(s.deviceOptions, [{ value: V2, label: 'Little deck' }]);
     assert.equal(s.deviceValue, V2);
   });

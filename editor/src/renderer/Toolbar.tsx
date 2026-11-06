@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
 import type { Config } from '../../../src/types.js';
@@ -86,19 +87,17 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           <span className="crumb-label">Device</span>
           {/* data-crumb, like the tabs' data-tab: a stable hook for the checks,
               so matching on rendered text does not break when the row grows. */}
-          <select data-crumb="device" value={selection.serial} onChange={(e) => onSelect({ serial: e.target.value })} disabled={decks.length === 0}>
-            {/* An empty dropdown reads as a working editor with nothing chosen
-                yet. Say there is nothing to choose from. */}
-            {decks.length === 0 && <option value="">No decks</option>}
-            {/* No connection marker, and no disconnected decks to mark: the
-                list is a list of devices to work on, and a deck's absence from
-                it is what says it is not there. */}
-            {decks.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+          {/* An empty dropdown reads as a working editor with nothing chosen yet: say
+              there is nothing to choose from. No connection marker, and no disconnected
+              decks to mark: a deck's absence from the list says it is not there. */}
+          <Dropdown
+            data-crumb="device"
+            aria-label="Device"
+            value={selection.serial}
+            options={decks.length === 0 ? [{ value: '', label: 'No decks' }] : decks.map((d) => ({ value: d.id, label: d.label }))}
+            disabled={decks.length === 0}
+            onChange={(serial) => onSelect({ serial })}
+          />
         </label>
       )}
       {selectedDeck && (
@@ -581,21 +580,17 @@ function ProfileCrumb({
   return (
     <span className="crumb tab-wrap" ref={wrap}>
       <span className="crumb-label">Profile</span>
-      <select
+      <Dropdown
         data-crumb="profile"
+        aria-label="Profile"
         value={profile}
-        onChange={(e) => onSelect(e.target.value)}
+        options={profileChoices(config).map((p) => ({ value: p.id, label: p.label }))}
+        onChange={onSelect}
         onContextMenu={(e) => {
           e.preventDefault();
           if (!disabled) setMenu(true);
         }}
-      >
-        {profileChoices(config).map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+      />
       {menu && (
         <ul className="tab-menu" role="menu">
           <li>
