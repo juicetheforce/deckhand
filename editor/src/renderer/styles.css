@@ -73,6 +73,12 @@ textarea {
   color: inherit;
 }
 
+/* Every dropdown's popup. Left unset, it takes the system theme's colours under this page's light text. */
+select option {
+  background: #16172a;
+  color: var(--text);
+}
+
 button {
   cursor: pointer;
 }
@@ -223,10 +229,6 @@ button:disabled {
   border: 1px solid var(--glass-border);
   border-radius: 9px;
   padding: 5px 8px;
-}
-
-.crumb select option {
-  background: #16172a;
 }
 
 .crumb-sep {
@@ -693,10 +695,6 @@ button:disabled {
   border: 1px solid var(--glass-border);
   border-radius: 7px;
   padding: 3px 6px;
-}
-
-.deck-panel-page select option {
-  background: #16172a;
 }
 
 .deck-panel .no-layout {

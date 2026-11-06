@@ -416,6 +416,30 @@ r.labelWhileHeld = { shown: await inPage(editor, 'settings', labelState), onDisk
 await inPage(editor, 'settings', labelKey('keyup', 'End'));
 r.labelSaved = await until(async () => (await labelOnDisk()) === 28);
 
+// Dropdowns: a <select>'s popup is painted from its <option>s' colours. With none set
+// it comes from the system's theme under this page's light text, unreadable.
+const optionColours = `(() => {
+  const rgb = (c) => (c.match(/[\\d.]+/g) || []).map(Number);
+  const lum = (c) => { const v = rgb(c).slice(0, 3).map((x) => { const s = x / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const of = (select, name) => {
+    const o = select.querySelector('option') ?? select.appendChild(document.createElement('option'));
+    const st = getComputedStyle(o);
+    const bg = rgb(st.backgroundColor);
+    const opaque = bg.length === 3 || bg[3] === 1;
+    const a = lum(st.backgroundColor), b = lum(st.color);
+    return { name, opaque, contrast: opaque ? Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 10) / 10 : 0 };
+  };
+  const shown = [...document.querySelectorAll('select')].map((x) => of(x, x.id || x.getAttribute('aria-label') || x.dataset.crumb || 'a select'));
+  /* One made here, with no class: a dropdown added later is covered without being named. */
+  const fresh = document.createElement('select');
+  document.body.appendChild(fresh);
+  const anyNew = of(fresh, 'a new dropdown');
+  fresh.remove();
+  return [...shown, anyNew];
+})()`;
+r.dropdownsSettings = await inPage(editor, 'settings', optionColours);
+r.dropdownsEditor = await inPage(editor, 'editor', optionColours);
+
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
 r.resetButton = await inPage(
   editor,
@@ -593,6 +617,15 @@ check('a desktop without idle notifications: the controls greyed out, and the se
   assert.equal(r.idleUnavailable.sleepDisabled, true);
   assert.equal(r.idleUnavailable.dimToDisabled, 'true');
   assert.equal(r.idleUnavailable.note, 'Dimming after idle isn’t available on this desktop; the decks still sleep when the screen locks.');
+});
+check('every dropdown, in both windows and any added later, has a popup of its own colours that can be read', () => {
+  const all = [...r.dropdownsSettings, ...r.dropdownsEditor];
+  const names = all.map((d) => d.name);
+  for (const name of ['settings-dim-after', 'settings-sleep-after', 'profile', 'a new dropdown']) assert.ok(names.includes(name), `${name} was not looked at: ${names.join()}`);
+  for (const d of all) {
+    assert.equal(d.opaque, true, `${d.name}: its options have no background of their own, so the system theme paints the popup`);
+    assert.ok(d.contrast >= 4.5, `${d.name}: contrast ${d.contrast}`);
+  }
 });
 check('Sleep when the screen locks: on by default, off saved in config.json, and Reset to defaults turns it on', () => {
   assert.deepEqual(r.sleepShown, [true, false]);
