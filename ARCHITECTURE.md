@@ -354,6 +354,22 @@ shown is logged. Nothing is connected until the first one. Turned off with
 `"notifications": false` in `config.json` (the editor's Settings), because the
 daemon is what sends them.
 
+**A deck sleeps at brightness 0, its images kept.** While logind says the session
+is locked or not active, every Stream Deck is dark, so waking is one brightness
+write and no redraw. The first press on a dark deck only wakes it, and its release
+is swallowed too. Unlike a virtual deck's touches, **an unreadable lock state leaves
+the decks awake**: a deck left dark because logind went away is the worse failure.
+Sleep all decks dims every deck to a level, or turns them off, until a press on any
+deck. Nothing here adds a timer: logind's signals and presses are the only events.
+
+**A virtual deck dims in its display helper, not on the screen.** The helper draws
+everything at the deck's brightness, and 0 is pure black; a change is the level, then
+the canvas and every key again. Plasma's `org.kde.ScreenBrightness` reached every
+screen tried, but only a laptop's own panel really dimmed: monitors barely changed,
+and at 0 looked about half as bright (measured on three), which is too weak and too
+monitor-dependent to build on. A lock doesn't darken a virtual deck: the lock screen
+and the monitor's power saving already cover its screen.
+
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
 unplugged deck, or a restarted helper. A key held down at the evdev layer with
@@ -443,6 +459,8 @@ is here so the test is not "fixed" instead.
 | an action's `active()`, `DeckSession.liveFaces()`, `editor/src/renderer/model.ts`'s `faceIcon` | **the editor's grid draws a key with states as the deck draws it**: the daemon's status reports each shown key's state — its built-in's, and whether its active icon applies, two answers because they can differ (Input mode's built-in calls voice activity active; the key calls push-to-talk its active state) — and the grid draws by the deck's rules, only while it shows the page the deck is on. `active()` is the one definition: `describe()` draws by it. A redraw in another state tells the editor — no timer of its own. Before, every such key showed its default state in the grid whatever the deck showed. Held by `smoke-live-faces` and the editor's unit tests |
 | `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
+| `src/sleep.ts`, `DeckSession.applySleep()` | **only this sets a deck below `clampBrightness`'s 5**; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
+| `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()` | what is on the screen stays until drawn again, so **a change is the level, then the canvas, then every key**; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels) and `smoke-virtual` |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
 | `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |
 | `src/panel-presets.ts`'s `panelIn` / `defaultPanelOf`, `src/drivers/virtual.ts`'s `layoutFrom` | **a virtual deck never attaches with zero keys**: a profile's own panel, else the deck's default (`decks[key].virtual.panel`), else the first profile's, else a Medium grid for the screen. A profile made after the deck has no panel of its own and must show the default — found shipped in `v0.8.0`, where it showed nothing. Held by `virtual-panel.test.ts`, `check:virtual` and `smoke-virtual` |

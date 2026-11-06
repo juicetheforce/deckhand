@@ -50,6 +50,10 @@ const buttons = {
   1: { action: { type: 'sleep.all', mode: 'dim', level: 20 } },
   2: { action: { type: 'sleep.all', mode: 'off' } },
   3: { action: { type: 'brightness', value: 60 } },
+  4: { action: { type: 'brightness', value: 33, deck: 'B' } },
+  5: { action: { type: 'brightness', delta: -10, deck: 'B' } },
+  6: { action: { type: 'brightness', value: 33, deck: 'GONE' } },
+  7: { action: { type: 'brightness', delta: 10 } },
 };
 const CONFIG = {
   decks: { A: { brightness: 40 }, B: { brightness: 70 } },
@@ -175,8 +179,40 @@ check('a deck plugged in while they sleep starts dark', late.brightness === 0);
 await tap(a, 0);
 check('and wakes with them', late.brightness !== 0 && a.brightness === 40);
 
+console.log('Brightness, on another deck');
+await tap(a, 4);
+check('it sets the deck it names, not its own', b.brightness === 33 && a.brightness === 40);
+await tap(a, 5);
+check('it nudges from that deck\'s own level', b.brightness === 23 && a.brightness === 40);
+await tap(a, 7);
+check('with none named, it is this deck', a.brightness === 50 && b.brightness === 23);
+await tap(a, 6);
+const gone = (await status()).A.failed ?? [];
+check('a deck not connected: the press fails, and says so', gone.some((f) => f.key === '6' && /not connected/.test(f.error)), JSON.stringify(gone));
+await daemon.sessions.get('A').setBrightness(40);
+await daemon.sessions.get('B').setBrightness(70);
+
+console.log('a virtual deck, dimmed in software');
+{
+  const levels = [];
+  const panel = { serial: 'PANEL', canDim: () => true, sleepsOnLock: () => false, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { levels.push(level); }, invalidateByType() {} };
+  sleep.add(panel);
+  logind.lock(true);
+  await until(() => a.brightness === 0);
+  check('a lock leaves it alone: its screen has the lock screen and power saving', sleep.reason(panel) === null && levels.every((l) => l === null));
+  logind.lock(false);
+  await until(() => a.brightness === 40);
+  await tap(a, 1);
+  check('Sleep all decks dims it to the level', levels.at(-1) === 20 && sleep.reason(panel) === 'all');
+  check('a touch brings every deck back, and runs its key', sleep.press(panel) === 'woke' && a.brightness === 40 && levels.at(-1) === null);
+  await tap(a, 2);
+  check('Sleep all decks off: pure black', levels.at(-1) === 0);
+  check('a touch only wakes', sleep.press(panel) === 'swallow' && levels.at(-1) === null);
+  sleep.remove(panel);
+}
+
 console.log('a deck with no backlight');
-const virtual = { serial: 'V', hasBacklight: () => false, applySleep(level) { if (level !== null) throw new Error('must not be dimmed'); }, invalidateByType() {} };
+const virtual = { serial: 'V', canDim: () => false, sleepsOnLock: () => true, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { if (level !== null) throw new Error('must not be dimmed'); }, invalidateByType() {} };
 sleep.add(virtual);
 logind.lock(true);
 await until(() => a.brightness === 0);

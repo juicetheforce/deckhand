@@ -4,10 +4,12 @@ import * as sessionLock from './services/session-lock.js';
  * Deck sleep: who is dark, and why, for every deck at once.
  *
  * - **On lock**: while logind says the session is locked or not active, every
- *   deck with a backlight is at brightness 0. An unreadable state is not a
+ *   Stream Deck is at brightness 0. Not a virtual deck: the lock screen and the
+ *   monitor's power saving already cover its screen. An unreadable state is not a
  *   lock: a deck left dark because logind went away is the worse failure, so
  *   this is the opposite of a virtual deck's touches, which fail closed.
- * - **Sleep all decks** (`sleep.all`): every deck dimmed to a level, or off.
+ * - **Sleep all decks** (`sleep.all`): every deck, virtual ones too, dimmed to a
+ *   level, or off.
  *
  * The images are kept, so waking is one brightness write. **The first press on
  * a dark deck only wakes it, its release swallowed too**; on a dimmed one it
@@ -23,8 +25,12 @@ export type PressOutcome = 'none' | 'woke' | 'swallow';
 /** What this needs of a deck session. */
 export interface Sleeper {
   readonly serial: string;
-  /** Whether it can go dark at all: a virtual deck has no backlight. */
-  hasBacklight(): boolean;
+  /** Whether it can go dark at all. */
+  canDim(): boolean;
+  /** Whether a lock darkens it. */
+  sleepsOnLock(): boolean;
+  setBrightness(value: number): Promise<void>;
+  currentBrightness(): number;
   /** The level to show, or null for its own brightness. */
   applySleep(level: number | null): void;
   /** A key showing Sleep all decks' state may need drawing again. */
@@ -51,8 +57,8 @@ class SleepCoordinator {
   }
 
   reason(deck: Sleeper): SleepReason | null {
-    if (!deck.hasBacklight()) return null;
-    if (this.onLock && this.locked() && !this.wokenFromLock.has(deck.serial)) return 'lock';
+    if (!deck.canDim()) return null;
+    if (deck.sleepsOnLock() && this.onLock && this.locked() && !this.wokenFromLock.has(deck.serial)) return 'lock';
     return this.all ? 'all' : null;
   }
 
@@ -69,6 +75,17 @@ class SleepCoordinator {
 
   remove(deck: Sleeper): void {
     this.decks.delete(deck);
+  }
+
+  /** A connected deck, for a key that acts on another one (Brightness's target). */
+  deck(serial: string): Sleeper | undefined {
+    for (const deck of this.decks) if (deck.serial === serial) return deck;
+    return undefined;
+  }
+
+  /** Keys of these types on every deck may need drawing again. */
+  invalidateByType(types: string[]): void {
+    for (const deck of this.decks) deck.invalidateByType(types);
   }
 
   /** Settings' "Sleep when the screen locks"; read from the config on every load. */
@@ -101,7 +118,7 @@ class SleepCoordinator {
     const changed = (this.all === null) !== (next === null);
     this.all = next;
     this.apply();
-    if (changed) for (const deck of this.decks) deck.invalidateByType(['sleep.all']);
+    if (changed) this.invalidateByType(['sleep.all']);
   }
 
   private apply(): void {

@@ -2396,6 +2396,28 @@ async function forms(api: DeckhandBridge): Promise<Record<string, unknown>> {
   typeInto(input('Brightness level'), '30');
   brightness.push(await actionAs(2, { type: 'brightness', value: 30 }));
   out.brightness = brightness;
+  // Its target: "This deck", then every connected deck; choosing one writes it, "This deck" takes it away.
+  const brightnessTargets = () => [...document.querySelectorAll<HTMLButtonElement>('[data-brightness-target] button')];
+  const targetListed = brightnessTargets().map((b) => b.querySelector('.target-name')?.textContent);
+  const targetAtStart = brightnessTargets().filter((b) => b.classList.contains('target-selected')).map((b) => b.dataset.deck);
+  brightnessTargets().find((b) => b.dataset.deck !== '')!.click();
+  const targetChosen = await actionAs(2, { type: 'brightness', value: 30, deck: brightnessTargets().find((b) => b.dataset.deck !== '')!.dataset.deck });
+  brightnessTargets().find((b) => b.dataset.deck === '')!.click();
+  const targetCleared = await actionAs(2, { type: 'brightness', value: 30 });
+  out.brightnessTarget = { listed: targetListed, atStart: targetAtStart, chosen: targetChosen, cleared: targetCleared };
+
+  // Sleep all decks: dim by default, at 20; off has no level.
+  await selectKey(29);
+  libraryClick('sleep.all');
+  await until(() => headings().includes('Sleep all decks'));
+  await clickButton('Turn off');
+  const sleepOff = await actionAs(29, { type: 'sleep.all', mode: 'off' });
+  const sleepOffHasLevel = document.querySelector('[aria-label="Dim level"]') !== null;
+  await clickButton('Dim');
+  const sleepDim = await actionAs(29, { type: 'sleep.all', mode: 'dim', level: 20 });
+  await clickButton('Turn off');
+  await actionAs(29, { type: 'sleep.all', mode: 'off' });
+  out.sleepAll = { off: sleepOff, offHasLevel: sleepOffHasLevel, dim: sleepDim };
 
   // Media control.
   await selectKey(3);

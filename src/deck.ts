@@ -121,8 +121,6 @@ export class DeckSession implements DeckHandle {
   private brightness: number;
   /** What src/sleep.ts has it showing instead of its brightness; null when awake. */
   private sleepLevel: number | null = null;
-  /** Keys whose press only woke a deck: their release does nothing either. */
-  private swallowed = new Set<string>();
 
   constructor(device: DeckDevice, options: DeckSessionOptions) {
     this.device = device;
@@ -146,7 +144,7 @@ export class DeckSession implements DeckHandle {
     this.iconSize = null;
     this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
     this.page = options.page !== undefined && this.layout.pages[options.page] ? options.page : startPageOf(this.layout);
-    this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
+    this.brightness = clampBrightness(this.ownBrightness(this.hardware));
   }
 
   async start(): Promise<void> {
@@ -220,10 +218,8 @@ export class DeckSession implements DeckHandle {
     if (edge === 'down') {
       const woke = sleep.press(this);
       // Sleep all decks' own key, pressed while dimmed, has done its job by waking them.
-      if (woke === 'swallow' || (woke === 'woke' && button?.action?.type === 'sleep.all')) {
-        this.swallowed.add(index);
-        return;
-      }
+      // Returning before anything is armed is what swallows the release too.
+      if (woke === 'swallow' || (woke === 'woke' && button?.action?.type === 'sleep.all')) return;
       // A previewed key does nothing when pressed: it shows something unsaved,
       // so neither its saved action nor the previewed one should run.
       // (A release for a press that began before the preview still runs below,
@@ -234,8 +230,6 @@ export class DeckSession implements DeckHandle {
       if (button?.action) void this.dispatch(index, button.action);
       return;
     }
-
-    if (this.swallowed.delete(index)) return;
 
     const hold = this.holds.get(index);
     if (hold) {
@@ -826,6 +820,11 @@ export class DeckSession implements DeckHandle {
     this.onStateChange();
   }
 
+  /** A virtual deck is drawn at full brightness unless it is set: defaults.brightness is for a backlight. */
+  private ownBrightness(hardware: DeckDef): number {
+    return hardware.brightness ?? (this.device.dimsInSoftware ? 100 : this.defaults.brightness);
+  }
+
   /** Below clampBrightness on purpose: only src/sleep.ts sets a deck dark. */
   applySleep(level: number | null): void {
     if (level === this.sleepLevel || this.closed) return;
@@ -836,8 +835,12 @@ export class DeckSession implements DeckHandle {
     this.onStateChange();
   }
 
-  hasBacklight(): boolean {
+  canDim(): boolean {
     return this.device.setBrightness !== undefined;
+  }
+
+  sleepsOnLock(): boolean {
+    return this.device.dimsInSoftware !== true;
   }
 
   currentBrightness(): number {
@@ -893,7 +896,7 @@ export class DeckSession implements DeckHandle {
     } else {
       await this.releaseLatchesOnChangedKeys();
     }
-    await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
+    await this.setBrightness(this.ownBrightness(hardware));
     this.lastSent.clear();
     await this.renderPage(true);
   }

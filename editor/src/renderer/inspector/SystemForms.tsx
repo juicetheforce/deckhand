@@ -56,13 +56,14 @@ export function EditorForm() {
 
 type BrightnessMode = 'up' | 'down' | 'set';
 
-/** brightness: nudge by a step, or set a level, on the deck the key is on. */
-export function BrightnessForm({ at, button, disabled, run }: FormProps) {
+/** brightness: nudge by a step, or set a level, on the deck the key is on or another. */
+export function BrightnessForm({ at, button, disabled, run, decks }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }> }) {
   const action = actionOf('brightness', button);
   const value = typeof action?.value === 'number' ? action.value : null;
   const delta = typeof action?.delta === 'number' ? action.delta : null;
   const mode: BrightnessMode | null = value !== null ? 'set' : delta !== null ? (delta < 0 ? 'down' : 'up') : null;
   const step = Math.abs(delta ?? 10);
+  const target = typeof action?.deck === 'string' && action.deck !== '' ? action.deck : null;
   const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction('brightness', button, patch) });
   return (
     <section className="inspector-section">
@@ -78,7 +79,7 @@ export function BrightnessForm({ at, button, disabled, run }: FormProps) {
         disabled={disabled}
         onChoose={(m) => write(m === 'set' ? { value: value ?? 50, delta: undefined } : { delta: m === 'up' ? step : -step, value: undefined })}
       />
-      {mode === null && <p className="muted small">Choose whether the key nudges this deck's brightness or sets it.</p>}
+      {mode === null && <p className="muted small">Choose whether the key nudges a deck's brightness or sets it.</p>}
       {(mode === 'up' || mode === 'down') && (
         <Row name="By">
           <NumberSetting label="Brightness step" value={step} min={1} max={100} disabled={disabled} onSave={(n) => write({ delta: mode === 'up' ? n : -n })} />
@@ -90,6 +91,34 @@ export function BrightnessForm({ at, button, disabled, run }: FormProps) {
           <NumberSetting label="Brightness level" value={value ?? 50} min={5} max={100} disabled={disabled} onSave={(n) => write({ value: n })} />
           <span className="form-value">%</span>
         </Row>
+      )}
+      {mode !== null && (
+        <>
+          <h4 className="form-subheading">Deck</h4>
+          <ul className="target-list" data-brightness-target>
+            <li>
+              <button className={target === null ? 'target target-selected' : 'target'} disabled={disabled} data-deck="" onClick={() => write({ deck: undefined })}>
+                <span className="target-name">This deck</span>
+              </button>
+            </li>
+            {target !== null && !decks.some((d) => d.id === target) && (
+              <li>
+                <button className="target target-selected" disabled data-deck={target}>
+                  <span className="target-name">{target}</span>
+                  <span className="target-note">not connected</span>
+                </button>
+              </li>
+            )}
+            {decks.map((d) => (
+              <li key={d.id}>
+                <button className={target === d.id ? 'target target-selected' : 'target'} disabled={disabled} data-deck={d.id} onClick={() => write({ deck: d.id })}>
+                  <span className="target-name">{d.label}</span>
+                  <span className="target-note">{d.id}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {mode !== null && (
         <Checkbox label="Show the level on the key" checked={action?.showLevel === true} disabled={disabled} onChange={(on) => write({ showLevel: on ? true : undefined })} />

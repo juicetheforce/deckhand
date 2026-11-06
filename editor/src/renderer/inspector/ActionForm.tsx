@@ -30,6 +30,8 @@ export interface ActionFormProps {
   profiles: Choice[];
   /** Every virtual deck, for Virtual deck on/off. */
   virtualDecks: Choice[];
+  /** Every connected deck, for Brightness's target. */
+  decks: Choice[];
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   audio: AudioLists;
   /** The daemon's installed applications, for the App form. */
@@ -73,7 +75,7 @@ export function ActionForm(p: ActionFormProps) {
     case 'editor':
       return <EditorForm />;
     case 'brightness':
-      return <BrightnessForm {...common} />;
+      return <BrightnessForm {...common} decks={p.decks} />;
     case 'sleep.all':
       return <SleepAllForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'virtual.power':

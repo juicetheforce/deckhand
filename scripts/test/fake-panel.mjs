@@ -84,6 +84,8 @@ process.stdin.on('data', (chunk) => {
       // The first pixel, for checking what was drawn without logging megabytes.
       record({ type, x: body.readInt32LE(0), y: body.readInt32LE(4), w, h, bytes: px.length, first: [...px.subarray(0, 4)] });
       acks = acks.then(() => new Promise((resolve) => setTimeout(resolve, ackMs))).then(() => say({ ev: 'drawn' }));
+    } else if (type === 'B') {
+      record({ type, percent: body[0] });
     } else if (type === 'T') {
       const entries = [];
       let at = 1;

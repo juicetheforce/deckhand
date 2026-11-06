@@ -18,6 +18,9 @@
  *   'I' image    i32 x, i32 y, u32 w, u32 h, then w × h RGBA pixels: one key,
  *                at its place on the canvas. Answered "drawn".
  *   'C' clear    the background everywhere.
+ *   'B' brightness  u8 percent, 0-100: everything drawn from now on is that much
+ *                darker, 0 being pure black; what is on the screen stays until
+ *                drawn again, so the daemon sends the canvas and every key after it.
  *   'T' touch    u8 mode, then entries of u8 role and a path ending in NUL.
  *                Closes the devices read before. Mode 1, a deck: every entry
  *                opened and grabbed; role 't' is the touchscreen, whose
@@ -82,6 +85,8 @@ static struct panel_output out;
 /* The canvas, in the daemon's units, and where it lands on the screen. */
 static unsigned canvas_w, canvas_h;
 static uint32_t background = 0xff000000;
+/* The deck's brightness, a percent: 'B'. */
+static unsigned brightness = 100;
 static double scale = 1.0;
 static int origin_x, origin_y;
 
@@ -158,11 +163,17 @@ static void place_canvas(void) {
   origin_y = (int)((h - canvas_h * scale) / 2);
 }
 
+/* A channel at the deck's brightness. */
+static inline unsigned dimmed(unsigned channel) {
+  return brightness == 100 ? channel : channel * brightness / 100;
+}
+
 static void fill_background(void) {
   int w, h, stride;
   uint32_t *px = platform_canvas(&w, &h, &stride);
+  uint32_t fill = 0xff000000u | (uint32_t)dimmed((background >> 16) & 0xff) << 16 | (uint32_t)dimmed((background >> 8) & 0xff) << 8 | dimmed(background & 0xff);
   for (int y = 0; y < h; y++)
-    for (int x = 0; x < w; x++) px[y * stride + x] = background;
+    for (int x = 0; x < w; x++) px[y * stride + x] = fill;
   platform_damage(0, 0, w, h);
 }
 
@@ -190,12 +201,13 @@ static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char
       uint32_t *d = &px[ty * stride + tx];
       unsigned a = s[3];
       if (a == 255) {
-        *d = 0xff000000u | (uint32_t)s[0] << 16 | (uint32_t)s[1] << 8 | s[2];
+        *d = 0xff000000u | (uint32_t)dimmed(s[0]) << 16 | (uint32_t)dimmed(s[1]) << 8 | dimmed(s[2]);
       } else if (a > 0) {
         unsigned dr = (*d >> 16) & 0xff, dg = (*d >> 8) & 0xff, db = *d & 0xff;
-        unsigned r = (s[0] * a + dr * (255 - a)) / 255;
-        unsigned g = (s[1] * a + dg * (255 - a)) / 255;
-        unsigned b = (s[2] * a + db * (255 - a)) / 255;
+        /* What is under it is already at this brightness. */
+        unsigned r = (dimmed(s[0]) * a + dr * (255 - a)) / 255;
+        unsigned g = (dimmed(s[1]) * a + dg * (255 - a)) / 255;
+        unsigned b = (dimmed(s[2]) * a + db * (255 - a)) / 255;
         *d = 0xff000000u | r << 16 | g << 8 | b;
       }
     }
@@ -322,6 +334,10 @@ static int handle_frames(void) {
       }
       case 'C':
         fill_background();
+        break;
+      case 'B':
+        if (body_len != 1 || body[0] > 100) { emit_error("bad brightness frame"); return 5; }
+        brightness = body[0];
         break;
       case 'T': {
         int c = set_touch(body, body_len);

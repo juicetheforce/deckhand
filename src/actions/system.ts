@@ -3,7 +3,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { ActionNeeded } from '../action-error.js';
 import { appIconFile, findApp } from '../services/apps.js';
+import { sleep } from '../sleep.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 const run = promisify(execFile);
@@ -206,13 +208,16 @@ export const profile: ActionHandler = {
 };
 
 /**
- * brightness — set or nudge deck brightness.
+ * brightness — set or nudge a deck's brightness: a Stream Deck's backlight, or a
+ * virtual deck's keys, drawn darker by its helper.
  *
  *   { "type": "brightness", "value": 40 }
  *   { "type": "brightness", "delta": -10 }
+ *   { "type": "brightness", "delta": -10, "deck": "AL45I2C06548" }
  *
- * The current level lives on the deck the button belongs to, so each deck
- * nudges from its own level. The deck clamps the value to 5-100.
+ * `deck`: the deck by its key under "decks"; left out, the deck this key is on.
+ * The current level lives on each deck, so each nudges from its own level. The
+ * deck clamps the value to 5-100.
  *
  * A `delta` key draws `brightness-up` or `brightness-down`. The level is shown
  * only with `showLevel: true` — off by default, so a default key is not a
@@ -220,21 +225,28 @@ export const profile: ActionHandler = {
  */
 export const brightness: ActionHandler = {
   async execute(ctx, params: ActionDef) {
+    const named = typeof params.deck === 'string' && params.deck !== '' ? params.deck : null;
+    const target = named === null ? ctx.deck : sleep.deck(named);
+    if (!target) throw new ActionNeeded('The deck this key adjusts is not connected. Connect it, or choose another in the editor.');
     let next: number;
     if (typeof params.value === 'number') {
       next = params.value;
     } else if (typeof params.delta === 'number') {
-      next = ctx.deck.currentBrightness() + params.delta;
+      next = target.currentBrightness() + params.delta;
     } else {
       throw new Error('brightness action needs "value" or "delta"');
     }
-    await ctx.deck.setBrightness(next);
+    await target.setBrightness(next);
+    // A key on any deck may show this deck's level.
+    sleep.invalidateByType(['brightness']);
     ctx.invalidateByType(['brightness']);
   },
 
   async describe(ctx, params: ActionDef): Promise<DisplayPatch | null> {
     // At the top of the key, never in the label's place (types.ts Display.level).
-    return params.showLevel === true ? { level: `${ctx.deck.currentBrightness()}%` } : null;
+    if (params.showLevel !== true) return null;
+    const target = typeof params.deck === 'string' && params.deck !== '' ? sleep.deck(params.deck) : ctx.deck;
+    return target ? { level: `${target.currentBrightness()}%` } : null;
   },
 };
 

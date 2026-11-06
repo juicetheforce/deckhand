@@ -688,7 +688,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   noop: [],
   editor: [],
   app: ['app'],
-  brightness: ['delta', 'value', 'showLevel'],
+  brightness: ['delta', 'value', 'showLevel', 'deck'],
   'audio.volume': ['delta', 'showLevel'],
   'audio.micMute': ['iconActive', 'labelMuted', 'labelUnmuted'],
   'audio.mute': ['iconActive', 'labelMuted', 'labelUnmuted'],
