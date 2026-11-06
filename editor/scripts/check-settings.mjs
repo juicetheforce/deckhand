@@ -308,6 +308,23 @@ r.iconSizeWhileDragging = { shown: await inPage(editor, 'settings', sliderState)
 await inPage(editor, 'settings', pointer('pointerup', 0.5));
 r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 49);
 
+// Sleep when the screen locks: on by default, in config.json because the daemon sleeps the decks.
+r.sleepShown = await inPage(editor, 'settings', "[document.querySelector('#settings-sleep-on-lock').checked, document.querySelector('#settings-sleep-on-lock').disabled]");
+await inPage(editor, 'settings', clickIn('#settings-sleep-on-lock'));
+r.sleepOffSaved = await until(async () => (await configJson()).defaults?.sleep?.onLock === false);
+
+// Label size: the same slider, over defaults.labelSize. Saved on release, the sample live.
+const labelSlider = "document.querySelector('[role=slider][aria-label=\"Label size\"]')";
+const labelState = `(() => { const s = ${labelSlider}; return { now: s.getAttribute('aria-valuenow'), min: s.getAttribute('aria-valuemin'), max: s.getAttribute('aria-valuemax'), sample: document.querySelector('[data-settings=label-sample]').style.fontSize }; })()`;
+const labelKey = (type, k) => `(() => { ${labelSlider}.dispatchEvent(new KeyboardEvent('${type}', { key: '${k}', bubbles: true, cancelable: true })); return true; })()`;
+const labelOnDisk = async () => (await configJson()).defaults?.labelSize ?? 'absent';
+r.labelAtRest = await inPage(editor, 'settings', labelState);
+await inPage(editor, 'settings', labelKey('keydown', 'End'));
+await sleep(900);
+r.labelWhileHeld = { shown: await inPage(editor, 'settings', labelState), onDisk: await labelOnDisk() };
+await inPage(editor, 'settings', labelKey('keyup', 'End'));
+r.labelSaved = await until(async () => (await labelOnDisk()) === 28);
+
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
 r.resetButton = await inPage(
   editor,
@@ -327,6 +344,8 @@ await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
 await inPage(editor, 'settings', clickIn('[data-settings=confirm-reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
 r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '65';
+r.sleepBackOn = await until(async () => (await configJson()).defaults?.sleep === undefined);
+r.labelBackToDefault = await until(async () => (await labelOnDisk()) === 'absent');
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
@@ -417,7 +436,7 @@ check('Notifications starts ticked; unticking writes "notifications": false to c
 });
 check('Reset to defaults is a button, without an ellipsis, and asks first: one click changes nothing, Keep keeps', () => {
   assert.deepEqual(r.resetButton, { text: 'Reset to defaults', tag: 'BUTTON', quiet: false });
-  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, notifications, accent color and icon size to their defaults\?ResetKeep$/);
+  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, sleep when the screen locks, notifications, accent color, icon size and label size to their defaults\?ResetKeep$/);
   assert.equal(r.oneClickChangesNothing, true);
   assert.equal(r.keepKeeps, true);
 });
@@ -438,6 +457,17 @@ check('Icon size by dragging: snapped to the step, the sample live, nothing save
   assert.equal(r.iconSizeDragSaved, true);
 });
 check('Reset to defaults puts Icon size back to 65%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
+check('Sleep when the screen locks: on by default, off saved in config.json, and Reset to defaults turns it on', () => {
+  assert.deepEqual(r.sleepShown, [true, false]);
+  assert.equal(r.sleepOffSaved, true);
+  assert.equal(r.sleepBackOn, true);
+});
+check('Label size: a slider from 8 to 28, 14 by default, the sample live, saved on release, and Reset to defaults removes it', () => {
+  assert.deepEqual(r.labelAtRest, { now: '14', min: '8', max: '28', sample: '11px' });
+  assert.deepEqual(r.labelWhileHeld, { shown: { now: '28', min: '8', max: '28', sample: '22px' }, onDisk: 'absent' });
+  assert.equal(r.labelSaved, true);
+  assert.equal(r.labelBackToDefault, true);
+});
 check('each change is saved at once; the accent reaches the editor behind it live, and the settings window too', () => {
   assert.equal(r.deckSaved, true);
   assert.equal(r.accentSaved, true);

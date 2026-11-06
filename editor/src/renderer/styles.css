@@ -3741,6 +3741,11 @@ body.settings-body {
   flex-shrink: 0;
 }
 
+.sp-label-sample {
+  color: var(--text, inherit);
+  line-height: 1;
+}
+
 .sp-icon-sample img {
   display: block;
 }

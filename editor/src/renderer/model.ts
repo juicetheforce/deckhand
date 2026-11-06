@@ -696,6 +696,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   'media.info': ['show', 'showArt', 'idleLabel', 'pressAction'],
   // By its key under "decks" (inspector/SystemForms.tsx).
   'virtual.power': ['deck', 'iconActive'],
+  'sleep.all': ['mode', 'level', 'iconActive'],
   // `match` / `matches` are hand-edited config only: a key using them stays read-only.
   'audio.sink': ['node', 'label', 'moveStreams'],
   'audio.source': ['node', 'label', 'moveStreams'],

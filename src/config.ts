@@ -155,6 +155,10 @@ export function validateConfig(config: unknown): Config {
   }
 
   if (config.defaults !== undefined && !isObject(config.defaults)) throw new Error('"defaults" must be an object');
+  const sleep = isObject(config.defaults) ? config.defaults.sleep : undefined;
+  if (sleep !== undefined && (!isObject(sleep) || (sleep.onLock !== undefined && typeof sleep.onLock !== 'boolean'))) {
+    throw new Error('"defaults.sleep" must be an object, with "onLock" true or false');
+  }
   const builtinIconSize = isObject(config.defaults) ? config.defaults.builtinIconSize : undefined;
   if (builtinIconSize !== undefined && (typeof builtinIconSize !== 'number' || !(builtinIconSize >= BUILTIN_ICON_SIZE.min && builtinIconSize <= BUILTIN_ICON_SIZE.max))) {
     throw new Error(`"defaults.builtinIconSize" must be a number from ${BUILTIN_ICON_SIZE.min} to ${BUILTIN_ICON_SIZE.max}: the percent of the key a built-in icon is drawn at (Settings › General › Icon size)`);

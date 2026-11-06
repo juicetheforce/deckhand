@@ -128,7 +128,7 @@ await check('every library entry has a form, and its form accepts a bare key', (
     assert.equal(hasForm(type), true, `${type} is in the library with no form`);
     assert.equal(actionEditable(undefined, type), true, type);
   }
-  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'discord.deafen', 'discord.inputMode', 'discord.join', 'discord.leave', 'discord.mute', 'discord.userVolume', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'sound.play', 'sound.stopAll', 'text', 'toggle', 'twitch.chat', 'twitch.clip', 'twitch.marker', 'twitch.streamInfo', 'virtual.power', 'vts.expression', 'vts.hotkey', 'vts.model']);
+  assert.deepEqual(types.sort(), ['app', 'audio.cycle', 'audio.cycleSource', 'audio.micMute', 'audio.mute', 'audio.sink', 'audio.source', 'audio.volume', 'brightness', 'clock', 'command', 'discord.deafen', 'discord.inputMode', 'discord.join', 'discord.leave', 'discord.mute', 'discord.userVolume', 'editor', 'hotkey', 'keyHold', 'media.control', 'media.info', 'multi', 'noop', 'obs.mute', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.source', 'obs.stream', 'page', 'profile', 'sleep.all', 'sound.play', 'sound.stopAll', 'text', 'toggle', 'twitch.chat', 'twitch.clip', 'twitch.marker', 'twitch.streamInfo', 'virtual.power', 'vts.expression', 'vts.hotkey', 'vts.model']);
 });
 
 console.log('the navigation guard');
@@ -497,7 +497,7 @@ await check('a built-in is drawn at the deck\'s built-in size and an icon file f
 
 await check('every key with states has a Default icon and an active state icon; the grid shows its Default icon', async () => {
   const { pairIconFields, KEY_STATES } = await import('../src/shared/icons.js');
-  const withStates = ['audio.micMute', 'audio.mute', 'media.control', 'toggle', 'obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source', 'discord.mute', 'discord.deafen', 'discord.inputMode', 'vts.model', 'vts.expression', 'sound.play', 'virtual.power'];
+  const withStates = ['sleep.all', 'audio.micMute', 'audio.mute', 'media.control', 'toggle', 'obs.stream', 'obs.record', 'obs.recordPause', 'obs.scene', 'obs.mute', 'obs.source', 'discord.mute', 'discord.deafen', 'discord.inputMode', 'vts.model', 'vts.expression', 'sound.play', 'virtual.power'];
   for (const type of withStates) assert.deepEqual(pairIconFields({ type }), ['iconActive'], type);
   assert.deepEqual(Object.keys(KEY_STATES).sort(), [...withStates].sort(), 'every key with states is named');
   for (const type of ['discord.join', 'discord.leave', 'sound.stopAll', 'vts.hotkey', 'hotkey']) assert.deepEqual(pairIconFields({ type }), [], `${type} has one face`);

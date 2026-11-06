@@ -11,6 +11,7 @@ import type { DeckGeometry } from './geometry.js';
 import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
+import { sleep } from './sleep.js';
 import * as audioService from './services/audio.js';
 import { retryMonitor } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
@@ -42,6 +43,16 @@ const virtualDriver = createVirtualDriver(() => config);
 const drivers: DeckDriver[] = [hidDriver, virtualDriver];
 
 const sessions = new Map<string, DeckSession>();
+
+let watchingLock = false;
+/** Sleep on lock follows logind while any deck is attached (src/sleep.ts). Events only. */
+function syncLockWatch(): void {
+  const want = sessions.size > 0;
+  if (want === watchingLock) return;
+  watchingLock = want;
+  if (want) sessionLock.acquire();
+  else sessionLock.release();
+}
 let config: Config | null = null;
 /** The file text of the running config: what a rolling backup saves when a reload replaces it. */
 let configText = '';
@@ -301,6 +312,7 @@ async function attach(found: FoundDevice): Promise<void> {
   }
 
   sessions.set(serial, session);
+  syncLockWatch();
   unattached.delete(serial);
   profileState.markShown(serial, profileId);
   notifyState();
@@ -344,6 +356,7 @@ async function scan(): Promise<void> {
       }
       await session.close();
       sessions.delete(serial);
+      syncLockWatch();
       notifyState();
     }
   }
@@ -399,6 +412,7 @@ async function reload(): Promise<void> {
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
+    sleep.setOnLock(next.defaults?.sleep?.onLock !== false);
     virtualPower.forgetMissing();
     // An edited key is not the key that failed: its mark goes before the decks
     // redraw with the new layout.
@@ -469,6 +483,7 @@ async function main(): Promise<void> {
 
   try {
     ({ config, text: configText } = await loadConfig());
+    sleep.setOnLock(config?.defaults?.sleep?.onLock !== false);
     twitchService.setClientId(config.twitch?.clientId);
   } catch (err) {
     console.error(`[main] cannot load config: ${(err as Error).message}`);

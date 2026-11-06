@@ -788,6 +788,27 @@ function registerIpc(): void {
     store.apply({ kind: 'setBuiltinIconSize', percent: percent as number | null });
     return builtinIconSize();
   });
+  // Both in config.json too: the daemon draws the labels and sleeps the decks. Null while config.json is not open.
+  const labelSize = (): number | null => {
+    const view = store?.state();
+    return view ? (view.config.defaults?.labelSize ?? DEFAULTS.labelSize) : null;
+  };
+  ipcMain.handle('labelSize', (event) => (fromSettingsWindow(event) ? labelSize() : null));
+  ipcMain.handle('setLabelSize', (event, size: unknown) => {
+    if (!fromSettingsWindow(event) || !store || (size !== null && typeof size !== 'number')) return labelSize();
+    store.apply({ kind: 'setLabelSize', size: size as number | null });
+    return labelSize();
+  });
+  const sleepOnLock = (): boolean | null => {
+    const view = store?.state();
+    return view ? view.config.defaults?.sleep?.onLock !== false : null;
+  };
+  ipcMain.handle('sleepOnLock', (event) => (fromSettingsWindow(event) ? sleepOnLock() : null));
+  ipcMain.handle('setSleepOnLock', (event, on: unknown) => {
+    if (!fromSettingsWindow(event) || !store || typeof on !== 'boolean') return sleepOnLock();
+    store.apply({ kind: 'setSleepOnLock', on });
+    return sleepOnLock();
+  });
   // ABOUT: the installed version, the releases page in the browser, and the update check (updates.ts).
   ipcMain.handle('appVersion', (event) => (fromSettingsWindow(event) ? installedVersion() : null));
   ipcMain.handle('updateState', (event) => (fromSettingsWindow(event) ? updates.state() : null));

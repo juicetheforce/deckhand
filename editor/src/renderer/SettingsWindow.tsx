@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
 import micIconUrl from '../../../assets/icons/mic.svg';
-import { BUILTIN_ICON_SIZE, DEFAULTS, shownIconSize, storedIconSize } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, DEFAULTS, LABEL_SIZE, shownIconSize, storedIconSize } from '../../../src/config-common.js';
 import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection } from '../shared/bridge.js';
@@ -61,6 +61,10 @@ export function SettingsWindow() {
   const [notifications, setNotificationsState] = useState<boolean | null>(null);
   /** Built-in icons' size, also in config.json; null while it is not open. */
   const [iconSize, setIconSize] = useState<number | null>(null);
+  const [labelSize, setLabelSize] = useState<number | null>(null);
+  /** Label size's sample while the slider moves. */
+  const [labelSample, setLabelSample] = useState<number | null>(null);
+  const [sleepOnLock, setSleepOnLockState] = useState<boolean | null>(null);
   /** Icon size's sample while the slider moves, as stored (percent of the key): live, though nothing is saved until it is let go. */
   const [iconSample, setIconSample] = useState<number | null>(null);
   const params = new URLSearchParams(window.location.search);
@@ -80,6 +84,8 @@ export function SettingsWindow() {
       // config.json edited by hand while the window is open shows the next time it is looked at.
       void window.deckhand.notifications().then(setNotificationsState);
       void window.deckhand.builtinIconSize().then(setIconSize);
+      void window.deckhand.labelSize().then(setLabelSize);
+      void window.deckhand.sleepOnLock().then(setSleepOnLockState);
     };
     refreshDecks();
     // A deck plugged in while the window is open shows the next time it is looked at.
@@ -106,6 +112,12 @@ export function SettingsWindow() {
       setIconSample(null);
     });
   const sampleSize = iconSample ?? iconSize ?? DEFAULTS.builtinIconSize;
+  const changeLabelSize = (size: number | null) =>
+    void window.deckhand.setLabelSize(size).then((saved) => {
+      setLabelSize(saved);
+      setLabelSample(null);
+    });
+  const changeSleepOnLock = (on: boolean) => void window.deckhand.setSleepOnLock(on).then(setSleepOnLockState);
   const navItem = (item: { page: Page; name: string }, extra?: { icon?: string; dot?: Dot; update?: boolean }) => (
     <button
       key={item.page}
@@ -141,6 +153,14 @@ export function SettingsWindow() {
                     switch reads as what the switch does. */}
                 <Row title="Close to tray" detail="Closing the editor leaves Deckhand in the system tray" htmlFor="settings-close-to-tray">
                   <Switch id="settings-close-to-tray" checked={settings.closeToTray} onChange={(on) => change({ closeToTray: on })} />
+                </Row>
+                <Divider />
+                <Row
+                  title="Sleep when the screen locks"
+                  detail={sleepOnLock === null ? 'Needs config.json to be open' : 'Stream Decks go dark until you unlock or press a key'}
+                  htmlFor="settings-sleep-on-lock"
+                >
+                  <Switch id="settings-sleep-on-lock" checked={sleepOnLock ?? true} disabled={sleepOnLock === null} onChange={changeSleepOnLock} />
                 </Row>
                 <Divider />
                 <Row
@@ -189,6 +209,25 @@ export function SettingsWindow() {
                     </span>
                   </Slider>
                 </Row>
+                <Divider />
+                <Row title="Label size" detail={labelSize === null ? 'Needs config.json to be open' : 'Labels on keys, unless a key sets its own'}>
+                  <Slider
+                    label="Label size"
+                    value={labelSize ?? DEFAULTS.labelSize}
+                    min={LABEL_SIZE.min}
+                    max={LABEL_SIZE.max}
+                    step={LABEL_SIZE.step}
+                    unit=" px"
+                    disabled={labelSize === null}
+                    onPreview={setLabelSample}
+                    onCommit={changeLabelSize}
+                  >
+                    {/* The sample is a 56 px key; a key's own pixels are about 72. */}
+                    <span className="sp-icon-sample sp-label-sample" data-settings="label-sample" style={{ fontSize: Math.round(((labelSample ?? labelSize ?? DEFAULTS.labelSize) * 56) / 72) }}>
+                      Aa
+                    </span>
+                  </Slider>
+                </Row>
               </Group>
             </div>
           )}
@@ -226,7 +265,7 @@ export function SettingsWindow() {
 
       {confirmingReset ? (
         <div className="settings-footer settings-footer-confirm" data-settings-confirm="reset">
-          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, notifications, accent color and icon size to their defaults?</span>
+          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, sleep when the screen locks, notifications, accent color, icon size and label size to their defaults?</span>
           <button
             className="sp-button sp-button-danger-solid"
             onClick={() => {
@@ -234,6 +273,8 @@ export function SettingsWindow() {
               void window.deckhand.resetAppSettings().then(setSettings);
               if (notifications === false) changeNotifications(true);
               if (iconSize !== null && iconSize !== DEFAULTS.builtinIconSize) changeIconSize(null);
+              if (labelSize !== null && labelSize !== DEFAULTS.labelSize) changeLabelSize(null);
+              if (sleepOnLock === false) changeSleepOnLock(true);
             }}
             data-settings="confirm-reset"
           >

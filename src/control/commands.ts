@@ -1,4 +1,5 @@
 import { isKnownAction } from '../actions/index.js';
+import { sleep } from '../sleep.js';
 import { CONTROL_ID } from '../config.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
@@ -140,6 +141,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.profile = profiles?.shownProfileFor(serial);
       entry.page = session.currentPage();
       entry.brightness = session.currentBrightness();
+      const asleep = sleep.reason(session);
+      if (asleep) entry.sleep = asleep;
       entry.previews = session.previewKeys();
       entry.latched = session.latchedKeys();
       entry.live = session.liveFaces();

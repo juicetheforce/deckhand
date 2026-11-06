@@ -63,6 +63,7 @@ export const KEY_STATES: Record<string, KeyStates> = {
   'sound.play': { active: 'While playing', activeState: { playing: true }, defaultState: { playing: false } },
   // On is its default; off the active state.
   'virtual.power': { active: 'While off', activeState: { active: false }, defaultState: { active: true } },
+  'sleep.all': { active: 'While asleep', activeState: { active: true }, defaultState: { active: false } },
 };
 
 /**

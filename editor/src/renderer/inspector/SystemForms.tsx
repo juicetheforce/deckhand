@@ -150,6 +150,41 @@ export function AppForm({ at, button, disabled, run, apps }: FormProps & { apps:
   );
 }
 
+/** sleep.all: every deck dimmed to a level, or off, until the next press. */
+export function SleepAllForm({ at, button, disabled, run, onChooseIcon }: FormProps & { onChooseIcon?: Parameters<typeof StateIcons>[0]['onChooseIcon'] }) {
+  const action = actionOf('sleep.all', button);
+  const off = action?.mode === 'off';
+  const level = typeof action?.level === 'number' ? action.level : 20;
+  const write = (patch: Record<string, unknown>) => void run({ kind: 'setAction', at, action: nextAction('sleep.all', button, patch) });
+  return (
+    <section className="inspector-section">
+      <h3 className="section-heading">Sleep all decks</h3>
+      <Segmented<'dim' | 'off'>
+        label="Sleep all decks"
+        options={[
+          { value: 'dim', label: 'Dim' },
+          { value: 'off', label: 'Turn off' },
+        ]}
+        value={off ? 'off' : 'dim'}
+        disabled={disabled}
+        onChoose={(m) => write(m === 'off' ? { mode: 'off', level: undefined } : { mode: 'dim', level })}
+      />
+      {!off && (
+        <Row name="Level">
+          <NumberSetting label="Dim level" value={level} min={1} max={100} disabled={disabled} onSave={(n) => write({ mode: 'dim', level: n })} />
+          <span className="form-value">%</span>
+        </Row>
+      )}
+      <p className="muted small">
+        {off
+          ? 'A press on any deck brings them all back, and only does that.'
+          : "A press on any deck brings them all back, and runs that deck's key."}
+      </p>
+      <StateIcons type="sleep.all" button={button} disabled={disabled} onChooseIcon={onChooseIcon} />
+    </section>
+  );
+}
+
 /**
  * virtual.power: which virtual deck a press turns off, and on again. Placed
  * on that same virtual deck, it can turn it off but not back on — said, as

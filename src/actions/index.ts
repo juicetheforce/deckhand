@@ -9,6 +9,7 @@ import * as obs from './obs.js';
 import * as sound from './sound.js';
 import * as system from './system.js';
 import * as twitch from './twitch.js';
+import * as sleepActions from './sleep.js';
 import * as virtual from './virtual.js';
 import * as vts from './vts.js';
 
@@ -32,6 +33,7 @@ export const registry: Record<string, ActionHandler> = {
   clock: system.clock,
   noop: system.noop,
   'virtual.power': virtual.powerAction,
+  'sleep.all': sleepActions.sleepAllAction,
 
   'audio.sink': audio.sink,
   'audio.cycle': audio.cycle,

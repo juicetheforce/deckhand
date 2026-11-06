@@ -135,6 +135,12 @@ export const CATALOGUE: CatalogueGroup[] = [
         description: "Turn a virtual deck off, giving its screen back to the desktop's widgets, and on again",
         aliases: ['touchscreen', 'panel', 'hide', 'show', 'power', 'xeneon'],
       },
+      {
+        type: 'sleep.all',
+        name: 'Sleep all decks',
+        description: 'Dim every deck, or turn them off, until the next press',
+        aliases: ['dark', 'night', 'blank'],
+      },
       { type: 'clock', name: 'Clock', description: 'The time on the key', aliases: ['watch', 'hour', 'date'] },
       { type: 'noop', name: 'Nothing', description: 'A key that does nothing', aliases: ['blank', 'empty', 'spacer', 'none', 'placeholder'] },
     ],
