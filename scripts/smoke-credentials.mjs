@@ -92,6 +92,14 @@ try {
   check('a temp file left over from a crash does not block a write', past[0].status === 'fulfilled' && (await readJson())?.obs?.password === 'past-leftover');
   await fs.rm(`${FILE}.${process.pid}.tmp`, { force: true });
 
+  // A damaged file: JSON.parse's own message quotes the text around the fault.
+  const good = await fs.readFile(FILE, 'utf8');
+  await fs.writeFile(FILE, '{"obs":{"host":"localhost","password":DEMO_SECRET}}\n', { mode: 0o600 });
+  const damaged = await credentials.obsCredentials().then(() => null, (err) => err);
+  check('a damaged file is an error that names the file', damaged !== null && damaged.message.includes(FILE));
+  check('…and quotes none of its contents', damaged !== null && !/DEMO|SECRET|password/.test(damaged.message));
+  await fs.writeFile(FILE, good, { mode: 0o600 });
+
   const mode = (await fs.stat(FILE)).mode & 0o777;
   check(`the file is 0600 (${mode.toString(8)})`, mode === 0o600);
   const left = (await fs.readdir(STATE)).filter((n) => n.endsWith('.tmp'));

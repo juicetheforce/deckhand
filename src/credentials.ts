@@ -141,7 +141,13 @@ async function readFile(): Promise<CredentialsFile> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw err;
   }
-  const parsed: unknown = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Not the parser's message: it quotes the text around the fault, which can be a secret.
+    throw new Error(`${CREDENTIALS_PATH} is not valid JSON`);
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${CREDENTIALS_PATH} is not a JSON object`);
   return parsed as CredentialsFile;
 }
