@@ -4,9 +4,9 @@
  *   deckhand-panel --idle DIM_MS SLEEP_MS   0 leaves that one out
  *   deckhand-panel --idle-probe             whether this desktop offers it
  *
- * Asks for ext_idle_notifier_v1's plain notification, which respects idle
- * inhibitors, so a playing video or a game keeps the decks lit. Then blocks in
- * poll(), and shows nothing.
+ * Asks for ext_idle_notifier_v1's plain notification, which respects the
+ * compositor's own idle inhibitors; KDE's other inhibitions are the daemon's to
+ * follow (src/services/desktop-inhibit.ts). Then blocks in poll(), and shows nothing.
  *
  * stdout, one JSON object per line:
  *   {"ev":"available"}                       --idle-probe: the desktop offers it

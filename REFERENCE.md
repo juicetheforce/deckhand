@@ -470,8 +470,9 @@ is saved.
 Sleep** has **Dim after**, **Dim to** and **Sleep after**, global, for Stream Decks
 (`"defaults": { "sleep": { "dimAfter": 300, "dimTo": 20, "sleepAfter": 900 } }`, the
 times in seconds). The desktop does the counting, through the Wayland protocol
-`ext-idle-notify-v1`, so a playing video or a game keeps the decks lit, as it does
-the screen. A press on a dimmed deck runs its key as it wakes that deck; a press on
+`ext-idle-notify-v1`, and on KDE Deckhand also follows what Plasma's power management
+is holding, so whatever keeps KDE's screens on, such as a video in a browser, keeps
+the decks lit too, and the count starts again when it ends. A press on a dimmed deck runs its key as it wakes that deck; a press on
 a sleeping deck only wakes it. If the desktop is still idle, for example because the
 press typed nothing, the deck goes back after the shorter of those two times. KDE
 Plasma offers the protocol; where a desktop doesn't, those controls are greyed out,
