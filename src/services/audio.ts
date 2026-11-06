@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { promisify } from 'node:util';
 import type { PickableDevice } from '../control/protocol.js';
+import { Recovery } from '../recovery.js';
 
 const run = promisify(execFile);
 
@@ -338,6 +339,8 @@ const STATE_CHANGE_EVENT = /^Event '\w+' on (sink|source|card|server) #/;
  */
 export function subscribe(onChange: () => void): () => void {
   let stopped = false;
+  const recovery = new Recovery(() => start());
+  retrySubscriber = () => recovery.retry();
   let proc: ReturnType<typeof spawn> | null = null;
   let debounce: NodeJS.Timeout | null = null;
 
@@ -356,6 +359,7 @@ export function subscribe(onChange: () => void): () => void {
 
   const start = () => {
     if (stopped) return;
+    recovery.started();
     proc = spawn('pactl', ['subscribe'], { stdio: ['ignore', 'pipe', 'ignore'] });
     if (proc.stdout) {
       readline.createInterface({ input: proc.stdout }).on('line', (line) => {
@@ -364,7 +368,7 @@ export function subscribe(onChange: () => void): () => void {
     }
     proc.on('exit', () => {
       proc = null;
-      if (!stopped) setTimeout(start, 2000);
+      if (!stopped) recovery.lost();
     });
     proc.on('error', (err) => {
       console.error(`[audio] pactl subscribe failed: ${err.message}`);
@@ -377,7 +381,16 @@ export function subscribe(onChange: () => void): () => void {
 
   return () => {
     stopped = true;
+    recovery.cancel();
+    retrySubscriber = null;
     if (debounce) clearTimeout(debounce);
     proc?.kill();
   };
+}
+
+let retrySubscriber: (() => void) | null = null;
+
+/** The 60-second scan: start `pactl subscribe` again if it is gone. */
+export function retrySubscribe(): void {
+  retrySubscriber?.();
 }

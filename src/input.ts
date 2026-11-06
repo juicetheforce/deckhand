@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { parseCombo, textToTaps } from './keymap.js';
+import { Recovery } from './recovery.js';
 import { TEXT_DELAY_MS } from './input-timing.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -39,20 +40,24 @@ class InputBridge {
   /** Told when the virtual keyboard goes: whatever thought a key was held is wrong. */
   private keyboardLostListeners = new Set<() => void>();
   private queue: Pending[] = [];
-  private restartTimer: NodeJS.Timeout | null = null;
+  private readonly recovery = new Recovery(() => {
+    console.log('[input] restarting helper');
+    this.start();
+  });
   private stopped = false;
   /** Keycodes currently held with down(), per source. TAP and hold() release their own. */
   private held: Record<InputSource, Set<number>> = { deck: new Set(), socket: new Set() };
 
   start(): void {
     if (this.proc || this.stopped) return;
+    this.recovery.started();
 
     let proc: ChildProcessWithoutNullStreams;
     try {
       proc = spawn(BIN, [], { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
       console.error(`[input] cannot spawn helper at ${BIN}: ${(err as Error).message}`);
-      this.scheduleRestart();
+      this.recovery.lost();
       return;
     }
     this.proc = proc;
@@ -85,7 +90,7 @@ class InputBridge {
         }
       }
       this.failAllPending(new Error('input helper exited'));
-      this.scheduleRestart();
+      this.recovery.lost();
     });
   }
 
@@ -109,13 +114,9 @@ class InputBridge {
     for (const p of queued) p.reject(err);
   }
 
-  private scheduleRestart(): void {
-    if (this.stopped || this.restartTimer) return;
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      console.log('[input] restarting helper');
-      this.start();
-    }, 2000);
+  /** The 60-second scan: start the helper again if it is gone. */
+  retry(): void {
+    this.recovery.retry();
   }
 
   private waitReady(timeoutMs = 5000): Promise<void> {
@@ -130,6 +131,8 @@ class InputBridge {
   }
 
   private async send(command: string): Promise<void> {
+    // A press does not wait for the scan to find the helper gone.
+    this.start();
     await this.waitReady();
     const proc = this.proc;
     if (!proc) throw new Error('input helper not running');
@@ -213,7 +216,7 @@ class InputBridge {
 
   stop(): void {
     this.stopped = true;
-    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.recovery.cancel();
     this.proc?.kill('SIGTERM');
     this.proc = null;
   }

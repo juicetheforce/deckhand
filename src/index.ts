@@ -1,5 +1,5 @@
 import { ConfigBackups } from './backups.js';
-import { CONFIG_PATH, configMissing, loadConfig, watchConfig, writeNewConfig } from './config.js';
+import { CONFIG_PATH, configMissing, loadConfig, retryConfigWatch, watchConfig, writeNewConfig } from './config.js';
 import { createHandlers, eventNotifiers, type ControlDeps } from './control/commands.js';
 import type { ReloadResult } from './control/protocol.js';
 import { ControlServer, socketPath } from './control/server.js';
@@ -12,6 +12,7 @@ import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
 import * as audioService from './services/audio.js';
+import { retryMonitor } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
 import * as notifications from './services/notifications.js';
 import * as sessionLock from './services/session-lock.js';
@@ -547,9 +548,11 @@ async function main(): Promise<void> {
   await requestScan();
   // The same tick retries a lost session bus (mpris.ts retryLostBus), an
   // OBS, a VTube Studio or a Discord that was not there while a key wanted it
-  // (obs.ts, vts.ts, discord.ts retry), and logind for a virtual deck's lock state
-  // (session-lock.ts), so none needs a timer of its own; each does nothing
-  // while there is nothing to retry.
+  // (obs.ts, vts.ts, discord.ts retry), logind for a virtual deck's lock state
+  // (session-lock.ts), and whatever has failed its one quick retry
+  // (recovery.ts: the input helper, pactl subscribe, udevadm monitor, the
+  // config watch), so none needs a timer of its own; each does nothing while
+  // there is nothing to retry.
   const scanner = setInterval(() => {
     void requestScan();
     mprisService.retryLostBus();
@@ -557,6 +560,10 @@ async function main(): Promise<void> {
     vtsService.retry();
     discordService.retry();
     sessionLock.retry();
+    input.retry();
+    audioService.retrySubscribe();
+    retryMonitor();
+    retryConfigWatch();
   }, SAFETY_SCAN_INTERVAL_MS);
   // A virtual deck's touch state is in the socket's "state": a lock or an
   // unlock changes it.

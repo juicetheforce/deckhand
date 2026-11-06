@@ -226,7 +226,11 @@ needs a reason good enough to join this list. Media players are discovered
 from D-Bus's `NameOwnerChanged`, not by rescanning. One `setTimeout` a grep
 will find is not a recurring timer: after the session bus is lost,
 `src/services/mpris.ts` retries once, 2 s later, and further retries ride the
-60-second scan. **OBS is connected only while a page a deck shows has an OBS
+60-second scan. **The input helper, `pactl subscribe`, `udevadm monitor`
+and the config watch do the same** (`src/recovery.ts`): one quick retry, then
+the scan, and staying up 10 seconds earns the quick retry back, so a
+dependency that stays gone costs nothing between scans. A press also tries
+to start a missing input helper. **OBS is connected only while a page a deck shows has an OBS
 key**, or a press is waiting on it; if OBS is not running, the next try rides
 the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 `src/services/obs-client.ts` are one-shot deadlines for a handshake or a
@@ -405,6 +409,7 @@ is here so the test is not "fixed" instead.
 | `helper/deckhand-input.c` | combo timing (`TAP_DELAY_US`, `COMBO_GAP_US`, …) is a tested floor, not a tuning knob |
 | `src/control/` | nothing may block or await a client; socket actions are serialised daemon-wide |
 | `editor/src/main/one-at-a-time.ts`, `main.ts`'s `deckAction` | **the editor's own deck actions — a page shown, a profile made active, a Test Run — run one at a time**, each whole. The daemon refuses a second socket action with `busy` rather than queue it, so two page tabs clicked quickly lost the second click, and the first's success hid the error |
+| `src/recovery.ts`, anything restarting a helper or a watch | **one quick retry, then the 60-second scan**, never a loop of its own: a dependency that stays gone must not add work at rest. Held by `smoke-recovery` |
 | `src/services/audio.ts`, any audio `describe()` | key faces read a cache; spawning `pactl` from a render feeds itself |
 | `src/render.ts`, `src/builtin-icons.ts` | built-ins are resolved by name; a default is never written to `config.json`, and a chosen built-in is written as `builtin:<name>`, never as a path into the app directory |
 | `src/icon-file.ts`, anything that reads an icon path (the renderer, the editor's icon protocol, the export) | **an icon path is checked before it is read**: a regular file (a device or FIFO never finishes reading), at most 10 MB, **never in Deckhand's state directory, links followed** — an icon naming `credentials.json` was exported with its tokens inside. The editor and the export also require an image, by extension or by first bytes; the daemon leaves the type to sharp. Held by `smoke-icon-files` and `export-bundle.test.ts` |

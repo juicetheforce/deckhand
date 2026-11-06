@@ -2,6 +2,7 @@ import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
+import { Recovery } from './recovery.js';
 import { migrateStateIcons } from './state-icons.js';
 import type { Config, LayoutDef } from './types.js';
 
@@ -228,12 +229,15 @@ export async function writeNewConfig(config: Config): Promise<void> {
  * directory, not the file, so a write by rename (as the editor does) is still
  * seen. Deliberately non-recursive and filtered on the file name: nothing
  * else written in or below this directory may trigger a reload. Bursts are
- * debounced to one reload, and the watch is re-established if it errors.
+ * debounced to one reload, and a watch that errors is re-established as
+ * src/recovery.ts says.
  */
 export function watchConfig(onChange: () => void): () => void {
   let timer: NodeJS.Timeout | null = null;
   let watcher: ReturnType<typeof watch> | null = null;
   let stopped = false;
+  const recovery = new Recovery(() => attach());
+  retryWatch = () => recovery.retry();
 
   const schedule = () => {
     if (timer) clearTimeout(timer);
@@ -242,16 +246,17 @@ export function watchConfig(onChange: () => void): () => void {
 
   const attach = () => {
     if (stopped) return;
+    recovery.started();
     try {
       watcher = watch(CONFIG_DIR, (_event, filename) => {
         if (!filename || filename.toString() === 'config.json') schedule();
       });
       watcher.on('error', () => {
         watcher?.close();
-        setTimeout(attach, 1000);
+        recovery.lost();
       });
     } catch {
-      setTimeout(attach, 1000);
+      recovery.lost();
     }
   };
 
@@ -259,7 +264,16 @@ export function watchConfig(onChange: () => void): () => void {
 
   return () => {
     stopped = true;
+    recovery.cancel();
+    retryWatch = null;
     if (timer) clearTimeout(timer);
     watcher?.close();
   };
+}
+
+let retryWatch: (() => void) | null = null;
+
+/** The 60-second scan: watch the config directory again if the watch is gone. */
+export function retryConfigWatch(): void {
+  retryWatch?.();
 }
