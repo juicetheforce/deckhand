@@ -47,6 +47,8 @@ console.log('the mapping');
     [{ type: 'brightness', delta: 10 }, {}, 'brightness-up'],
     [{ type: 'brightness', delta: -10 }, {}, 'brightness-down'],
     [{ type: 'brightness', value: 40 }, {}, 'brightness-set'],
+    [{ type: 'sleep.all' }, { active: false }, 'decks-sleep'],
+    [{ type: 'sleep.all' }, { active: true }, 'decks-asleep'],
     [{ type: 'clock' }, {}, null],
     [{ type: 'media.info' }, {}, null],
     [{ type: 'media.info' }, { idle: false }, null],
@@ -354,5 +356,19 @@ check('the only errors logged are for the two broken built-in references',
   errors.length === 2 && errors.every((l) => /nope|not a built-in name/.test(l)));
 await daemon.stop();
 await fs.rm(TMP, { recursive: true, force: true });
+console.log('the Sleep all decks icons');
+{
+  const sharp = (await import('sharp')).default;
+  // Over a colour no icon uses, at the size of the design's viewBox × 10: x and y are the viewBox's × 10.
+  const pixel = async (name, x, y) => {
+    const { data, info } = await sharp(path.join(REPO, 'assets/icons', `${name}.svg`), { density: 432 }).resize(240, 240).flatten({ background: '#ff00ff' }).raw().toBuffer({ resolveWithObject: true });
+    const at = (y * info.width + x) * info.channels;
+    return [...data.subarray(at, at + 3)].join();
+  };
+  check("decks-asleep: the deck is solid, in the shipped icons' amber", (await pixel('decks-asleep', 40, 190)) === '232,180,90');
+  check('decks-asleep: the moon is a real cut-out, the background showing through', (await pixel('decks-asleep', 90, 150)) === '255,0,255');
+  check('decks-sleep: an outline, the background showing inside it', (await pixel('decks-sleep', 50, 180)) === '255,0,255');
+}
+
 console.log(failureCount() === 0 ? '\ndefaults: all checks passed' : `\ndefaults: ${failureCount()} check(s) failed`);
 process.exit(failureCount() === 0 ? 0 : 1);

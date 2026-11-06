@@ -107,6 +107,9 @@ export const BUILTIN_ICONS = [
   'twitch-clip',
   'twitch-marker',
   'twitch-stream-info',
+  // Sleep all decks: two decks, a moon in the front one; asleep, a solid deck with the moon cut out.
+  'decks-asleep',
+  'decks-sleep',
   // Virtual deck on/off: the panel's keys lit, and faded.
   'virtual-deck-off',
   'virtual-deck-on',
@@ -219,7 +222,7 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       // idle, the icon alone, with no "No music" label.
       return state.idle ? 'now-playing' : null;
     case 'sleep.all':
-      return state.active === true ? 'brightness-set' : 'brightness-down';
+      return state.active === true ? 'decks-asleep' : 'decks-sleep';
     case 'virtual.power':
       return state.active === false ? 'virtual-deck-off' : 'virtual-deck-on';
     case 'clock': // the time is the face
