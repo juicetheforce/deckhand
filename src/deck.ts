@@ -1,3 +1,4 @@
+import { sleep } from './sleep.js';
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import { activeOf, attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
@@ -118,6 +119,8 @@ export class DeckSession implements DeckHandle {
   private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
   private brightness: number;
+  /** What src/sleep.ts has it showing instead of its brightness; null when awake. */
+  private sleepLevel: number | null = null;
 
   constructor(device: DeckDevice, options: DeckSessionOptions) {
     this.device = device;
@@ -141,7 +144,7 @@ export class DeckSession implements DeckHandle {
     this.iconSize = null;
     this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
     this.page = options.page !== undefined && this.layout.pages[options.page] ? options.page : startPageOf(this.layout);
-    this.brightness = clampBrightness(this.hardware.brightness ?? this.defaults.brightness);
+    this.brightness = clampBrightness(this.ownBrightness(this.hardware));
   }
 
   async start(): Promise<void> {
@@ -156,6 +159,9 @@ export class DeckSession implements DeckHandle {
     // it: if the helper dies, the state goes with it.
     this.stopWatchingKeyboard = input.onKeyboardLost(() => this.forgetLatches());
 
+    // A deck plugged in while the others sleep starts asleep.
+    sleep.add(this);
+    this.sleepLevel = sleep.levelFor(this);
     await this.setBrightness(this.brightness);
     await this.device.clear?.();
     await this.renderPage(true);
@@ -210,6 +216,10 @@ export class DeckSession implements DeckHandle {
     const button = this.currentButtons()[index];
 
     if (edge === 'down') {
+      const woke = sleep.press(this);
+      // Sleep all decks' own key, pressed while dimmed, has done its job by waking them.
+      // Returning before anything is armed is what swallows the release too.
+      if (woke === 'swallow' || (woke === 'woke' && button?.action?.type === 'sleep.all')) return;
       // A previewed key does nothing when pressed: it shows something unsaved,
       // so neither its saved action nor the previewed one should run.
       // (A release for a press that began before the preview still runs below,
@@ -805,9 +815,32 @@ export class DeckSession implements DeckHandle {
   async setBrightness(value: number): Promise<void> {
     const level = clampBrightness(value);
     // A device without a backlight keeps the number, so the socket still reports what was asked.
-    await this.device.setBrightness?.(level);
+    await this.device.setBrightness?.(this.sleepLevel === null ? level : Math.min(this.sleepLevel, level));
     this.brightness = level;
     this.onStateChange();
+  }
+
+  /** A virtual deck is drawn at full brightness unless it is set: defaults.brightness is for a backlight. */
+  private ownBrightness(hardware: DeckDef): number {
+    return hardware.brightness ?? (this.device.dimsInSoftware ? 100 : this.defaults.brightness);
+  }
+
+  /** Below clampBrightness on purpose: only src/sleep.ts sets a deck dark. */
+  applySleep(level: number | null): void {
+    if (level === this.sleepLevel || this.closed) return;
+    this.sleepLevel = level;
+    void Promise.resolve(this.device.setBrightness?.(level === null ? this.brightness : Math.min(level, this.brightness))).catch((err: unknown) => {
+      console.error(`[${this.label()}] could not change its brightness for sleep: ${String(err)}`);
+    });
+    this.onStateChange();
+  }
+
+  canDim(): boolean {
+    return this.device.setBrightness !== undefined;
+  }
+
+  sleepsOnLock(): boolean {
+    return this.device.dimsInSoftware !== true;
   }
 
   currentBrightness(): number {
@@ -863,7 +896,7 @@ export class DeckSession implements DeckHandle {
     } else {
       await this.releaseLatchesOnChangedKeys();
     }
-    await this.setBrightness(hardware.brightness ?? this.defaults.brightness);
+    await this.setBrightness(this.ownBrightness(hardware));
     this.lastSent.clear();
     await this.renderPage(true);
   }
@@ -873,6 +906,7 @@ export class DeckSession implements DeckHandle {
     // left down when the deck goes (unplugged, or the daemon shutting down).
     await this.fireHeldReleases('the deck closing');
     await this.releaseLatches('the deck closing');
+    sleep.remove(this);
     this.stopWatchingKeyboard?.();
     this.stopWatchingKeyboard = null;
     this.closed = true;

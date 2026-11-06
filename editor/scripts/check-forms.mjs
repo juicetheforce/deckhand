@@ -170,6 +170,12 @@ if (r && !r.error) {
     ]);
   });
   check('Brightness: nothing is written until a choice, then delta or value — never both', () => {
+    assert.deepEqual(r.brightnessTarget?.atStart, ['']);
+    assert.equal(r.brightnessTarget?.listed?.[0], 'This deck');
+    assert.equal(r.brightnessTarget?.listed?.length, 2);
+    assert.equal(r.brightnessTarget?.chosen?.deck, SERIAL);
+    assert.deepEqual(r.brightnessTarget?.cleared, { type: 'brightness', value: 30 });
+    assert.deepEqual(r.sleepAll, { off: { type: 'sleep.all', mode: 'off' }, offHasLevel: false, dim: { type: 'sleep.all', mode: 'dim', level: 20 } });
     assert.deepEqual(r.brightness, [null, { type: 'brightness', delta: -10 }, { type: 'brightness', value: 50 }, { type: 'brightness', value: 30 }]);
   });
   check('Media control: the method writes method, play/pause removes it; the state icons show only for play/pause', () => {
@@ -408,6 +414,7 @@ check('the saved file holds exactly what the forms wrote', () => {
     19: { action: { type: 'multi', steps: [{ type: 'hotkey', keys: ['a', 'b'], delayMs: 75 }, { type: 'media.control', method: 'next' }] } },
     22: { action: { type: 'sound.play', file: '~/Music/horn.mp3', volume: 60 } },
     23: { action: { type: 'virtual.power', deck: 'GRA-6e4e' } },
+    29: { action: { type: 'sleep.all', mode: 'off' } },
     30: { action: { type: 'toggle', keys: 'shift', iconActive: 'builtin:headset' }, icon: 'builtin:mic' },
     31: { action: { type: 'obs.stream', iconActive: 'builtin:headset' } },
   };

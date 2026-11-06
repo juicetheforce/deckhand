@@ -218,6 +218,8 @@ export function defaultIconFor(action: ActionDef | undefined, state: IconState =
       // The track and its art are the face while something plays;
       // idle, the icon alone, with no "No music" label.
       return state.idle ? 'now-playing' : null;
+    case 'sleep.all':
+      return state.active === true ? 'brightness-set' : 'brightness-down';
     case 'virtual.power':
       return state.active === false ? 'virtual-deck-off' : 'virtual-deck-on';
     case 'clock': // the time is the face

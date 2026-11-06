@@ -316,7 +316,7 @@ scripts. `config.example.json` shows a complete file — its serials and audio
 ```jsonc
 {
   "defaults": { /* background, labelColor, labelSize, labelPosition,
-                   iconFit, brightness, refreshMs, builtinIconSize */ },
+                   iconFit, brightness, refreshMs, builtinIconSize, sleep */ },
 
   "decks": {                                   // per deck, optional for a Stream Deck
     "<serial>": { "name": "XL", "brightness": 70 },
@@ -430,7 +430,8 @@ is saved.
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `brightness` | `value` or `delta`; `showLevel: true` shows the level, at the top of the key |
+| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker |
+| `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
 | `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconActive` (off) |
@@ -464,6 +465,24 @@ is saved.
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
 | `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 % |
+
+**Sleep.** While the session is locked or not the active one, as logind says,
+every Stream Deck goes to brightness 0, and unlocking wakes it. The first press on
+a dark deck only wakes that deck, and its release does nothing either. If the lock
+state can't be read, the decks stay awake. Virtual decks don't sleep on a lock:
+the lock screen and the monitor's power saving already cover their screens.
+**Settings › General › Sleep when the screen locks** turns it off
+(`"defaults": { "sleep": { "onLock": false } }`).
+
+**A virtual deck's brightness is drawn, not set on the screen**: its keys and
+background are drawn darker, and level 0 is pure black, so the monitor's backlight
+stays where it is. That is also its limit: turned off by Sleep all decks, the panel
+draws black, but an LCD's backlight still shows faintly. It is at 100 unless `decks.<key>.brightness` says otherwise;
+`defaults.brightness` is for Stream Decks. Plasma has a brightness service, but on
+the monitors tried it changed little, so Deckhand doesn't use it.
+
+**Label size.** `defaults.labelSize`, 14 unless set, is what **Settings › General ›
+Label size** sets, from 8 to 28. A key's own size overrides it.
 
 **A level never takes the label's place.** Volume, Brightness and User
 volume keys draw their level (`showLevel`) at the top of the key, in the

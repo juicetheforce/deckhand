@@ -101,7 +101,9 @@ class FakeStreamDeck {
   }
   async fillKeyBuffer() {}
   async clearPanel() {}
-  async setBrightness() {}
+  async setBrightness(value) {
+    record('brightness', `${this.serialNumber} ${value}`);
+  }
   async close() {
     if (open.get(this.serialNumber) === this) open.delete(this.serialNumber);
     record('close', this.serialNumber);

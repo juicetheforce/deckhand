@@ -13,7 +13,7 @@ import { ObsForm, ObsMuteForm, ObsSceneForm, ObsSourceForm } from './ObsForms.js
 import { PageAction } from './PageAction.js';
 import { ProfileAction } from './ProfileAction.js';
 import { SoundForm, StopAllSoundsForm } from './SoundForms.js';
-import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm, VirtualPowerForm } from './SystemForms.js';
+import { AppForm, BrightnessForm, ClockForm, EditorForm, NoopForm, SleepAllForm, VirtualPowerForm } from './SystemForms.js';
 import { CommandForm, TextForm } from './TextCommandForms.js';
 import { TwitchChatForm, TwitchClipForm, TwitchMarkerForm, TwitchStreamInfoForm } from './TwitchForms.js';
 import { VtsExpressionForm, VtsHotkeyForm, VtsModelForm } from './VtsForms.js';
@@ -30,6 +30,8 @@ export interface ActionFormProps {
   profiles: Choice[];
   /** Every virtual deck, for Virtual deck on/off. */
   virtualDecks: Choice[];
+  /** Every connected deck, for Brightness's target. */
+  decks: Choice[];
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   audio: AudioLists;
   /** The daemon's installed applications, for the App form. */
@@ -73,7 +75,9 @@ export function ActionForm(p: ActionFormProps) {
     case 'editor':
       return <EditorForm />;
     case 'brightness':
-      return <BrightnessForm {...common} />;
+      return <BrightnessForm {...common} decks={p.decks} />;
+    case 'sleep.all':
+      return <SleepAllForm {...common} onChooseIcon={p.onChooseIcon} />;
     case 'virtual.power':
       return <VirtualPowerForm {...common} decks={p.virtualDecks} onChooseIcon={p.onChooseIcon} />;
     case 'media.control':

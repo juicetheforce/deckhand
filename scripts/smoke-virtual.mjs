@@ -35,6 +35,7 @@ process.env.DECKHAND_STATE_DIR = path.join(TMP, 'state');
 
 const { createVirtualDriver } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
 const { listScreens } = await import(path.join(REPO, 'dist/screens.js'));
+const { sleep: sleepCoordinator } = await import(path.join(REPO, 'dist/sleep.js'));
 const { canvasFrame, imageFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 const { geometryOfPanel } = await import(path.join(REPO, 'dist/geometry.js'));
 const { validateConfig } = await import(path.join(REPO, 'dist/config.js'));
@@ -186,7 +187,7 @@ await settle('opening', async () => {
   });
   await session.start();
   check('the session has the panel\'s six keys', session.keyCount === 6 && session.hasKey('k6') && !session.hasKey('0'));
-  check('…and no brightness to set, without failing', session.currentBrightness() > 0);
+  check('…drawn at full brightness, with no level sent: defaults.brightness is for a backlight', session.currentBrightness() === 100 && !(await frames()).some((f) => f.type === 'B'));
   await until(async () => (await frames()).filter((f) => f.type === 'I').length >= 6);
   const all = await frames();
   const firstCanvas = all.findIndex((f) => f.type === 'K');
@@ -213,6 +214,33 @@ await settle('newest wins', async () => {
   await slow.close();
   delete config.decks['output-DP-5'];
   await plug('DP-5', 'disconnected');
+});
+
+console.log('brightness: drawn darker by the helper');
+await settle('brightness', async () => {
+  const newFrames = async (before) => (await frames()).slice(before);
+  let before = (await frames()).length;
+  await session.setBrightness(40);
+  check('the level, then the canvas, then every key again', await until(async () => (await newFrames(before)).filter((f) => f.type === 'I').length >= 6));
+  const sent = await newFrames(before);
+  check('…in that order, at the level', sent[0]?.type === 'B' && sent[0].percent === 40 && sent[1]?.type === 'K', JSON.stringify(sent.slice(0, 2)));
+  before = (await frames()).length;
+  await session.setBrightness(40);
+  await sleep(100);
+  check('the same level again sends nothing', (await newFrames(before)).length === 0);
+  before = (await frames()).length;
+  sleepCoordinator.toggleAll({ mode: 'off' });
+  check('Sleep all decks off: level 0', await until(async () => (await newFrames(before)).some((f) => f.type === 'B' && f.percent === 0)));
+  before = (await frames()).length;
+  sleepCoordinator.toggleAll({ mode: 'off' });
+  check('…and back at its own level, its keys drawn again', await until(async () => {
+    const f = await newFrames(before);
+    return f.some((x) => x.type === 'B' && x.percent === 40) && f.filter((x) => x.type === 'I').length >= 6;
+  }));
+  before = (await frames()).length;
+  await session.setBrightness(100);
+  await until(async () => (await newFrames(before)).filter((f) => f.type === 'I').length >= 6);
+  await sleep(300);
 });
 
 console.log('a profile with another panel');

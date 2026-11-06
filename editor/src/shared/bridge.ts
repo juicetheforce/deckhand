@@ -331,6 +331,13 @@ export interface DeckhandBridge {
   builtinIconSize(): Promise<number | null>;
   /** Save it (null: the default). Settings › General's slider, on release. */
   setBuiltinIconSize(percent: number | null): Promise<number | null>;
+  /** `defaults.labelSize`; null while config.json is not open. */
+  labelSize(): Promise<number | null>;
+  /** null, or the default, removes it. Answers what is saved. */
+  setLabelSize(size: number | null): Promise<number | null>;
+  /** "Sleep when the screen locks"; null while config.json is not open. */
+  sleepOnLock(): Promise<boolean | null>;
+  setSleepOnLock(on: boolean): Promise<boolean | null>;
   /** Settings › Decks' virtual decks, and the profile a new one is added to (settings window only). */
   virtualDecks(): Promise<VirtualDecksView>;
   onVirtualDecks(callback: (view: VirtualDecksView) => void): () => void;

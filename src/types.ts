@@ -138,6 +138,8 @@ export interface Defaults {
   brightness?: number;
   /** Default refresh interval for buttons that render live state. */
   refreshMs?: number;
+  /** Deck sleep (src/sleep.ts). `onLock`: sleep when the screen locks, on unless false. */
+  sleep?: { onLock?: boolean };
 }
 
 export interface Config {

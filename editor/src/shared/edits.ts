@@ -115,6 +115,10 @@ export type Edit =
    * default, removes the field, so a default config does not carry it.
    */
   | { kind: 'setBuiltinIconSize'; percent: number | null }
+  /** Settings › General › Label size; null, or the default, removes it. */
+  | { kind: 'setLabelSize'; size: number | null }
+  /** Settings › General › Sleep when the screen locks. */
+  | { kind: 'setSleepOnLock'; on: boolean }
   /**
    * Rename a page.
    *

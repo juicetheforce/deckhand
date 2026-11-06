@@ -51,6 +51,8 @@ const LEGACY: Record<string, { active: string; resting: string }> = {
   'vts.expression': { active: 'iconOn', resting: 'iconOff' },
   'sound.play': { active: 'iconOn', resting: 'iconOff' },
   'virtual.power': { active: 'iconOff', resting: 'iconOn' },
+  // Never released with one field per state: here because this also says it has states.
+  'sleep.all': { active: 'iconOn', resting: 'iconOff' },
 };
 
 /** Every field a state's icon was ever kept in, before `iconActive`: an export still carries their files. */

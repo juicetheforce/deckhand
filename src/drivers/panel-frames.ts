@@ -50,6 +50,8 @@ export function imageFrameParts(x: number, y: number, width: number, height: num
   return [Buffer.concat([frameHead('I', place.length + rgba.length), place]), rgba];
 }
 
+/** How bright the helper draws everything after this, a percent; 0 is pure black. */
+export const brightnessFrame = (percent: number): Buffer => frame('B', Buffer.from([Math.max(0, Math.min(100, Math.round(percent)))]));
 export const clearFrame = (): Buffer => frame('C', Buffer.alloc(0));
 export const quitFrame = (): Buffer => frame('Q', Buffer.alloc(0));
 

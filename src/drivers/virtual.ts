@@ -14,7 +14,7 @@ import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } fr
 import type { PairReply } from '../control/protocol.js';
 import { defaultPanelOf, makePanel } from '../panel-presets.js';
 import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
-import { canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
+import { brightnessFrame, canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
  * Virtual decks: a screen the config names as one — `decks["<screen key>"]`
@@ -107,6 +107,8 @@ class PanelDevice implements DeckDevice {
   private touch: Exclude<TouchState, 'locked' | 'inactive' | 'unknown'> = 'not-paired';
   private stopLock: () => void;
   private refusedLogged = false;
+  /** What the helper was last told (panel/panel.c's 'B'); it starts at 100. */
+  private brightness = 100;
 
   constructor(
     readonly id: string,
@@ -378,6 +380,19 @@ class PanelDevice implements DeckDevice {
   async clear(): Promise<void> {
     this.pending.clear();
     this.write(clearFrame());
+  }
+
+  /** Dimmed by the helper, not the screen's own backlight: Plasma's control moved most monitors too little to use. */
+  readonly dimsInSoftware = true;
+
+  async setBrightness(percent: number): Promise<void> {
+    if (percent === this.brightness) return;
+    this.brightness = percent;
+    this.write(brightnessFrame(percent));
+    // What is on the screen stays until drawn again.
+    this.pending.clear();
+    if (this.canvas) this.write(this.canvas);
+    for (const listener of this.redrawListeners) listener();
   }
 
   /** The screen as the helper last reported it. */

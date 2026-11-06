@@ -42,6 +42,9 @@ export function storedIconSize(shown: number): number {
   return Math.round(shown * BUILTIN_ICON_SIZE.largest) / 100;
 }
 
+/** Label size (Settings › General): the slider over `defaults.labelSize`. A key's own size is not limited to it. */
+export const LABEL_SIZE = { min: 8, max: 28, step: 1 } as const;
+
 export const DEFAULTS: Required<Defaults> = {
   background: '#101014',
   labelColor: '#ffffff',
@@ -54,6 +57,7 @@ export const DEFAULTS: Required<Defaults> = {
   builtinIconSize: 45.5,
   brightness: 70,
   refreshMs: 1000,
+  sleep: { onLock: true },
 };
 
 /**

@@ -36,7 +36,7 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { canvasFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { brightnessFrame, canvasFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
@@ -226,6 +226,55 @@ try {
     const head2 = back.subarray(0, 20).toString('latin1').match(/^P6\n(\d+) (\d+)\n255\n/);
     const px = (x, y) => JSON.stringify([...back.subarray(head2[0].length + (y * 1920 + x) * 3, head2[0].length + (y * 1920 + x) * 3 + 3)]);
     check('what is drawn once it is back is on the screen', px(503, 303) === '[0,0,255]' && px(10, 10) === '[1,2,3]', JSON.stringify([px(503, 303), px(10, 10)]));
+  }
+
+  console.log('drawn darker, by the deck\'s brightness');
+  {
+    const shots = path.join(TMP, 'dim.ppm');
+    const d = helper(['--output', 'Virtual-1', '--dump', shots]);
+    await until(() => d.events.some((e) => e.ev === 'ready'));
+    // As the daemon does: the level, then the canvas and every key again.
+    const redraw = (percent) => {
+      d.proc.stdin.write(brightnessFrame(percent));
+      d.proc.stdin.write(canvasFrame(960, 360, [100, 200, 40]));
+      d.proc.stdin.write(imageFrame(10, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([200, 100, 50, 255]))));
+      d.proc.stdin.write(imageFrame(30, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 0, 0, 128]))));
+    };
+    const pixels = async (percent) => {
+      redraw(percent);
+      const drawn = d.events.filter((e) => e.ev === 'drawn').length;
+      await until(() => d.events.filter((e) => e.ev === 'drawn').length >= drawn);
+      await sleep(200);
+    };
+    await pixels(50);
+    d.proc.stdin.write(quitFrame());
+    check('quit: exit 0', (await d.exited) === 0);
+    const read = async () => {
+      const ppm = await fs.readFile(shots);
+      const off = ppm.subarray(0, 20).toString('latin1').match(/^P6\n(\d+) (\d+)\n255\n/)[0].length;
+      return (x, y) => [...ppm.subarray(off + (y * 1920 + x) * 3, off + (y * 1920 + x) * 3 + 3)];
+    };
+    let px = await read();
+    check('at 50: the key and the background are half as bright', JSON.stringify(px(24, 24)) === '[100,50,25]' && JSON.stringify(px(5, 5)) === '[50,100,20]', JSON.stringify([px(24, 24), px(5, 5)]));
+    check('at 50: a half-transparent key blends over the dimmed background', Math.abs(px(64, 24)[1] - 50) <= 1, JSON.stringify(px(64, 24)));
+    const z = helper(['--output', 'Virtual-1', '--dump', shots]);
+    await until(() => z.events.some((e) => e.ev === 'ready'));
+    z.proc.stdin.write(brightnessFrame(0));
+    z.proc.stdin.write(canvasFrame(960, 360, [100, 200, 40]));
+    z.proc.stdin.write(imageFrame(10, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([200, 100, 50, 255]))));
+    await until(() => z.events.some((e) => e.ev === 'drawn'));
+    z.proc.stdin.write(quitFrame());
+    await z.exited;
+    px = await read();
+    check('at 0: pure black, key and background', JSON.stringify(px(24, 24)) === '[0,0,0]' && JSON.stringify(px(5, 5)) === '[0,0,0]', JSON.stringify([px(24, 24), px(5, 5)]));
+    const bad = helper(['--output', 'Virtual-1']);
+    await until(() => bad.events.some((e) => e.ev === 'ready'));
+    const head = Buffer.alloc(6);
+    head.writeUInt32LE(2, 0);
+    head[4] = 'B'.charCodeAt(0);
+    head[5] = 101;
+    bad.proc.stdin.write(head);
+    check('a level above 100 is refused', (await bad.exited) === 5 && bad.events.some((e) => e.ev === 'error'), JSON.stringify(bad.events));
   }
 
   console.log('an image frame whose size overflows');

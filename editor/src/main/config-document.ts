@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, LABEL_SIZE, resolvePage, resolveProfile } from '../../../src/config-common.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
@@ -398,6 +398,32 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
         }
       } else {
         config.defaults = { ...config.defaults, builtinIconSize: edit.percent };
+      }
+      return {};
+    }
+    case 'setLabelSize': {
+      const { min, max } = LABEL_SIZE;
+      if (edit.size !== null && (typeof edit.size !== 'number' || !(edit.size >= min && edit.size <= max))) {
+        throw new EditError(`label size must be from ${min} to ${max}`);
+      }
+      if (edit.size === null || edit.size === DEFAULTS.labelSize) {
+        if (config.defaults) {
+          delete config.defaults.labelSize;
+          if (Object.keys(config.defaults).length === 0) delete config.defaults;
+        }
+      } else {
+        config.defaults = { ...config.defaults, labelSize: edit.size };
+      }
+      return {};
+    }
+    case 'setSleepOnLock': {
+      if (edit.on) {
+        if (config.defaults) {
+          delete config.defaults.sleep;
+          if (Object.keys(config.defaults).length === 0) delete config.defaults;
+        }
+      } else {
+        config.defaults = { ...config.defaults, sleep: { onLock: false } };
       }
       return {};
     }

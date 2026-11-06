@@ -29,6 +29,8 @@ export interface DeckDevice {
   clear?(): Promise<void>;
   /** Optional: a device without a backlight to set has none. */
   setBrightness?(percent: number): Promise<void>;
+  /** Its keys are drawn darker rather than a backlight dimmed: a virtual deck. */
+  readonly dimsInSoftware?: boolean;
   close(): Promise<void>;
   /**
    * Optional: a device whose controls the layout defines — a virtual deck,

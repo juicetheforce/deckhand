@@ -18,8 +18,8 @@ import * as dbus from 'dbus-next';
  * KDE Plasma 6 sets `LockedHint` on locking and clears it on unlocking, and
  * logind announces both (measured, Meta+L on Plasma 6.7).
  *
- * Connected only while a virtual deck is (acquire/release); a lost bus is
- * tried again on the daemon's 60-second scan (retry), like the session bus.
+ * Connected only while a deck is attached (acquire/release: src/index.ts for
+ * deck sleep, a virtual deck's driver for its touches); a lost bus is tried again on the daemon's 60-second scan (retry), like the session bus.
  */
 
 export type LockState = 'open' | 'locked' | 'inactive' | 'unknown';
