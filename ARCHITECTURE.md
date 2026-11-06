@@ -64,9 +64,10 @@ editor (Electron/React) — config producer only
   restart the daemon. When a touchscreen is paired as a virtual deck, or one
   is removed, it also runs Deckhand's root helper through `pkexec`, which
   asks for the password (below) — the editor, because the polkit prompt
-  belongs to the desktop session, and the daemon is outside it. **Once each time its window opens**, unless Settings ›
-  About's "Check for updates" is off, it asks GitHub for the latest release,
-  to say when a newer one exists; it downloads and installs nothing, and the
+  belongs to the desktop session, and the daemon is outside it. **Once each time its window opens**, unless
+  Settings › General's "Check for updates" is off, it asks GitHub for the latest
+  release, to show an Update pill when a newer one exists, with that release's own
+  update line to copy; it downloads and installs nothing, and the
   daemon never asks. A hung or crashed editor cannot stall a key press, and
   closing it changes nothing on the decks.
 - **The `deckhand` command** is a thin client over the same socket. It is how
@@ -237,7 +238,7 @@ the same 60-second scan — it has no timer of its own. The `setTimeout`s in
 request, not recurring timers. **Pairing a virtual deck's
 touchscreen** waits for a tap with a one-shot 30-second deadline, and its
 root helper drops its temporary access after at most 5 minutes, only while
-someone is pairing. **While a Twitch account is being
+someone is pairing. **A deck woken by a press while the desktop is idle** gets a one-shot deadline to go back (`src/sleep.ts`), never at rest. **While a Twitch account is being
 linked**, the daemon asks Twitch every few seconds whether the person has
 approved — the only way to learn it — until they do, the code expires, they
 cancel, or the client that started it closes; never at rest. **VTube Studio
@@ -362,6 +363,25 @@ the decks awake**: a deck left dark because logind went away is the worse failur
 Sleep all decks dims every deck to a level, or turns them off, until a press on any
 deck. Nothing here adds a timer: logind's signals and presses are the only events.
 
+**The compositor counts idle time, not Deckhand.** Dimming after idle is an idle
+mode of the display helper (`deckhand-panel --idle`, `panel/idle.c`), asking for
+`ext-idle-notify-v1`'s plain notification, which respects the compositor's own idle
+inhibitors. **That isn't all that keeps a screen on**: a browser playing a video asks
+KDE's power management over D-Bus, which the notification doesn't count (measured:
+it said idle while KDE listed an active inhibition). So Deckhand also follows
+powerdevil's `ActiveInhibitions`, by its change signal: while one names `idle`, the
+helper doesn't run and the decks stay lit, and when it ends the helper starts afresh,
+so the count begins then. `sleep` only blocks suspending, and doesn't count. Deckhand can't count for itself: it can't see
+keyboard or mouse input without reading every input device, which Wayland
+deliberately prevents. The helper runs only while dimming is set and a Stream Deck
+is attached, and blocks in `poll()`. logind's `IdleHint` isn't used: KDE never sets
+it. Where the compositor lacks the protocol the helper says so, and Settings greys
+the controls out. **A press that types nothing is not input to the compositor**, so
+a deck it wakes would stay lit until the next idle: it starts a one-shot deadline,
+cancelled when the desktop reports resumed, restarted by another deck press, and
+overridden by a lock. Virtual decks are left out: their monitor's power saving
+covers them.
+
 **A virtual deck dims in its display helper, not on the screen.** The helper draws
 everything at the deck's brightness, and 0 is pure black; a change is the level, then
 the canvas and every key again. Plasma's `org.kde.ScreenBrightness` reached every
@@ -460,6 +480,7 @@ is here so the test is not "fixed" instead.
 | an action's `active()`, `DeckSession.liveFaces()`, `editor/src/renderer/model.ts`'s `faceIcon` | **the editor's grid draws a key with states as the deck draws it**: the daemon's status reports each shown key's state — its built-in's, and whether its active icon applies, two answers because they can differ (Input mode's built-in calls voice activity active; the key calls push-to-talk its active state) — and the grid draws by the deck's rules, only while it shows the page the deck is on. `active()` is the one definition: `describe()` draws by it. A redraw in another state tells the editor — no timer of its own. Before, every such key showed its default state in the grid whatever the deck showed. Held by `smoke-live-faces` and the editor's unit tests |
 | `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
+| `panel/idle.c`, `src/services/idle.ts`, `src/services/desktop-inhibit.ts` | **the compositor counts, never Deckhand**; the plain notification, so its inhibitors keep the decks lit; **and KDE's own inhibitions, which it doesn't count: while powerdevil lists one naming `idle` the helper doesn't run**, followed by the signal, which names the property as invalidated with no value, so each is followed by a read; `sleep` rows don't count; **the helper runs only while dimming is set and a Stream Deck is attached**; a helper that stops rides `recovery.ts`; one that says the protocol is absent is not retried until the settings change. **The re-dim deadline is one-shot, armed only by a press while idle**: cancelled by resumed, restarted by another press, overridden by a lock. Virtual decks are never idle-dimmed. Held by `smoke-sleep` and `smoke-panel` |
 | `src/sleep.ts`, `DeckSession.applySleep()` | **only this sets a deck below `clampBrightness`'s 5**; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
 | `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()` | what is on the screen stays until drawn again, so **a change is the level, then the canvas, then every key**; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels) and `smoke-virtual` |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |

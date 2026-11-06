@@ -31,6 +31,8 @@ const prefsFile = path.join(stateDir, 'editor', 'preferences.json');
 await fs.mkdir(configDir);
 process.env.DECKHAND_CONFIG_DIR = configDir;
 process.env.DECKHAND_INPUT_BIN = path.join(repoRoot, 'scripts/test/fake-input-helper.mjs');
+// Before the daemon's modules load: Settings' idle question goes to a stand-in, not this desktop.
+process.env.DECKHAND_PANEL_BIN = path.join(editorRoot, '..', 'scripts/test/fake-idle-helper.mjs');
 const { FakeDeck, startDaemon, reloadLikeTheDaemon, sleep } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/control-harness.mjs')).href);
 const electronPath = (await import('electron')).default;
 
@@ -64,12 +66,13 @@ const versionFile = path.join(scratch, 'VERSION');
 await fs.writeFile(versionFile, 'v9.8.7-check\n');
 const openLog = path.join(scratch, 'opened.log');
 
+const UPDATE_LINE = 'curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash';
 // The update check, against a GitHub of the check's own: a newer release, and every request it gets.
 const githubRequests = [];
 const github = http.createServer((req, res) => {
   githubRequests.push({ url: req.url, headers: req.headers });
   res.writeHead(200, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ tag_name: 'v9.9.0', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0', body: 'notes' }));
+  res.end(JSON.stringify({ tag_name: 'v9.9.0', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0', body: `**What's new**\n\n- **First** line\n- Second line\n- Third line\n- Fourth line\n\n\nInstall or update: \`${UPDATE_LINE}\`. SHA256SUMS lets the installer check it.\n` }));
 });
 await new Promise((resolve) => github.listen(0, '127.0.0.1', resolve));
 
@@ -197,23 +200,81 @@ const updateView = `(() => ({
   available: document.querySelector('[data-about=update]') !== null,
   row: document.querySelector('[data-about=updates]')?.textContent ?? null,
   dot: document.querySelector('[data-settings-nav=about] [data-dot=update]') !== null,
-  switchOn: document.querySelector('#settings-check-updates')?.checked ?? null,
+  switchHere: document.querySelector('#settings-check-updates') !== null,
 }))()`;
 r.updatesOnOpen = { requests: githubRequests.length, headers: githubRequests[0]?.headers ?? null };
 r.updateShown = await inPage(editor, 'settings', updateView);
-r.editorOpenUpdateRefused = await inPage(editor, 'editor', 'window.deckhand.openUpdate()');
 await fs.writeFile(openLog, '');
 // Only if it is there: missing, the checks below say so by name instead of the run stopping here.
 if (r.updateShown.available) await inPage(editor, 'settings', clickIn('[data-about=update]'));
 await sleep(300);
 r.updateOpened = await fs.readFile(openLog, 'utf8').catch(() => '');
-// Off: nothing shown, nothing asked; stored in the preferences, not config.json.
-await inPage(editor, 'settings', clickIn('#settings-check-updates'));
+
+// The pill, in the editor: left of the settings icon, its panel below it.
+const pillView = `(() => {
+  const pill = document.querySelector('[data-update-pill]');
+  const panel = document.querySelector('[data-update-panel]');
+  return {
+    pill: pill?.textContent ?? null,
+    title: pill?.getAttribute('title') ?? null,
+    label: pill?.getAttribute('aria-label') ?? null,
+    beforeSettings: document.querySelector('.toolbar-settings')?.previousElementSibling?.contains(pill) ?? false,
+    panelTitle: panel?.querySelector('.update-panel-title')?.textContent ?? null,
+    sub: panel?.querySelector('.update-panel-sub')?.textContent ?? null,
+    lines: panel ? [...panel.querySelectorAll('.update-panel-text')].map((l) => l.textContent) : null,
+    command: panel?.querySelector('[data-update-line]')?.textContent ?? null,
+    copy: panel?.querySelector('[data-update-copy]')?.textContent ?? null,
+    hint: panel?.querySelector('.update-panel-hint')?.textContent ?? null,
+    onTop: panel ? (() => { const b = panel.getBoundingClientRect(); return panel.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)) && b.left >= 0 && b.right <= window.innerWidth && b.bottom <= window.innerHeight; })() : null,
+  };
+})()`;
+r.pillAtRest = await inPage(editor, 'editor', pillView);
+await inPage(editor, 'editor', clickIn('[data-update-pill]'));
+await sleep(100);
+r.pillOpen = await inPage(editor, 'editor', pillView);
+await fs.writeFile(openLog, '');
+await inPage(editor, 'editor', clickIn('[data-update-copy]'));
+await sleep(100);
+r.pillCopied = await inPage(editor, 'editor', pillView);
+r.copiedLog = await fs.readFile(openLog, 'utf8').catch(() => '');
+await sleep(2200);
+r.pillCopiedAfter = (await inPage(editor, 'editor', pillView)).copy;
+await fs.writeFile(openLog, '');
+await inPage(editor, 'editor', clickIn('[data-update-notes]'));
 await sleep(300);
-r.updateOff = { view: await inPage(editor, 'settings', updateView), stored: await until(async () => (await prefs()).checkForUpdates === false), requests: githubRequests.length };
-// On again: asked once more, at once.
+r.notesOpened = await fs.readFile(openLog, 'utf8').catch(() => '');
+await inPage(editor, 'editor', "(document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true)");
+await sleep(100);
+r.pillEscaped = await inPage(editor, 'editor', pillView);
+await inPage(editor, 'editor', clickIn('[data-update-pill]'));
+await sleep(100);
+await inPage(editor, 'editor', "(document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), true)");
+await sleep(100);
+r.pillClickedOutside = (await inPage(editor, 'editor', pillView)).panelTitle;
+await inPage(editor, 'editor', clickIn('[data-update-pill]'));
+await sleep(100);
+await inPage(editor, 'editor', clickIn('[data-update-pill]'));
+await sleep(100);
+r.pillClickedAgain = (await inPage(editor, 'editor', pillView)).panelTitle;
+await inPage(editor, 'editor', clickIn('[data-update-pill]'));
+await sleep(100);
+await inPage(editor, 'editor', clickIn('[data-update-later]'));
+r.notNowStored = await until(async () => (await prefs()).dismissedUpdate === 'v9.9.0');
+await sleep(100);
+r.afterNotNow = { pill: (await inPage(editor, 'editor', pillView)).pill, about: (await inPage(editor, 'settings', updateView)).available };
+
+// The switch: in General now. Off, nothing shown, nothing asked; on again, asked at once.
+await nav(editor, 'general');
+r.switchInGeneral = await inPage(editor, 'settings', `(() => { const g = document.querySelector('[data-settings-group=updates]'); return { text: g?.textContent ?? null, on: document.querySelector('#settings-check-updates')?.checked ?? null, heading: [...document.querySelectorAll('.sp-group')].map((x) => x.querySelector('h2,h3,.sp-group-heading')?.textContent ?? '') }; })()`);
 await inPage(editor, 'settings', clickIn('#settings-check-updates'));
+r.updateOffStored = await until(async () => (await prefs()).checkForUpdates === false);
+await nav(editor, 'about');
+r.updateOff = { view: await inPage(editor, 'settings', updateView), pill: (await inPage(editor, 'editor', pillView)).pill, requests: githubRequests.length };
+await nav(editor, 'general');
+await inPage(editor, 'settings', clickIn('#settings-check-updates'));
+await nav(editor, 'about');
 r.updateOnAgain = { shown: await until(async () => (await inPage(editor, 'settings', updateView)).available), requests: githubRequests.length };
+await nav(editor, 'general');
 
 // The editor window cannot change settings, even through the bridge.
 // Read back from main, not preferences.json: the file is written 400 ms after
@@ -313,6 +374,36 @@ r.sleepShown = await inPage(editor, 'settings', "[document.querySelector('#setti
 await inPage(editor, 'settings', clickIn('#settings-sleep-on-lock'));
 r.sleepOffSaved = await until(async () => (await configJson()).defaults?.sleep?.onLock === false);
 
+// Idle dimming: a desktop that offers it (a stand-in says so), then one that doesn't.
+const idleView = `(() => ({
+  dimAfter: document.querySelector('#settings-dim-after').value,
+  dimDisabled: document.querySelector('#settings-dim-after').disabled,
+  sleepDisabled: document.querySelector('#settings-sleep-after').disabled,
+  dimToDisabled: String(document.querySelector('[role=slider][aria-label="Dim to"]').closest('.sp-slider, [class*=sp-slider]')?.className.includes('sp-slider-disabled') ?? null),
+  dimToNow: document.querySelector('[role=slider][aria-label="Dim to"]').getAttribute('aria-valuenow'),
+  note: document.querySelector('[data-settings=idle-unavailable]')?.textContent ?? null,
+  options: [...document.querySelector('#settings-dim-after').options].map((o) => o.textContent),
+}))()`;
+const choose = (id, value) => `(() => { const s = document.querySelector('${id}'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, '${value}'); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
+const sleepOnDisk = async () => (await configJson()).defaults?.sleep ?? null;
+r.idleAtRest = await inPage(editor, 'settings', idleView);
+await inPage(editor, 'settings', choose('#settings-dim-after', '60'));
+await inPage(editor, 'settings', choose('#settings-sleep-after', '300'));
+r.idleSaved = await until(async () => { const v = await sleepOnDisk(); return v?.dimAfter === 60 && v?.sleepAfter === 300 && v?.onLock === false; });
+r.idleEnabled = await inPage(editor, 'settings', idleView);
+await inPage(editor, 'settings', choose('#settings-dim-after', ''));
+await inPage(editor, 'settings', choose('#settings-sleep-after', ''));
+r.idleOffSaved = await until(async () => { const v = await sleepOnDisk(); return v?.dimAfter === undefined && v?.sleepAfter === undefined; });
+process.env.FAKE_IDLE_UNAVAILABLE = '1';
+await inPage(editor, 'settings', "window.location.reload(), true").catch(() => undefined);
+await sleep(1200);
+await nav(editor, 'general');
+r.idleUnavailable = await inPage(editor, 'settings', idleView);
+delete process.env.FAKE_IDLE_UNAVAILABLE;
+await inPage(editor, 'settings', "window.location.reload(), true").catch(() => undefined);
+await sleep(1200);
+await nav(editor, 'general');
+
 // Label size: the same slider, over defaults.labelSize. Saved on release, the sample live.
 const labelSlider = "document.querySelector('[role=slider][aria-label=\"Label size\"]')";
 const labelState = `(() => { const s = ${labelSlider}; return { now: s.getAttribute('aria-valuenow'), min: s.getAttribute('aria-valuemin'), max: s.getAttribute('aria-valuemax'), sample: document.querySelector('[data-settings=label-sample]').style.fontSize }; })()`;
@@ -409,20 +500,53 @@ check('Check for updates: asked GitHub once when the editor opened, as "Deckhand
   assert.equal(r.updatesOnOpen.headers['user-agent'], 'Deckhand');
   assert.ok(!JSON.stringify(r.updatesOnOpen.headers).includes('9.8.7'), 'the installed version was sent');
 });
-check('a newer release: About says "Update available", names it, and the sidebar puts a dot on About', () => {
+check('a newer release: About says "Update available" and names it; no dot on About, and the switch has left', () => {
   assert.equal(r.updateShown.available, true);
   assert.match(r.updateShown.row ?? '', /Update available.*Deckhand v9\.9\.0/);
-  assert.equal(r.updateShown.dot, true);
-  assert.equal(r.updateShown.switchOn, true);
+  assert.equal(r.updateShown.dot, false);
+  assert.equal(r.updateShown.switchHere, false);
 });
-check("its link opens that release's page, and only from the settings window", () => {
+check("its link opens that release's page", () => {
   assert.equal(r.updateOpened, 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0\n');
-  assert.equal(r.editorOpenUpdateRefused.ok, false);
 });
-check('switched off: no update shown, no dot, nothing asked, kept in the preferences', () => {
-  assert.deepEqual(r.updateOff.view, { available: false, row: r.updateOff.view.row, dot: false, switchOn: false });
-  assert.match(r.updateOff.view.row ?? '', /never asks GitHub/);
-  assert.equal(r.updateOff.stored, true);
+check('the pill: one word, immediately left of the settings icon, with the design\'s tooltip and label; no panel until asked', () => {
+  assert.deepEqual({ pill: r.pillAtRest.pill, title: r.pillAtRest.title, label: r.pillAtRest.label, before: r.pillAtRest.beforeSettings, panel: r.pillAtRest.panelTitle }, {
+    pill: 'Update', title: 'Deckhand v9.9.0 is available', label: 'Update available: Deckhand v9.9.0', before: true, panel: null,
+  });
+});
+check('the panel: the version, what you have, three lines of What\'s new in plain text, the release\'s own line, Copy, the hint', () => {
+  assert.equal(r.pillOpen.panelTitle, 'Deckhand v9.9.0');
+  assert.equal(r.pillOpen.sub, 'You have v9.8.7-check');
+  assert.deepEqual(r.pillOpen.lines, ['First line', 'Second line', 'Third line']);
+  assert.equal(r.pillOpen.command, `$${UPDATE_LINE}`);
+  assert.equal(r.pillOpen.copy, 'Copy');
+  assert.equal(r.pillOpen.hint, 'Deckhand restarts itself when it’s done.');
+  assert.equal(r.pillOpen.onTop, true, 'the panel is whole, inside the window, and on top');
+});
+check('Copy: copies the line, says Copied, and is back after 2 s; nothing runs', () => {
+  assert.equal(r.pillCopied.copy, 'Copied');
+  assert.equal(r.copiedLog, `copied ${UPDATE_LINE}\n`);
+  assert.equal(r.pillCopiedAfter, 'Copy');
+});
+check('Full release notes opens the page from the editor', () => assert.equal(r.notesOpened, 'https://github.com/juicetheforce/deckhand/releases/tag/v9.9.0\n'));
+check('Esc, a click outside and the pill again each close it, and the pill stays', () => {
+  assert.equal(r.pillEscaped.panelTitle, null);
+  assert.equal(r.pillEscaped.pill, 'Update');
+  assert.equal(r.pillClickedOutside, null);
+  assert.equal(r.pillClickedAgain, null);
+});
+check('Not now: no pill, stored for that version, and About still says', () => {
+  assert.equal(r.notNowStored, true);
+  assert.deepEqual(r.afterNotNow, { pill: null, about: true });
+});
+check('Check for updates is in General, with the design\'s words, after Appearance', () => {
+  assert.match(r.switchInGeneral.text ?? '', /Check for updatesShows Update in the title bar when a new version is out/);
+  assert.equal(r.switchInGeneral.on, true);
+});
+check('switched off: nothing shown, nothing asked, kept in the preferences', () => {
+  assert.equal(r.updateOffStored, true);
+  assert.equal(r.updateOff.view.available, false);
+  assert.equal(r.updateOff.pill, null);
   assert.equal(r.updateOff.requests, 1);
 });
 check('switched on again: asked once more, at once, and shown', () => {
@@ -436,7 +560,7 @@ check('Notifications starts ticked; unticking writes "notifications": false to c
 });
 check('Reset to defaults is a button, without an ellipsis, and asks first: one click changes nothing, Keep keeps', () => {
   assert.deepEqual(r.resetButton, { text: 'Reset to defaults', tag: 'BUTTON', quiet: false });
-  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, sleep when the screen locks, notifications, accent color, icon size and label size to their defaults\?ResetKeep$/);
+  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size and label size to their defaults\?ResetKeep$/);
   assert.equal(r.oneClickChangesNothing, true);
   assert.equal(r.keepKeeps, true);
 });
@@ -457,6 +581,19 @@ check('Icon size by dragging: snapped to the step, the sample live, nothing save
   assert.equal(r.iconSizeDragSaved, true);
 });
 check('Reset to defaults puts Icon size back to 65%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
+check('Dim after, Dim to and Sleep after: off by default, each saved in config.json without losing the others, Dim to only with Dim after', () => {
+  assert.deepEqual({ ...r.idleAtRest, options: undefined }, { dimAfter: '', dimDisabled: false, sleepDisabled: false, dimToDisabled: 'true', dimToNow: '20', note: null, options: undefined });
+  assert.deepEqual(r.idleAtRest.options, ['Off', '1 minute', '2 minutes', '5 minutes', '10 minutes', '15 minutes', '30 minutes', '1 hour']);
+  assert.equal(r.idleSaved, true);
+  assert.equal(r.idleEnabled.dimToDisabled, 'false');
+  assert.equal(r.idleOffSaved, true);
+});
+check('a desktop without idle notifications: the controls greyed out, and the sentence that says why', () => {
+  assert.equal(r.idleUnavailable.dimDisabled, true);
+  assert.equal(r.idleUnavailable.sleepDisabled, true);
+  assert.equal(r.idleUnavailable.dimToDisabled, 'true');
+  assert.equal(r.idleUnavailable.note, 'Dimming after idle isn’t available on this desktop; the decks still sleep when the screen locks.');
+});
 check('Sleep when the screen locks: on by default, off saved in config.json, and Reset to defaults turns it on', () => {
   assert.deepEqual(r.sleepShown, [true, false]);
   assert.equal(r.sleepOffSaved, true);

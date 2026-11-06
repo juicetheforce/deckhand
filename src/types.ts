@@ -138,8 +138,12 @@ export interface Defaults {
   brightness?: number;
   /** Default refresh interval for buttons that render live state. */
   refreshMs?: number;
-  /** Deck sleep (src/sleep.ts). `onLock`: sleep when the screen locks, on unless false. */
-  sleep?: { onLock?: boolean };
+  /**
+   * Deck sleep (src/sleep.ts). `onLock`: sleep when the screen locks, on unless
+   * false. `dimAfter` and `sleepAfter`: seconds the desktop is idle before every
+   * Stream Deck dims, and goes dark; off unless set. `dimTo`: a percent, 20 unless set.
+   */
+  sleep?: { onLock?: boolean; dimAfter?: number; dimTo?: number; sleepAfter?: number };
 }
 
 export interface Config {

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
 import micIconUrl from '../../../assets/icons/mic.svg';
-import { BUILTIN_ICON_SIZE, DEFAULTS, LABEL_SIZE, shownIconSize, storedIconSize } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, DEFAULTS, DIM_TO, LABEL_SIZE, shownIconSize, storedIconSize } from '../../../src/config-common.js';
 import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
-import type { SettingsSection } from '../shared/bridge.js';
+import type { SettingsSection, SleepSettings } from '../shared/bridge.js';
+import type { SleepSettingsPatch } from '../shared/edits.js';
 import { ACCENTS, type AccentName, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { NO_UPDATE_STATE, type UpdateState } from '../shared/updates.js';
 import { discordView, importedLine, obsView, twitchView, vtsView, type Dot } from './integration-status.js';
@@ -64,7 +65,8 @@ export function SettingsWindow() {
   const [labelSize, setLabelSize] = useState<number | null>(null);
   /** Label size's sample while the slider moves. */
   const [labelSample, setLabelSample] = useState<number | null>(null);
-  const [sleepOnLock, setSleepOnLockState] = useState<boolean | null>(null);
+  const [sleepSettings, setSleepSettingsState] = useState<SleepSettings | null>(null);
+  const [idleAvailable, setIdleAvailable] = useState<boolean | null>(null);
   /** Icon size's sample while the slider moves, as stored (percent of the key): live, though nothing is saved until it is let go. */
   const [iconSample, setIconSample] = useState<number | null>(null);
   const params = new URLSearchParams(window.location.search);
@@ -77,6 +79,11 @@ export function SettingsWindow() {
   /** Reset to defaults asks first: the footer turns into the question. */
   const [confirmingReset, setConfirmingReset] = useState(false);
 
+  // Once each time the window opens: it starts a short process, so never on a redraw.
+  useEffect(() => {
+    void window.deckhand.idleAvailable().then(setIdleAvailable);
+  }, []);
+
   useEffect(() => {
     void window.deckhand.appSettings().then(setSettings);
     const refreshDecks = () => {
@@ -85,7 +92,7 @@ export function SettingsWindow() {
       void window.deckhand.notifications().then(setNotificationsState);
       void window.deckhand.builtinIconSize().then(setIconSize);
       void window.deckhand.labelSize().then(setLabelSize);
-      void window.deckhand.sleepOnLock().then(setSleepOnLockState);
+      void window.deckhand.sleepSettings().then(setSleepSettingsState);
     };
     refreshDecks();
     // A deck plugged in while the window is open shows the next time it is looked at.
@@ -117,8 +124,11 @@ export function SettingsWindow() {
       setLabelSize(saved);
       setLabelSample(null);
     });
-  const changeSleepOnLock = (on: boolean) => void window.deckhand.setSleepOnLock(on).then(setSleepOnLockState);
-  const navItem = (item: { page: Page; name: string }, extra?: { icon?: string; dot?: Dot; update?: boolean }) => (
+  const changeSleep = (patch: SleepSettingsPatch) => void window.deckhand.setSleepSettings(patch).then(setSleepSettingsState);
+  const sleepOnLock = sleepSettings === null ? null : sleepSettings.onLock !== false;
+  const noConfig = sleepSettings === null;
+  const idleOff = noConfig || idleAvailable !== true;
+  const navItem = (item: { page: Page; name: string }, extra?: { icon?: string; dot?: Dot }) => (
     <button
       key={item.page}
       className={`sp-nav-item${page === item.page ? ' sp-nav-item-current' : ''}`}
@@ -129,7 +139,6 @@ export function SettingsWindow() {
       {extra?.icon && <IntegrationIcon icon={extra.icon} tint={item.page as SettingsSection} size="nav" />}
       <span className="sp-nav-name">{item.name}</span>
       {extra?.dot && <StatusDot dot={extra.dot} />}
-      {extra?.update && <span className="sp-dot sp-dot-update" data-dot="update" title="Update available" />}
     </button>
   );
 
@@ -141,7 +150,7 @@ export function SettingsWindow() {
           <span className="sp-nav-heading">INTEGRATIONS</span>
           {INTEGRATION_PAGES.map((item) => navItem(item, { icon: item.icon, dot: dots[item.page] }))}
           <div className="sp-nav-gap" />
-          {LATER_PAGES.map((item) => navItem(item, item.page === 'about' ? { update: update.status === 'available' } : undefined))}
+          {LATER_PAGES.map((item) => navItem(item))}
         </nav>
         <div className="sp-pane">
           {page === 'general' && (
@@ -156,20 +165,47 @@ export function SettingsWindow() {
                 </Row>
                 <Divider />
                 <Row
-                  title="Sleep when the screen locks"
-                  detail={sleepOnLock === null ? 'Needs config.json to be open' : 'Stream Decks go dark until you unlock or press a key'}
-                  htmlFor="settings-sleep-on-lock"
-                >
-                  <Switch id="settings-sleep-on-lock" checked={sleepOnLock ?? true} disabled={sleepOnLock === null} onChange={changeSleepOnLock} />
-                </Row>
-                <Divider />
-                <Row
                   title="Notifications"
                   detail={notifications === null ? 'Needs config.json to be open' : 'When a key needs you, like holding Stream to stop'}
                   htmlFor="settings-notifications"
                 >
                   <Switch id="settings-notifications" checked={notifications ?? true} disabled={notifications === null} onChange={changeNotifications} />
                 </Row>
+              </Group>
+              <Group heading="Sleep" data-settings-group="sleep">
+                <Row
+                  title="Sleep when the screen locks"
+                  detail={noConfig ? 'Needs config.json to be open' : 'Stream Decks go dark until you unlock or press a key'}
+                  htmlFor="settings-sleep-on-lock"
+                >
+                  <Switch id="settings-sleep-on-lock" checked={sleepOnLock ?? true} disabled={noConfig} onChange={(on) => changeSleep({ onLock: on })} />
+                </Row>
+                <Divider />
+                <Row title="Dim after" detail="When the desktop has been idle this long" htmlFor="settings-dim-after">
+                  <IdleSelect id="settings-dim-after" value={sleepSettings?.dimAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ dimAfter: seconds })} />
+                </Row>
+                <Divider />
+                <Row title="Dim to" detail="How bright the decks stay while dimmed">
+                  <Slider
+                    label="Dim to"
+                    value={sleepSettings?.dimTo ?? DIM_TO.default}
+                    min={DIM_TO.min}
+                    max={DIM_TO.max}
+                    step={DIM_TO.step}
+                    unit="%"
+                    disabled={idleOff || sleepSettings?.dimAfter === undefined}
+                    onCommit={(percent) => changeSleep({ dimTo: percent })}
+                  />
+                </Row>
+                <Divider />
+                <Row title="Sleep after" detail="Dark, until a press or you come back" htmlFor="settings-sleep-after">
+                  <IdleSelect id="settings-sleep-after" value={sleepSettings?.sleepAfter} disabled={idleOff} onChange={(seconds) => changeSleep({ sleepAfter: seconds })} />
+                </Row>
+                {idleAvailable === false && (
+                  <p className="settings-note" data-settings="idle-unavailable">
+                    Dimming after idle isn’t available on this desktop; the decks still sleep when the screen locks.
+                  </p>
+                )}
               </Group>
               <Group heading="Appearance">
                 <Row title="Accent color">
@@ -229,6 +265,11 @@ export function SettingsWindow() {
                   </Slider>
                 </Row>
               </Group>
+              <Group heading="Updates" data-settings-group="updates">
+                <Row title="Check for updates" detail="Shows Update in the title bar when a new version is out" htmlFor="settings-check-updates">
+                  <Switch id="settings-check-updates" checked={update.enabled} onChange={(on) => void window.deckhand.setUpdateCheck(on)} />
+                </Row>
+              </Group>
             </div>
           )}
           {page === 'decks' && (
@@ -265,7 +306,7 @@ export function SettingsWindow() {
 
       {confirmingReset ? (
         <div className="settings-footer settings-footer-confirm" data-settings-confirm="reset">
-          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, sleep when the screen locks, notifications, accent color, icon size and label size to their defaults?</span>
+          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size and label size to their defaults?</span>
           <button
             className="sp-button sp-button-danger-solid"
             onClick={() => {
@@ -274,7 +315,7 @@ export function SettingsWindow() {
               if (notifications === false) changeNotifications(true);
               if (iconSize !== null && iconSize !== DEFAULTS.builtinIconSize) changeIconSize(null);
               if (labelSize !== null && labelSize !== DEFAULTS.labelSize) changeLabelSize(null);
-              if (sleepOnLock === false) changeSleepOnLock(true);
+              if (sleepSettings !== null && Object.keys(sleepSettings).length > 0) changeSleep({ onLock: true, dimAfter: null, dimTo: null, sleepAfter: null });
             }}
             data-settings="confirm-reset"
           >
@@ -371,12 +412,8 @@ function AboutPage({ update }: { update: UpdateState }) {
         </div>
       </Group>
       <Group heading="Updates" data-about="updates">
-        <Row title="Check for updates" detail={updateDetail(update)} htmlFor="settings-check-updates">
-          <Switch id="settings-check-updates" checked={update.enabled} onChange={(on) => void window.deckhand.setUpdateCheck(on)} />
-        </Row>
         {update.status === 'available' && update.latest && (
           <>
-            <Divider />
             <Row title="Update available" detail={`Deckhand ${update.latest} — its page says how to update`}>
               <LinkButton
                 title={update.url ?? undefined}
@@ -397,12 +434,29 @@ function AboutPage({ update }: { update: UpdateState }) {
   );
 }
 
-/** Under "Check for updates": what it does, or what the last check found when that is worth saying. */
-function updateDetail(update: UpdateState): string {
-  if (update.status === 'off') return 'Off: Deckhand never asks GitHub for a newer version';
-  if (update.status === 'failed') return 'Could not reach GitHub; it asks again the next time the editor opens';
-  if (update.status === 'current') return 'Each time the editor opens. This is the newest release';
-  return 'Each time the editor opens, asks GitHub for the newest release. Nothing is downloaded';
+/** The idle times offered, in seconds. */
+const IDLE_CHOICES = [60, 120, 300, 600, 900, 1800, 3600];
+
+function idleLabel(seconds: number): string {
+  if (seconds === 3600) return '1 hour';
+  if (seconds % 60 !== 0) return `${seconds} seconds`;
+  const minutes = seconds / 60;
+  return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
+/** Off, or how long the desktop has been idle. A time set by hand stays on the list. */
+function IdleSelect({ id, value, disabled, onChange }: { id: string; value: number | undefined; disabled: boolean; onChange: (seconds: number | null) => void }) {
+  const choices = value === undefined || IDLE_CHOICES.includes(value) ? IDLE_CHOICES : [...IDLE_CHOICES, value].sort((a, b) => a - b);
+  return (
+    <select id={id} className="sp-select" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}>
+      <option value="">Off</option>
+      {choices.map((seconds) => (
+        <option key={seconds} value={seconds}>
+          {idleLabel(seconds)}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 /**

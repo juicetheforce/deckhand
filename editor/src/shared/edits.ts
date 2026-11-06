@@ -16,6 +16,14 @@ export interface ButtonLocation {
   key: string;
 }
 
+/** A change to `defaults.sleep`: dimAfter and sleepAfter in seconds, null being off. */
+export interface SleepSettingsPatch {
+  onLock?: boolean;
+  dimAfter?: number | null;
+  dimTo?: number | null;
+  sleepAfter?: number | null;
+}
+
 export type Edit =
   /** Set the key's press action, keeping icon, label and anything else on it. */
   | { kind: 'setAction'; at: ButtonLocation; action: ActionDef }
@@ -117,8 +125,8 @@ export type Edit =
   | { kind: 'setBuiltinIconSize'; percent: number | null }
   /** Settings › General › Label size; null, or the default, removes it. */
   | { kind: 'setLabelSize'; size: number | null }
-  /** Settings › General › Sleep when the screen locks. */
-  | { kind: 'setSleepOnLock'; on: boolean }
+  /** Settings › General's Sleep group. Each field given replaces the stored one; null, or the default, removes it. */
+  | { kind: 'setSleep'; patch: SleepSettingsPatch }
   /**
    * Rename a page.
    *

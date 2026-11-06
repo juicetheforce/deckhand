@@ -1,4 +1,4 @@
-import { isNewer, releaseFrom, type UpdateState } from '../shared/updates.js';
+import { isNewer, NO_UPDATE_STATE, releaseFrom, type UpdateState } from '../shared/updates.js';
 
 /**
  * The update check: one request to GitHub for the latest release, made once
@@ -11,7 +11,8 @@ import { isNewer, releaseFrom, type UpdateState } from '../shared/updates.js';
  * repository's latest release, with "Deckhand" as its User-Agent (GitHub
  * requires one) and nothing else — no version, no identifier. GitHub sees
  * the address it comes from, as for any request. Nothing is downloaded or
- * installed: About links to the release's page.
+ * installed: the pill's panel shows the release's own update line to copy,
+ * and links to its page.
  */
 
 export const LATEST_RELEASE_URL = 'https://api.github.com/repos/juicetheforce/deckhand/releases/latest';
@@ -27,12 +28,14 @@ export interface UpdateCheckerOptions {
   version: () => string | null;
   /** The "Check for updates" switch, as stored. */
   enabled: () => Promise<boolean>;
+  /** The version "Not now" was last pressed for, as stored; null if never. */
+  dismissed: () => Promise<string | null>;
   /** Told every change, to show it. */
   onChange: (state: UpdateState) => void;
 }
 
 export class UpdateChecker {
-  private current: UpdateState = { enabled: true, status: 'idle', latest: null, url: null };
+  private current: UpdateState = { ...NO_UPDATE_STATE };
   private running: Promise<void> | null = null;
 
   constructor(private readonly options: UpdateCheckerOptions) {}
@@ -53,7 +56,7 @@ export class UpdateChecker {
   /** The switch changed: off forgets what was found and asks nothing; on asks now. */
   async setEnabled(enabled: boolean): Promise<void> {
     if (!enabled) {
-      this.set({ enabled: false, status: 'off', latest: null, url: null });
+      this.set({ ...NO_UPDATE_STATE, enabled: false, status: 'off' });
       return;
     }
     this.set({ ...this.current, enabled: true, status: this.current.status === 'off' ? 'idle' : this.current.status });
@@ -62,13 +65,13 @@ export class UpdateChecker {
 
   private async run(): Promise<void> {
     if (!(await this.options.enabled())) {
-      this.set({ enabled: false, status: 'off', latest: null, url: null });
+      this.set({ ...NO_UPDATE_STATE, enabled: false, status: 'off' });
       return;
     }
     const installed = this.options.version();
     // A checkout has no version to compare: nothing is asked. Nor in a check that names no server.
     if (installed === null || this.options.url === null) {
-      this.set({ enabled: true, status: 'idle', latest: null, url: null });
+      this.set({ ...NO_UPDATE_STATE });
       return;
     }
     this.set({ ...this.current, enabled: true, status: 'checking' });
@@ -84,15 +87,31 @@ export class UpdateChecker {
       if (!release) throw new Error('the answer names no release');
       // Switched off while it was asked: what it found is not shown.
       if (!this.current.enabled) return;
+      const dismissed = await this.options.dismissed();
       this.set(
         isNewer(release.version, installed)
-          ? { enabled: true, status: 'available', latest: release.version, url: release.url }
-          : { enabled: true, status: 'current', latest: null, url: null },
+          ? {
+              ...NO_UPDATE_STATE,
+              status: 'available',
+              latest: release.version,
+              url: release.url,
+              whatsNew: release.whatsNew,
+              updateLine: release.updateLine,
+              installed,
+              // It comes back only for a version newer than the one set aside.
+              hidden: dismissed !== null && !isNewer(release.version, dismissed),
+            }
+          : { ...NO_UPDATE_STATE, status: 'current' },
       );
     } catch (err) {
       console.error(`[updates] could not check for an update: ${(err as Error).message}`);
-      if (this.current.enabled) this.set({ enabled: true, status: 'failed', latest: null, url: null });
+      if (this.current.enabled) this.set({ ...NO_UPDATE_STATE, status: 'failed' });
     }
+  }
+
+  /** "Not now": no pill for this version. The caller stores the version. */
+  hide(): void {
+    if (this.current.status === 'available') this.set({ ...this.current, hidden: true });
   }
 
   private set(next: UpdateState): void {

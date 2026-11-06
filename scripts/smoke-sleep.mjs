@@ -27,6 +27,7 @@ process.env.DBUS_SYSTEM_BUS_ADDRESS = busAddress;
 
 const { startDaemon, FakeDeck, connect, check, failureCount, sleep: wait } = await import('./test/control-harness.mjs');
 const { startFakeLogind } = await import('./test/fake-logind.mjs');
+const { startFakePowerdevil } = await import('./test/fake-powerdevil.mjs');
 const lock = await import(path.join(REPO, 'dist/services/session-lock.js'));
 const { sleep } = await import(path.join(REPO, 'dist/sleep.js'));
 const { registry } = await import(path.join(REPO, 'dist/actions/index.js'));
@@ -195,7 +196,7 @@ await daemon.sessions.get('B').setBrightness(70);
 console.log('a virtual deck, dimmed in software');
 {
   const levels = [];
-  const panel = { serial: 'PANEL', canDim: () => true, sleepsOnLock: () => false, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { levels.push(level); }, invalidateByType() {} };
+  const panel = { serial: 'PANEL', canDim: () => true, followsDesktop: () => false, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { levels.push(level); }, invalidateByType() {} };
   sleep.add(panel);
   logind.lock(true);
   await until(() => a.brightness === 0);
@@ -211,8 +212,75 @@ console.log('a virtual deck, dimmed in software');
   sleep.remove(panel);
 }
 
+console.log('the desktop goes idle');
+{
+  const REDIM = 300;
+  sleep.setIdleSettings(25, REDIM);
+  const levels = [];
+  const panel = { serial: 'PANEL2', canDim: () => true, followsDesktop: () => false, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { levels.push(level); }, invalidateByType() {} };
+  sleep.add(panel);
+  sleep.setIdle('dim');
+  check('dim: every Stream Deck at "Dim to"', a.brightness === 25 && b.brightness === 25);
+  check('status says why', (await status()).A.sleep === 'idle');
+  check('a virtual deck is left out: its monitor has its own power saving', sleep.reason(panel) === null && levels.every((l) => l === null));
+  await daemon.sessions.get('B').setBrightness(10);
+  check('a deck set lower than "Dim to" stays where it is', b.brightness === 10);
+  await daemon.sessions.get('B').setBrightness(70);
+  let before = presses;
+  await tap(a, 0);
+  check('a press on a dimmed deck runs its key', presses === before + 1);
+  check('…and wakes that deck, not the other', a.brightness === 40 && b.brightness === 25);
+  await wait(REDIM + 150);
+  check('the desktop still idle: the re-dim deadline puts it back', a.brightness === 25);
+  await tap(a, 0);
+  await wait(REDIM - 150);
+  await tap(b, 0);
+  await wait(REDIM - 150);
+  check('another deck press restarts the deadline', a.brightness === 40 && b.brightness === 70);
+  await wait(250);
+  check('…and both go back when it ends', a.brightness === 25 && b.brightness === 25);
+  await tap(a, 0);
+  sleep.setIdle(null);
+  check('resumed: every deck awake', a.brightness === 40 && b.brightness === 70);
+  sleep.setIdle('dim');
+  check('idle again', a.brightness === 25);
+  await tap(a, 0);
+  sleep.setIdle(null);
+  await wait(REDIM + 100);
+  check('resumed cancels the deadline: nothing dims later', a.brightness === 40 && b.brightness === 70);
+
+  sleep.setIdle('sleep');
+  check('sleep: every Stream Deck dark', a.brightness === 0 && b.brightness === 0);
+  before = [presses, releases];
+  await tap(a, 0);
+  check('a press on a sleeping deck only wakes it, its release swallowed', presses === before[0] && releases === before[1] && a.brightness === 40 && b.brightness === 0);
+  await wait(REDIM + 150);
+  check('the deadline puts it back to sleep', a.brightness === 0);
+  sleep.setIdle('dim');
+  sleep.setIdle(null);
+  check('resumed from sleep: awake', a.brightness === 40 && b.brightness === 70);
+
+  sleep.setIdle('dim');
+  await tap(a, 0);
+  logind.lock(true);
+  await until(() => a.brightness === 0 && b.brightness === 0);
+  await wait(REDIM + 100);
+  check('a lock overrides the deadline: dark, and nothing changes when it would have ended', a.brightness === 0 && b.brightness === 0);
+  logind.lock(false);
+  check('unlocked, still idle: dimmed, the woken deck with the rest', await until(() => a.brightness === 25 && b.brightness === 25));
+  sleep.setIdle(null);
+  await tap(a, 1);
+  sleep.setIdle('sleep');
+  check('Sleep all decks dimmed and idle asleep: the darker wins', a.brightness === 0 && (await status()).A.sleep === 'idle');
+  sleep.setIdle(null);
+  check('…and idle ending leaves Sleep all decks', a.brightness === 20 && sleep.allActive());
+  await tap(a, 1);
+  sleep.setIdleSettings(20, 0);
+  sleep.remove(panel);
+}
+
 console.log('a deck with no backlight');
-const virtual = { serial: 'V', canDim: () => false, sleepsOnLock: () => true, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { if (level !== null) throw new Error('must not be dimmed'); }, invalidateByType() {} };
+const virtual = { serial: 'V', canDim: () => false, followsDesktop: () => true, setBrightness: async () => {}, currentBrightness: () => 100, applySleep(level) { if (level !== null) throw new Error('must not be dimmed'); }, invalidateByType() {} };
 sleep.add(virtual);
 logind.lock(true);
 await until(() => a.brightness === 0);
@@ -261,6 +329,92 @@ check('"defaults.sleep.onLock": false, by a reload: a lock leaves it lit', (awai
 child.kill('SIGTERM');
 await new Promise((resolve) => child.on('exit', resolve));
 await logind.stop();
+
+console.log('which of KDE\'s inhibitions keep its screens on');
+{
+  const { keepsScreensOn } = await import(path.join(REPO, 'dist/services/desktop-inhibit.js'));
+  check('none: no', keepsScreensOn([]) === false);
+  check('"idle" (org.freedesktop.ScreenSaver, as measured): yes', keepsScreensOn([['idle', 'firefox', 'video', 'block', 3]]) === true);
+  check('"sleep" (org.freedesktop.PowerManagement, as measured): no', keepsScreensOn([['sleep', 'x', 'y', 'block', 3]]) === false);
+  check('both named in one row: yes', keepsScreensOn([['sleep:idle', 'x', 'y', 'block', 3]]) === true);
+  check('anything else: no', keepsScreensOn(null) === false && keepsScreensOn([['idleness', 'x', 'y', 'block', 3]]) === false);
+}
+
+console.log('the daemon, idle dimming');
+{
+  const IDLE_LOG = path.join(TMP, 'idle.log');
+  const LOG2 = path.join(TMP, 'deck2.log');
+  logind = await startFakeLogind(busAddress);
+  const idleCalls = async () => (await fs.readFile(IDLE_LOG, 'utf8').catch(() => '')).split('\n').filter(Boolean);
+  const write = (sleepSettings) => fs.writeFile(path.join(CONFIG_DIR, 'config.json'), JSON.stringify({ ...realConfig, defaults: sleepSettings ? { sleep: sleepSettings } : undefined }));
+  await write({ dimAfter: 60, dimTo: 30, sleepAfter: 300 });
+  const real = spawn(process.execPath, ['--import', path.join(REPO, 'scripts/test/fake-decks.mjs'), path.join(REPO, 'dist/index.js')], {
+    env: { ...process.env, DECKHAND_CONFIG_DIR: CONFIG_DIR, DECKHAND_STATE_DIR: path.join(TMP, 'state'), DECKHAND_SOCKET: SOCKET, FAKE_DECKS_FILE: DECKS_FILE, FAKE_DECKS_LOG: LOG2, DECKHAND_PANEL_BIN: path.join(REPO, 'scripts/test/fake-idle-helper.mjs'), FAKE_IDLE_LOG: IDLE_LOG, DBUS_SESSION_BUS_ADDRESS: busAddress },
+    stdio: 'ignore',
+  });
+  const level = async () => (await fs.readFile(LOG2, 'utf8').catch(() => '')).split('\n').filter((l) => l.startsWith('brightness')).at(-1);
+  check('set: the helper is started with its timeouts, in ms', await until(async () => (await idleCalls()).some((l) => l.endsWith('--idle 60000 300000')), 10_000));
+  await until(() => level().then((l) => l === 'brightness XL1 50'), 5000);
+  const pid = () => idleCalls().then((calls) => Number(calls.filter((l) => l.includes('--idle ')).at(-1).split(' ')[0]));
+  process.kill(await pid(), 'SIGUSR1');
+  check('it says idle: the deck dims to "Dim to"', await until(() => level().then((l) => l === 'brightness XL1 30'), 3000));
+  process.kill(await pid(), 'SIGUSR2');
+  check('it says idle for longer: dark', await until(() => level().then((l) => l === 'brightness XL1 0'), 3000));
+  process.kill(await pid(), 'SIGHUP');
+  check('it says resumed: awake', await until(() => level().then((l) => l === 'brightness XL1 50'), 3000));
+
+  // KDE keeping its screens on: a browser's video, as KDE lists it. The compositor's notification doesn't count that.
+  const started = async () => (await idleCalls()).filter((l) => l.includes('--idle ')).length;
+  const isRunning = (id) => { try { process.kill(id, 0); return true; } catch { return false; } };
+  const IDLE_ROW = ['idle', 'firefox', 'Playing video', 'block', 3];
+  const SLEEP_ROW = ['sleep', 'something', 'Copying files', 'block', 3];
+  let kde = await startFakePowerdevil(busAddress);
+  await wait(300);
+  const first = await pid();
+  process.kill(first, 'SIGUSR2');
+  await until(() => level().then((l) => l === 'brightness XL1 0'), 3000);
+  kde.set([SLEEP_ROW]);
+  await wait(500);
+  check('a "sleep" inhibition only blocks suspending: the helper goes on, the deck stays dark', isRunning(first) && (await level()) === 'brightness XL1 0');
+  kde.set([SLEEP_ROW, IDLE_ROW]);
+  check('KDE keeping its screens on: the deck wakes', await until(() => level().then((l) => l === 'brightness XL1 50'), 3000));
+  check('…and the helper is stopped, so nothing says idle', await until(() => !isRunning(first), 3000));
+  const countInhibited = await started();
+  await wait(500);
+  check('…and is not started while it lasts', (await started()) === countInhibited);
+  kde.set([]);
+  check('KDE lets go: the helper starts afresh, with its timeouts, so the count begins now', await until(async () => (await started()) === countInhibited + 1, 3000));
+  check('…and the deck stays lit until it says idle again', (await level()) === 'brightness XL1 50');
+  kde.set([IDLE_ROW]);
+  await until(async () => !isRunning(await pid()), 3000);
+  const whileGone = await started();
+  await kde.stop();
+  check('powerdevil going away counts as letting go', await until(async () => (await started()) === whileGone + 1, 3000));
+  kde = await startFakePowerdevil(busAddress);
+  await wait(300);
+  kde.set([IDLE_ROW]);
+  const afterBack = await pid();
+  check('powerdevil coming back is noticed, and followed', await until(() => !isRunning(afterBack), 3000));
+  kde.set([]);
+  await until(async () => isRunning(await pid()), 3000);
+  await kde.stop();
+
+  const startedBefore = (await idleCalls()).length;
+  const running = await pid();
+  await write({ dimAfter: 60, dimTo: 40, sleepAfter: 300 });
+  await wait(800);
+  check('"Dim to" changed: the helper is left running', (await idleCalls()).length === startedBefore);
+  await write(null);
+  const gone = await until(() => { try { process.kill(running, 0); return false; } catch { return true; } }, 3000);
+  check('dimming off: the helper is gone, nothing runs for it', gone);
+  const socketClient = await connect(SOCKET);
+  const asked = await socketClient.request('idle.available');
+  check('idle.available asks the desktop', asked.ok && asked.result.available === true);
+  socketClient.close();
+  real.kill('SIGTERM');
+  await new Promise((resolve) => real.on('exit', resolve));
+  await logind.stop();
+}
 
 process.kill(Number(busPid));
 await daemon.close?.();

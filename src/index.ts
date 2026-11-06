@@ -12,6 +12,8 @@ import { input, INPUT_BIN } from './input.js';
 import { Profiles } from './profiles.js';
 import { clearRenderCache } from './render.js';
 import { sleep } from './sleep.js';
+import * as idleService from './services/idle.js';
+import { DIM_TO } from './config-common.js';
 import * as audioService from './services/audio.js';
 import { retryMonitor } from './services/hotplug.js';
 import * as mprisService from './services/mpris.js';
@@ -43,6 +45,18 @@ const virtualDriver = createVirtualDriver(() => config);
 const drivers: DeckDriver[] = [hidDriver, virtualDriver];
 
 const sessions = new Map<string, DeckSession>();
+
+/** From the config: on every load, and when a deck comes or goes, since idle dimming runs only with a Stream Deck attached. */
+function applySleepSettings(from: Config): void {
+  const settings = from.defaults?.sleep;
+  const dimAfter = settings?.dimAfter ?? 0;
+  const sleepAfter = settings?.sleepAfter ?? 0;
+  sleep.setOnLock(settings?.onLock !== false);
+  // A deck woken while idle stays lit as long as the desktop's shortest timeout.
+  const shortest = dimAfter > 0 && sleepAfter > 0 ? Math.min(dimAfter, sleepAfter) : dimAfter || sleepAfter;
+  sleep.setIdleSettings(settings?.dimTo ?? DIM_TO.default, shortest * 1000);
+  idleService.configure(dimAfter, sleepAfter, [...sessions.values()].some((s) => s.followsDesktop()));
+}
 
 let watchingLock = false;
 /** Sleep on lock follows logind while any deck is attached (src/sleep.ts). Events only. */
@@ -313,6 +327,7 @@ async function attach(found: FoundDevice): Promise<void> {
 
   sessions.set(serial, session);
   syncLockWatch();
+  if (config) applySleepSettings(config);
   unattached.delete(serial);
   profileState.markShown(serial, profileId);
   notifyState();
@@ -357,6 +372,7 @@ async function scan(): Promise<void> {
       await session.close();
       sessions.delete(serial);
       syncLockWatch();
+      if (config) applySleepSettings(config);
       notifyState();
     }
   }
@@ -412,7 +428,7 @@ async function reload(): Promise<void> {
     configText = text;
     lastReload = { ok: true, at: new Date().toISOString() };
     clearRenderCache();
-    sleep.setOnLock(next.defaults?.sleep?.onLock !== false);
+    applySleepSettings(next);
     virtualPower.forgetMissing();
     // An edited key is not the key that failed: its mark goes before the decks
     // redraw with the new layout.
@@ -483,7 +499,7 @@ async function main(): Promise<void> {
 
   try {
     ({ config, text: configText } = await loadConfig());
-    sleep.setOnLock(config?.defaults?.sleep?.onLock !== false);
+    applySleepSettings(config);
     twitchService.setClientId(config.twitch?.clientId);
   } catch (err) {
     console.error(`[main] cannot load config: ${(err as Error).message}`);
@@ -579,6 +595,7 @@ async function main(): Promise<void> {
     audioService.retrySubscribe();
     retryMonitor();
     retryConfigWatch();
+    idleService.retry();
   }, SAFETY_SCAN_INTERVAL_MS);
   // A virtual deck's touch state is in the socket's "state": a lock or an
   // unlock changes it.

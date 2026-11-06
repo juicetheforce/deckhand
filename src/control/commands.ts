@@ -1,5 +1,6 @@
 import { isKnownAction } from '../actions/index.js';
 import { sleep } from '../sleep.js';
+import * as idleService from '../services/idle.js';
 import { CONTROL_ID } from '../config.js';
 import type { DeckSession } from '../deck.js';
 import type { DeckGeometry } from '../geometry.js';
@@ -270,6 +271,11 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
      * Replies once it has started; `status`'s `previewingSound` says when it
      * has ended.
      */
+    /** Settings: whether this desktop offers idle notifications. One short process, only when asked. */
+    async 'idle.available'() {
+      return { available: await idleService.probe() };
+    },
+
     async 'sound.preview'(args) {
       if (args.stop === true) return { stopped: soundService.stopPreview() };
       requireString(args, 'file');

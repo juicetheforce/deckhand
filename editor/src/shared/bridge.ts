@@ -7,6 +7,8 @@
  */
 import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from './backup.js';
 import type { AppSettings, DeckOption } from './settings.js';
+import type { SleepSettingsPatch } from './edits.js';
+import type { Defaults } from '../../../src/types.js';
 import type { UpdateState } from './updates.js';
 import type { AppListing, AudioList, DecksResult, DiscordList, DiscordStatus, ObsAttempt, ObsList, ObsStatus, PairReply, ScreensReply, StatusResult, TouchState, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, PanelDef } from '../../../src/types.js';
@@ -16,6 +18,9 @@ import type { PairIconField } from './icons.js';
 import type { DeckPositions } from './deck-positions.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
+/** `defaults.sleep`, as stored. */
+export type SleepSettings = NonNullable<Defaults['sleep']>;
+
 export interface Conflict {
   /** The file's text now. */
   fileText: string;
@@ -319,12 +324,16 @@ export interface DeckhandBridge {
   appVersion(): Promise<string | null>;
   /** Open the GitHub releases page in the browser. Settings window only; the URL is fixed in the main process. */
   openReleases(): Promise<{ ok: true } | { ok: false; error: string }>;
-  /** Whether a newer release exists, as the last check found (shared/updates.ts). Settings window only; null from anywhere else. */
+  /** Whether a newer release exists, as the last check found (shared/updates.ts). Either window; null from anywhere else. */
   updateState(): Promise<UpdateState | null>;
   /** Turn "Check for updates" on (asks now) or off; resolves with the state as it now is. Settings window only. */
   setUpdateCheck(on: boolean): Promise<UpdateState>;
   /** Open the newer release's page, as the check found it. Settings window only; the URL never comes from the page. */
   openUpdate(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Copy the release's own update line. Nothing runs. */
+  copyUpdateLine(): Promise<boolean>;
+  /** "Not now": no pill until a newer version than this one. */
+  hideUpdate(): Promise<void>;
   /** Turn them on or off; resolves with the setting as it now is. */
   setNotifications(on: boolean): Promise<boolean | null>;
   /** Built-in icons' size, percent of the key (config.json's defaults); null while config.json is not open. */
@@ -335,9 +344,12 @@ export interface DeckhandBridge {
   labelSize(): Promise<number | null>;
   /** null, or the default, removes it. Answers what is saved. */
   setLabelSize(size: number | null): Promise<number | null>;
-  /** "Sleep when the screen locks"; null while config.json is not open. */
-  sleepOnLock(): Promise<boolean | null>;
-  setSleepOnLock(on: boolean): Promise<boolean | null>;
+  /** `defaults.sleep`; null while config.json is not open. */
+  sleepSettings(): Promise<SleepSettings | null>;
+  /** Answers what is saved. */
+  setSleepSettings(patch: SleepSettingsPatch): Promise<SleepSettings | null>;
+  /** Whether this desktop offers idle notifications; null if that cannot be told now. */
+  idleAvailable(): Promise<boolean | null>;
   /** Settings › Decks' virtual decks, and the profile a new one is added to (settings window only). */
   virtualDecks(): Promise<VirtualDecksView>;
   onVirtualDecks(callback: (view: VirtualDecksView) => void): () => void;

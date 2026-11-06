@@ -223,6 +223,11 @@ export class DaemonClient {
   }
 
   /** Settings' Test connection: the form's values, saved or not; changes nothing. */
+  /** Whether this desktop offers idle notifications; null if the daemon cannot tell. */
+  async idleAvailable(): Promise<boolean | null> {
+    return ((await this.request('idle.available', {})) as { available: boolean | null }).available;
+  }
+
   async obsTest(values: ObsForm): Promise<ObsAttempt> {
     return (await this.request('obs.test', { ...values })) as ObsAttempt;
   }

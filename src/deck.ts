@@ -839,7 +839,7 @@ export class DeckSession implements DeckHandle {
     return this.device.setBrightness !== undefined;
   }
 
-  sleepsOnLock(): boolean {
+  followsDesktop(): boolean {
     return this.device.dimsInSoftware !== true;
   }
 

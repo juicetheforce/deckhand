@@ -3749,3 +3749,240 @@ body.settings-body {
 .sp-icon-sample img {
   display: block;
 }
+
+/* The Update pill and its panel: Claude Design's 18. The pill follows the accent, as the settings gear does. */
+.update-holder {
+  position: relative;
+  margin-right: 8px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 9px;
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 35%, white);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.update-pill:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  color: color-mix(in srgb, var(--accent) 15%, white);
+}
+
+.update-pill-open,
+.update-pill-open:hover {
+  background: rgba(var(--accent-rgb), 0.26);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  color: #eef0fa;
+}
+
+.update-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #0e1020, 0 0 0 4px var(--accent-glyph);
+}
+
+.update-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-glyph);
+}
+
+.update-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 392px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: #171a2c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  text-align: left;
+}
+
+.update-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+
+.update-panel-names {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.update-panel-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #eef0fa;
+}
+
+.update-panel-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.update-panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 16px 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.update-panel-run {
+  gap: 8px;
+}
+
+.update-panel-heading {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.update-panel-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.update-panel-bullet {
+  width: 4px;
+  height: 4px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.update-panel-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.76);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-panel-link {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--accent-glyph);
+  cursor: pointer;
+}
+
+.update-panel-link:hover {
+  text-decoration: underline;
+}
+
+.update-panel-command-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-panel-command {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: #dfe2f2;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  user-select: text;
+}
+
+.update-panel-prompt {
+  color: rgba(255, 255, 255, 0.35);
+  margin-right: 7px;
+  user-select: none;
+}
+
+.update-panel-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6e8f5;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.update-panel-copy:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.update-panel-copied,
+.update-panel-copied:hover {
+  background: rgba(63, 191, 143, 0.1);
+  border-color: rgba(63, 191, 143, 0.28);
+  color: #6fd8ac;
+}
+
+.update-panel-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.update-panel-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.update-panel-later {
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.update-panel-later:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6e8f5;
+}

@@ -59,6 +59,8 @@
  * 3 the compositor would not show the panel, 4 the windowing system went away,
  * 5 a bad frame. Losing the output is not an exit ("output-lost").
  *
+ * deckhand-panel --idle DIM_MS SLEEP_MS, and --idle-probe: idle.c. Nothing is shown.
+ *
  * --dump FILE writes the screen's buffer as a binary PPM on exit, for tests.
  * --touch-test-range MAX lets a touch path that is not an input device (a
  * FIFO of recorded events) be read, with both axes 0..MAX, for tests.
@@ -74,6 +76,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "idle.h"
 #include "platform.h"
 #include "touch.h"
 
@@ -400,6 +403,8 @@ static void write_dump(const char *path) {
 
 int main(int argc, char **argv) {
   const char *output = NULL, *dump = NULL;
+  /* The idle mode shows nothing: idle.c has all of it. */
+  if (argc > 1 && !strncmp(argv[1], "--idle", 6)) return idle_main(argc, argv);
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--output") && i + 1 < argc) output = argv[++i];
     else if (!strcmp(argv[i], "--dump") && i + 1 < argc) dump = argv[++i];

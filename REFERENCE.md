@@ -431,7 +431,7 @@ is saved.
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
 | `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker |
-| `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them |
+| `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them. Draws `decks-sleep`, and `decks-asleep` while they are |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
 | `virtual.power` | `deck`: a virtual deck's screen key — turns it off (its panel hidden, its screen and touchscreen the desktop's) and on again, each press the other way. Shows which. Off lasts until it is turned on, across restarts: kept in the state directory's `virtual-off.json`, not the config. `iconActive` (off) |
@@ -466,7 +466,20 @@ is saved.
 | `discord.leave` | Leaves the voice channel you are in |
 | `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 % |
 
-**Sleep.** While the session is locked or not the active one, as logind says,
+**Sleep.** Dimming after idle is off until you set it: **Settings › General ›
+Sleep** has **Dim after**, **Dim to** and **Sleep after**, global, for Stream Decks
+(`"defaults": { "sleep": { "dimAfter": 300, "dimTo": 20, "sleepAfter": 900 } }`, the
+times in seconds). The desktop does the counting, through the Wayland protocol
+`ext-idle-notify-v1`, and on KDE Deckhand also follows what Plasma's power management
+is holding, so whatever keeps KDE's screens on, such as a video in a browser, keeps
+the decks lit too, and the count starts again when it ends. A press on a dimmed deck runs its key as it wakes that deck; a press on
+a sleeping deck only wakes it. If the desktop is still idle, for example because the
+press typed nothing, the deck goes back after the shorter of those two times. KDE
+Plasma offers the protocol; where a desktop doesn't, those controls are greyed out,
+and decks still sleep when the screen locks. A virtual deck is left out, since its
+monitor has its own power saving.
+
+While the session is locked or not the active one, as logind says,
 every Stream Deck goes to brightness 0, and unlocking wakes it. The first press on
 a dark deck only wakes that deck, and its release does nothing either. If the lock
 state can't be read, the decks stay awake. Virtual decks don't sleep on a lock:
@@ -1005,10 +1018,12 @@ waits on a client: one that stops reading is disconnected.
 a release's tag, or `git describe` for a developer install. It can be
 selected and copied into an issue. **Releases on GitHub** there opens the
 releases page, where every release and its installer are listed. Each time
-the editor opens it asks GitHub whether a newer release is out, and if so
-About says **Update available**, linking to that release's page, with a dot
-on About in the sidebar; **Check for updates** there turns this off. Nothing
-is downloaded or installed: to update, run the install line again.
+the editor opens it asks GitHub whether a newer release is out. If so, an
+**Update** pill appears left of the settings icon: its panel shows the start of the
+release's notes and its install line to copy, and **Not now** hides the pill until
+a newer version than that one. About says **Update available** too. **Settings ›
+General › Check for updates** turns the check off. Nothing is downloaded or
+installed: to update, run the install line.
 
 **Deck not found.** `deckhand decks` lists what the daemon can see. If a deck
 is missing, run the install line again with `bash -s -- install --reinstall`
