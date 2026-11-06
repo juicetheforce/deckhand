@@ -920,7 +920,9 @@ function useBulkShortcuts(handlers: {
       const h = latest.current;
       if (!h.enabled || keyCapture.active || event.defaultPrevented || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName))) return;
+      // Keys pressed in a dropdown are the dropdown's, open or closed: they must not reach the selected keys.
+      if (target?.closest?.('[data-dropdown], [data-dropdown-menu]')) return;
       const ctrl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       let handled = true;

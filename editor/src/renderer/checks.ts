@@ -1485,6 +1485,28 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
   out.afterTypingShortcuts = await savedKeys();
   (document.activeElement as HTMLElement | null)?.blur();
 
+  // 7b. Nor in a dropdown, open or closed, as a native one never let them: Delete there must not clear key 3.
+  const profileTrigger = document.querySelector<HTMLElement>('[data-crumb="profile"]')!;
+  profileTrigger.click();
+  const option = document.querySelector<HTMLElement>('[data-dropdown-menu] [role="option"]');
+  out.dropdownOptionFound = option !== null;
+  if (option) {
+    press('Delete', {}, option);
+    press('KeyD', { ctrlKey: true }, option);
+    press('KeyV', { ctrlKey: true }, option);
+    await sleep(700);
+    out.afterDropdownOpenShortcuts = await savedKeys();
+    press('Escape', {}, option);
+    await sleep(100);
+    out.dropdownClosedByEscape = document.querySelector('[data-dropdown-menu]') === null;
+  }
+  press('Delete', {}, profileTrigger);
+  press('KeyD', { ctrlKey: true }, profileTrigger);
+  await sleep(700);
+  out.afterDropdownTriggerShortcuts = await savedKeys();
+  out.selectionAfterDropdown = selected();
+  (document.activeElement as HTMLElement | null)?.blur();
+
   // 8. And nothing while the hotkey inspector is recording: Delete is recorded as the combo, not a clear.
   const record = [...document.querySelectorAll<HTMLButtonElement>('.inspector button')].find((b) => b.textContent === 'Re-record');
   out.recordFound = record !== undefined;

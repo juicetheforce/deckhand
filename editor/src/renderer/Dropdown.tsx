@@ -9,7 +9,9 @@ import { createPortal, flushSync } from 'react-dom';
  * The list is drawn on document.body, so a scrolling Settings page or a glass panel
  * can't clip it, placed by the trigger, above it if there's no room below. It keeps
  * what a native one has: Enter, Space and the arrows open it; the arrows, Home and
- * End move; a letter jumps; Enter picks; Esc closes; a click outside closes it.
+ * End move; a letter jumps; Enter picks; Esc closes; Tab moves on from the trigger;
+ * a click outside closes it. As a native one's did, keys pressed in it stay out of
+ * the grid's shortcuts (App.tsx's useBulkShortcuts).
  *
  * It opens synchronously, so a check can click the trigger and then an option.
  */
@@ -98,8 +100,11 @@ export function Dropdown({
     if (e.key === 'Escape') {
       e.stopPropagation();
       hide(true);
-    } else if (e.key === 'Tab') hide();
-    else if (e.key === 'ArrowDown') go(at + 1);
+    } else if (e.key === 'Tab') {
+      // Back on the trigger, with the browser left to move on from there, either way.
+      hide(true);
+      return;
+    } else if (e.key === 'ArrowDown') go(at + 1);
     else if (e.key === 'ArrowUp') go(at - 1);
     else if (e.key === 'Home') go(0);
     else if (e.key === 'End') go(rows.length - 1);

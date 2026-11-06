@@ -453,6 +453,9 @@ r.keyboardMoved = await inPage(editor, 'settings', "document.activeElement?.data
 await inPage(editor, 'settings', keys('', 'Escape'));
 await sleep(100);
 r.keyboardEscaped = await inPage(editor, 'settings', "({ open: document.querySelector('[data-dropdown-menu]') !== null, focus: document.activeElement?.id, value: document.querySelector('#settings-sleep-after').dataset.value })");
+// Tab out of an open list: back on the trigger, the browser left to move on from there, so nobody loses their place.
+await inPage(editor, 'settings', "(document.querySelector('#settings-sleep-after').click(), true)");
+r.keyboardTab = await inPage(editor, 'settings', "(() => { const prevented = !document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })); return new Promise((done) => setTimeout(() => done({ prevented, focus: document.activeElement?.id, open: document.querySelector('[data-dropdown-menu]') !== null }), 80)); })()");
 
 
 // Reset to defaults asks first: a button, not a link, and one click changes nothing; Keep keeps.
@@ -655,6 +658,9 @@ check('a dropdown by keyboard: an arrow opens it on an option, an arrow moves, E
   assert.equal(r.keyboardOpen, 'option');
   assert.equal(r.keyboardMoved, '60');
   assert.deepEqual(r.keyboardEscaped, { open: false, focus: 'settings-sleep-after', value: '' });
+});
+check('Tab out of an open list closes it, on its trigger, and leaves the browser to move on', () => {
+  assert.deepEqual(r.keyboardTab, { prevented: false, focus: 'settings-sleep-after', open: false });
 });
 check('Sleep when the screen locks: on by default, off saved in config.json, and Reset to defaults turns it on', () => {
   assert.deepEqual(r.sleepShown, [true, false]);

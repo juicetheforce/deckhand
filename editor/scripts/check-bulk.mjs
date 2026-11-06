@@ -115,6 +115,13 @@ if (r && !r.error) {
     assert.deepEqual(r.afterDelete, [0, 1, 2, 3, 7, 24]);
   });
 
+  check('a dropdown, open or closed, keeps the grid\'s shortcuts away from the selected keys: Delete there clears nothing, as a native one never let it', () => {
+    assert.equal(r.dropdownOptionFound, true);
+    assert.deepEqual(r.afterDropdownOpenShortcuts, r.afterTypingShortcuts);
+    assert.equal(r.dropdownClosedByEscape, true);
+    assert.deepEqual(r.afterDropdownTriggerShortcuts, r.afterTypingShortcuts);
+    assert.deepEqual(r.selectionAfterDropdown, [3]);
+  });
   check('shortcuts do nothing while typing in a field', () => {
     assert.equal(r.labelFieldFound, true);
     assert.deepEqual(r.afterTypingShortcuts, [0, 1, 2, 3, 7, 24], 'Delete or Ctrl+D in the label field acted on the key');
