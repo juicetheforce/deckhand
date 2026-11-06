@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Test the audit fixes (PR #2) and release them as v0.10.1; then the dark-room brightness test on both Stream Decks and the sleep-on-lock / Sleep all decks / Brightness round."
+next = "The sleep-on-lock / Sleep all decks / Brightness round; its sleep-on-lock check covers the dark-room brightness test."
 category = "Gaming"
 paused = false
 focus = true
@@ -36,4 +36,5 @@ v0.10.0 published 2026-10-24: the polish release, plus the editor's grid followi
 Dim and sleep decided (2026-10-24): sleep on lock first, idle dimming a later round; brightness 0 vs black keys settled by a dark-room test; first press after sleep only wakes; global settings only. New Sleep all decks action. Next round: sleep on lock, Sleep all decks, Brightness target picker with screen brightness for virtual decks through Plasma.
 Round 5 (the grid follows each key's state) confirmed on v0.10.0 on the laptop (2026-10-24); Nobara's v0.10.0 check to come. Sleep all decks: a press on a dimmed deck runs its key; a press on any deck wakes them all.
 Workflow (2026-11-05): each round is built on its own branch and opened as a reviewed pull request; it merges after the test list passes and releases at once, its merge pushed together with its tag. Public docs travel in the same PR. Any other code change also goes through a PR; only non-code housekeeping goes straight to main. AGENTS.md added.
+v0.10.1 published 2026-11-05: an external audit's eight findings, all reproduced and fixed through one reviewed PR (no review findings); the test list confirmed on the laptop. Ship test 76/76.
 """
