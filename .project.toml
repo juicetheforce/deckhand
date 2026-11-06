@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Test PR #4 (idle dimming, the update notice, the Sleep all decks icons) and answer its reviews."
+next = "Look at the dropdown fix (PR #5), release v0.12.1, then virtual decks stage 2."
 category = "Gaming"
 paused = false
 focus = true
@@ -39,4 +39,5 @@ Workflow (2026-11-05): each round is built on its own branch and opened as a rev
 v0.10.1 published 2026-11-05: an external audit's eight findings, all reproduced and fixed through one reviewed PR (no review findings); the test list confirmed on the laptop. Ship test 76/76.
 v0.10.0 confirmed on Nobara through daily use (2026-11-05). Plasma screen brightness probed and dropped: only a laptop's own panel really dims, monitors barely change. Virtual decks dim in software instead (the helper draws darker, 0 is pure black). Sleep on lock is Stream Decks only; Sleep all decks includes virtual decks. Sleep uses brightness 0.
 v0.11.0 published 2026-11-05: sleep on lock (the Stream Deck goes fully dark at 0, so no black keys), Sleep all decks, Brightness keys on virtual decks and on any deck, a global label size. Confirmed on the laptop, all 11 checks. Ship test 77/77.
+v0.12.0 published 2026-11-06: idle dimming (the compositor counts, and whatever keeps KDE's screens on keeps the decks lit), the Update pill, the Sleep all decks icons. Ship test 77/77. Codex security review needs a higher ChatGPT plan, so that rule was dropped.
 """
