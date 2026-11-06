@@ -476,7 +476,8 @@ the lock screen and the monitor's power saving already cover their screens.
 
 **A virtual deck's brightness is drawn, not set on the screen**: its keys and
 background are drawn darker, and level 0 is pure black, so the monitor's backlight
-stays where it is. It is at 100 unless `decks.<key>.brightness` says otherwise;
+stays where it is. That is also its limit: turned off by Sleep all decks, the panel
+draws black, but an LCD's backlight still shows faintly. It is at 100 unless `decks.<key>.brightness` says otherwise;
 `defaults.brightness` is for Stream Decks. Plasma has a brightness service, but on
 the monitors tried it changed little, so Deckhand doesn't use it.
 

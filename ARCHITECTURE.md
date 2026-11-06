@@ -367,7 +367,8 @@ everything at the deck's brightness, and 0 is pure black; a change is the level,
 the canvas and every key again. Plasma's `org.kde.ScreenBrightness` reached every
 screen tried, but only a laptop's own panel really dimmed: monitors barely changed,
 and at 0 looked about half as bright (measured on three), which is too weak and too
-monitor-dependent to build on. A lock doesn't darken a virtual deck: the lock screen
+monitor-dependent to build on. The limit of drawing it: a panel at 0 is black pixels
+over a lit backlight, so an LCD still glows faintly. A lock doesn't darken a virtual deck: the lock screen
 and the monitor's power saving already cover its screen.
 
 **Nothing may leave a key held.** A latched key or a pending release is let go

@@ -93,7 +93,8 @@ touch panel.
   Decks.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
-  other, and Sleep all decks dims it too. It doesn't sleep on a lock, since the
+  other, and Sleep all decks dims it too. Turned off, it draws pure black, but
+  an LCD's backlight still shows faintly. It doesn't sleep on a lock, since the
   lock screen and your monitor's power saving already cover it.
 - **Turn it off when you want the screen back**, for a screen that also
   shows widgets. A **Virtual deck on/off** key, on a Stream Deck or another
