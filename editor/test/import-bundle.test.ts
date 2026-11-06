@@ -217,6 +217,44 @@ await check('an absolute path outside home is never written there', async () => 
   assert.equal(await exists(victim), false);
 });
 
+await check('a symlinked folder in home leading outside it: the file is relocated, never written through the link', async () => {
+  const away = path.join(scratch, 'symlink-target');
+  await fs.mkdir(away);
+  await fs.symlink(away, path.join(newHome, 'linked-icons'));
+  const data = Buffer.from('png?');
+  const zip = handmade(configWith({ 0: { icon: '~/linked-icons/sub/payload.png' } }), [{ path: '~/linked-icons/sub/payload.png', entry: 'icons/001-x.png', data }]);
+  const plan = await planImport(readImport(zip));
+  assert.equal(plan.icons[0].relocated, true);
+  await writePlannedIcons(plan.writes);
+  assert.deepEqual(await fs.readdir(away), []);
+  assert.equal(await exists(path.join(newHome, 'Deckhand icons (restored)', newHome.slice(1), 'linked-icons', 'sub', 'payload.png')), true);
+});
+
+await check('a symlink appearing after the review: the write is refused', async () => {
+  const away = path.join(scratch, 'symlink-target-2');
+  await fs.mkdir(away);
+  await fs.symlink(away, path.join(newHome, 'linked-late'));
+  await assert.rejects(writePlannedIcons(new Map([[path.join(newHome, 'linked-late', 'x.png'), new Uint8Array(1)]])), /refusing to write/);
+  assert.deepEqual(await fs.readdir(away), []);
+});
+
+await check('a home reached through a symlink is still home: written where it points', async () => {
+  const linkedHome = path.join(scratch, 'home-link');
+  await fs.symlink(newHome, linkedHome);
+  const saved = process.env.HOME;
+  process.env.HOME = linkedHome;
+  try {
+    const data = Buffer.from('png?');
+    const zip = handmade(configWith({ 0: { icon: '~/through-link/x.png' } }), [{ path: '~/through-link/x.png', entry: 'icons/001-x.png', data }]);
+    const plan = await planImport(readImport(zip));
+    assert.equal(plan.icons[0].relocated, false);
+    await writePlannedIcons(plan.writes);
+    assert.equal(await exists(path.join(newHome, 'through-link', 'x.png')), true);
+  } finally {
+    process.env.HOME = saved;
+  }
+});
+
 await check('writePlannedIcons refuses a path outside home or a non-image, whatever the plan says', async () => {
   await assert.rejects(writePlannedIcons(new Map([[path.join(outside, 'x.png'), new Uint8Array(1)]])), /refusing to write/);
   await assert.rejects(writePlannedIcons(new Map([[path.join(newHome, 'x.sh'), new Uint8Array(1)]])), /refusing to write/);
