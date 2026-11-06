@@ -256,7 +256,9 @@ export async function startFakeDiscord({ socketPath, clientId = '129034771856204
         if (!fake.refreshTokens.has(fields.refresh_token)) return answer(400, { error: 'invalid_grant' });
         // Rotates; the old refresh token is spent, and refused if sent again — without ending the link.
         fake.refreshTokens.delete(fields.refresh_token);
-        return answer(200, issue());
+        const issued = issue();
+        if (fake.refreshDelayMs) return void setTimeout(() => answer(200, issued), fake.refreshDelayMs);
+        return answer(200, issued);
       }
       answer(400, { error: 'unsupported_grant_type' });
     });

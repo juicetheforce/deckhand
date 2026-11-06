@@ -111,7 +111,7 @@ covers() {
   [ "$(cat "$dir/id/vendor" 2>/dev/null)" = "$vendor" ] && [ "$(cat "$dir/id/product" 2>/dev/null)" = "$product" ] || return 1
   [ -z "$serial" ] && return 0
   [ "$(cat "$dir/uniq" 2>/dev/null)" = "$serial" ] && return 0
-  "$UDEVADM" info -q property -n "$DEV/$node" 2>/dev/null | grep -qx "ID_SERIAL_SHORT=$serial"
+  "$UDEVADM" info -q property -n "$DEV/$node" 2>/dev/null | grep -Fqx -- "ID_SERIAL_SHORT=$serial"
 }
 
 # Strict: four hex digits each, and a serial of letters, digits, ".", "_" and

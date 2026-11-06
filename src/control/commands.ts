@@ -663,6 +663,7 @@ export function createHandlers(deps: ControlDeps): Record<string, Handler> {
           }
         } catch (err) {
           console.error(`[control] could not release keys held by action.run: ${(err as Error).message}`);
+          failure ??= new Error(`keys may still be held: ${(err as Error).message}`);
         }
         if (failure) throw new ControlError('action_failed', failure.message);
         return {};

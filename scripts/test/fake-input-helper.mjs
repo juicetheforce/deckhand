@@ -10,8 +10,11 @@
  * Timings copied from helper/deckhand-input.c: a single key uses
  * CHAIN_DELAY_US 1.5 ms and TAP_DELAY_US 12 ms; a combo uses COMBO_GAP_US
  * 30 ms and COMBO_HOLD_US 50 ms. Keep them in step if the C file changes.
+ * As the real helper does, it refuses a command with more than MAX_CODES (16)
+ * keycodes. With FAKE_INPUT_REFUSE_UP naming a file that exists, it refuses
+ * every UP: a release that fails.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import readline from 'node:readline';
 
 const LOG = process.env.FAKE_INPUT_LOG;
@@ -43,8 +46,12 @@ async function handle(line) {
     return;
   }
   const codes = rest.map(Number);
-  if (codes.length === 0 || codes.some((c) => !Number.isInteger(c))) {
+  if (codes.length === 0 || codes.length > 16 || codes.some((c) => !Number.isInteger(c))) {
     process.stdout.write('ERR bad-codes\n');
+    return;
+  }
+  if (cmd === 'UP' && process.env.FAKE_INPUT_REFUSE_UP && existsSync(process.env.FAKE_INPUT_REFUSE_UP)) {
+    process.stdout.write('ERR refused-for-test\n');
     return;
   }
   const combo = codes.length > 1;

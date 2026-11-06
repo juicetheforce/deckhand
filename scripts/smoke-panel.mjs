@@ -228,6 +228,34 @@ try {
     check('what is drawn once it is back is on the screen', px(503, 303) === '[0,0,255]' && px(10, 10) === '[1,2,3]', JSON.stringify([px(503, 303), px(10, 10)]));
   }
 
+  console.log('an image frame whose size overflows');
+  {
+    const o = helper(['--output', 'Virtual-1']);
+    await until(() => o.events.some((e) => e.ev === 'ready'));
+    o.proc.stdin.write(canvasFrame(960, 360, [1, 2, 3]));
+    // 0x80000000 × 0x80000000 × 4 wraps to 0 in 64 bits, which matches "no pixels".
+    const body = Buffer.alloc(16);
+    body.writeInt32LE(-2147483647, 0);
+    body.writeInt32LE(-2147483647, 4);
+    body.writeUInt32LE(0x80000000, 8);
+    body.writeUInt32LE(0x80000000, 12);
+    const head = Buffer.alloc(5);
+    head.writeUInt32LE(body.length + 1, 0);
+    head[4] = 'I'.charCodeAt(0);
+    o.proc.stdin.write(Buffer.concat([head, body]));
+    const code = await Promise.race([o.exited, sleep(3000).then(() => 'still running')]);
+    if (code === 'still running') o.proc.kill('SIGKILL');
+    check('refused: exit 5, saying so, nothing drawn', code === 5 && o.events.some((e) => e.ev === 'error' && /bad image frame/.test(e.message)) && !o.events.some((e) => e.ev === 'drawn'), JSON.stringify({ code, events: o.events }));
+    // A real key at the limit's near side is still drawn.
+    const ok = helper(['--output', 'Virtual-1']);
+    await until(() => ok.events.some((e) => e.ev === 'ready'));
+    ok.proc.stdin.write(canvasFrame(960, 360, [1, 2, 3]));
+    ok.proc.stdin.write(imageFrame(-2, -2, 4, 4, Buffer.alloc(4 * 4 * 4, 255)));
+    check('an ordinary image partly off the canvas is still drawn', await until(() => ok.events.some((e) => e.ev === 'drawn')), JSON.stringify(ok.events));
+    ok.proc.stdin.write(quitFrame());
+    await ok.exited;
+  }
+
   console.log('touch, from recorded frames');
   // struct input_event on x86_64: two longs of time, u16 type, u16 code, s32 value.
   const EV = { SYN: 0, KEY: 1, ABS: 3 };

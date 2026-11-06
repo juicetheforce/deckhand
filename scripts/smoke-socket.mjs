@@ -15,6 +15,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +26,8 @@ const TMP = await fs.mkdtemp(path.join(os.tmpdir(), 'dh-'));
 const INPUT_LOG = path.join(TMP, 'input.log');
 process.env.DECKHAND_INPUT_BIN = path.join(REPO, 'scripts/test/fake-input-helper.mjs');
 process.env.FAKE_INPUT_LOG = INPUT_LOG;
+const REFUSE_UP = path.join(TMP, 'refuse-up');
+process.env.FAKE_INPUT_REFUSE_UP = REFUSE_UP;
 const PACTL_LOG = path.join(TMP, 'pactl.log');
 await fs.mkdir(path.join(TMP, 'bin'));
 await fs.symlink(path.join(REPO, 'scripts/test/fake-pactl.mjs'), path.join(TMP, 'bin', 'pactl'));
@@ -310,6 +313,20 @@ console.log('stuck keys — no socket client can leave a key held down');
   const thrown = await run({ action: { type: 'test.downThenThrow' } });
   check('an action that throws after pressing: action_failed, key released', thrown.error?.code === 'action_failed' && (await keysDown()).length === 0);
 
+  // The helper takes at most 16 keycodes a command (MAX_CODES).
+  const seventeen = { type: 'multi', steps: Array.from({ length: 17 }, (_, i) => ({ type: 'keyHold', keys: `f${i + 1}`, state: 'down' })) };
+  const logBefore = (await helperLog()).length;
+  const many = await run({ action: seventeen });
+  const ups = (await helperLog()).slice(logBefore).filter((e) => e.cmd === 'UP');
+  check('17 keys held: all released, in commands the helper accepts', many.ok && (await keysDown()).length === 0 && ups.length === 2 && ups.every((e) => e.codes.length <= 16));
+
+  await fs.writeFile(REFUSE_UP, '');
+  const refused = await run({ action: seventeen });
+  const stillDown = (await keysDown()).length;
+  check('a release that fails is reported, not a success', refused.error?.code === 'action_failed' && stillDown === 17);
+  await fs.rm(REFUSE_UP);
+  check('…and the keys are still tracked: the next action releases them', (await run({ action: { type: 'noop' } })).ok && (await keysDown()).length === 0);
+
   const quitter = await connect(daemon.socket);
   quitter.write(JSON.stringify({ id: 1, cmd: 'action.run', args: { serial: 'XL1', action: { type: 'keyHold', keys: 'f22', state: 'down' }, onRelease: { type: 'keyHold', keys: 'f22', state: 'up' }, holdMs: 800 } }) + '\n');
   await sleep(200);
@@ -371,6 +388,33 @@ console.log('subscribe and events');
   reset(); await daemon.profiles.switchTo('home', daemon.sessions); await sleep(50);
   check('re-subscribing replaces the set', of('state').length === 0);
   sub.close(); quiet.close();
+}
+
+// ---------------------------------------------------------------------------
+console.log('outstanding requests are bounded');
+{
+  // An endpoint that accepts and never answers: each obs.test waits for its deadline.
+  const sockets = new Set();
+  let accepted = 0;
+  const silent = net.createServer((s) => { accepted++; sockets.add(s); s.on('error', () => undefined); });
+  await new Promise((resolve) => silent.listen(0, '127.0.0.1', resolve));
+  const args = { host: '127.0.0.1', port: silent.address().port, password: 'x' };
+  const c = await connect(daemon.socket);
+  const replies = Array.from({ length: 1000 }, () => c.request('obs.test', args));
+  await sleep(1000);
+  const busy = c.lines.filter((l) => l.error?.code === 'busy').length;
+  check(`one client: work started is bounded (${accepted} started, ${busy} refused busy)`, accepted <= 128 && accepted > 0 && busy === 1000 - accepted);
+  const others = await Promise.all(Array.from({ length: 5 }, () => connect(daemon.socket)));
+  const moreReplies = others.flatMap((o) => Array.from({ length: 128 }, () => o.request('obs.test', args)));
+  await sleep(1000);
+  check(`every client together: bounded too (${accepted} started)`, accepted <= 512);
+  check('a request after the bound is reached says busy', (await client.request('status')).error?.code === 'busy');
+  for (const s of sockets) s.destroy();
+  silent.close();
+  await Promise.all([...replies, ...moreReplies]);
+  check('finished work frees its place: requests run again', (await client.request('status')).ok);
+  c.close();
+  for (const o of others) o.close();
 }
 
 // ---------------------------------------------------------------------------

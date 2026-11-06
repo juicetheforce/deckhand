@@ -141,7 +141,13 @@ async function readFile(): Promise<CredentialsFile> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw err;
   }
-  const parsed: unknown = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Not the parser's message: it quotes the text around the fault, which can be a secret.
+    throw new Error(`${CREDENTIALS_PATH} is not valid JSON`);
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${CREDENTIALS_PATH} is not a JSON object`);
   return parsed as CredentialsFile;
 }
@@ -237,7 +243,10 @@ export async function removeTwitchCredentials(): Promise<void> {
  * cannot be read or parsed throws.
  */
 export async function discordCredentials(): Promise<DiscordCredentials | null> {
-  const discord = await readSection('discord');
+  return discordFrom(await readSection('discord'));
+}
+
+function discordFrom(discord: Record<string, unknown> | null): DiscordCredentials | null {
   const clientId = stringField(discord?.clientId);
   const refreshToken = stringField(discord?.refreshToken);
   if (!discord || !clientId || !refreshToken) return null;
@@ -252,9 +261,21 @@ export function setDiscordCredentials(saved: DiscordCredentials): Promise<void> 
   return exclusively(async () => writeFile({ ...(await readFile()), discord: { ...saved } }));
 }
 
-/** Remove Discord's saved authorization: Discord is no longer set up. Nothing else in the file is touched. */
-export async function removeDiscordCredentials(): Promise<void> {
-  await removeSection('discord');
+/**
+ * Remove Discord's saved authorization and return what was removed, in one
+ * step: a refresh saved just before this is what gets returned, and revoked.
+ * Discord is then not set up. Nothing else in the file is touched.
+ */
+export function takeDiscordCredentials(): Promise<DiscordCredentials | null> {
+  return exclusively(async () => {
+    const file = await readFile();
+    const entry = file.discord;
+    if (!entry) return null;
+    const next = { ...file };
+    delete next.discord;
+    await writeFile(next);
+    return discordFrom(typeof entry === 'object' && !Array.isArray(entry) ? (entry as unknown as Record<string, unknown>) : null);
+  });
 }
 
 /** Numbers each write's temp file, so no two writes ever share one. */

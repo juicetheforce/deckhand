@@ -27,6 +27,9 @@ export const MAX_LINE_BYTES = 64 * 1024;
 export const MAX_BACKLOG_BYTES = 1024 * 1024;
 /** Bounds memory and per-connection work; the editor and a CLI need two. */
 export const MAX_CONNECTIONS = 16;
+/** Requests one connection, and all of them together, may have running; past either, the reply is `busy`. Far above what the editor sends at once. */
+export const MAX_OUTSTANDING_PER_CONNECTION = 128;
+export const MAX_OUTSTANDING = 512;
 
 export type ErrorCode =
   | 'bad_json'
@@ -66,6 +69,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 /** One connected client. */
 export class Connection {
+  /** Requests of this connection still running. */
+  outstanding = 0;
   readonly id: number;
   /** Events this client asked for with "subscribe". */
   subscriptions = new Set<EventName>();
@@ -163,6 +168,8 @@ export class ControlServer {
   private server: net.Server | null = null;
   private connections = new Set<Connection>();
   private nextConnectionId = 1;
+  /** Requests of every connection still running. */
+  private outstanding = 0;
   private socketFile: string | null = null;
 
   constructor(handlers: Record<string, Handler>) {
@@ -340,6 +347,13 @@ export class ControlServer {
       return;
     }
 
+    if (connection.outstanding >= MAX_OUTSTANDING_PER_CONNECTION || this.outstanding >= MAX_OUTSTANDING) {
+      connection.send(failure(id, 'busy', 'too many requests are still running'));
+      return;
+    }
+    connection.outstanding++;
+    this.outstanding++;
+
     // Not awaited: requests on one connection run concurrently, and their
     // responses are matched by id.
     Promise.resolve()
@@ -355,6 +369,10 @@ export class ControlServer {
             connection.send(failure(id, 'internal', message));
           }
         },
-      );
+      )
+      .finally(() => {
+        connection.outstanding--;
+        this.outstanding--;
+      });
   }
 }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { parseCombo, textToTaps } from './keymap.js';
+import { Recovery } from './recovery.js';
 import { TEXT_DELAY_MS } from './input-timing.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +23,9 @@ interface Pending {
  * be released when it finishes, without releasing a key a physical deck
  * press is holding.
  */
+/** The most keycodes the helper takes in one command (MAX_CODES in helper/deckhand-input.c). */
+const MAX_CODES_PER_COMMAND = 16;
+
 export type InputSource = 'deck' | 'socket';
 
 /**
@@ -36,20 +40,24 @@ class InputBridge {
   /** Told when the virtual keyboard goes: whatever thought a key was held is wrong. */
   private keyboardLostListeners = new Set<() => void>();
   private queue: Pending[] = [];
-  private restartTimer: NodeJS.Timeout | null = null;
+  private readonly recovery = new Recovery(() => {
+    console.log('[input] restarting helper');
+    this.start();
+  });
   private stopped = false;
   /** Keycodes currently held with down(), per source. TAP and hold() release their own. */
   private held: Record<InputSource, Set<number>> = { deck: new Set(), socket: new Set() };
 
   start(): void {
     if (this.proc || this.stopped) return;
+    this.recovery.started();
 
     let proc: ChildProcessWithoutNullStreams;
     try {
       proc = spawn(BIN, [], { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
       console.error(`[input] cannot spawn helper at ${BIN}: ${(err as Error).message}`);
-      this.scheduleRestart();
+      this.recovery.lost();
       return;
     }
     this.proc = proc;
@@ -82,7 +90,7 @@ class InputBridge {
         }
       }
       this.failAllPending(new Error('input helper exited'));
-      this.scheduleRestart();
+      this.recovery.lost();
     });
   }
 
@@ -106,13 +114,9 @@ class InputBridge {
     for (const p of queued) p.reject(err);
   }
 
-  private scheduleRestart(): void {
-    if (this.stopped || this.restartTimer) return;
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      console.log('[input] restarting helper');
-      this.start();
-    }, 2000);
+  /** The 60-second scan: start the helper again if it is gone. */
+  retry(): void {
+    this.recovery.retry();
   }
 
   private waitReady(timeoutMs = 5000): Promise<void> {
@@ -127,6 +131,8 @@ class InputBridge {
   }
 
   private async send(command: string): Promise<void> {
+    // A press does not wait for the scan to find the helper gone.
+    this.start();
     await this.waitReady();
     const proc = this.proc;
     if (!proc) throw new Error('input helper not running');
@@ -162,13 +168,23 @@ class InputBridge {
   /**
    * Release every key `source` still holds, except any key another source is
    * also holding (a physical push-to-talk must not be cut off by a socket
-   * action finishing). Returns the keycodes released.
+   * action finishing). In commands the helper accepts, and each key tracked
+   * until its command has succeeded, so a release that fails throws and can
+   * be tried again. Returns the keycodes released.
    */
   async releaseAllHeldBy(source: InputSource): Promise<number[]> {
     const other: InputSource = source === 'socket' ? 'deck' : 'socket';
-    const codes = [...this.held[source]].filter((code) => !this.held[other].has(code));
-    this.held[source].clear();
-    if (codes.length > 0) await this.send(`UP ${codes.join(' ')}`);
+    const held = this.held[source];
+    const codes = [...held].filter((code) => {
+      if (!this.held[other].has(code)) return true;
+      held.delete(code);
+      return false;
+    });
+    for (let i = 0; i < codes.length; i += MAX_CODES_PER_COMMAND) {
+      const batch = codes.slice(i, i + MAX_CODES_PER_COMMAND);
+      await this.send(`UP ${batch.join(' ')}`);
+      for (const code of batch) held.delete(code);
+    }
     return codes;
   }
 
@@ -200,7 +216,7 @@ class InputBridge {
 
   stop(): void {
     this.stopped = true;
-    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.recovery.cancel();
     this.proc?.kill('SIGTERM');
     this.proc = null;
   }

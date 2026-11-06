@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { ActionNeeded, NotSetUp, StillConnecting } from '../action-error.js';
-import { discordCredentials, removeDiscordCredentials, setDiscordCredentials, type DiscordCredentials } from '../credentials.js';
+import { discordCredentials, setDiscordCredentials, takeDiscordCredentials, type DiscordCredentials } from '../credentials.js';
 import type { DiscordApproval, DiscordConnection, DiscordList, DiscordStatus } from '../control/protocol.js';
 import {
   DiscordClient,
@@ -104,6 +104,8 @@ let asking: DiscordClient | null = null;
 let refreshing: Promise<DiscordCredentials> | null = null;
 /** Counts authorizations saved and removed: a connect begun on an older one is not used. */
 let generation = 0;
+/** What last changed `generation`: a refresh it overtook either was Removed, or belongs to a link since replaced. */
+let lastChange: 'removed' | 'linked' | null = null;
 const listeners = new Set<() => void>();
 
 export function cachedState(): DiscordState {
@@ -381,6 +383,10 @@ async function connect(): Promise<DiscordClient> {
   let refreshed = false;
   if (saved.expiresAt - Date.now() < REFRESH_AHEAD_MS) {
     const outcome = await refresh(saved);
+    if (generation !== begun) {
+      if (state.connection === 'connecting') update({ connection: 'unavailable', ...NOTHING_KNOWN });
+      throw new DiscordError('unavailable', 'the authorization changed while connecting');
+    }
     if (outcome instanceof DiscordCredentials_) {
       tokens = outcome.saved;
       refreshed = true;
@@ -453,7 +459,20 @@ class DiscordCredentials_ {
  */
 async function refresh(saved: DiscordCredentials): Promise<DiscordCredentials_ | DiscordTokenError> {
   refreshing ??= (async () => {
+    const link = generation;
     const tokens = await refreshTokens(saved.clientId, saved.refreshToken);
+    // Removed or linked again while Discord answered: these tokens belong to
+    // nothing saved, and must not be. After a Remove they are revoked, or they
+    // would stay alive at Discord. After a new link they are only dropped:
+    // whether a revoke would end the new link too has not been measured.
+    if (link !== generation) {
+      if (lastChange === 'removed') {
+        void revokeToken(saved.clientId, tokens.refreshToken, 'refresh_token')
+          .then(() => revokeToken(saved.clientId, tokens.accessToken, 'access_token'))
+          .catch((err: Error) => console.error(`[discord] could not revoke tokens from a refresh that was overtaken: ${err.message}. They can be removed in Discord's Settings › Authorized Apps`));
+      }
+      throw new DiscordTokenError('unavailable', 'the authorization changed while it was being refreshed');
+    }
     const next: DiscordCredentials = {
       ...saved,
       accessToken: tokens.accessToken,
@@ -652,6 +671,9 @@ async function ask(clientId: string): Promise<void> {
     const auth = await opened.command('AUTHENTICATE', { access_token: tokens.accessToken });
     const user = record(auth.user);
     const userName = [user.global_name, user.username].find((n): n is string => typeof n === 'string' && n !== '') ?? '';
+    // Before the save: a refresh answering after this must not write over it.
+    generation++;
+    lastChange = 'linked';
     await setDiscordCredentials({
       clientId,
       accessToken: tokens.accessToken,
@@ -661,7 +683,6 @@ async function ask(clientId: string): Promise<void> {
       userName,
     });
     asking = null;
-    generation++;
     console.log(`[discord] authorized as ${userName || 'a Discord account'}`);
     // The connection in use, if any, was made with the old authorization: this one replaces it.
     disconnect();
@@ -720,14 +741,19 @@ export async function remove(): Promise<boolean | null> {
   const waiting = asking;
   asking = null;
   waiting?.close();
-  const saved = await discordCredentials().catch(() => null);
-  await removeDiscordCredentials();
+  // Before anything waits: a refresh answering after this must not save.
   generation++;
+  lastChange = 'removed';
+  const saved = await takeDiscordCredentials();
   disconnect();
   update({ approval: { state: 'none' } });
   if (state.connection === 'refused') update({ connection: 'idle' });
   announce();
-  if (wanted) void ensureConnected().catch(() => undefined);
+  // After a connection under way has given up, which it would otherwise answer for.
+  if (wanted) void Promise.resolve(connecting)
+    .catch(() => undefined)
+    .then(() => ensureConnected())
+    .catch(() => undefined);
   if (!saved) return null;
   try {
     // The refresh token first: it is what keeps the authorization alive.

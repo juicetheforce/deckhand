@@ -47,6 +47,7 @@ export async function load(url, context, next) {
       // SIGUSR2 stands in for a udev event. The daemon's own handler runs the
       // same requestScan() the safety-net timer does, so this exercises the
       // scan path without a 60 s wait.
+      export function retryMonitor() {}
       export function watchHotplug(onChange) {
         const fire = () => onChange('add', '/fake/hotplug/hidraw0');
         process.on('SIGUSR2', fire);

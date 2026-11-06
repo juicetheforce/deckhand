@@ -136,6 +136,9 @@ static void emit_ready(void) {
   emit(line);
 }
 
+/* Larger than any screen; no frame the daemon sends comes near it. */
+#define MAX_IMAGE_COORD 32767
+
 static uint32_t u32_at(const unsigned char *p) {
   return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
@@ -306,6 +309,12 @@ static int handle_frames(void) {
         if (body_len < 16) { emit_error("bad image frame"); return 5; }
         int x = (int)u32_at(body), y = (int)u32_at(body + 4);
         unsigned w = u32_at(body + 8), h = u32_at(body + 12);
+        /* Before any arithmetic on them: within these, neither the size below
+         * nor draw_image's coordinates can overflow. */
+        if (w > MAX_IMAGE_COORD || h > MAX_IMAGE_COORD || x > MAX_IMAGE_COORD || x < -MAX_IMAGE_COORD || y > MAX_IMAGE_COORD || y < -MAX_IMAGE_COORD) {
+          emit_error("bad image frame");
+          return 5;
+        }
         if ((size_t)w * h * 4 != body_len - 16) { emit_error("image size does not match its pixels"); return 5; }
         if (w > 0 && h > 0) draw_image(x, y, w, h, body + 16);
         emit("{\"ev\":\"drawn\"}");

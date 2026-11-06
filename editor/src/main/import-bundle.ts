@@ -232,6 +232,26 @@ export interface ImportPlan {
  * A bare .json has no manifest: its paths are used as they are, and it can
  * only say whether a file is there.
  */
+/**
+ * Whether a file not yet there would land inside home once symlinks are
+ * followed: its nearest existing folder, resolved, against home, resolved. Home
+ * itself may be reached through a link (/home on some distributions).
+ */
+async function reallyInHome(file: string): Promise<boolean> {
+  const home = await fs.realpath(os.homedir()).catch(() => path.resolve(os.homedir()));
+  let dir = path.dirname(file);
+  for (;;) {
+    try {
+      const real = await fs.realpath(dir);
+      return real === home || real.startsWith(home + path.sep);
+    } catch (err) {
+      const parent = path.dirname(dir);
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || parent === dir) return false;
+      dir = parent;
+    }
+  }
+}
+
 export async function planImport(read: ReadImport): Promise<ImportPlan> {
   const home = os.homedir();
   const manifest = read.manifest;
@@ -286,10 +306,14 @@ export async function planImport(read: ReadImport): Promise<ImportPlan> {
     // Written: where it points inside home, else under the restored folder.
     let target = file;
     let relocated = false;
-    if (!inside(file)) {
+    if (!inside(file) || !(await reallyInHome(file))) {
       to = `${RESTORED_FOLDER}${file}`;
       target = path.resolve(expandPath(to));
       relocated = true;
+      if (!(await reallyInHome(target))) {
+        icons.push({ from, to: from, relocated: false, outcome: 'refused', reason: 'the folder for restored icons leads outside your home folder' });
+        continue;
+      }
     }
     const there = relocated ? await probe(target, expected) : 'none';
     const already = writes.get(target);
@@ -332,9 +356,11 @@ export async function writePlannedIcons(writes: Map<string, Uint8Array>): Promis
   const home = os.homedir();
   for (const [file, data] of writes) {
     // The plan only ever holds paths inside home; checked again at the write.
-    if (!file.startsWith(home + path.sep) || !isShownIcon(file)) throw new Error(`refusing to write ${file}`);
+    if (!file.startsWith(home + path.sep) || !isShownIcon(file) || !(await reallyInHome(file))) throw new Error(`refusing to write ${file}`);
     try {
       await fs.mkdir(path.dirname(file), { recursive: true });
+      // Again now the folders exist: a link made since the check above leads nowhere new.
+      if (!(await reallyInHome(file))) throw new Error('its folder leads outside your home folder');
       await fs.writeFile(file, data, { flag: 'wx' });
       written.push(file);
     } catch (err) {

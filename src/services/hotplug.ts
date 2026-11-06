@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import readline from 'node:readline';
 import { CORSAIR_VENDOR_ID, VENDOR_ID } from '@elgato-stream-deck/node';
+import { Recovery } from '../recovery.js';
 
 /**
  * Hotplug. node-hid has no hotplug event, so this runs one `udevadm monitor`
@@ -40,7 +41,6 @@ const EVENT_LINE = /^UDEV\s+\[[^\]]*\]\s+(add|remove|change)\s+(\S+)\s+\((\w+)\)
 
 /** Several devices appear per plug-in; they become one rescan this long after the last. */
 const DEBOUNCE_MS = 500;
-const RESTART_DELAY_MS = 5000;
 
 interface Watcher {
   match: (event: UdevEvent) => boolean;
@@ -52,8 +52,16 @@ const watchers = new Set<Watcher>();
 let proc: ChildProcess | null = null;
 let failed = false;
 
+const recovery = new Recovery(() => start());
+
+/** The 60-second scan: start `udevadm monitor` again if it is gone. */
+export function retryMonitor(): void {
+  recovery.retry();
+}
+
 function start(): void {
   if (proc || failed || watchers.size === 0) return;
+  recovery.started();
   const child = spawn('udevadm', ['monitor', '--udev', '--subsystem-match=hidraw', '--subsystem-match=drm', '--subsystem-match=input'], {
     stdio: ['ignore', 'pipe', 'ignore'],
   });
@@ -84,8 +92,8 @@ function start(): void {
   child.on('exit', (code, signal) => {
     if (proc === child) proc = null;
     if (failed || watchers.size === 0) return;
-    console.error(`[hotplug] udevadm monitor exited (code=${code} signal=${signal}); restarting in ${RESTART_DELAY_MS / 1000} s`);
-    setTimeout(start, RESTART_DELAY_MS);
+    console.error(`[hotplug] udevadm monitor exited (code=${code} signal=${signal})`);
+    recovery.lost();
   });
 }
 
