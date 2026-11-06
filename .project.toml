@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "The dark-room brightness test on both Stream Decks, then the sleep-on-lock / Sleep all decks / Brightness round."
+next = "Test the audit fixes (PR #2) and release them as v0.10.1; then the dark-room brightness test on both Stream Decks and the sleep-on-lock / Sleep all decks / Brightness round."
 category = "Gaming"
 paused = false
 focus = true
