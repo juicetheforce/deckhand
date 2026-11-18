@@ -60,6 +60,8 @@ function rejectDuplicateNames(
 
 /** A panel's canvas may be at most this many pixels on a side. */
 const MAX_PANEL_SIDE = 16384;
+/** A control's shape (src/shapes.ts); "square" is what every control before custom layouts carries, a rectangle. */
+const PANEL_SHAPES = new Set(['square', 'rectangle', 'round', 'hexagon']);
 
 /** A virtual deck's controls (types.ts PanelDef): ids unique, every control on the canvas. */
 function validatePanel(panel: unknown, where: string): void {
@@ -85,8 +87,14 @@ function validatePanel(panel: unknown, where: string): void {
     if (w < 1 || h < 1 || x < 0 || y < 0 || x + w > (size.width as number) || y + h > (size.height as number)) {
       throw new Error(`${where}: panel control "${control.id}" must be at least 1 × 1 and lie on the canvas`);
     }
-    if (control.shape !== undefined && control.shape !== 'square') {
-      throw new Error(`${where}: panel control "${control.id}": "shape" can only be "square" for now`);
+    if (control.shape !== undefined && !PANEL_SHAPES.has(control.shape as string)) {
+      throw new Error(`${where}: panel control "${control.id}": "shape" must be "rectangle", "round" or "hexagon"`);
+    }
+    if (control.radius !== undefined && (!n(control.radius) || (control.radius as number) < 0)) {
+      throw new Error(`${where}: panel control "${control.id}": "radius" must be a number of pixels, 0 or more`);
+    }
+    if (control.keepRatio !== undefined && typeof control.keepRatio !== 'boolean') {
+      throw new Error(`${where}: panel control "${control.id}": "keepRatio" must be true or false`);
     }
   }
   if (panel.preset !== undefined && typeof panel.preset !== 'string') throw new Error(`${where}: "panel.preset" must be a string`);

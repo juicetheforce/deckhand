@@ -168,7 +168,14 @@ try {
   await sleep(150);
   h.proc.stdin.write(redPixels);
   h.proc.stdin.write(imageFrame(300, 100, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 255, 0, 128]))));
-  const drawn = await until(() => h.events.filter((e) => e.ev === 'drawn').length === 2);
+  // An image is placed over the background, never over what was there
+  // (custom layouts, round 2a): a clear image where an opaque one was leaves
+  // the background, and a soft edge drawn twice is the same as once.
+  h.proc.stdin.write(imageFrame(400, 100, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([255, 255, 255, 255]))));
+  h.proc.stdin.write(imageFrame(400, 100, 4, 4, Buffer.alloc(4 * 4 * 4)));
+  h.proc.stdin.write(imageFrame(500, 100, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 255, 0, 128]))));
+  h.proc.stdin.write(imageFrame(500, 100, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 255, 0, 128]))));
+  const drawn = await until(() => h.events.filter((e) => e.ev === 'drawn').length === 6);
   check('each image answered "drawn"', drawn, JSON.stringify(h.events));
   h.proc.stdin.write(quitFrame());
   const code = await h.exited;
@@ -185,6 +192,9 @@ try {
     JSON.stringify([at(200, 100), at(219, 119), at(199, 110), at(220, 110)]));
   const [rr, gg, bb] = at(602, 202);
   check(`a half-transparent image blended over the background (${rr},${gg},${bb} ≈ 5,138,15)`, Math.abs(rr - 5) <= 1 && Math.abs(gg - 138) <= 1 && Math.abs(bb - 15) <= 1);
+  check('a clear image where an opaque one was: the background again, nothing of the old one', JSON.stringify(at(802, 202)) === '[10,20,30]', JSON.stringify(at(802, 202)));
+  const twice = at(1002, 202);
+  check(`a half-transparent image drawn twice is drawn once: over the background, not over itself (${twice})`, Math.abs(twice[0] - 5) <= 1 && Math.abs(twice[1] - 138) <= 1 && Math.abs(twice[2] - 15) <= 1);
 
   console.log('the output going away and coming back');
   // KWin removes a screen's output when it wakes from power saving and adds it

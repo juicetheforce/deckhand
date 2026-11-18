@@ -16,7 +16,9 @@
  *                own units and its background. Clears it. The canvas is drawn
  *                scaled to fit the screen, centred.
  *   'I' image    i32 x, i32 y, u32 w, u32 h, then w × h RGBA pixels: one key,
- *                at its place on the canvas. Answered "drawn".
+ *                at its place on the canvas, straight alpha over the
+ *                background — whatever was in its rectangle is replaced.
+ *                Answered "drawn".
  *   'C' clear    the background everywhere.
  *   'B' brightness  u8 percent, 0-100: everything drawn from now on is that much
  *                darker, 0 being pure black; what is on the screen stays until
@@ -171,20 +173,36 @@ static inline unsigned dimmed(unsigned channel) {
   return brightness == 100 ? channel : channel * brightness / 100;
 }
 
+/* The background, at the brightness everything is drawn at. */
+static uint32_t background_pixel(void) {
+  return 0xff000000u | (uint32_t)dimmed((background >> 16) & 0xff) << 16 | (uint32_t)dimmed((background >> 8) & 0xff) << 8 | dimmed(background & 0xff);
+}
+
 static void fill_background(void) {
   int w, h, stride;
   uint32_t *px = platform_canvas(&w, &h, &stride);
-  uint32_t fill = 0xff000000u | (uint32_t)dimmed((background >> 16) & 0xff) << 16 | (uint32_t)dimmed((background >> 8) & 0xff) << 8 | dimmed(background & 0xff);
+  uint32_t fill = background_pixel();
   for (int y = 0; y < h; y++)
     for (int x = 0; x < w; x++) px[y * stride + x] = fill;
   platform_damage(0, 0, w, h);
 }
 
-/* One key: RGBA, straight alpha, over what is there. Scaled nearest-neighbour
- * when the canvas is not the screen's size. */
+/* One key: RGBA, straight alpha, over the background. Scaled nearest-neighbour
+ * when the canvas is not the screen's size.
+ *
+ * Its rectangle is put back to the background first, then the image blended
+ * over it: what was there before never shows through. An image is
+ * transparent wherever nothing is drawn — the corners around a round
+ * control — and the daemon combines overlapping controls into one image
+ * (src/drivers/panel-compose.ts), so blending over the old pixels would build
+ * a shape's soft edge up over its own last one. An opaque image is the same
+ * either way. (Round 3's see-through background changes what is put back
+ * here, not what the daemon sends.) */
 static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char *rgba) {
   int sw, sh, stride;
   uint32_t *px = platform_canvas(&sw, &sh, &stride);
+  const uint32_t under = background_pixel();
+  const unsigned ur = (under >> 16) & 0xff, ug = (under >> 8) & 0xff, ub = under & 0xff;
   int x0 = origin_x + (int)(x * scale), y0 = origin_y + (int)(y * scale);
   int x1 = origin_x + (int)((x + (int)w) * scale), y1 = origin_y + (int)((y + (int)h) * scale);
   if (x0 < 0) x0 = 0;
@@ -206,12 +224,13 @@ static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char
       if (a == 255) {
         *d = 0xff000000u | (uint32_t)dimmed(s[0]) << 16 | (uint32_t)dimmed(s[1]) << 8 | dimmed(s[2]);
       } else if (a > 0) {
-        unsigned dr = (*d >> 16) & 0xff, dg = (*d >> 8) & 0xff, db = *d & 0xff;
-        /* What is under it is already at this brightness. */
-        unsigned r = (dimmed(s[0]) * a + dr * (255 - a)) / 255;
-        unsigned g = (dimmed(s[1]) * a + dg * (255 - a)) / 255;
-        unsigned b = (dimmed(s[2]) * a + db * (255 - a)) / 255;
+        /* The background is already at this brightness. */
+        unsigned r = (dimmed(s[0]) * a + ur * (255 - a)) / 255;
+        unsigned g = (dimmed(s[1]) * a + ug * (255 - a)) / 255;
+        unsigned b = (dimmed(s[2]) * a + ub * (255 - a)) / 255;
         *d = 0xff000000u | r << 16 | g << 8 | b;
+      } else {
+        *d = under;
       }
     }
   }
