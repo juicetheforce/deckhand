@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
-import type { Config } from '../../../src/types.js';
+import type { Config, PanelDef } from '../../../src/types.js';
+import { pagePanelIn } from '../../../src/panel-presets.js';
+import { ChangeLayout } from './ChangeLayout.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
@@ -36,6 +38,7 @@ import {
   setShown,
   shownDecks,
   geometryFor,
+  pageGeometry,
   layoutFor,
   labelDefaults,
   pageChoices,
@@ -232,7 +235,7 @@ function Editor({
   const editingBlocked = store.conflict !== null || store.fileError !== null;
   const layout = layoutFor(config, selection.profile, selection.serial);
   const page = layout?.pages[selection.page];
-  const geometry = geometryFor(daemon, selection.serial);
+  const geometry = pageGeometry(config, daemon, selection.serial, selection.profile, selection.page);
   /** Why there is no grid, or null when there is one. */
   const nothing = emptyState(config, daemon, selection);
   /** The decks drawn. One is today's editor exactly: no panels, no headers. */
@@ -261,7 +264,7 @@ function Editor({
     else focusKey(serial, key);
     void window.deckhand.apply({ kind: 'assignAction', at, action: { type } }).then((result) => {
       if (!result.ok) {
-        setSwitchError(`Could not put ${actionName(type)} on key ${keyNumber(key, geometryFor(daemon, serial) ?? undefined)}: ${result.error}`);
+        setSwitchError(`Could not put ${actionName(type)} on key ${keyNumber(key, pageGeometry(config, daemon, serial, selection.profile, pageId) ?? undefined)}: ${result.error}`);
         return;
       }
       setSwitchError(null);
@@ -323,8 +326,8 @@ function Editor({
   }, [iconsKey]);
 
 
-  const addPage = async (name: string): Promise<AddPageResult> => {
-    const result = await window.deckhand.apply({ kind: 'addPage', profile: selection.profile, serial: selection.serial, name });
+  const addPage = async (name: string, panel?: PanelDef): Promise<AddPageResult> => {
+    const result = await window.deckhand.apply(panel ? { kind: 'addPage', profile: selection.profile, serial: selection.serial, name, panel } : { kind: 'addPage', profile: selection.profile, serial: selection.serial, name });
     return result.ok ? { ok: true, page: result.result.pageId! } : { ok: false, error: result.error };
   };
 
@@ -356,9 +359,9 @@ function Editor({
 
   const [addLayoutError, setAddLayoutError] = useState<string | null>(null);
   const addLayout = async (serial = selection.serial) => {
-    // A virtual deck is treated exactly as a Stream Deck here: its new layout
-    // has no panel of its own, so it shows the deck's default size. A
-    // different size per profile is Settings › Decks' Change….
+    // A virtual deck's page made here gets the deck's default grid, copied
+    // from no other profile (2026-11-18); any page can then be changed with
+    // Change layout….
     const result = await window.deckhand.apply({ kind: 'addLayout', profile: selection.profile, serial, pageName: 'Main' });
     setAddLayoutError(result.ok ? null : result.error);
   };
@@ -383,6 +386,11 @@ function Editor({
   // Deleting a page is confirmed here rather than in the toolbar, because the
   // confirmation has to name the keys it is about to clear.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  /** The page whose layout is being changed (a virtual deck's), or null. */
+  const [changingLayout, setChangingLayout] = useState<string | null>(null);
+  const changing = changingLayout === null ? undefined : layout?.pages[changingLayout];
+  // The card is for one page of one deck in one profile: another deck or profile closes it.
+  useEffect(() => setChangingLayout(null), [selection.serial, selection.profile]);
   const deletion = pendingDelete === null ? null : pageDeletion(config, selection.profile, selection.serial, pendingDelete);
   const confirmDelete = async () => {
     if (pendingDelete === null) return;
@@ -441,7 +449,7 @@ function Editor({
     const focused = serial === selection.serial;
     const pageId = pageOf(selection, serial) ?? '';
     const gridPage = layoutFor(config, selection.profile, serial)?.pages[pageId];
-    const gridGeometry = geometryFor(daemon, serial);
+    const gridGeometry = pageGeometry(config, daemon, serial, selection.profile, pageId);
     if (!gridPage || !gridGeometry) return null;
     const at = { profile: selection.profile, serial, page: pageId };
     return (
@@ -546,6 +554,10 @@ function Editor({
           setPendingProfileDelete(profile);
         }}
         onDeletePage={setPendingDelete}
+        onChangeLayout={(pageId) => {
+          setPendingDelete(null);
+          setChangingLayout(pageId);
+        }}
         shown={shown}
         onShowOnly={(serial) => {
           select({ serial });
@@ -584,7 +596,7 @@ function Editor({
               <DeckCanvas
                 decks={shown.flatMap((serial): CanvasDeck[] => {
                   // A deck the daemon has not described yet is not drawn for that moment: its size is unknown.
-                  const g = geometryFor(daemon, serial);
+                  const g = pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '');
                   return g ? [{ serial, name: deckLabel(config, daemon, serial), size: { columns: g.columns, rows: g.rows } }] : [];
                 })}
                 positions={positions}
@@ -598,7 +610,7 @@ function Editor({
                       key={serial}
                       serial={serial}
                       name={deckLabel(config, daemon, serial)}
-                      size={geometryFor(daemon, serial)}
+                      size={pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '')}
                       focused={serial === selection.serial}
                       pages={layoutHere ? pageChoices(layoutHere) : []}
                       page={pageOf(selection, serial) ?? ''}
@@ -647,12 +659,29 @@ function Editor({
                 }}
               />
             )}
+            {layout && changing && changingLayout !== null && (
+              <ChangeLayout
+                key={`${selection.serial}/${changingLayout}`}
+                deckKey={selection.serial}
+                pageName={pageLabel(layout, changingLayout)}
+                page={changing}
+                current={pagePanelIn(config, selection.profile, selection.serial, changingLayout)}
+                onApply={async (panel, choice) => {
+                  const result = await window.deckhand.apply({ kind: 'setPagePanel', profile: selection.profile, serial: selection.serial, page: changingLayout, panel });
+                  if (!result.ok) return result.error;
+                  void window.deckhand.setLastGrid(selection.serial, choice);
+                  setChangingLayout(null);
+                  return null;
+                }}
+                onCancel={() => setChangingLayout(null)}
+              />
+            )}
             {layout && deletion && pendingDelete !== null && (
               <DeletePage
                 name={pageLabel(layout, pendingDelete)}
                 deletion={deletion}
                 pageName={(page: string) => pageLabel(layout, page)}
-                keyNumberOf={(key: string) => keyNumber(key, geometry ?? undefined)}
+                keyNumberOf={(key: string, onPage: string) => keyNumber(key, pageGeometry(config, daemon, selection.serial, selection.profile, onPage) ?? undefined)}
                 onConfirm={() => void confirmDelete()}
                 onCancel={() => setPendingDelete(null)}
               />
@@ -779,7 +808,7 @@ function DeleteProfile({
             {plan.links.map((link) => (
               <li key={`${link.profile}/${link.serial}/${link.page}/${link.key}/${link.where}`}>
                 {profileLabel(config, link.profile)} · {deckLabel(config, daemon, link.serial)} ·{' '}
-                {pageLabelIn(config, link.profile, link.serial, link.page)} · key {keyNumber(link.key, geometryFor(daemon, link.serial) ?? undefined)}
+                {pageLabelIn(config, link.profile, link.serial, link.page)} · key {keyNumber(link.key, pageGeometry(config, daemon, link.serial, link.profile, link.page) ?? undefined)}
                 {link.where === 'onRelease' ? ' (on release)' : ''}
                 {link.inMulti ? ' — one step of a multi action' : ''}
               </li>
@@ -842,8 +871,8 @@ function DeletePage({
   name: string;
   deletion: NonNullable<ReturnType<typeof pageDeletion>>;
   pageName: (page: string) => string;
-  /** A key's number on the deck, as people count them ("key 5"). */
-  keyNumberOf: (key: string) => string;
+  /** A key's number on its page, as people count them ("key 5"): a virtual deck's pages can each have another grid. */
+  keyNumberOf: (key: string, page: string) => string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -873,7 +902,7 @@ function DeletePage({
           <ul className="link-list">
             {deletion.links.map((link) => (
               <li key={`${link.page}/${link.key}/${link.where}`}>
-                {pageName(link.page)} · key {keyNumberOf(link.key)}
+                {pageName(link.page)} · key {keyNumberOf(link.key, link.page)}
                 {link.where === 'onRelease' ? ' (on release)' : ''}
                 {link.inMulti ? ' — one step of a multi action' : ''}
               </li>
@@ -922,7 +951,8 @@ function useBulkShortcuts(handlers: {
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName))) return;
       // Keys pressed in a dropdown are the dropdown's, open or closed: they must not reach the selected keys.
-      if (target?.closest?.('[data-dropdown], [data-dropdown-menu]')) return;
+      // The same for a virtual deck's grid pickers (New page, Change layout…), whose buttons can hold focus.
+      if (target?.closest?.('[data-dropdown], [data-dropdown-menu], [data-add-page], [data-change-layout]')) return;
       const ctrl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       let handled = true;

@@ -125,9 +125,14 @@ Stream Deck.** Above one seam the daemon never asks which kind of deck it
 has: each driver — the Stream Deck library, and virtual decks — hands it
 devices with controls that have an ID, a position, a size and a shape, and a
 Stream Deck's grid is one such layout. Keys are named by control ID, never
-by index, so a moved or resized key keeps its button. A panel's controls
-live in each profile's layout, so one screen can show different layouts in
-different profiles.
+by index, so a moved or resized key keeps its button. **Every page of a
+virtual deck has its own layout** — its panel of controls — so the daemon
+lays the deck out again on a page change, **only when the new page's
+controls differ** from those shown: a new set clears the screen before every
+key is drawn, and two pages with the same grid switch as a Stream Deck's do.
+The editor draws each page from the config at that page's grid, never the
+grid the deck happens to show. The deck keeps a default size, chosen when it
+is added, for every page made without a choice.
 
 - **The screen is drawn on a Wayland layer-shell surface on the `overlay`
   layer** that never takes keyboard focus, on the chosen output; where the
@@ -486,7 +491,10 @@ is here so the test is not "fixed" instead.
 | `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()` | what is on the screen stays until drawn again, so **a change is the level, then the canvas, then every key**; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels) and `smoke-virtual` |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
 | `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |
-| `src/panel-presets.ts`'s `panelIn` / `defaultPanelOf`, `src/drivers/virtual.ts`'s `layoutFrom` | **a virtual deck never attaches with zero keys**: a profile's own panel, else the deck's default (`decks[key].virtual.panel`), else the first profile's, else a Medium grid for the screen. A profile made after the deck has no panel of its own and must show the default — found shipped in `v0.8.0`, where it showed nothing. Held by `virtual-panel.test.ts`, `check:virtual` and `smoke-virtual` |
+| `src/panel-presets.ts`'s `pagePanelOf` / `defaultPanelOf` / `migratePagePanels`, `src/drivers/virtual.ts`'s `layoutFrom` | **a virtual deck never attaches with zero keys**: the page's own panel, else (a config not yet migrated) its layout's, else the deck's default (`decks[key].virtual.panel`), else a Medium grid for the screen. **Every page made without a choice gets the deck's default**, copied from no other page or profile — a profile made after the deck showed nothing in `v0.8.0`. **The migration keeps every page's grid and keys**: each page takes the panel its profile showed, and a deck without a default is given the one it fell back to; the daemon reads it in memory, the editor saves it once. Held by `virtual-panel.test.ts`, `config-store.test.ts`, `check:virtual` and `smoke-virtual` |
+| `src/deck.ts`'s `relayoutFor` / `goToPage` / `goBack` / `reconfigure` | **a page change re-lays out a virtual deck only when the page's controls differ**: a new set is a canvas frame, which clears the screen, then every key; the same set draws only the keys that changed, as before. What was held is let go first, as on any way off a page. Held by `smoke-virtual` and `check:virtual` (the helper's frames) |
+| `editor/src/renderer/model.ts`'s `pageGeometry` | **the editor draws a virtual deck's page at that page's grid, from the config**, never the deck's live geometry, which is whatever page the deck shows — Copy to device, a link's key number and the canvas all name pages not shown. A Stream Deck's keys are the daemon's. Held by `virtual-panel.test.ts` |
+| `editor/src/renderer/Toolbar.tsx`'s `PageTab` / `AddPage` | **a Stream Deck's page menu and New page are as they were**: Change layout… and the grid picker are a virtual deck's only. Held by `check:one-deck` and `check:virtual` |
 | `src/screens.ts` | **a screen's key never contains the EDID's numeric serial**: the Xeneon Edge and two identical HP monitors all report the same placeholder there; only the text serial, cleaned of unprintable bytes (one carries a NUL), tells screens apart |
 | `panel/wayland.c`, `src/drivers/virtual.ts`'s helper exit | **losing the output is not losing the screen**: the helper waits for its output to be announced again (no timer) and the daemon draws everything on its next `ready`; only the kernel's connector state ends a virtual deck. **A helper that stops unasked closes its deck's session** — listed again with its screen still connected, the session would stay open around a helper that is gone, showing nothing and reported connected. Held by `smoke-panel` (a headless KWin's output disabled and enabled) and `smoke-virtual` |
 | `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |

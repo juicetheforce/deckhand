@@ -2,7 +2,9 @@ import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent,
 import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
-import type { Config } from '../../../src/types.js';
+import type { Config, PanelDef } from '../../../src/types.js';
+import { defaultPanelOf } from '../../../src/panel-presets.js';
+import { choiceOf, GridPicker, gridStateOf, gridStateOfChoice, panelOf, useVirtualScreen, type GridState } from './GridPicker.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { connectionPill, deckChoices, geometryFor, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
 import { pagesWithNoWayOff } from '../shared/links.js';
@@ -14,7 +16,8 @@ interface Props {
   selection: Selection;
   editingBlocked: boolean;
   onSelect: (change: Partial<Selection>) => void;
-  onAddPage: (name: string) => Promise<AddPageResult>;
+  /** A virtual deck's page comes with the grid picked (its own layout); a Stream Deck's with none. */
+  onAddPage: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
   onAddProfile: (name: string, serials: string[]) => Promise<AddProfileResult>;
   /** A profile that exists only in the edit just made cannot go through onSelect. */
   onProfileAdded: (profile: string) => void;
@@ -28,6 +31,8 @@ interface Props {
   onDeleteProfile: (profile: string) => void;
   /** Ask to delete a page; App shows the confirmation, since it names what would change. */
   onDeletePage: (page: string) => void;
+  /** Change layout… for a virtual deck's page; never offered on a Stream Deck. */
+  onChangeLayout: (page: string) => void;
   /** The decks drawn, in order (model.ts shownDecks). */
   shown: string[];
   /** SHOW IN EDITOR: a deck's name clicked — show that deck alone. */
@@ -45,7 +50,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * elsewhere. The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage, shown, onShowOnly, onSetShown }: Props) {
+export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage, onChangeLayout, shown, onShowOnly, onSetShown }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const pill = connectionPill(config, daemon, selection);
@@ -53,6 +58,8 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
   // The guard: no key is auto-reserved for Back, so a page you
   // cannot leave is flagged on its tab instead.
   const stranded = layout ? new Set(pagesWithNoWayOff(layout)) : new Set<string>();
+  // Every page of a virtual deck has its own layout; a Stream Deck's keys are its own.
+  const virtualKey = config.decks?.[selection.serial]?.virtual ? selection.serial : null;
   // The same treatment for a profile that leaves a connected deck showing
   // whatever it had.
 
@@ -128,6 +135,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
                 disabled={editingBlocked}
                 onSelect={() => onSelect({ page: p.id })}
                 onDelete={() => onDeletePage(p.id)}
+                onChangeLayout={virtualKey ? () => onChangeLayout(p.id) : undefined}
               />
               {/* One pencil, on the selected tab only: a control per tab would
                   multiply with every page created. */}
@@ -148,6 +156,7 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           decks={knownDecks(config, daemon)}
           disabled={editingBlocked}
           onAddPage={onAddPage}
+          virtualDeck={virtualKey ? { key: virtualKey, defaultPanel: defaultPanelOf(config, virtualKey) } : null}
           onPageAdded={(page) => onSelect({ page })}
           onAddProfile={onAddProfile}
           onProfileAdded={onProfileAdded}
@@ -265,36 +274,89 @@ function useCloseMenu(open: boolean, wrap: RefObject<HTMLElement | null>, close:
  * Name a new page. Reached from the "+" menu, which is the trigger — so this
  * shows the field straight away rather than another button behind the first.
  */
-function AddPage({ disabled, onAdd, onAdded }: { disabled: boolean; onAdd: (name: string) => Promise<AddPageResult>; onAdded: (page: string) => void }) {
+function AddPage({
+  disabled,
+  virtualDeck,
+  onAdd,
+  onAdded,
+}: {
+  disabled: boolean;
+  virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
+  onAdd: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
+  onAdded: (page: string) => void;
+}) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // A virtual deck's new page: its own layout, the grid last picked on this
+  // deck preselected, else the deck's default (decided 2026-11-17).
+  const deckKey = virtualDeck?.key ?? null;
+  const defaultPanel = virtualDeck?.defaultPanel;
+  const screen = useVirtualScreen(deckKey);
+  const [grid, setGrid] = useState<GridState | null>(null);
+  useEffect(() => {
+    if (deckKey === null) return;
+    let alive = true;
+    const fallback = gridStateOf(defaultPanel);
+    void window.deckhand.lastGrid(deckKey).then(
+      (last) => alive && setGrid((g) => g ?? (last ? gridStateOfChoice(last) : fallback)),
+      () => alive && setGrid((g) => g ?? fallback),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [deckKey, defaultPanel]);
 
   const submit = async () => {
-    const result = await onAdd(name);
+    // Not yet known (the daemon has not said the screen's size): the deck's default, as for any page made without a choice.
+    const panel = deckKey !== null && screen && grid ? panelOf(screen, grid) : undefined;
+    const result = await onAdd(name, panel);
     if (!result.ok) {
       setError(result.error); // e.g. a name this deck already has; the field stays open
       return;
     }
+    if (deckKey !== null && panel && grid) void window.deckhand.setLastGrid(deckKey, choiceOf(grid));
     onAdded(result.page);
   };
 
+  const field = (
+    <input
+      autoFocus
+      aria-label="New page name"
+      placeholder="New page name"
+      value={name}
+      disabled={disabled}
+      onChange={(e) => {
+        setName(e.target.value);
+        setError(null);
+      }}
+      onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') void submit();
+      }}
+    />
+  );
+  if (deckKey === null) {
+    // A Stream Deck: exactly as it always was.
+    return (
+      <span className="add-page">
+        {field}
+        {error && <span className="field-error">{error}</span>}
+      </span>
+    );
+  }
   return (
-    <span className="add-page">
-      <input
-        autoFocus
-        aria-label="New page name"
-        placeholder="New page name"
-        value={name}
-        disabled={disabled}
-        onChange={(e) => {
-          setName(e.target.value);
-          setError(null);
-        }}
-        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-          if (e.key === 'Enter') void submit();
-        }}
-      />
+    <span className="add-page add-page-virtual" data-add-page="virtual">
+      {field}
+      {screen && grid ? (
+        <GridPicker screen={screen} size={grid.size} rows={grid.rows} columns={grid.columns} onChange={(next) => setGrid((g) => ({ ...(g ?? gridStateOf(undefined)), ...next }))} />
+      ) : (
+        <span className="muted small">Asking the daemon for the screen's size…</span>
+      )}
       {error && <span className="field-error">{error}</span>}
+      <span className="button-row">
+        <button className="primary" disabled={disabled || name.trim() === ''} onClick={() => void submit()} data-add-page-submit>
+          Add page
+        </button>
+      </span>
     </span>
   );
 }
@@ -310,6 +372,7 @@ function PageTab({
   disabled,
   onSelect,
   onDelete,
+  onChangeLayout,
 }: {
   label: string;
   selected: boolean;
@@ -318,6 +381,8 @@ function PageTab({
   disabled: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  /** A virtual deck's page only: its layout is its own. Absent on a Stream Deck, whose menu is as it was. */
+  onChangeLayout?: () => void;
 }) {
   const [menu, setMenu] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
@@ -351,6 +416,21 @@ function PageTab({
           tab, as for profile and device. */}
       {menu && (
         <ul className="tab-menu" role="menu">
+          {onChangeLayout && (
+            <li>
+              <button
+                role="menuitem"
+                className="tab-menu-item"
+                data-menu="change-layout"
+                onClick={() => {
+                  setMenu(false);
+                  onChangeLayout();
+                }}
+              >
+                Change layout…
+              </button>
+            </li>
+          )}
           <li>
             <button
               role="menuitem"
@@ -456,6 +536,7 @@ function AddMenu({
   decks,
   disabled,
   onAddPage,
+  virtualDeck,
   onPageAdded,
   onAddProfile,
   onProfileAdded,
@@ -463,7 +544,9 @@ function AddMenu({
   canAddPage: boolean;
   decks: DeckChoice[];
   disabled: boolean;
-  onAddPage: (name: string) => Promise<AddPageResult>;
+  onAddPage: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
+  /** The deck being edited, when it is a virtual deck: its new page gets a grid picked here. */
+  virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
   onPageAdded: (page: string) => void;
   onAddProfile: (name: string, serials: string[]) => Promise<AddProfileResult>;
   onProfileAdded: (profile: string) => void;
@@ -528,6 +611,7 @@ function AddMenu({
         <div className="tab-menu add-panel">
           <AddPage
             disabled={disabled}
+            virtualDeck={virtualDeck}
             onAdd={onAddPage}
             onAdded={(page) => {
               close();

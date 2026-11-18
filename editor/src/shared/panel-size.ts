@@ -1,19 +1,21 @@
 /**
- * A virtual deck's panel given a new size, in one profile: every page's keys
- * keep their row and column, as paste and Copy to device place keys. A key
- * with no place in the new grid is dropped, after a warning naming it. No
- * undo, as on a Stream Deck; the rolling backup every config change gets is
- * the last resort.
+ * One page of a virtual deck given another fixed grid ("Change layout…"):
+ * its keys keep their row and column, as paste and Copy to device place
+ * keys. A key with no place in the new grid is dropped, after a warning
+ * naming it. Only that page changes: every page has its own layout. No undo,
+ * as on a Stream Deck; the rolling backup every config change gets is the
+ * last resort.
  *
- * Pure, importing only the daemon's own geometry: the Settings window builds
- * the confirmation with it, and the main process applies the same result.
+ * Pure, importing only the daemon's own geometry: the main window builds the
+ * warning with it, and the main process applies the same result.
  */
 import { geometryOfPanel } from '../../../src/geometry.js';
-import type { ButtonDef, LayoutDef, PanelDef } from '../../../src/types.js';
+import type { ButtonDef, PageDef, PanelDef } from '../../../src/types.js';
 
 export interface DroppedKey {
-  page: string;
   key: string;
+  /** Its number as people count keys, in reading order from 1, on the grid it had. */
+  number: number;
   button: ButtonDef;
 }
 
@@ -22,24 +24,26 @@ function places(panel: PanelDef | undefined): Map<string, string> {
   return new Map(geometryOfPanel(panel, '').keys.map((k) => [k.id, `${k.row}:${k.column}`]));
 }
 
-export function resizePanel(layout: LayoutDef, panel: PanelDef): { layout: LayoutDef; dropped: DroppedKey[] } {
-  const from = places(layout.panel);
+/**
+ * `from` is the grid the page shows now: its own panel, or — a page not yet
+ * given one — the deck's default.
+ */
+export function regridPage(page: PageDef, from: PanelDef | undefined, panel: PanelDef): { page: PageDef; dropped: DroppedKey[] } {
+  const was = places(from);
+  const order = new Map(geometryOfPanel(from, '').keys.map((k, i) => [k.id, i + 1]));
   const to = new Map([...places(panel)].map(([id, place]) => [place, id]));
-  const next: LayoutDef = { ...structuredClone(layout), panel: structuredClone(panel) };
+  const buttons: Record<string, ButtonDef> = {};
   const dropped: DroppedKey[] = [];
-  for (const [pageId, page] of Object.entries(layout.pages)) {
-    const buttons: Record<string, ButtonDef> = {};
-    for (const [key, button] of Object.entries(page.buttons)) {
-      const place = from.get(key);
-      const target = place === undefined ? undefined : to.get(place);
-      if (target === undefined) {
-        // An empty slot ({}) is nothing to lose.
-        if (Object.keys(button).length > 0) dropped.push({ page: pageId, key, button });
-        continue;
-      }
-      buttons[target] = structuredClone(button);
+  for (const [key, button] of Object.entries(page.buttons)) {
+    const place = was.get(key);
+    const target = place === undefined ? undefined : to.get(place);
+    if (target === undefined) {
+      // An empty slot ({}) is nothing to lose.
+      if (Object.keys(button).length > 0) dropped.push({ key, number: order.get(key) ?? 0, button });
+      continue;
     }
-    next.pages[pageId] = { ...next.pages[pageId], buttons };
+    buttons[target] = structuredClone(button);
   }
-  return { layout: next, dropped };
+  dropped.sort((a, b) => a.number - b.number);
+  return { page: { ...structuredClone(page), buttons, panel: structuredClone(panel) }, dropped };
 }

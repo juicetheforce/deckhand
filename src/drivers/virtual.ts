@@ -12,7 +12,7 @@ import * as power from '../services/virtual-power.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
-import { defaultPanelOf, makePanel } from '../panel-presets.js';
+import { defaultPanelOf, makePanel, pagePanelOf } from '../panel-presets.js';
 import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
 import { brightnessFrame, canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
@@ -338,14 +338,14 @@ class PanelDevice implements DeckDevice {
   }
 
   /**
-   * A profile's layout as this deck's geometry: its own panel, else the
-   * deck's default (a profile made after the deck was added has none of its
-   * own), else — no panel anywhere — a Medium grid for this screen. **Never
+   * A page as this deck's geometry: the page's own panel, else the deck's
+   * default (a page made by hand in config.json may have none), else — no
+   * panel anywhere — a Medium grid for this screen. **Never
    * zero keys** (found on both machines, 2026-10-17: a later profile attached
    * the deck with "0 keys, no screens").
    */
-  layoutFrom(layout: LayoutDef): DeckGeometry {
-    let panel = layout.panel ?? this.defaultPanel();
+  layoutFrom(layout: LayoutDef, page: string): DeckGeometry {
+    let panel = pagePanelOf(layout, page, this.defaultPanel());
     if (!panel) {
       panel = makePanel({ width: this.ready.width, height: this.ready.height, widthMm: this.screenMm.widthMm, heightMm: this.screenMm.heightMm }, 'medium');
       if (!this.generatedSaid) {

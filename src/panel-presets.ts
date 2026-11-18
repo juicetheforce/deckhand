@@ -162,26 +162,80 @@ export function makePanel(screen: ScreenSize, size: PanelSize, custom?: { rows: 
 }
 
 /** The parts of a config a virtual deck's panel is looked up in: structural, so this file imports nothing. */
+interface PanelLayout<P> {
+  /** Before every page had its own: one panel for the whole profile. Read, never written. */
+  panel?: P;
+  pages: Record<string, { panel?: P }>;
+}
 interface PanelConfig<P> {
   decks?: Record<string, { virtual?: { panel?: P } }>;
-  profiles: Record<string, { layouts: Record<string, { panel?: P }> }>;
+  profiles: Record<string, { layouts: Record<string, PanelLayout<P>> }>;
 }
 
 /**
  * A virtual deck's default panel: its own (`decks[key].virtual.panel`), else —
- * a config written before defaults existed — the first profile's that has one.
+ * a config written before defaults existed — the first that a profile has for
+ * it, on the layout (before pages had their own) or on a page.
  */
 export function defaultPanelOf<P>(config: PanelConfig<P> | null | undefined, key: string): P | undefined {
   const own = config?.decks?.[key]?.virtual?.panel;
   if (own) return own;
   for (const profile of Object.values(config?.profiles ?? {})) {
-    const panel = profile.layouts[key]?.panel;
-    if (panel) return panel;
+    const layout = profile.layouts[key];
+    if (!layout) continue;
+    if (layout.panel) return layout.panel;
+    for (const page of Object.values(layout.pages ?? {})) if (page.panel) return page.panel;
   }
   return undefined;
 }
 
-/** The panel a profile shows a virtual deck with: its layout's own, else the deck's default. */
-export function panelIn<P>(config: PanelConfig<P> | null | undefined, profile: string, key: string): P | undefined {
-  return config?.profiles[profile]?.layouts[key]?.panel ?? defaultPanelOf(config, key);
+/**
+ * The panel a page shows a virtual deck with: the page's own, else — a
+ * config not yet migrated — its layout's, else the given default.
+ */
+export function pagePanelOf<P>(layout: PanelLayout<P> | null | undefined, page: string, fallback?: P): P | undefined {
+  return layout?.pages?.[page]?.panel ?? layout?.panel ?? fallback;
+}
+
+/** pagePanelOf, looked up in a whole config: a profile's page of one deck. */
+export function pagePanelIn<P>(config: PanelConfig<P> | null | undefined, profile: string, key: string, page: string): P | undefined {
+  return pagePanelOf(config?.profiles[profile]?.layouts[key], page, defaultPanelOf(config, key));
+}
+
+/**
+ * **Every page of a virtual deck has its own layout** (decided 2026-11-17).
+ * A config from before keeps exactly what it showed: each page is given a
+ * copy of the panel its profile used — the layout's own, else the deck's
+ * default — and the layout's is removed. A virtual deck with no default of
+ * its own is first given the one it was falling back to, so the pages made
+ * for it later match. A Stream Deck's layout, with no panel, is untouched.
+ * Returns whether anything changed: the daemon migrates in memory on every
+ * load; the editor saves it (as src/state-icons.ts does).
+ */
+export function migratePagePanels<P>(config: PanelConfig<P>): boolean {
+  let changed = false;
+  for (const [key, deck] of Object.entries(config.decks ?? {})) {
+    if (!deck.virtual || deck.virtual.panel) continue;
+    const fallback = defaultPanelOf(config, key);
+    if (fallback) {
+      deck.virtual.panel = structuredClone(fallback);
+      changed = true;
+    }
+  }
+  for (const profile of Object.values(config.profiles ?? {})) {
+    for (const [key, layout] of Object.entries(profile.layouts ?? {})) {
+      const base = layout.panel ?? (config.decks?.[key]?.virtual ? config.decks[key].virtual?.panel : undefined);
+      if (!base) continue;
+      for (const page of Object.values(layout.pages ?? {})) {
+        if (page.panel) continue;
+        page.panel = structuredClone(base);
+        changed = true;
+      }
+      if (layout.panel) {
+        delete layout.panel;
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }

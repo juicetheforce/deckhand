@@ -34,6 +34,12 @@ export interface PageDef {
   name?: string;
   /** Button index (as a string) -> definition. Index 0 is top-left. */
   buttons: Record<string, ButtonDef>;
+  /**
+   * A virtual deck's controls on this page (types.ts PanelDef): every page of
+   * a virtual deck has its own layout. Absent on a Stream Deck's pages, whose
+   * controls are its own (src/panel-presets.ts pagePanelIn).
+   */
+  panel?: PanelDef;
 }
 
 /**
@@ -65,9 +71,9 @@ export interface VirtualDeckDef {
   /** Its touchscreen, from the pairing tap. Absent: the panel shows, and takes no touches. */
   touch?: TouchDeviceDef;
   /**
-   * Its default panel: the size chosen when it was added. A profile shows it
-   * with this unless its layout has a `panel` of its own (src/panel-presets.ts
-   * panelIn). Absent in a config written before defaults existed.
+   * Its default panel: the size chosen when it was added. Every page made
+   * automatically for it gets a copy (src/panel-presets.ts). Absent in a
+   * config written before defaults existed, until migratePagePanels sets it.
    */
   panel?: PanelDef;
 }
@@ -107,7 +113,11 @@ export interface LayoutDef {
   /** Page ID or name. Defaults to the first page. */
   startPage?: string;
   pages: Record<string, PageDef>;
-  /** A virtual deck's controls, for this profile (types.ts PanelDef). Absent on a Stream Deck, whose controls are its own. */
+  /**
+   * Before every page had its own: a virtual deck's controls for this whole
+   * profile. Moved onto each page by migratePagePanels (src/panel-presets.ts)
+   * whenever a config is loaded; never written any more.
+   */
   panel?: PanelDef;
 }
 

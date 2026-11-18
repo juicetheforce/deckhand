@@ -142,8 +142,8 @@ export class DeckSession implements DeckHandle {
     this.order = new Map();
     this.keyCount = 0;
     this.iconSize = null;
-    this.useGeometry(device.layoutFrom?.(this.layout) ?? device.geometry);
     this.page = options.page !== undefined && this.layout.pages[options.page] ? options.page : startPageOf(this.layout);
+    this.useGeometry(device.layoutFrom?.(this.layout, this.page) ?? device.geometry);
     this.brightness = clampBrightness(this.ownBrightness(this.hardware));
   }
 
@@ -193,9 +193,26 @@ export class DeckSession implements DeckHandle {
     this.device.showGeometry?.(geometry);
   }
 
-  /** A device whose controls its layout defines takes them from the layout now shown (src/devices.ts layoutFrom). */
-  private relayout(): void {
-    if (this.device.layoutFrom) this.useGeometry(this.device.layoutFrom(this.layout));
+  /**
+   * The controls a page would have: a virtual deck's page's own panel
+   * (src/devices.ts layoutFrom), or null for a device whose controls are its
+   * own.
+   */
+  private geometryOf(layout: LayoutDef, page: string): DeckGeometry | null {
+    return this.device.layoutFrom ? this.device.layoutFrom(layout, page) : null;
+  }
+
+  /**
+   * Take a page's controls, **only when they differ from those shown**: a new
+   * set clears the screen (the helper's canvas frame) before every key is
+   * drawn, so two pages with the same grid switch as they always have. Call
+   * with what was held already let go. Returns whether it changed.
+   */
+  private relayoutFor(layout: LayoutDef, page: string): boolean {
+    const next = this.geometryOf(layout, page);
+    if (!next || sameControls(next, this.geometry)) return false;
+    this.useGeometry(next);
+    return true;
   }
 
   /** "key 5": a key as people count them, in reading order from 1. */
@@ -797,6 +814,8 @@ export class DeckSession implements DeckHandle {
     await this.releaseLatches('a page change');
     this.history.push(this.page);
     if (this.history.length > 32) this.history.shift();
+    // Every page of a virtual deck has its own layout (types.ts PageDef.panel).
+    this.relayoutFor(this.layout, id);
     this.page = id;
     this.onStateChange();
     await this.renderPage(true);
@@ -807,6 +826,7 @@ export class DeckSession implements DeckHandle {
     if (!previous || !this.layout.pages[previous]) return;
     await this.fireHeldReleases('a page change');
     await this.releaseLatches('a page change');
+    this.relayoutFor(this.layout, previous);
     this.page = previous;
     this.onStateChange();
     await this.renderPage(true);
@@ -855,8 +875,8 @@ export class DeckSession implements DeckHandle {
     await this.fireHeldReleases('a profile switch');
     await this.releaseLatches('a profile switch');
     this.layout = layout;
-    this.relayout();
     this.page = startPageOf(layout);
+    this.relayoutFor(layout, this.page);
     this.history = [];
     this.onStateChange();
     await this.renderPage(true);
@@ -877,20 +897,22 @@ export class DeckSession implements DeckHandle {
     keepPage: boolean,
   ): Promise<void> {
     this.hardware = hardware;
-    const controlsBefore = JSON.stringify(this.geometry.keys);
     this.layout = layout;
     this.defaults = { ...DEFAULTS, ...defaults };
-    // A virtual deck's panel may have changed with the layout: a key gone
-    // from under a finger is let go first, as on any way off a page.
-    if (this.device.layoutFrom && JSON.stringify(this.device.layoutFrom(layout).keys) !== controlsBefore) {
+    const stays = keepPage && layout.pages[this.page] !== undefined;
+    const page = stays ? this.page : startPageOf(layout);
+    // A virtual deck's panel may have changed with the page's layout: a key
+    // gone from under a finger is let go first, as on any way off a page.
+    const next = this.geometryOf(layout, page);
+    if (next && !sameControls(next, this.geometry)) {
       await this.fireHeldReleases('a panel change');
       await this.releaseLatches('a panel change');
-      this.relayout();
+      this.useGeometry(next);
     }
-    if (!keepPage || !layout.pages[this.page]) {
+    if (!stays) {
       await this.fireHeldReleases('a config reload');
       await this.releaseLatches('a config reload');
-      this.page = startPageOf(layout);
+      this.page = page;
       this.history = [];
       this.onStateChange();
     } else {
@@ -919,4 +941,9 @@ export class DeckSession implements DeckHandle {
       // device may already be gone
     }
   }
+}
+
+/** Whether two sets of controls are the same, key for key: where each is, its size and its shape. */
+function sameControls(a: DeckGeometry, b: DeckGeometry): boolean {
+  return JSON.stringify(a.keys) === JSON.stringify(b.keys) && JSON.stringify(a.canvas ?? null) === JSON.stringify(b.canvas ?? null);
 }

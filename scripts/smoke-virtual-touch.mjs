@@ -194,6 +194,8 @@ let config = validateConfig({
           pages: {
             main: { buttons: { k1: { action: { type: 'page', to: 'two' } }, k5: { action: { type: 'noop' }, onRelease: { type: 'page', to: 'two' } } } },
             two: { buttons: { k1: { action: { type: 'page', to: 'main' } } } },
+            // A page with its own panel: two 576 px keys across the top-left.
+            wide: { panel: grid(1, 2, 600), buttons: {} },
           },
         },
       },
@@ -274,6 +276,20 @@ await settle('touch', async () => {
   check('a touch between keys, and a lift never seen down, do nothing', inputs.length === 0, inputs.join());
   await helperSays('DP-4', down(6, 'k4'), down(7, 'k6'), up(6), up(7));
   check('a touch belongs to the key it started on; two keys at once are two presses', inputs.join() === 'k4 down,k6 down,k4 up,k6 up', inputs.join());
+
+  // Every page has its own layout: after a page change to another grid, a touch is hit-tested on the new keys.
+  inputs.length = 0;
+  await helperSays('DP-4', down(8, 'k2'));
+  check('a finger on a key…', inputs.join() === 'k2 down', inputs.join());
+  await session.goToPage('wide');
+  await helperSays('DP-4', up(8));
+  check('…held across a page change to another grid belongs to no key: its lift does nothing', inputs.join() === 'k2 down', inputs.join());
+  await helperSays('DP-4', down(9, 'k2', { x: 900, y: 300 }), up(9));
+  check('a touch where the old grid had no key lands on the new page\'s key there', inputs.join() === 'k2 down,k2 down,k2 up', inputs.join());
+  inputs.length = 0;
+  await helperSays('DP-4', down(10, 'k2', centre('k2')), up(10));
+  check('…and where the old grid had k2, the new page\'s k1 is pressed', inputs.join() === 'k1 down,k1 up', inputs.join());
+  await session.goToPage('main');
 });
 
 console.log('the lock');

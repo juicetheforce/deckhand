@@ -254,6 +254,56 @@ await settle('relayout', async () => {
   check('the socket\'s geometry is the new one', session.geometry.keys.map((k) => k.id).join() === 't1,t2');
 });
 
+console.log('a page with its own panel (every page has its own layout)');
+await settle('page layouts', async () => {
+  const pages = {
+    startPage: 'main',
+    pages: {
+      main: { name: 'Main', panel: grid('k', 2, 3, 240), buttons: { k1: { label: 'one' } } },
+      wide: { name: 'Wide', panel: grid('w', 1, 2, 360), buttons: { w2: { label: 'two' } } },
+      twin: { name: 'Twin', panel: grid('w', 1, 2, 360), buttons: { w1: { label: 'twin' } } },
+    },
+  };
+  const since = async (before) => (await frames()).slice(before);
+  await session.setLayout(pages);
+  check('the start page\'s own panel', session.keyCount === 6 && session.hasKey('k1') && session.currentPage() === 'main', String(session.keyCount));
+  let before = (await frames()).length;
+  await session.goToPage('wide');
+  await until(async () => (await since(before)).filter((f) => f.type === 'I').length >= 2);
+  let sent = await since(before);
+  check('a page with another panel: a new canvas, then its two keys at their places', session.keyCount === 2 && session.hasKey('w2') && !session.hasKey('k1') && sent[0]?.type === 'K' && sent.filter((f) => f.type === 'I').length === 2, JSON.stringify(sent.map((f) => f.type)));
+  check('…and the socket\'s geometry is that page\'s', session.geometry.keys.map((k) => k.id).join() === 'w1,w2');
+  before = (await frames()).length;
+  await session.goToPage('twin');
+  await until(async () => (await since(before)).filter((f) => f.type === 'I').length >= 1);
+  await sleep(200);
+  sent = await since(before);
+  check('a page with the same panel: no canvas — the screen is not cleared — only its changed keys', !sent.some((f) => f.type === 'K') && sent.filter((f) => f.type === 'I').length <= 2, JSON.stringify(sent.map((f) => f.type)));
+  before = (await frames()).length;
+  await session.goBack();
+  await sleep(200);
+  sent = await since(before);
+  check('back to the page before, the same panel: still no canvas', session.currentPage() === 'wide' && !sent.some((f) => f.type === 'K'), JSON.stringify(sent.map((f) => f.type)));
+  before = (await frames()).length;
+  await session.goToPage('main');
+  await until(async () => (await since(before)).filter((f) => f.type === 'I').length >= 6);
+  sent = await since(before);
+  check('back to the six-key page: a canvas, then its six keys', session.keyCount === 6 && sent[0]?.type === 'K' && sent.filter((f) => f.type === 'I').length === 6, JSON.stringify(sent.map((f) => f.type)));
+  // An edited config that changes only the page shown's panel re-lays it out where it is.
+  const edited = structuredClone(pages);
+  edited.pages.main.panel = grid('e', 1, 3, 300);
+  before = (await frames()).length;
+  await session.reconfigure(config.decks['output-DP-4'], edited, {}, true);
+  await until(async () => (await since(before)).filter((f) => f.type === 'I').length >= 3);
+  sent = await since(before);
+  check('a reload changing the shown page\'s panel: same page, its new keys, a new canvas', session.currentPage() === 'main' && session.keyCount === 3 && session.hasKey('e3') && sent.some((f) => f.type === 'K'), JSON.stringify(sent.map((f) => f.type)));
+  // A reload that drops the shown page goes to the start page, laid out as that page.
+  const dropped = { startPage: 'wide', pages: { wide: structuredClone(pages.pages.wide) } };
+  await session.reconfigure(config.decks['output-DP-4'], dropped, {}, true);
+  check('a reload dropping the page shown: the start page, with its own panel', session.currentPage() === 'wide' && session.keyCount === 2 && session.hasKey('w2'), `${session.currentPage()} ${session.keyCount}`);
+  await sleep(300);
+});
+
 console.log('a profile with no panel of its own (made after the deck was added)');
 await settle('default panel', async () => {
   // Found on both machines, 2026-10-17: a profile created later had no panel

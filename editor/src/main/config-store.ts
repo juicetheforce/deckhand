@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { validateConfig } from '../../../src/config.js';
 import { migrateStateIcons } from '../../../src/state-icons.js';
+import { migratePagePanels } from '../../../src/panel-presets.js';
 import type { Config } from '../../../src/types.js';
 import type { Conflict, StoreState } from '../shared/bridge.js';
 import type { ApplyResult, Edit, EditResult } from '../shared/edits.js';
@@ -81,11 +82,16 @@ export class ConfigStore {
    * Keys whose icons are in the old shape, one field per state, moved to the
    * Default icon and the active icon (src/state-icons.ts), drawing what they
    * drew, and saved: the daemon reads either, and no icon someone set is
-   * lost. Whether the file needs reformatting is judged before, on the file
-   * as it was.
+   * lost. A virtual deck's panel is moved from each profile onto each of its
+   * pages (src/panel-presets.ts migratePagePanels), every page keeping the
+   * grid and keys it had. Whether the file needs reformatting is judged
+   * before, on the file as it was.
    */
   private migrate(): void {
-    if (!migrateStateIcons(this.config)) return;
+    // Both run: `||` would skip the second whenever the first changed something.
+    const icons = migrateStateIcons(this.config);
+    const panels = migratePagePanels(this.config);
+    if (!icons && !panels) return;
     this.dirty = true;
     this.scheduleSave();
   }
@@ -203,6 +209,9 @@ export class ConfigStore {
       }
       await keep(replaced);
       this.config = structuredClone(config);
+      // An imported config is migrated as one opened is, and written so (Codex, PR #6).
+      migrateStateIcons(this.config);
+      migratePagePanels(this.config);
       this.conflict = null;
       this.fileError = null;
       this.reformatPending = false;

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
 import { Recovery } from './recovery.js';
 import { migrateStateIcons } from './state-icons.js';
+import { migratePagePanels } from './panel-presets.js';
 import type { Config, LayoutDef } from './types.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
@@ -106,6 +107,7 @@ function validateLayout(layout: unknown, where: string): void {
         throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a key id: a Stream Deck's key index ("0", "1", …), or up to 32 letters, digits, "-" and "_"`);
       }
     }
+    if (page.panel !== undefined) validatePanel(page.panel, `page "${pageId}" in ${where}`);
   }
 
   if (layout.panel !== undefined) validatePanel(layout.panel, where);
@@ -214,6 +216,8 @@ export async function loadConfig(): Promise<{ config: Config; text: string }> {
   // A key's icons in the old shape, one field per state, drawn as before (state-icons.ts).
   // In memory only: the daemon never writes config.json; the editor saves it.
   migrateStateIcons(config);
+  // A virtual deck's panel moved from each profile onto each page (panel-presets.ts), the same way.
+  migratePagePanels(config);
   return { config, text };
 }
 

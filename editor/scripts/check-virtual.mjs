@@ -9,12 +9,17 @@
 // frames.
 //
 // - Add: the screens listed, one already a deck refused; the tap, cancelled
-//   and then made; the sizes offered with their counts; the deck written
-//   with its pairing and a Medium panel in the active profile only.
-// - The list: the deck, its size in that profile.
-// - A new size keeps keys by row and column; one with no place is named,
-//   and dropped only once confirmed; nothing is added to the kept configurations.
-// - Remove takes the pairing only; the layouts stay.
+//   and then made; the grids offered with their counts; the deck written
+//   with its pairing, a Medium default, and a first page with that grid in
+//   the active profile only.
+// - The list: the deck, and no sizes — every page has its own layout,
+//   changed on the page (2026-11-17).
+// - Remove takes the pairing only; the layouts stay, each page with its grid.
+// - The main window, with the deck connected through the real virtual driver
+//   and the fake helper: Change layout… on a page names the keys it drops and
+//   changes only that page once confirmed; New page offers the grids with the
+//   last choice preselected; the deck re-lays out on a page change only when
+//   the grid differs (the helper's frames); a Stream Deck gets none of it.
 // - Touchscreen access (touch-access.ts): the real root helper,
 //   udev/deckhand-touch-access, run by a stand-in pkexec in its test mode
 //   against a scratch /dev with ACLs kept as files — the password refused
@@ -96,7 +101,11 @@ const CONFIG = {
 };
 const configFile = path.join(configDir, 'config.json');
 await fs.writeFile(configFile, JSON.stringify(CONFIG, null, 2) + '\n');
-const daemon = await startDaemon(scratch, CONFIG, { virtual: createVirtualDriver(() => null) });
+// The driver sees no virtual deck in the config until the main-window part,
+// so nothing before it attaches one; then the check attaches it itself.
+let virtualConfig = () => null;
+const virtualDriver = createVirtualDriver(() => virtualConfig());
+const daemon = await startDaemon(scratch, CONFIG, { virtual: virtualDriver });
 await daemon.attach(XL, new FakeDeck());
 const stopWatching = await reloadLikeTheDaemon(daemon);
 
@@ -205,6 +214,7 @@ r.pairMode = pairFrame?.mode;
 r.tapSent = await tapOn('DP-4', `${sysfs.dev}/event15`);
 r.sizeStep = await until(() => exists(editor, '[data-vd-step=size]'));
 r.sizes = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-size]')].map((l) => l.dataset.vdSize + ': ' + l.querySelector('.muted').textContent)");
+r.sizeNames = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-vd-size] .vd-size-name')].map((l) => l.textContent)");
 r.pairedLine = await inPage(editor, 'settings', "document.querySelector('[data-vd-step=size] .sp-row-title').textContent");
 // Custom: both fields, starting from the size picked before it; very small keys warned of.
 await inPage(editor, 'settings', clickIn('[data-vd-step=size] [data-vd-size=custom] input'));
@@ -231,10 +241,8 @@ r.laterMade = await until(async () => Object.values((await onDisk()).profiles).s
 const [laterId, later] = Object.entries((await onDisk()).profiles).find(([, p]) => p.name === 'Later');
 r.laterLayout = later.layouts[KEY];
 r.laterDefault = (await onDisk()).decks[KEY].virtual.panel;
-r.laterListed = await until(() => exists(editor, `[data-vd-layout="${laterId}"]`));
-r.laterRow = await inPage(editor, 'settings', `document.querySelector('[data-vd-layout="${laterId}"] .sp-row-detail')?.textContent ?? null`);
-r.defaultRow = await inPage(editor, 'settings', "document.querySelector('[data-vd-default] .sp-row-detail')?.textContent ?? null");
-r.secondRow = await inPage(editor, 'settings', "document.querySelector('[data-vd-layout=second] .sp-row-detail')?.textContent ?? null");
+await sleep(300);
+r.sizeRows = await inPage(editor, 'settings', "document.querySelectorAll('[data-vd-layout], [data-vd-default], [data-vd=resize]').length");
 
 // Added: the screen is not offered again.
 await inPage(editor, 'settings', clickIn('[data-vd=add]'));
@@ -245,28 +253,7 @@ await until(() => exists(editor, '[data-vd=add]'));
 
 // THE LIST.
 await until(() => exists(editor, `[data-vd-deck="${KEY}"]`));
-r.row = await inPage(editor, 'settings', `(() => { const d = document.querySelector('[data-vd-deck="${KEY}"]'); return { text: d.querySelector('.sp-row-title').textContent.trim(), detail: d.querySelector('.sp-row-detail').textContent, size: d.querySelector('[data-vd-layout=default] .sp-row-detail').textContent }; })()`);
-
-// RESIZE — a key at k1 (row 0, column 0) and one at k24 (row 2, column 7):
-// Large is 2 × 5, so k1 stays where it is and k24 has no place.
-const withKeys = await onDisk();
-withKeys.profiles.default.layouts[KEY].pages[withKeys.profiles.default.layouts[KEY].startPage].buttons = { k1: { label: 'Stays' }, k24: { label: 'Corner' } };
-await fs.writeFile(configFile, JSON.stringify(withKeys, null, 2) + '\n');
-await until(async () => JSON.stringify(daemon.state.config).includes('Corner'));
-await sleep(300);
-await inPage(editor, 'settings', clickIn(`[data-vd-deck="${KEY}"] [data-vd-layout=default] [data-vd=resize]`));
-await until(() => exists(editor, '[data-vd-layout=default] [data-vd-size=large] input'));
-await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd-size=large] input'));
-await sleep(100);
-await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd=apply-size]'));
-r.droppedNamed = await until(() => exists(editor, '[data-vd-dropped]'));
-r.droppedText = await inPage(editor, 'settings', "document.querySelector('[data-vd-dropped]')?.textContent ?? null");
-r.notYet = (await onDisk()).profiles.default.layouts[KEY].panel?.controls.length ?? 'no panel of its own';
-await inPage(editor, 'settings', clickIn('[data-vd-layout=default] [data-vd=apply-size]'));
-r.resized = await until(async () => (await onDisk()).profiles.default.layouts[KEY].panel?.controls.length === 10);
-const afterResize = (await onDisk()).profiles.default.layouts[KEY];
-r.afterButtons = afterResize.pages[afterResize.startPage].buttons;
-r.kept = (await fs.readdir(path.join(stateDir, 'backups')).catch(() => [])).filter((f) => f.startsWith('before-resize-'));
+r.row = await inPage(editor, 'settings', `(() => { const d = document.querySelector('[data-vd-deck="${KEY}"]'); return { text: d.querySelector('.sp-row-title').textContent.trim(), detail: d.querySelector('.sp-row-detail').textContent, rows: d.querySelectorAll('.sp-row').length }; })()`);
 
 // TURN OFF AND ON — as a Virtual deck on/off key or `deckhand virtual off` does, then the row's button.
 const powerButton = () => inPage(editor, 'settings', `(() => { const b = document.querySelector('[data-vd-deck="${KEY}"] [data-vd=power]'); return b ? { text: b.textContent.trim(), disabled: b.disabled } : null; })()`);
@@ -303,7 +290,8 @@ await tapOn('DP-4', `${sysfs.dev}/event15`);
 r.readded = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== undefined);
 r.readdedNotice = await until(async () => /previous layout/.test((await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? ''")) ?? ''));
 r.readdedAskedSize = await exists(editor, '[data-vd-step=size]');
-r.readdedControls = (await onDisk()).profiles.default.layouts[KEY].panel.controls.length;
+const readdedLayout = (await onDisk()).profiles.default.layouts[KEY];
+r.readdedControls = readdedLayout.pages[readdedLayout.startPage].panel?.controls.length;
 r.rulesAfterReadd = /222a/.test(await fs.readFile(rules, 'utf8').catch(() => ''));
 
 check('Settings › Decks has a Virtual decks group: none yet, and Add (a touchscreen is connected)', () => assert.deepEqual(r.empty, { group: true, rows: 0, add: true }));
@@ -343,8 +331,9 @@ check('the tap is read in pairing mode, and answered', () => {
 });
 check('the sizes offered say what each gives on this screen (the 10.3" panel: 4 × 10, 3 × 8, 2 × 5; the key itself, 88% of the pitch)', () =>
   assert.deepEqual(r.sizes, ['small: 4 × 10 keys, about 20 mm', 'medium: 3 × 8 keys, about 27 mm', 'large: 2 × 5 keys, about 40 mm', 'custom: set the rows and columns']));
-check('…and name the screen and the touchscreen tapped', () => assert.equal(r.pairedLine, 'HD Display, paired with ILITEK Multi-Touch-V3000. Key size?'));
-check('Custom sets both rows and columns, starting from the size before it, and warns of very small keys', () => {
+check('…and name the screen and the touchscreen tapped', () => assert.equal(r.pairedLine, 'HD Display, paired with ILITEK Multi-Touch-V3000. Grid size?'));
+check('the grids are Small, Medium, Large and Grid Size — today\'s Custom, renamed', () => assert.deepEqual(r.sizeNames, ['Small', 'Medium', 'Large', 'Grid Size']));
+check('Grid Size sets both rows and columns, starting from the size before it, and warns of very small keys', () => {
   assert.deepEqual(r.customFields, ['3', '8']);
   assert.equal(r.customWarned, true);
 });
@@ -357,25 +346,23 @@ check('Add writes the pairing, keyed by the screen, and a Medium panel in the ac
   assert.deepEqual(panel.size, { width: 1920, height: 720 });
   const layout = r.config.profiles.default.layouts[KEY];
   assert.ok(layout, 'a layout in the active profile');
-  assert.equal(layout.panel, undefined, 'with no size of its own: it follows the default');
+  assert.equal(layout.panel, undefined, 'no panel on the layout: pages have their own');
+  assert.deepEqual(layout.pages[layout.startPage].panel, panel, 'its first page has the deck\'s default grid');
   assert.equal(r.config.profiles.second.layouts[KEY], undefined, 'another profile gets its layout from the editor');
   assert.match(r.notice ?? '', /HD Display is a virtual deck, paired with ILITEK Multi-Touch-V3000\. Its keys are in the editor, in “Default”\./);
 });
-check('a profile made after the deck: a full-size blank page, and its row in Settings\' size list', () => {
+check('a profile made after the deck: one blank page at the deck\'s default grid, never zero keys', () => {
   assert.equal(r.laterMade, true);
   assert.ok(r.laterLayout, 'the deck has a layout in it');
-  assert.equal(r.laterLayout.panel, undefined, 'following the default');
-  assert.deepEqual(Object.values(r.laterLayout.pages).map((p) => Object.keys(p.buttons).length), [0], 'one blank page');
-  assert.equal(r.laterDefault.controls.length, 24, 'the default it follows: full size, never zero keys');
-  assert.equal(r.laterListed, true);
-  assert.equal(r.laterRow, 'Medium, 3 × 8 keys (the default)');
-  assert.equal(r.defaultRow, 'Medium, 3 × 8 keys — every profile without a size of its own');
-  assert.equal(r.secondRow, 'Medium, 3 × 8 keys (the default)', 'every profile is listed, one with no layout for the deck included');
+  assert.equal(r.laterLayout.panel, undefined);
+  assert.deepEqual(Object.values(r.laterLayout.pages).map((p) => [Object.keys(p.buttons).length, p.panel?.controls.length]), [[0, 24]], 'one blank page, 24 keys');
+  assert.equal(r.laterDefault.controls.length, 24);
 });
-check('the list shows it, and its size in that profile', () => {
+check('Settings lists no sizes or layouts: every page has its own, changed on the page', () => assert.equal(r.sizeRows, 0));
+check('the list shows it, with one row: no size rows', () => {
   assert.match(r.row.text, /GRA-6e4e|HD Display/);
   assert.match(r.row.detail, /^DP-4 · not connected$/);
-  assert.equal(r.row.size, 'Medium, 3 × 8 keys (the default)');
+  assert.equal(r.row.rows, 1);
 });
 check('Turn off and on: disabled with the screen not connected; turned off elsewhere, the row says so and offers Turn on, which turns it on', () => {
   assert.deepEqual(r.powerWhileUnplugged, { text: 'Turn off', disabled: true });
@@ -385,19 +372,10 @@ check('Turn off and on: disabled with the screen not connected; turned off elsew
   assert.equal(r.onAgain, true);
   assert.equal(r.onStatus, 'not off');
 });
-check('a new size that drops a key names it, and changes nothing until confirmed', () => {
-  assert.equal(r.droppedNamed, true);
-  assert.match(r.droppedText ?? '', /1 key has no place at that size and will be removed: “Corner” \(key 24\) on “Main”\./);
-  assert.equal(r.notYet, 'no panel of its own', 'still following the default');
-});
-check('confirmed: keys keep their row and column, the one with no place goes; no kept configuration is added', () => {
-  assert.equal(r.resized, true);
-  assert.deepEqual(r.afterButtons, { k1: { label: 'Stays' } });
-  assert.equal(r.kept.length, 0, JSON.stringify(r.kept));
-});
 check('Remove takes away the pairing only: the layouts stay', () => {
   assert.equal(r.removed, true);
-  assert.equal(r.afterRemove.profiles.default.layouts[KEY]?.panel?.controls.length, 10);
+  const kept = r.afterRemove.profiles.default.layouts[KEY];
+  assert.equal(kept?.pages[kept.startPage]?.panel?.controls.length, 24, 'its page keeps its grid');
   assert.equal(r.rowGone, true);
 });
 
@@ -405,8 +383,167 @@ check('added again after Remove: no size asked, its kept layout used, and said s
   assert.equal(r.readded, true);
   assert.equal(r.readdedAskedSize, false);
   assert.equal(r.readdedNotice, true);
-  assert.equal(r.readdedControls, 10, 'the 2 × 5 it had');
+  assert.equal(r.readdedControls, 24, 'the 3 × 8 its page had');
   assert.equal(r.rulesAfterReadd, true, 'and its touchscreen\'s rule back');
+});
+
+// THE MAIN WINDOW, WITH THE DECK CONNECTED — through the real virtual driver
+// and the fake helper, whose frames say what the deck was sent.
+const inEditor = (expr) => inPage(editor, 'editor', expr);
+const inEditorExists = (selector) => inEditor(`document.querySelector(${JSON.stringify(selector)}) !== null`);
+const clickEditor = (selector) => inEditor(clickIn(selector));
+const typeInto = (selector, value) =>
+  inEditor(`(() => { const i = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(value)}); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+const rightClickTab = (name) =>
+  inEditor(`(() => { const t = document.querySelector('[data-tab=${JSON.stringify(name)}]'); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return true; })()`);
+const gridKeys = () => inEditor("document.querySelectorAll('.well [data-key]').length");
+const pageOnDisk = async (name) => {
+  const layout = (await onDisk()).profiles.default.layouts[KEY];
+  const entry = Object.entries(layout.pages).find(([, p]) => (p.name ?? '') === name);
+  return entry ? { id: entry[0], ...entry[1] } : null;
+};
+const panelSession = () => daemon.sessions.get(KEY);
+/** What the deck was sent from frame `from` on: canvases and key images. */
+const sentSince = async (from) => {
+  const f = (await frames()).slice(from);
+  return { canvases: f.filter((x) => x.type === 'K').length, images: f.filter((x) => x.type === 'I').length };
+};
+
+// Two keys on its first page: k1 (row 0, column 0) and k24 (row 2, column 7).
+const withKeys = await onDisk();
+const firstLayout = withKeys.profiles.default.layouts[KEY];
+firstLayout.pages[firstLayout.startPage].buttons = { k1: { label: 'Stays' }, k24: { label: 'Corner' } };
+await fs.writeFile(configFile, JSON.stringify(withKeys, null, 2) + '\n');
+await until(async () => JSON.stringify(daemon.state.config).includes('Corner'));
+const firstPageName = firstLayout.pages[firstLayout.startPage].name;
+
+virtualConfig = () => daemon.state.config;
+const panelEntry = (await virtualDriver.list()).find((f) => f.id === KEY);
+const panelDevice = await panelEntry.open();
+await daemon.attachDevice(KEY, panelDevice);
+r.attachedKeys = panelSession().keyCount;
+// Two decks connected: SHOW IN EDITOR; show the virtual deck only.
+await until(() => inEditorExists('.show-in-editor-trigger'));
+await clickEditor('.show-in-editor-trigger');
+await until(() => inEditorExists(`[data-show-deck="${KEY}"] .show-in-editor-name`));
+await clickEditor(`[data-show-deck="${KEY}"] .show-in-editor-name`);
+r.gridAtFirst = await until(async () => (await gridKeys()) === 24);
+
+// CHANGE LAYOUT… on that page: Large (2 × 5) keeps k1, has no place for k24.
+await rightClickTab(firstPageName);
+r.changeOffered = await until(() => inEditorExists('[data-menu=change-layout]'));
+await clickEditor('[data-menu=change-layout]');
+await until(() => inEditorExists('[data-change-layout] [data-vd-size=large] input'));
+r.changePreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
+await clickEditor('[data-change-layout] [data-vd-size=large] input');
+r.changeDropped = await until(() => inEditorExists('[data-change-dropped]'));
+r.changeDroppedText = await inEditor("document.querySelector('[data-change-dropped]')?.textContent ?? null");
+r.changeNotYet = (await pageOnDisk(firstPageName)).panel.controls.length;
+const beforeChange = (await frames()).length;
+await clickEditor('[data-change-layout-apply]');
+r.changed = await until(async () => (await pageOnDisk(firstPageName)).panel.controls.length === 10);
+r.changedButtons = (await pageOnDisk(firstPageName)).buttons;
+r.changedDefault = (await onDisk()).decks[KEY].virtual.panel.controls.length;
+r.changedGrid = await until(async () => (await gridKeys()) === 10);
+r.changedDeck = await until(async () => panelSession().keyCount === 10 && (await sentSince(beforeChange)).images >= 10);
+r.changedSent = await sentSince(beforeChange);
+
+// NEW PAGE: the grids, the last choice on this deck (Large) preselected; Small picked.
+const addPage = async (name, size) => {
+  await clickEditor('.tab-add');
+  await until(() => inEditorExists('.add-menu-wrap .tab-menu-item'));
+  await clickEditor('.add-menu-wrap .tab-menu-item');
+  await until(() => inEditorExists('[data-add-page=virtual] [data-vd-size=small] input'));
+  const preselected = await inEditor("document.querySelector('[data-add-page] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
+  await clickEditor(`[data-add-page=virtual] [data-vd-size=${size}] input`);
+  await typeInto('[data-add-page] input[aria-label="New page name"]', name);
+  await sleep(100);
+  await clickEditor('[data-add-page-submit]');
+  await until(async () => (await pageOnDisk(name)) !== null);
+  return preselected;
+};
+r.newPreselected = await addPage('Small page', 'small');
+r.newPage = await pageOnDisk('Small page');
+r.newSelected = await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Small page');
+r.newGrid = await until(async () => (await gridKeys()) === 40);
+// Shown on the deck: a page with another grid is a new canvas, then every key.
+r.newOnDeck = await until(async () => panelSession().currentPage() === r.newPage.id && panelSession().keyCount === 40);
+await sleep(400);
+r.secondPreselected = await addPage('Large two', 'large');
+r.largeTwo = await pageOnDisk('Large two');
+await until(async () => panelSession().currentPage() === r.largeTwo.id);
+await sleep(400);
+// Between two pages of the same grid: no canvas — the screen is not cleared.
+const beforeSame = (await frames()).length;
+await clickEditor(`[data-tab="${firstPageName}"]`);
+r.sameGridSwitch = await until(async () => panelSession().currentPage() === firstLayout.startPage);
+await sleep(400);
+r.sameGridSent = await sentSince(beforeSame);
+// To the 4 × 10 page: one canvas, its 40 keys.
+const beforeOther = (await frames()).length;
+await clickEditor('[data-tab="Small page"]');
+await until(async () => panelSession().currentPage() === r.newPage.id && (await sentSince(beforeOther)).images >= 40);
+await sleep(400);
+r.otherGridSent = await sentSince(beforeOther);
+
+// A STREAM DECK gets none of it: its page menu has no Change layout, New page no grids.
+await clickEditor('.show-in-editor-trigger');
+await until(() => inEditorExists(`[data-show-deck="${XL}"] .show-in-editor-name`));
+await clickEditor(`[data-show-deck="${XL}"] .show-in-editor-name`);
+await until(async () => (await inEditor("document.querySelector('.show-in-editor-trigger')?.dataset.deck ?? null")) === XL);
+await rightClickTab('Main');
+await until(() => inEditorExists('.tab-menu-item.danger'));
+r.xlChangeOffered = await inEditorExists('[data-menu=change-layout]');
+await inEditor("document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), true");
+await clickEditor('.tab-add');
+await until(() => inEditorExists('.add-menu-wrap .tab-menu-item'));
+await clickEditor('.add-menu-wrap .tab-menu-item');
+await until(() => inEditorExists('.add-page input'));
+r.xlPicker = await inEditorExists('[data-add-page=virtual], .add-page [data-vd-size]');
+
+check('connected: the deck attaches with its first page\'s grid, and the editor draws it', () => {
+  assert.equal(r.attachedKeys, 24);
+  assert.equal(r.gridAtFirst, true);
+});
+check('Change layout… is in a virtual deck\'s page menu, with the page\'s grid preselected', () => {
+  assert.equal(r.changeOffered, true);
+  assert.equal(r.changePreselected, 'medium');
+});
+check('…a grid that drops a key names it, and nothing changes until confirmed', () => {
+  assert.equal(r.changeDropped, true);
+  assert.match(r.changeDroppedText ?? '', /1 key has no place in that grid and will be removed from this page: “Corner” \(key 24\)\./);
+  assert.equal(r.changeNotYet, 24);
+});
+check('…confirmed: only that page changes, keys by row and column; the deck\'s default is untouched; the deck re-lays out', () => {
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.changedButtons, { k1: { label: 'Stays' } });
+  assert.equal(r.changedDefault, 24);
+  assert.equal(r.changedGrid, true, 'the editor draws the 2 × 5');
+  assert.equal(r.changedDeck, true, 'the deck has its 10 keys');
+  assert.equal(r.changedSent.canvases, 1, JSON.stringify(r.changedSent));
+});
+check('New page on a virtual deck offers the grids, the last choice on this deck preselected', () => {
+  assert.equal(r.newPreselected, 'large', 'Change layout\'s Large');
+  assert.equal(r.secondPreselected, 'small', 'then New page\'s Small');
+  assert.equal(r.newPage?.panel?.controls.length, 40);
+  assert.equal(r.newPage?.panel?.preset, 'small');
+  assert.equal(r.largeTwo?.panel?.preset, 'large');
+});
+check('…the new page is selected, drawn at its own grid in the editor, and shown on the deck at it', () => {
+  assert.equal(r.newSelected, true);
+  assert.equal(r.newGrid, true);
+  assert.equal(r.newOnDeck, true);
+});
+check('a page change between two pages of the same grid sends no canvas: the screen is not cleared', () => {
+  assert.equal(r.sameGridSwitch, true);
+  assert.equal(r.sameGridSent.canvases, 0, JSON.stringify(r.sameGridSent));
+  assert.ok(r.sameGridSent.images <= 10, JSON.stringify(r.sameGridSent));
+});
+check('a page change to another grid: one canvas, then every key of the new page, once', () =>
+  assert.deepEqual(r.otherGridSent, { canvases: 1, images: 40 }));
+check('a Stream Deck\'s page menu has no Change layout, and its New page no grids', () => {
+  assert.equal(r.xlChangeOffered, false);
+  assert.equal(r.xlPicker, false);
 });
 
 // NO TOUCHSCREEN: unplugged, and the page shown afresh — no Add, and said so.

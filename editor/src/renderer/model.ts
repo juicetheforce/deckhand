@@ -6,6 +6,8 @@
  * are read from `decks` geometry, never assumed.
  */
 import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
+import { geometryOfPanel } from '../../../src/geometry.js';
+import { pagePanelIn } from '../../../src/panel-presets.js';
 import { defaultIconFor, warningIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult, LiveFace } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
@@ -138,6 +140,20 @@ export function layoutFor(config: Config, profile: string, serial: string): Layo
 
 export function geometryFor(daemon: DaemonView, serial: string): DeckGeometryWithSerial | null {
   return daemon.decks?.find((d) => d.serial === serial) ?? null;
+}
+
+/**
+ * A page's keys as the editor draws them. **Every page of a virtual deck has
+ * its own layout**, so its geometry comes from that page's panel in the
+ * config, not from what the deck shows now — the deck may be on another page
+ * with another grid. A Stream Deck's keys are its own on every page: the
+ * daemon's. Null while the daemon has not described the deck.
+ */
+export function pageGeometry(config: Config, daemon: DaemonView, serial: string, profile: string, page: string): DeckGeometryWithSerial | null {
+  const deck = geometryFor(daemon, serial);
+  if (!deck || !config.decks?.[serial]?.virtual) return deck;
+  const panel = pagePanelIn(config, profile, serial, page);
+  return panel ? { ...deck, ...geometryOfPanel(panel, deck.productName) } : deck;
 }
 
 /**

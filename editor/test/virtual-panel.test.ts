@@ -1,13 +1,19 @@
-// A virtual deck's default size, and each profile's own (src/panel-presets.ts
-// panelIn; the edits in src/main/config-document.ts). Found on both machines,
-// 2026-10-17: a profile created after a virtual deck was added gave the deck
-// no panel ("0 keys, no screens"), and Settings could not size it.
+// Every page of a virtual deck has its own layout (decided 2026-11-17), and
+// the deck keeps a default size for every page made automatically (2026-11-18):
+// src/panel-presets.ts's lookup and migration, and the edits in
+// src/main/config-document.ts. Found on both machines, 2026-10-17: a profile
+// created after a virtual deck was added gave the deck no panel ("0 keys, no
+// screens") — so no page made here may be left without one.
 
 import assert from 'node:assert/strict';
 import type { Config } from '../../src/types.js';
 import { validateConfig } from '../../src/config.js';
-import { defaultPanelOf, makePanel, panelIn } from '../../src/panel-presets.js';
+import { defaultPanelOf, makePanel, migratePagePanels, pagePanelIn } from '../../src/panel-presets.js';
 import { applyEdit } from '../src/main/config-document.js';
+import { geometryOfPanel } from '../../src/geometry.js';
+import { pageGeometry } from '../src/renderer/model.js';
+import type { DaemonView } from '../src/shared/bridge.js';
+import { gridStateOf, panelOf } from '../src/shared/grid-choice.js';
 import type { Edit } from '../src/shared/edits.js';
 
 let failures = 0;
@@ -36,64 +42,59 @@ function withDeck(): Config {
   apply(config, { kind: 'addVirtualDeck', key: KEY, output: 'DP-4', touch: TOUCH, profile: 'default', panel: MEDIUM, pageName: 'Main' });
   return config;
 }
+const pagesOf = (config: Config, profile: string) => Object.values(config.profiles[profile].layouts[KEY].pages);
+const firstPage = (config: Config, profile: string) => Object.keys(config.profiles[profile].layouts[KEY].pages)[0];
 
-check('adding a virtual deck gives it a default size; its layout has no size of its own', () => {
+check('adding a virtual deck: the size chosen is its default, and its first page has it', () => {
   const config = withDeck();
   assert.deepEqual(config.decks?.[KEY]?.virtual?.panel, MEDIUM);
-  assert.equal(config.profiles.default.layouts[KEY].panel, undefined);
-  assert.equal(panelIn(config, 'default', KEY)?.controls.length, 24);
+  assert.equal(config.profiles.default.layouts[KEY].panel, undefined, 'no panel on the layout: pages have their own');
+  assert.deepEqual(pagesOf(config, 'default').map((p) => p.panel), [MEDIUM]);
   validateConfig(structuredClone(config));
 });
 
-check('a profile created after the deck: a blank page at the full default size, never no panel', () => {
+check('a profile created after the deck: its blank page at the deck\'s default size, never no panel', () => {
   const config = withDeck();
   const { profileId } = apply(config, { kind: 'addProfile', name: 'Test', serials: ['XL', KEY], pageName: 'Main' }) as { profileId: string };
-  const layout = config.profiles[profileId].layouts[KEY];
-  assert.ok(layout, 'the deck has a layout in the new profile');
-  assert.deepEqual(Object.values(layout.pages).map((p) => Object.keys(p.buttons).length), [0], 'one blank page');
-  assert.equal(panelIn(config, profileId, KEY)?.controls.length, 24, 'at the default size');
+  assert.deepEqual(pagesOf(config, profileId).map((p) => [Object.keys(p.buttons).length, p.panel?.preset]), [[0, 'medium']]);
+  assert.equal(Object.values(config.profiles[profileId].layouts.XL.pages)[0].panel, undefined, 'a Stream Deck\'s page has none');
   validateConfig(structuredClone(config));
 });
 
-check('a layout added later (the editor\'s blank page) takes the default too', () => {
+check('a layout added later (the editor\'s automatic page) takes the deck\'s default, copied from no other profile', () => {
   const config = withDeck();
+  apply(config, { kind: 'setPagePanel', profile: 'default', serial: KEY, page: firstPage(config, 'default'), panel: LARGE });
   config.profiles.other = { name: 'Other', layouts: {} };
   apply(config, { kind: 'addLayout', profile: 'other', serial: KEY, pageName: 'Main' });
-  assert.equal(config.profiles.other.layouts[KEY].panel, undefined);
-  assert.equal(panelIn(config, 'other', KEY)?.controls.length, 24);
+  assert.deepEqual(pagesOf(config, 'other').map((p) => p.panel?.preset), ['medium']);
 });
 
-check('one profile\'s own size: resized from the default it showed, keys by row and column; others unchanged', () => {
+check('New page: the grid picked; with none picked, the deck\'s default; a Stream Deck\'s page has none and refuses one', () => {
   const config = withDeck();
-  config.profiles.second = { name: 'Second', layouts: { [KEY]: { pages: { main: { name: 'Main', buttons: {} } } } } };
-  config.profiles.default.layouts[KEY].pages[Object.keys(config.profiles.default.layouts[KEY].pages)[0]].buttons = { k1: { label: 'First' } };
-  apply(config, { kind: 'setPanel', profile: 'default', serial: KEY, panel: SMALL });
-  const layout = config.profiles.default.layouts[KEY];
-  assert.equal(layout.panel?.preset, 'small');
-  assert.deepEqual(Object.values(layout.pages)[0].buttons, { k1: { label: 'First' } });
-  assert.equal(panelIn(config, 'second', KEY)?.preset, 'medium', 'the other profile still follows the default');
+  const picked = apply(config, { kind: 'addPage', profile: 'default', serial: KEY, name: 'Small one', panel: SMALL }) as { pageId: string };
+  assert.equal(config.profiles.default.layouts[KEY].pages[picked.pageId].panel?.preset, 'small');
+  const plain = apply(config, { kind: 'addPage', profile: 'default', serial: KEY, name: 'Plain' }) as { pageId: string };
+  assert.equal(config.profiles.default.layouts[KEY].pages[plain.pageId].panel?.preset, 'medium');
+  const xl = apply(config, { kind: 'addPage', profile: 'default', serial: 'XL', name: 'Second' }) as { pageId: string };
+  assert.equal(config.profiles.default.layouts.XL.pages[xl.pageId].panel, undefined);
+  assert.throws(() => apply(config, { kind: 'addPage', profile: 'default', serial: 'XL', name: 'Third', panel: SMALL }), /virtual deck/);
+  validateConfig(structuredClone(config));
 });
 
-check('a size for a profile with no layout for the deck yet: a layout made, with that size', () => {
+check('Change layout…: one page re-gridded, keys by row and column, the rest dropped; other pages and the default untouched', () => {
   const config = withDeck();
-  config.profiles.empty = { name: 'Empty', layouts: {} };
-  apply(config, { kind: 'setPanel', profile: 'empty', serial: KEY, panel: LARGE });
-  assert.equal(config.profiles.empty.layouts[KEY].panel?.preset, 'large');
-  assert.equal(Object.keys(config.profiles.empty.layouts[KEY].pages).length, 1);
-});
-
-check('the default changed: every profile without its own follows, keys kept by row and column; one with its own does not', () => {
-  const config = withDeck();
-  const { profileId } = apply(config, { kind: 'addProfile', name: 'Later', serials: [KEY], pageName: 'Main' }) as { profileId: string };
-  const page = Object.keys(config.profiles[profileId].layouts[KEY].pages)[0];
-  config.profiles[profileId].layouts[KEY].pages[page].buttons = { k1: { label: 'Corner' }, k24: { label: 'Gone' } };
-  config.profiles.own = { name: 'Own', layouts: { [KEY]: { panel: structuredClone(SMALL), pages: { main: { name: 'Main', buttons: {} } } } } };
-  apply(config, { kind: 'setDefaultPanel', key: KEY, panel: LARGE });
-  assert.equal(config.decks?.[KEY]?.virtual?.panel?.preset, 'large');
-  assert.equal(config.profiles[profileId].layouts[KEY].panel, undefined, 'still following the default');
-  assert.deepEqual(config.profiles[profileId].layouts[KEY].pages[page].buttons, { k1: { label: 'Corner' } }, 'a key with no place in the new size dropped');
-  assert.equal(panelIn(config, profileId, KEY)?.preset, 'large');
-  assert.equal(config.profiles.own.layouts[KEY].panel?.preset, 'small');
+  const other = apply(config, { kind: 'addPage', profile: 'default', serial: KEY, name: 'Other' }) as { pageId: string };
+  const page = firstPage(config, 'default');
+  // Medium on this screen is 3 × 8: k1 is row 0 column 0, k24 row 2 column 7. Large is 2 × 5.
+  config.profiles.default.layouts[KEY].pages[page].buttons = { k1: { label: 'Corner' }, k10: { label: 'Second row' }, k24: { label: 'Gone' } };
+  apply(config, { kind: 'setPagePanel', profile: 'default', serial: KEY, page, panel: LARGE });
+  const changed = config.profiles.default.layouts[KEY].pages[page];
+  assert.equal(changed.panel?.preset, 'large');
+  assert.deepEqual(changed.buttons, { k1: { label: 'Corner' }, k7: { label: 'Second row' } }, 'row 1 column 1 is k7 on a 2 × 5 grid');
+  assert.equal(config.profiles.default.layouts[KEY].pages[other.pageId].panel?.preset, 'medium', 'only that page');
+  assert.equal(config.decks?.[KEY]?.virtual?.panel?.preset, 'medium', 'the deck\'s default is not the page\'s');
+  assert.throws(() => apply(config, { kind: 'setPagePanel', profile: 'default', serial: 'XL', page: 'main', panel: SMALL }), /not a virtual deck/);
+  validateConfig(structuredClone(config));
 });
 
 check('Tap again keeps the default size', () => {
@@ -102,25 +103,104 @@ check('Tap again keeps the default size', () => {
   assert.deepEqual(config.decks?.[KEY]?.virtual?.panel, MEDIUM);
 });
 
-check('Remove keeps every layout with a size: each following the default takes it as its own; added again, the kept one is the default', () => {
+check('Remove keeps every page with its size; added again, its pages are used as they are and the kept size is the default', () => {
   const config = withDeck();
   apply(config, { kind: 'addProfile', name: 'Later', serials: [KEY], pageName: 'Main' });
+  apply(config, { kind: 'setPagePanel', profile: 'default', serial: KEY, page: firstPage(config, 'default'), panel: SMALL });
   apply(config, { kind: 'removeVirtualDeck', key: KEY });
-  for (const profile of Object.values(config.profiles)) {
-    if (profile.layouts[KEY]) assert.equal(profile.layouts[KEY].panel?.preset, 'medium');
-  }
+  const sizes = Object.values(config.profiles).flatMap((p) => Object.values(p.layouts[KEY]?.pages ?? {}).map((page) => page.panel?.preset));
+  assert.deepEqual(sizes.sort(), ['medium', 'small']);
   validateConfig(structuredClone(config));
-  apply(config, { kind: 'addVirtualDeck', key: KEY, output: 'DP-4', touch: TOUCH, profile: 'default', panel: SMALL, pageName: 'Main' });
-  assert.equal(config.decks?.[KEY]?.virtual?.panel?.preset, 'medium', 'the kept size, not the one the picker defaulted to');
+  apply(config, { kind: 'addVirtualDeck', key: KEY, output: 'DP-4', touch: TOUCH, profile: 'default', panel: LARGE, pageName: 'Main' });
+  assert.equal(pagesOf(config, 'default')[0].panel?.preset, 'small', 'the kept page as it was');
+  assert.ok(['small', 'medium'].includes(String(config.decks?.[KEY]?.virtual?.panel?.preset)), 'a kept size, not the one the picker defaulted to');
 });
 
-check('a config from before defaults: the first profile\'s panel is the default', () => {
+check('migration: a page takes its profile\'s own panel, else the deck\'s default; the layout\'s goes; buttons untouched', () => {
+  const config: Config = {
+    decks: { [KEY]: { virtual: { output: 'DP-4', panel: structuredClone(MEDIUM) } }, XL: {} },
+    profiles: {
+      own: { layouts: { [KEY]: { panel: structuredClone(SMALL), pages: { a: { buttons: { k1: { label: 'A' } } }, b: { buttons: {} } } } } },
+      follows: { layouts: { [KEY]: { pages: { m: { buttons: { k3: { label: 'M' } } } } }, XL: { pages: { x: { buttons: { '0': { label: 'X' } } } } } } },
+    },
+  };
+  const before = structuredClone(config);
+  assert.equal(migratePagePanels(config), true);
+  assert.deepEqual(Object.values(config.profiles.own.layouts[KEY].pages).map((p) => p.panel), [SMALL, SMALL]);
+  assert.equal(config.profiles.own.layouts[KEY].panel, undefined);
+  assert.deepEqual(config.profiles.follows.layouts[KEY].pages.m.panel, MEDIUM);
+  assert.deepEqual(config.profiles.follows.layouts.XL, before.profiles.follows.layouts.XL, 'a Stream Deck\'s layout untouched');
+  assert.deepEqual(config.profiles.own.layouts[KEY].pages.a.buttons, before.profiles.own.layouts[KEY].pages.a.buttons);
+  assert.notEqual(config.profiles.own.layouts[KEY].pages.a.panel, config.profiles.own.layouts[KEY].pages.b.panel, 'each page its own copy');
+  assert.equal(migratePagePanels(config), false, 'a second run changes nothing');
+  validateConfig(structuredClone(config));
+});
+
+check('migration of a config from before defaults: the deck is given the first profile\'s panel as its default, and every page keeps what it showed', () => {
   const config: Config = {
     decks: { [KEY]: { virtual: { output: 'DP-4' } } },
     profiles: { a: { layouts: { [KEY]: { panel: structuredClone(SMALL), pages: { m: { buttons: {} } } } } }, b: { layouts: { [KEY]: { pages: { m: { buttons: {} } } } } } },
   };
   assert.equal(defaultPanelOf(config, KEY)?.preset, 'small');
-  assert.equal(panelIn(config, 'b', KEY)?.preset, 'small');
+  assert.equal(pagePanelIn(config, 'b', KEY, 'm')?.preset, 'small', 'before: the first profile\'s');
+  migratePagePanels(config);
+  assert.equal(config.decks?.[KEY]?.virtual?.panel?.preset, 'small');
+  assert.equal(config.profiles.b.layouts[KEY].pages.m.panel?.preset, 'small', 'after: the same, now its own');
+});
+
+check('migration keeps a removed deck\'s layout with a panel, onto its pages', () => {
+  const config: Config = { profiles: { a: { layouts: { [KEY]: { panel: structuredClone(LARGE), pages: { m: { buttons: {} } } } } } } };
+  migratePagePanels(config);
+  assert.equal(config.profiles.a.layouts[KEY].pages.m.panel?.preset, 'large');
+  assert.equal(config.profiles.a.layouts[KEY].panel, undefined);
+});
+
+check('a page\'s own panel is what it shows, whatever its layout or the deck says', () => {
+  const config = withDeck();
+  const page = firstPage(config, 'default');
+  config.profiles.default.layouts[KEY].pages[page].panel = structuredClone(SMALL);
+  assert.equal(pagePanelIn(config, 'default', KEY, page)?.preset, 'small');
+  assert.equal(pagePanelIn(config, 'default', KEY, 'no-such-page')?.preset, 'medium', 'a page not there yet: the default');
+});
+
+check('the editor draws a virtual deck\'s page at that page\'s grid, not the one the deck shows now; a Stream Deck at its own', () => {
+  const config = withDeck();
+  const small = apply(config, { kind: 'addPage', profile: 'default', serial: KEY, name: 'Small', panel: SMALL }) as { pageId: string };
+  const first = firstPage(config, 'default');
+  // The deck is on its first, Medium page; Copy to device or a link's key number may name the other.
+  const daemon = {
+    decks: [
+      { serial: KEY, ...geometryOfPanel(MEDIUM, 'Panel') },
+      { serial: 'XL', ...geometryOfPanel(undefined, 'Stream Deck XL'), keyCount: 32, rows: 4, columns: 8 },
+    ],
+  } as unknown as DaemonView;
+  assert.equal(pageGeometry(config, daemon, KEY, 'default', first)?.keyCount, 24);
+  assert.equal(pageGeometry(config, daemon, KEY, 'default', small.pageId)?.keyCount, 40, 'the page\'s own 4 × 10');
+  assert.equal(pageGeometry(config, daemon, KEY, 'default', small.pageId)?.serial, KEY, 'still the deck\'s');
+  assert.equal(pageGeometry(config, daemon, 'XL', 'default', 'main')?.keyCount, 32, 'a Stream Deck: the daemon\'s');
+  assert.equal(pageGeometry(config, { decks: [] } as unknown as DaemonView, KEY, 'default', first), null, 'not described by the daemon: nothing drawn');
+});
+
+check('the picker set from a Grid Size panel makes that same panel again, on a portrait screen too (Codex, PR #6)', () => {
+  for (const screen of [SCREEN, { width: 720, height: 1920, widthMm: 91, heightMm: 243 }]) {
+    const panel = makePanel(screen, 'custom', { rows: 3, columns: 8 });
+    const state = gridStateOf(panel);
+    assert.deepEqual([state.size, state.rows, state.columns], ['custom', '3', '8'], `${screen.width} × ${screen.height}: the picker's rows run along the short side`);
+    assert.deepEqual(panelOf(screen, state).controls, panel.controls, `${screen.width} × ${screen.height}: confirming it unchanged changes nothing`);
+  }
+});
+
+check('Change layout… on a page still in the old shape (a layout\'s panel) maps keys from the grid it shows, not the deck\'s default (Codex, PR #6)', () => {
+  const config = withDeck(); // the deck's default: Medium, 3 × 8
+  const page = firstPage(config, 'default');
+  const layout = config.profiles.default.layouts[KEY];
+  // As an imported config from before pages had their own: Small (4 × 10) on the layout.
+  layout.panel = structuredClone(SMALL);
+  delete layout.pages[page].panel;
+  layout.pages[page].buttons = { k9: { label: 'Nine' }, k31: { label: 'Thirty-one' } };
+  assert.equal(pagePanelIn(config, 'default', KEY, page)?.preset, 'small', 'what the editor shows');
+  apply(config, { kind: 'setPagePanel', profile: 'default', serial: KEY, page, panel: SMALL });
+  assert.deepEqual(layout.pages[page].buttons, { k9: { label: 'Nine' }, k31: { label: 'Thirty-one' } }, 'Small to Small keeps every key where it was');
 });
 
 console.log(failures === 0 ? 'virtual panel: all checks passed' : `\n${failures} check(s) failed`);

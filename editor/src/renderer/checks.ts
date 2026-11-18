@@ -1789,6 +1789,20 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
   await until(async () => (await deckPage()) === 'main' && document.querySelector('.tab-selected')?.textContent === 'Main');
 
+  // 2b. A Stream Deck's page has no layout of its own: its page menu and New page are as they were.
+  document.querySelector('.tab[data-tab="Main"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await until(() => document.querySelector('.tab-wrap .tab-menu') !== null);
+  const pageMenu = [...document.querySelectorAll('.tab-wrap .tab-menu .tab-menu-item')].map((b) => b.textContent);
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  await until(() => document.querySelector('.tab-wrap .tab-menu') === null);
+  document.querySelector<HTMLButtonElement>('.tab-add')!.click();
+  await until(() => document.querySelector('.add-menu-wrap .tab-menu-item') !== null);
+  document.querySelector<HTMLButtonElement>('.add-menu-wrap .tab-menu-item')!.click();
+  await until(() => document.querySelector('.add-page input') !== null);
+  out.pageMenu = { items: pageMenu, newPageGrids: document.querySelector('.add-page [data-vd-size], [data-add-page]') !== null, newPageButton: document.querySelector('[data-add-page-submit]') !== null };
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await until(() => document.querySelector('.add-page input') === null);
+
   // 3. Click, Ctrl+click, Shift+click.
   click(0);
   await until(() => title() === 'Key 1');
