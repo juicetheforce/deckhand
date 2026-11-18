@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Virtual decks stage 2, the custom layout editor: its brief to Claude Design first."
+next = "Ryan's test list for stage 2 round 1, a layout per page (PR #6); then Codex's review, merge and release."
 category = "Gaming"
 paused = false
 focus = true
