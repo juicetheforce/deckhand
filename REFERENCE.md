@@ -187,7 +187,9 @@ first key. Pressing it opens the editor.
 Open the editor from your desktop's application menu (**Deckhand**) or with
 `deckhand-editor`. Selecting a profile or page in the editor switches the
 decks to it; every change is saved as you make it and shows on the deck at
-once. Closing the editor's window leaves it in the tray (a setting, on by
+once. Each deck is drawn in a frame, its top bar showing its name, its size
+and a **Page** menu; a deck shown alone sits in the middle, fitted to the
+window and never larger than full size. Closing the editor's window leaves it in the tray (a setting, on by
 default); quit it from the tray menu. Closing it changes nothing on the
 decks.
 
@@ -202,8 +204,8 @@ fixes it in place. The zoom bar has Fit all, which the editor opens at, and
 Reset (100%). Which decks are shown, where they are and which are locked are
 remembered, by serial number, in
 `~/.local/state/deckhand/editor/preferences.json`, not in the config. Click a
-key on any deck to edit it; the page tabs are for that deck, and every other
-deck has its own Page menu. Drag a key onto another key of the same deck to
+key on any deck to edit it; the page tabs are for that deck, and every deck,
+that one included, has its own Page menu in its top bar. Drag a key onto another key of the same deck to
 move it (the two swap), or onto another deck to copy it there, replacing
 whatever that key held. A copied Go to page key whose page isn't on the other
 deck keeps its icon and label and loses the link, and the editor says so.
@@ -226,7 +228,8 @@ page. **The size chosen at Add is the deck's default**: its first page has
 it, and so does every page made for it without asking — a profile's first
 page for the deck included. **New page** on a virtual deck offers the same
 grids, the one you last picked on that deck already chosen. **Change
-layout…**, in a page tab's right-click menu, gives that page another grid:
+layout…**, a button in the deck's top bar beside its Page menu, or in a page
+tab's right-click menu, gives that page another grid:
 keys keep their row and column, and any with no place in the new grid are
 named before anything changes, and removed only when you confirm. Only that
 page changes. **Tap again** pairs the
@@ -1164,9 +1167,11 @@ The checks:
   Electron against a test harness for the control socket.
 - **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
   through `scripts/hooks/pre-commit`, once a clone has run `git config
-  core.hooksPath scripts/hooks`. With one deck connected the editor must be
-  exactly the one-deck editor — one grid, the plain Device dropdown, no
-  multi-deck element — and most people have one deck. It checks the working
+  core.hooksPath scripts/hooks`. With one deck connected the editor must
+  show that deck in its frame, with its top bar and Page menu, centred and
+  fitted, the plain Device dropdown, and nothing for arranging decks — no
+  zoom bar, padlock, dragging or Show in editor — and most people have one
+  deck. It checks the working
   tree, so stage everything a change needs.
 - The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
   desktop entry and icon, against a scratch HOME), `preflight.test.sh`

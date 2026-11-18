@@ -92,8 +92,8 @@ touch panel.
   its USB port, so if you move its USB cable, tap it again (**Tap again** in
   Settings).
 - **Each page can have its own grid.** New pages start at the size you chose
-  for the screen, or at the grid you pick, and **Change layout…** on a page
-  tab gives one page a different grid.
+  for the screen, or at the grid you pick, and **Change layout…**, in the
+  deck's top bar, gives one page a different grid.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
   other, and Sleep all decks dims it too. Turned off, it draws pure black, but
