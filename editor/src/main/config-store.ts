@@ -209,6 +209,9 @@ export class ConfigStore {
       }
       await keep(replaced);
       this.config = structuredClone(config);
+      // An imported config is migrated as one opened is, and written so (Codex, PR #6).
+      migrateStateIcons(this.config);
+      migratePagePanels(this.config);
       this.conflict = null;
       this.fileError = null;
       this.reformatPending = false;

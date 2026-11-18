@@ -266,6 +266,24 @@ await check('a virtual deck\'s panel per profile is moved onto each of its pages
   again.close();
 });
 
+await check('an imported config from before pages had their own panels is migrated as it is adopted (Codex, PR #6)', async () => {
+  const file = await configFile(EXAMPLE);
+  const store = await openStore(file);
+  const old = JSON.parse(EXAMPLE) as Config;
+  const panel = { size: { width: 1920, height: 720 }, controls: [{ id: 'k1', x: 10, y: 10, w: 180, h: 180 }, { id: 'k2', x: 210, y: 10, w: 180, h: 180 }], preset: 'small' };
+  old.decks = { ...old.decks, 'GRA-6e4e': { virtual: { output: 'DP-4' } } };
+  old.profiles.default.layouts['GRA-6e4e'] = { panel, startPage: 'a', pages: { a: { name: 'A', buttons: { k2: { label: 'Two' } } } } };
+  await store.replace(old, async () => {});
+  const layout = store.state().config.profiles.default.layouts['GRA-6e4e'];
+  assert.equal(layout.panel, undefined, 'no layout keeps a panel');
+  assert.deepEqual(layout.pages.a.panel, panel, 'its page shows what it showed');
+  assert.deepEqual(store.state().config.decks?.['GRA-6e4e']?.virtual?.panel, panel, 'and the deck has the default it fell back to');
+  const saved = JSON.parse(await fs.readFile(file, 'utf8')) as Config;
+  assert.equal(saved.profiles.default.layouts['GRA-6e4e'].panel, undefined, 'saved migrated');
+  assert.deepEqual(saved.profiles.default.layouts['GRA-6e4e'].pages.a.panel, panel);
+  store.close();
+});
+
 await check('icons in the old shape — one field per state — are moved to the Default icon and the active icon when the editor opens config.json, drawing what they drew, and saved', async () => {
   const old = JSON.parse(EXAMPLE) as { profiles: { default: { layouts: Record<string, { pages: { main: { buttons: Record<string, unknown> } } }> } } };
   const buttons = old.profiles.default.layouts[XL.serial].pages.main.buttons;

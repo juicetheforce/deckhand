@@ -13,6 +13,7 @@ import { applyEdit } from '../src/main/config-document.js';
 import { geometryOfPanel } from '../../src/geometry.js';
 import { pageGeometry } from '../src/renderer/model.js';
 import type { DaemonView } from '../src/shared/bridge.js';
+import { gridStateOf, panelOf } from '../src/shared/grid-choice.js';
 import type { Edit } from '../src/shared/edits.js';
 
 let failures = 0;
@@ -178,6 +179,28 @@ check('the editor draws a virtual deck\'s page at that page\'s grid, not the one
   assert.equal(pageGeometry(config, daemon, KEY, 'default', small.pageId)?.serial, KEY, 'still the deck\'s');
   assert.equal(pageGeometry(config, daemon, 'XL', 'default', 'main')?.keyCount, 32, 'a Stream Deck: the daemon\'s');
   assert.equal(pageGeometry(config, { decks: [] } as unknown as DaemonView, KEY, 'default', first), null, 'not described by the daemon: nothing drawn');
+});
+
+check('the picker set from a Grid Size panel makes that same panel again, on a portrait screen too (Codex, PR #6)', () => {
+  for (const screen of [SCREEN, { width: 720, height: 1920, widthMm: 91, heightMm: 243 }]) {
+    const panel = makePanel(screen, 'custom', { rows: 3, columns: 8 });
+    const state = gridStateOf(panel);
+    assert.deepEqual([state.size, state.rows, state.columns], ['custom', '3', '8'], `${screen.width} × ${screen.height}: the picker's rows run along the short side`);
+    assert.deepEqual(panelOf(screen, state).controls, panel.controls, `${screen.width} × ${screen.height}: confirming it unchanged changes nothing`);
+  }
+});
+
+check('Change layout… on a page still in the old shape (a layout\'s panel) maps keys from the grid it shows, not the deck\'s default (Codex, PR #6)', () => {
+  const config = withDeck(); // the deck's default: Medium, 3 × 8
+  const page = firstPage(config, 'default');
+  const layout = config.profiles.default.layouts[KEY];
+  // As an imported config from before pages had their own: Small (4 × 10) on the layout.
+  layout.panel = structuredClone(SMALL);
+  delete layout.pages[page].panel;
+  layout.pages[page].buttons = { k9: { label: 'Nine' }, k31: { label: 'Thirty-one' } };
+  assert.equal(pagePanelIn(config, 'default', KEY, page)?.preset, 'small', 'what the editor shows');
+  apply(config, { kind: 'setPagePanel', profile: 'default', serial: KEY, page, panel: SMALL });
+  assert.deepEqual(layout.pages[page].buttons, { k9: { label: 'Nine' }, k31: { label: 'Thirty-one' } }, 'Small to Small keeps every key where it was');
 });
 
 console.log(failures === 0 ? 'virtual panel: all checks passed' : `\n${failures} check(s) failed`);

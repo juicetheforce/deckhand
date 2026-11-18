@@ -5,7 +5,7 @@ import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 import { deleteProfile } from '../shared/profile-deletion.js';
-import { defaultPanelOf } from '../../../src/panel-presets.js';
+import { defaultPanelOf, pagePanelOf } from '../../../src/panel-presets.js';
 import { regridPage } from '../shared/panel-size.js';
 
 export type { ButtonLocation, Edit, EditResult };
@@ -532,7 +532,9 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       const layout = layoutAt(config, edit.profile, edit.serial);
       const page = Object.prototype.hasOwnProperty.call(layout.pages, edit.page) ? layout.pages[edit.page] : undefined;
       if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
-      layout.pages[edit.page] = regridPage(page, page.panel ?? defaultPanelOf(config, edit.serial), edit.panel).page;
+      // From what the page shows, by the editor's own lookup: a config not yet
+      // migrated still has its panel on the layout (Codex, PR #6).
+      layout.pages[edit.page] = regridPage(page, pagePanelOf(layout, edit.page, defaultPanelOf(config, edit.serial)), edit.panel).page;
       return {};
     }
     default: {

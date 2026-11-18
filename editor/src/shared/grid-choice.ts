@@ -4,7 +4,9 @@
  * config.json. Import-free apart from the daemon's limits, so the main
  * process checks what the window sends with the same rule the window uses.
  */
-import { MAX_CUSTOM_COLUMNS, MAX_CUSTOM_ROWS, type PanelSize } from '../../../src/panel-presets.js';
+import { geometryOfPanel } from '../../../src/geometry.js';
+import { makePanel, MAX_CUSTOM_COLUMNS, MAX_CUSTOM_ROWS, type Panel, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
+import type { PanelDef } from '../../../src/types.js';
 import { validSerial } from './deck-positions.js';
 
 export interface GridChoice {
@@ -46,3 +48,49 @@ export function withGridChoice(stored: Record<string, GridChoice>, serial: strin
   const next = { ...rest, [serial]: choice };
   return Object.fromEntries(Object.entries(next).slice(-MAX_GRID_CHOICES));
 }
+
+/**
+ * The fixed grids a virtual deck's page can have: Small, Medium, Large, and
+ * Grid Size — the person's rows and columns, stored as `"preset": "custom"`
+ * (renamed for display only, 2026-11-17, so existing configs keep their
+ * meaning).
+ */
+export const SIZE_NAMES: Record<PanelSize, string> = { small: 'Small', medium: 'Medium', large: 'Large', custom: 'Grid Size' };
+
+/** Grid Size's rows and columns from their fields: whole numbers, from 1 to the maximum (panel-presets clamps). */
+export function customOf(rows: string, columns: string): { rows: number; columns: number } {
+  return { rows: Math.max(1, Math.floor(Number(rows)) || 1), columns: Math.max(1, Math.floor(Number(columns)) || 1) };
+}
+
+/** What the picker holds: a size, and Grid Size's fields as typed. */
+export interface GridState {
+  size: PanelSize;
+  rows: string;
+  columns: string;
+}
+
+/** The picker set to what a panel is: its preset, and its rows and columns for Grid Size. */
+export function gridStateOf(panel: PanelDef | undefined): GridState {
+  if (!panel) return { size: 'medium', rows: '3', columns: '8' };
+  const g = geometryOfPanel(panel, '');
+  const size = panel.preset && panel.preset in SIZE_NAMES ? (panel.preset as PanelSize) : 'custom';
+  // The picker's rows run along the short side (makePanel); a portrait canvas's
+  // rows on screen are its columns there (Codex, PR #6).
+  const portrait = panel.size.height > panel.size.width;
+  const [rows, columns] = portrait ? [g.columns, g.rows] : [g.rows, g.columns];
+  return { size, rows: String(Math.max(1, rows)), columns: String(Math.max(1, columns)) };
+}
+
+export function gridStateOfChoice(choice: GridChoice): GridState {
+  return { size: choice.size, rows: String(choice.rows ?? 3), columns: String(choice.columns ?? 8) };
+}
+
+export function choiceOf(state: GridState): GridChoice {
+  return state.size === 'custom' ? { size: 'custom', ...customOf(state.rows, state.columns) } : { size: state.size };
+}
+
+/** The panel a choice makes on this screen, by the daemon's own rule. */
+export function panelOf(screen: ScreenSize, state: GridState): Panel {
+  return makePanel(screen, state.size, state.size === 'custom' ? customOf(state.rows, state.columns) : undefined);
+}
+
