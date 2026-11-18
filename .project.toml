@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Stage 2 frame round: every deck always in its frame with its header (one deck or several); then round 2. Nothing released until v2 is done."
+next = "Frame round (PR #7) awaits Ryan's test list and Codex's review, then merge; round 2 (custom layouts with buttons) after. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -41,4 +41,5 @@ v0.10.0 confirmed on Nobara through daily use (2026-11-05). Plasma screen bright
 v0.11.0 published 2026-11-05: sleep on lock (the Stream Deck goes fully dark at 0, so no black keys), Sleep all decks, Brightness keys on virtual decks and on any deck, a global label size. Confirmed on the laptop, all 11 checks. Ship test 77/77.
 v0.12.0 published 2026-11-06: idle dimming (the compositor counts, and whatever keeps KDE's screens on keeps the decks lit), the Update pill, the Sleep all decks icons. Ship test 77/77. Codex security review needs a higher ChatGPT plan, so that rule was dropped.
 v0.12.1 published 2026-11-06: every dropdown in the Show in editor style. Codex's code review caught two real bugs in the first version (keys in a dropdown reaching the grid's shortcuts; Tab losing its place), fixed before release.
+Release hold (2026-11-18): nothing released until editor v2 is complete; rounds still go through PRs and merge after the test list. Public docs for unreleased rounds are held on release/v2-docs, merged into main when v2 ships; main's public docs describe v0.12.1.
 """
