@@ -72,16 +72,20 @@ export type Edit =
    * changes nothing at all.
    */
   | { kind: 'putButtons'; profile: string; serial: string; page: string; writes: ButtonWrite[] }
-  /** Bare "add page": a new, empty, named page in one layout. */
-  | { kind: 'addPage'; profile: string; serial: string; name: string }
+  /**
+   * Bare "add page": a new, empty, named page in one layout. On a virtual
+   * deck it has its own layout: `panel`, the grid picked, else the deck's
+   * default size. Refused with a panel on a Stream Deck.
+   */
+  | { kind: 'addPage'; profile: string; serial: string; name: string; panel?: PanelDef }
   /**
    * A new profile, with a layout for each of these decks.
    * A layout must hold at least one page to be valid, so each gets one empty
    * page named `pageName`, and starts on it.
    */
   | { kind: 'addProfile'; name: string; serials: string[]; pageName: string }
-  /** Give an existing profile a layout for a deck it does not cover, on the same terms. A virtual deck's comes with its panel. */
-  | { kind: 'addLayout'; profile: string; serial: string; pageName: string; panel?: PanelDef }
+  /** Give an existing profile a layout for a deck it does not cover, on the same terms. A virtual deck's page gets the deck's default size. */
+  | { kind: 'addLayout'; profile: string; serial: string; pageName: string }
   /**
    * A screen made a virtual deck (Settings › Decks): its pairing under
    * `decks[key]`, and — when `profile` has no layout for it — one with `panel`
@@ -92,10 +96,8 @@ export type Edit =
   | { kind: 'repairVirtualDeck'; key: string; output: string; touch: TouchDeviceDef }
   /** Remove a virtual deck: only its pairing goes; its name and layouts stay, used again if the same screen is set up later. */
   | { kind: 'removeVirtualDeck'; key: string }
-  /** A virtual deck's panel at a new size, in one profile: keys keep their row and column (shared/panel-size.ts), the rest are dropped. */
-  | { kind: 'setPanel'; profile: string; serial: string; panel: PanelDef; pageName?: string }
-  /** A virtual deck's default size, and with it every profile without one of its own. */
-  | { kind: 'setDefaultPanel'; key: string; panel: PanelDef }
+  /** "Change layout…": one page of a virtual deck at another fixed grid. Its keys keep their row and column (shared/panel-size.ts); the rest are dropped. */
+  | { kind: 'setPagePanel'; profile: string; serial: string; page: string; panel: PanelDef }
   /**
    * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a

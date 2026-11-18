@@ -238,6 +238,34 @@ await check("setActionIcon writes a key's active state icon on the action — a 
   store.close();
 });
 
+await check('a virtual deck\'s panel per profile is moved onto each of its pages when the editor opens config.json, every page keeping its grid and keys, and saved once', async () => {
+  const old = JSON.parse(EXAMPLE) as { decks?: Record<string, unknown>; profiles: Record<string, { layouts: Record<string, unknown> }> };
+  const panel = (preset: string, n: number) => ({ size: { width: 1920, height: 720 }, controls: Array.from({ length: n }, (_, i) => ({ id: `k${i + 1}`, x: 10 + i * 200, y: 10, w: 180, h: 180 })), preset });
+  old.decks = { ...old.decks, 'GRA-6e4e': { virtual: { output: 'DP-4', panel: panel('medium', 3) } } };
+  old.profiles.default.layouts['GRA-6e4e'] = { panel: panel('small', 4), startPage: 'a', pages: { a: { name: 'A', buttons: { k2: { label: 'Two' } } }, b: { name: 'B', buttons: {} } } };
+  old.profiles.prof_game.layouts['GRA-6e4e'] = { startPage: 'g', pages: { g: { name: 'G', buttons: { k1: { label: 'One' } } } } };
+  const file = await configFile(JSON.stringify(old, null, 2) + '\n');
+  const store = await openStore(file);
+  const layouts = (c: Config) => [c.profiles.default.layouts['GRA-6e4e'], c.profiles.prof_game.layouts['GRA-6e4e']];
+  const [own, follows] = layouts(store.state().config);
+  assert.deepEqual([own.panel, follows.panel], [undefined, undefined], 'no layout keeps a panel');
+  assert.deepEqual(Object.values(own.pages).map((p) => p.panel?.controls.length), [4, 4], 'the profile\'s own on each of its pages');
+  assert.deepEqual(follows.pages.g.panel?.controls.length, 3, 'the deck\'s default where the profile followed it');
+  assert.deepEqual(own.pages.a.buttons, { k2: { label: 'Two' } });
+  let saved: Config | null = null;
+  for (let i = 0; i < 100 && saved === null; i++) {
+    const text = JSON.parse(await fs.readFile(file, 'utf8')) as Config;
+    if (text.profiles.default.layouts['GRA-6e4e'].panel === undefined) saved = text;
+    else await sleep(20);
+  }
+  assert.ok(saved, 'the file was not migrated on disk');
+  assert.deepEqual(layouts(saved!), layouts(store.state().config), 'saved as shown');
+  store.close();
+  const again = await openStore(file);
+  assert.equal(again.state().dirty, false, 'a migrated file migrated again');
+  again.close();
+});
+
 await check('icons in the old shape — one field per state — are moved to the Default icon and the active icon when the editor opens config.json, drawing what they drew, and saved', async () => {
   const old = JSON.parse(EXAMPLE) as { profiles: { default: { layouts: Record<string, { pages: { main: { buttons: Record<string, unknown> } } }> } } };
   const buttons = old.profiles.default.layouts[XL.serial].pages.main.buttons;
@@ -561,16 +589,6 @@ await check('addProfile never reuses a profile ID, and a repeated deck makes one
     ok: true,
     result: { profileId: 'prof_cafe' },
   });
-  store.close();
-});
-
-await check('addLayout for a virtual deck takes the panel it is given, as it is', async () => {
-  const store = await openStore(await configFile(EXAMPLE));
-  const panel = { size: { width: 1920, height: 720 }, controls: [{ id: 'k1', x: 14, y: 14, w: 211, h: 211 }], preset: 'medium' };
-  assert.equal(store.apply({ kind: 'addLayout', profile: 'prof_game', serial: 'GRA-6e4e', pageName: 'Main', panel }).ok, true);
-  const layout = store.state().config.profiles.prof_game.layouts['GRA-6e4e'];
-  assert.deepEqual(layout.panel, panel);
-  assert.equal(Object.keys(layout.pages).length, 1);
   store.close();
 });
 

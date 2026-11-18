@@ -1,12 +1,12 @@
 import path from 'node:path';
 import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, DIM_TO, LABEL_SIZE, resolvePage, resolveProfile } from '../../../src/config-common.js';
-import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, ProfileDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, PanelDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 import { deleteProfile } from '../shared/profile-deletion.js';
 import { defaultPanelOf } from '../../../src/panel-presets.js';
-import { resizePanel } from '../shared/panel-size.js';
+import { regridPage } from '../shared/panel-size.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -78,11 +78,21 @@ function rejectNameClash(entries: Record<string, { name?: string }>, name: strin
  * rather than left implicit: which page a deck opens on should be visible in
  * the file, not a consequence of key order.
  */
-function newLayout(pageName: string, env: EditEnvironment): LayoutDef {
+function newLayout(pageName: string, env: EditEnvironment, panel?: PanelDef): LayoutDef {
   const name = pageName.trim();
   if (name === '') throw new EditError('a new layout needs a name for its first page');
   const pageId = `pg_${env.randomHex(4)}`;
-  return { startPage: pageId, pages: { [pageId]: { name, buttons: {} } } };
+  const page: PageDef = panel ? { name, buttons: {}, panel: structuredClone(panel) } : { name, buttons: {} };
+  return { startPage: pageId, pages: { [pageId]: page } };
+}
+
+/**
+ * The grid a page made automatically gets: a virtual deck's default size
+ * (decided 2026-11-18) — nothing copied from another page or profile — and
+ * none for a Stream Deck, whose keys are its own.
+ */
+function automaticPanel(config: Config, serial: string): PanelDef | undefined {
+  return config.decks?.[serial]?.virtual ? defaultPanelOf(config, serial) : undefined;
 }
 
 function pageAt(config: Config, at: ButtonLocation): PageDef {
@@ -313,7 +323,11 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (name === '') throw new EditError('a new page needs a name');
       rejectNameClash(layout.pages, name, (n) => `this deck already has a page called "${n}"`);
       const pageId = freshId('pg_', layout.pages, env);
-      layout.pages[pageId] = { name, buttons: {} };
+      // A virtual deck's page has its own layout: the one picked, else the deck's default.
+      const isVirtual = config.decks?.[edit.serial]?.virtual !== undefined;
+      if (edit.panel && !isVirtual) throw new EditError('only a virtual deck\'s page has a layout of its own');
+      const panel = edit.panel ?? automaticPanel(config, edit.serial);
+      layout.pages[pageId] = panel ? { name, buttons: {}, panel: structuredClone(panel) } : { name, buttons: {} };
       return { pageId };
     }
     case 'addProfile': {
@@ -325,7 +339,7 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (serials.length === 0) throw new EditError('a new profile needs at least one deck');
       const profileId = freshId('prof_', config.profiles, env);
       const layouts: Record<string, LayoutDef> = {};
-      for (const serial of serials) layouts[serial] = newLayout(edit.pageName, env);
+      for (const serial of serials) layouts[serial] = newLayout(edit.pageName, env, automaticPanel(config, serial));
       config.profiles[profileId] = { name, layouts };
       return { profileId };
     }
@@ -469,7 +483,7 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (Object.prototype.hasOwnProperty.call(profile.layouts, edit.serial)) {
         throw new EditError(`this profile already has a layout for deck "${edit.serial}"`);
       }
-      profile.layouts[edit.serial] = edit.panel ? { panel: structuredClone(edit.panel), ...newLayout(edit.pageName, env) } : newLayout(edit.pageName, env);
+      profile.layouts[edit.serial] = newLayout(edit.pageName, env, automaticPanel(config, edit.serial));
       return {};
     }
     case 'addVirtualDeck': {
@@ -483,9 +497,10 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
         ...config.decks[edit.key],
         virtual: { output: edit.output, touch: structuredClone(edit.touch), panel: structuredClone(kept ?? edit.panel) },
       };
-      // The deck's own size is its default: a layout here has no panel of its
-      // own, and neither has one in a profile made later (2026-10-17).
-      if (!Object.prototype.hasOwnProperty.call(profile.layouts, edit.key)) profile.layouts[edit.key] = newLayout(edit.pageName, env);
+      // Its first page gets the deck's default size, as every page made for it
+      // automatically does (2026-11-18). A layout kept from an earlier pairing
+      // is used as it is, each page with its own.
+      if (!Object.prototype.hasOwnProperty.call(profile.layouts, edit.key)) profile.layouts[edit.key] = newLayout(edit.pageName, env, config.decks[edit.key].virtual!.panel);
       return {};
     }
     case 'repairVirtualDeck': {
@@ -498,44 +513,26 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
     case 'removeVirtualDeck': {
       const deck = config.decks?.[edit.key];
       if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
-      // Its layouts are kept for the same screen set up again: each takes the
-      // default as its own first, so none is left without a size.
+      // Its layouts are kept for the same screen set up again: a page without
+      // a panel of its own takes the default first, so none is left without a
+      // size once the deck's default goes with it.
       const fallback = defaultPanelOf(config, edit.key);
       if (fallback) {
         for (const profile of Object.values(config.profiles)) {
-          const layout = profile.layouts[edit.key];
-          if (layout && !layout.panel) profile.layouts[edit.key] = { panel: structuredClone(fallback), ...layout };
+          for (const page of Object.values(profile.layouts[edit.key]?.pages ?? {})) page.panel ??= structuredClone(fallback);
         }
       }
       delete deck.virtual;
       return {};
     }
-    case 'setPanel': {
-      // One profile's own size, from whatever it showed (its own or the
-      // default); a profile with no layout for the deck gets one.
-      const profile = profileAt(config, edit.profile);
-      const existing = Object.prototype.hasOwnProperty.call(profile.layouts, edit.serial) ? profile.layouts[edit.serial] : undefined;
-      if (!existing) {
-        profile.layouts[edit.serial] = { panel: structuredClone(edit.panel), ...newLayout(edit.pageName ?? 'Main', env) };
-        return {};
-      }
-      const shown = existing.panel ?? defaultPanelOf(config, edit.serial);
-      profile.layouts[edit.serial] = resizePanel({ ...existing, panel: shown }, edit.panel).layout;
-      return {};
-    }
-    case 'setDefaultPanel': {
-      // The deck's default size, and with it every profile that has no size
-      // of its own: their keys keep their row and column, as one resize.
-      const deck = config.decks?.[edit.key];
-      if (!deck?.virtual) throw new EditError(`"${edit.key}" is not a virtual deck`);
-      const before = defaultPanelOf(config, edit.key);
-      for (const profile of Object.values(config.profiles)) {
-        const layout = profile.layouts[edit.key];
-        if (!layout || layout.panel || !before) continue;
-        const { panel: _own, ...inherits } = resizePanel({ ...layout, panel: before }, edit.panel).layout;
-        profile.layouts[edit.key] = inherits;
-      }
-      deck.virtual.panel = structuredClone(edit.panel);
+    case 'setPagePanel': {
+      // "Change layout…": one page of a virtual deck at another fixed grid,
+      // its keys kept by row and column; only that page changes.
+      if (!config.decks?.[edit.serial]?.virtual) throw new EditError(`"${edit.serial}" is not a virtual deck`);
+      const layout = layoutAt(config, edit.profile, edit.serial);
+      const page = Object.prototype.hasOwnProperty.call(layout.pages, edit.page) ? layout.pages[edit.page] : undefined;
+      if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
+      layout.pages[edit.page] = regridPage(page, page.panel ?? defaultPanelOf(config, edit.serial), edit.panel).page;
       return {};
     }
     default: {

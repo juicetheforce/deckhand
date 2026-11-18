@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import type { PairReply, ScreensReply, TouchState } from '../../../src/control/protocol.js';
-import { gridFor, makePanel, MAX_CUSTOM_COLUMNS, MAX_CUSTOM_ROWS, PRESET_SIZES, type Grid, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
+import { makePanel, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
+import { customOf, GridPicker } from './GridPicker.js';
 import type { VirtualDeckRow, VirtualDecksView } from '../shared/bridge.js';
 import { Banner, Divider, Group, InfoTip, Row, StatusDot } from './settings-ui.js';
 
 /**
  * Settings › Decks › Virtual decks (`[decided]` Ryan, 2026-10-16): each
  * touchscreen used as a deck, with Tap again (after its USB cable moves) and
- * Remove (the pairing only — its layouts stay), its size in each profile, and
- * Add a virtual deck: choose the screen, tap it, choose a size. A new deck
- * gets a layout in the profile the decks show now; the others get one from
- * the editor's "Add a layout" card.
+ * Remove (the pairing only — its layouts stay), and Add a virtual deck:
+ * choose the screen, tap it, choose a grid size, which becomes the deck's
+ * default — every page made for it automatically gets that grid. Sizes are
+ * not listed here any more: every page has its own layout, changed on the
+ * page with Change layout… (2026-11-17).
  */
-
-const SIZE_NAMES: Record<PanelSize, string> = { small: 'Small', medium: 'Medium', large: 'Large', custom: 'Custom' };
 
 /** How a deck's touch is, in words, as `deckhand status` says it. */
 const TOUCH_WORDS: Record<TouchState, string> = {
@@ -26,66 +26,6 @@ const TOUCH_WORDS: Record<TouchState, string> = {
   inactive: 'touch is off while another session is active',
   unknown: 'touch is off: the lock state cannot be read',
 };
-
-/** "3 × 8 keys, about 26 mm" — a size as the picker offers it. */
-function describeGrid(grid: Grid): string {
-  const keys = `${grid.rows} × ${grid.columns} keys`;
-  return grid.keyMm !== null ? `${keys}, about ${Math.round(grid.keyMm)} mm` : `${keys}, ${grid.keyPx} px`;
-}
-
-/** The size picker: Small, Medium, Large with what each gives on this screen, or Custom rows (and, optionally, columns). */
-function SizePicker({ screen, size, rows, columns, onChange }: {
-  screen: ScreenSize;
-  size: PanelSize;
-  rows: string;
-  columns: string;
-  onChange: (next: { size?: PanelSize; rows?: string; columns?: string }) => void;
-}) {
-  const custom = customOf(rows, columns);
-  const grid = gridFor(screen, size, custom);
-  return (
-    <div className="vd-sizes" role="radiogroup" aria-label="Key size">
-      {[...PRESET_SIZES, 'custom' as const].map((s) => (
-        <label key={s} className="vd-size" data-vd-size={s}>
-          <input
-            type="radio"
-            name="vd-size"
-            checked={size === s}
-            // Custom starts from the size picked before it, so its fields are never empty.
-            onChange={() => onChange(s === 'custom' ? { size: s, rows: String(grid.rows), columns: String(grid.columns) } : { size: s })}
-          />
-          <span className="vd-size-name">{SIZE_NAMES[s]}</span>
-          <span className="muted small">{s === 'custom' ? 'set the rows and columns' : describeGrid(gridFor(screen, s))}</span>
-        </label>
-      ))}
-      {size === 'custom' && (
-        <div className="sp-fields">
-          <label className="sp-field sp-field-port">
-            <span className="sp-field-label">Rows</span>
-            <input className="sp-input" type="number" min={1} max={MAX_CUSTOM_ROWS} value={rows} onChange={(e) => onChange({ rows: e.target.value })} data-vd-field="rows" />
-          </label>
-          <label className="sp-field sp-field-port">
-            <span className="sp-field-label">Columns</span>
-            <input className="sp-input" type="number" min={1} max={MAX_CUSTOM_COLUMNS} value={columns} onChange={(e) => onChange({ columns: e.target.value })} data-vd-field="columns" />
-          </label>
-          <span className="muted small vd-custom-result">
-            {describeGrid(grid)} · at most {MAX_CUSTOM_ROWS} × {MAX_CUSTOM_COLUMNS}
-          </span>
-        </div>
-      )}
-      {grid.verySmall && (
-        <p className="muted small vd-warning" data-vd-warning="small">
-          These keys are very small, and may be hard to press. You can still use them.
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Custom's rows and columns from their fields: whole numbers, from 1 to the maximum (panel-presets clamps). */
-function customOf(rows: string, columns: string): { rows: number; columns: number } {
-  return { rows: Math.max(1, Math.floor(Number(rows)) || 1), columns: Math.max(1, Math.floor(Number(columns)) || 1) };
-}
 
 /** "10.3″ · 1920 × 720 · DP-4": what tells screens apart in the list. */
 function describeScreen(s: ScreensReply['screens'][number]): string {
@@ -255,10 +195,6 @@ export function VirtualDecks() {
               </span>
             )}
           </Row>
-          {deck.defaultSize && <DeckSize deck={deck} layout={{ profile: null, profileName: null, own: true, ...deck.defaultSize }} onNotice={setNotice} />}
-          {deck.layouts.map((layout) => (
-            <DeckSize key={layout.profile} deck={deck} layout={layout} onNotice={setNotice} />
-          ))}
         </div>
       ))}
       {view.decks.length > 0 && <Divider />}
@@ -333,17 +269,19 @@ export function VirtualDecks() {
       {add.step === 'size' && (
         <div className="vd-add" data-vd-step="size">
           <span className="sp-row-title">
-            {add.pairing.name ?? add.pairing.screen}, paired with {add.pairing.touchName}. Key size?
+            {add.pairing.name ?? add.pairing.screen}, paired with {add.pairing.touchName}. Grid size?
           </span>
           {add.error && <Banner kind="error">{add.error}</Banner>}
-          <SizePicker
+          <GridPicker
             screen={{ width: add.pairing.width, height: add.pairing.height, widthMm: add.pairing.widthMm, heightMm: add.pairing.heightMm }}
             size={add.size}
             rows={add.rows}
             columns={add.columns}
             onChange={(next) => setAdd({ ...add, ...next })}
           />
-          <p className="muted small">Its layout goes in “{view.activeProfile?.name ?? '…'}”. Other profiles get one from the editor.</p>
+          <p className="muted small">
+            This is the deck's default: its first page in “{view.activeProfile?.name ?? '…'}” has it, as does every page made for it automatically. Each page can be changed later, in the editor.
+          </p>
           <div className="button-row">
             <button className="sp-button sp-button-primary" onClick={() => void finishAdd(add)} data-vd="finish-add">
               Add
@@ -363,95 +301,5 @@ export function VirtualDecks() {
         </div>
       )}
     </Group>
-  );
-}
-
-/**
- * A deck's default size (profile null), which every profile without one of
- * its own follows, or its size in one profile; and changing it: keys keep
- * their row and column; any with no place are named, and dropped only once
- * confirmed.
- */
-function DeckSize({ deck, layout, onNotice }: {
-  deck: VirtualDeckRow;
-  layout: Omit<VirtualDeckRow['layouts'][number], 'profile' | 'profileName'> & { profile: string | null; profileName: string | null };
-  onNotice: (notice: { kind: 'ok' | 'error'; text: string } | null) => void;
-}) {
-  const [screen, setScreen] = useState<ScreenSize | null>(null);
-  const [editing, setEditing] = useState<{ size: PanelSize; rows: string; columns: string; dropped: string[] | null } | null>(null);
-  useEffect(() => {
-    if (editing && !screen) void window.deckhand.virtualScreenSize(deck.key).then(setScreen);
-  }, [editing, screen, deck.key]);
-
-  const current = layout.preset && layout.preset in SIZE_NAMES ? SIZE_NAMES[layout.preset as PanelSize] : 'Custom';
-  const panelFor = (e: NonNullable<typeof editing>) => (screen ? makePanel(screen, e.size, e.size === 'custom' ? customOf(e.rows, e.columns) : undefined) : null);
-
-  const apply = async (e: NonNullable<typeof editing>) => {
-    const panel = panelFor(e);
-    if (!panel) return;
-    if (e.dropped === null) {
-      const dropped = (await window.deckhand.virtualPanelPreview(layout.profile, deck.key, panel)) ?? [];
-      if (dropped.length > 0) {
-        setEditing({ ...e, dropped });
-        return;
-      }
-    }
-    const result = await window.deckhand.virtualDeckEdit(
-      layout.profile === null ? { kind: 'setDefaultPanel', key: deck.key, panel } : { kind: 'setPanel', profile: layout.profile, serial: deck.key, panel },
-    );
-    setEditing(null);
-    onNotice(
-      result.ok
-        ? {
-            kind: 'ok',
-            text:
-              layout.profile === null
-                ? `${deck.label}'s default size is ${SIZE_NAMES[e.size]} now, in every profile without a size of its own.`
-                : `${deck.label} in “${layout.profileName}” is ${SIZE_NAMES[e.size]} now.`,
-          }
-        : { kind: 'error', text: result.error },
-    );
-  };
-
-  return (
-    <div className="vd-layout" data-vd-layout={layout.profile ?? undefined} data-vd-default={layout.profile === null ? '' : undefined}>
-      <Row
-        title={layout.profile === null ? 'Default size' : `Size in “${layout.profileName}”`}
-        detail={
-          layout.profile === null
-            ? `${current}, ${layout.rows} × ${layout.columns} keys — every profile without a size of its own`
-            : `${current}, ${layout.rows} × ${layout.columns} keys${layout.own ? '' : ' (the default)'}`
-        }
-      >
-        {!editing && (
-          <button className="sp-button" onClick={() => setEditing({ size: (layout.preset as PanelSize) ?? 'medium', rows: String(layout.rows), columns: '', dropped: null })} data-vd="resize">
-            Change…
-          </button>
-        )}
-      </Row>
-      {editing && (
-        <div className="vd-add">
-          {screen === null ? (
-            <p className="muted small">Asking the daemon for the screen's size…</p>
-          ) : (
-            <SizePicker screen={screen} size={editing.size} rows={editing.rows} columns={editing.columns} onChange={(next) => setEditing({ ...editing, ...next, dropped: null })} />
-          )}
-          {editing.dropped && editing.dropped.length > 0 && (
-            <p className="warning-text" data-vd-dropped={editing.dropped.length}>
-              {editing.dropped.length === 1 ? '1 key has' : `${editing.dropped.length} keys have`} no place at that size and will be removed: {editing.dropped.slice(0, 4).join(', ')}
-              {editing.dropped.length > 4 ? ` and ${editing.dropped.length - 4} more` : ''}.
-            </p>
-          )}
-          <div className="button-row">
-            <button className="sp-button sp-button-primary" disabled={screen === null} onClick={() => void apply(editing)} data-vd="apply-size">
-              {editing.dropped && editing.dropped.length > 0 ? 'Remove them and resize' : 'Resize'}
-            </button>
-            <button className="sp-button sp-button-quiet" onClick={() => setEditing(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

@@ -11,7 +11,7 @@ import {
   type ButtonWrite,
   type Clipboard,
 } from '../shared/bulk.js';
-import { deckChoices, geometryFor, layoutFor, pageLabel, placementMessage, type DeckGeometryWithSerial, type Selection } from './model.js';
+import { deckChoices, layoutFor, pageGeometry, pageLabel, placementMessage, type DeckGeometryWithSerial, type Selection } from './model.js';
 
 interface BulkContext {
   config: Config;
@@ -130,7 +130,7 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
     copyTo: async (serial, pageId) => {
       if (!ready || selection.keys.length === 0) return;
       const targetLayout = layoutFor(config, selection.profile, serial);
-      const targetGeometry = geometryFor(daemon, serial);
+      const targetGeometry = pageGeometry(config, daemon, serial, selection.profile, pageId);
       if (targetLayout === null || !Object.prototype.hasOwnProperty.call(targetLayout.pages, pageId)) return;
       if (targetGeometry === null) {
         setMessage('That deck is not connected, so where the keys would land cannot be worked out. Plug it in to copy to it.');
@@ -156,8 +156,8 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
 
     copyKey: async (from, to) => {
       if (editingBlocked) return;
-      const fromGeometry = geometryFor(daemon, from.serial);
-      const toGeometry = geometryFor(daemon, to.serial);
+      const fromGeometry = pageGeometry(config, daemon, from.serial, selection.profile, from.page);
+      const toGeometry = pageGeometry(config, daemon, to.serial, selection.profile, to.page);
       const toLayout = layoutFor(config, selection.profile, to.serial);
       const toPosition = toGeometry?.keys.find((k) => k.id === to.key);
       if (!fromGeometry || !toPosition || !toLayout || !Object.prototype.hasOwnProperty.call(toLayout.pages, to.page)) return;

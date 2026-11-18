@@ -16,6 +16,7 @@ import type { ScreenSize } from '../../../src/panel-presets.js';
 import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
 import type { DeckPositions } from './deck-positions.js';
+import type { GridChoice } from './grid-choice.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 /** `defaults.sleep`, as stored. */
@@ -269,6 +270,13 @@ export interface DeckhandBridge {
    */
   deckPositions(): Promise<DeckPositions>;
   setDeckPositions(positions: DeckPositions): Promise<void>;
+  /**
+   * The grid last picked for a page of this virtual deck, by its key
+   * (shared/grid-choice): New page preselects it. Editor preferences, never
+   * config.json. Null when none has been picked.
+   */
+  lastGrid(serial: string): Promise<GridChoice | null>;
+  setLastGrid(serial: string, choice: GridChoice): Promise<void>;
   /** The decks locked in place on the canvas, by serial: their headers start no drag. Global; never config.json. */
   lockedDecks(): Promise<string[]>;
   setLockedDecks(serials: string[]): Promise<void>;
@@ -364,9 +372,6 @@ export interface DeckhandBridge {
   virtualDeckEdit(edit: Edit): Promise<{ ok: true } | { ok: false; error: string }>;
   /** A virtual deck's screen, to size a panel for it; null when it has no panel yet. Both windows. */
   virtualScreenSize(key: string): Promise<ScreenSize | null>;
-  /** The keys a new panel would drop from a profile, named, for the confirmation (settings window only). */
-  /** The keys a new size would drop: in one profile, or (null) in every profile following the default. */
-  virtualPanelPreview(profile: string | null, key: string, panel: PanelDef): Promise<string[] | null>;
   /**
    * Export the whole configuration as a .zip (settings window
    * only): with every icon file it names, or config only. Asks where to save.
@@ -483,10 +488,6 @@ export interface VirtualDeckRow {
   /** Whether its touch works, and if not why (control/protocol.ts TouchState); null when not connected. */
   touch: TouchState | null;
   paired: boolean;
-  /** Its default size: what every profile shows it at unless it has one of its own. Null only with no panel anywhere. */
-  defaultSize: { preset: string | null; rows: number; columns: number } | null;
-  /** Its size in every profile: its own there (`own`), else the default. */
-  layouts: Array<{ profile: string; profileName: string; own: boolean; preset: string | null; rows: number; columns: number }>;
 }
 
 export interface VirtualDecksView {

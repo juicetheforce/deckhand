@@ -2380,6 +2380,27 @@ button:disabled {
   min-width: 220px;
 }
 
+/* New page on a virtual deck: the name, then its grid (GridPicker). */
+.add-page.add-page-virtual {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 300px;
+}
+
+.add-page-virtual input {
+  width: auto;
+}
+
+.add-page-virtual .button-row {
+  justify-content: flex-end;
+}
+
+/* Change layout…: nothing is deleted until a key is named, so not the danger border. */
+.confirm-card.change-layout {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
 /* A key the deck is holding down (a latched toggle) */
 
 .key-latched {

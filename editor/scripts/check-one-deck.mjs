@@ -107,6 +107,8 @@ if (r && !r.error) {
   check('the pill reads "Connected"', () => assert.deepEqual(s.pill, { state: 'connected', label: 'Connected' }));
   check('a page tab switches the grid and shows the page on the deck', () =>
     assert.deepEqual(r.tabSwitch, { tab: true, deck: true, face: true }));
+  check('a Stream Deck\'s page menu is Delete page… alone, and New page a name only: no layout of its own', () =>
+    assert.deepEqual(r.pageMenu, { items: ['Delete page…'], newPageGrids: false, newPageButton: false }));
   check('click, Ctrl+click and Shift+click select keys, and the inspector follows', () => {
     assert.deepEqual(r.selection.plain, { selected: [0], title: 'Key 1' });
     assert.deepEqual(r.selection.ctrl, { selected: [0, 2], title: '2 keys selected' });

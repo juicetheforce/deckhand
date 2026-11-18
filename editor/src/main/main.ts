@@ -15,6 +15,7 @@ import type { ActionDef, ButtonDef } from '../../../src/types.js';
 import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SleepSettings, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
+import { cleanGridChoice, readGridChoices, withGridChoice } from '../shared/grid-choice.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
@@ -23,11 +24,8 @@ import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIcon
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError, pairScreen } from './daemon-client.js';
-import { geometryOfPanel } from '../../../src/geometry.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
-import { resizePanel } from '../shared/panel-size.js';
-import { keyNamed } from '../shared/bulk.js';
-import type { PanelDef } from '../../../src/types.js';
+import type { LayoutDef } from '../../../src/types.js';
 import { buildExport, suggestedExportName, writeExport } from './export-bundle.js';
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder, type BrowseKind } from './icon-browser.js';
@@ -166,7 +164,8 @@ const daemon = new DaemonClient({
 
 /**
  * Settings › Decks' virtual decks: each from config.json's `decks` (those
- * with `virtual`), what the daemon says of it, and its panel in each profile.
+ * with `virtual`) and what the daemon says of it. Sizes are not listed:
+ * every page has its own layout, changed on the page (2026-11-17).
  */
 function virtualDecksView(): VirtualDecksView {
   const config = store?.state().config ?? null;
@@ -176,17 +175,6 @@ function virtualDecksView(): VirtualDecksView {
     if (!deck.virtual || !config) return [];
     const status = view.status?.decks.find((d) => d.serial === key);
     const geometry = view.decks?.find((d) => d.serial === key);
-    // Every profile, those made after the deck included: its own size, or the deck's default.
-    const fallback = defaultPanelOf(config, key);
-    const sizeOf = (panel: PanelDef) => {
-      const g = geometryOfPanel(panel, '');
-      return { preset: panel.preset ?? null, rows: g.rows, columns: g.columns };
-    };
-    const layouts = Object.entries(config.profiles).flatMap(([profile, def]) => {
-      const own = def.layouts[key]?.panel;
-      const panel = own ?? fallback;
-      return panel ? [{ profile, profileName: def.name ?? profile, own: own !== undefined, ...sizeOf(panel) }] : [];
-    });
     return [{
       key,
       label: deck.name ?? geometry?.productName ?? key,
@@ -195,12 +183,12 @@ function virtualDecksView(): VirtualDecksView {
       off: status?.off === true,
       touch: status?.touch ?? null,
       paired: deck.virtual.touch !== undefined,
-      defaultSize: fallback ? sizeOf(fallback) : null,
-      layouts,
     }];
   });
   const activeLayouts = active ? (config?.profiles[active.id]?.layouts ?? {}) : {};
-  const keptLayouts = Object.entries(activeLayouts).flatMap(([key, layout]) => (layout.panel && !config?.decks?.[key]?.virtual ? [key] : []));
+  // A layout with a panel anywhere — the layout's, before pages had their own, or a page's — for a screen no longer a virtual deck.
+  const kept = (layout: LayoutDef) => layout.panel !== undefined || Object.values(layout.pages).some((page) => page.panel !== undefined);
+  const keptLayouts = Object.entries(activeLayouts).flatMap(([key, layout]) => (kept(layout) && !config?.decks?.[key]?.virtual ? [key] : []));
   return { decks, keptLayouts, activeProfile: active ? { id: active.id, name: active.name ?? active.id } : null };
 }
 
@@ -224,7 +212,7 @@ let pairing: AbortController | null = null;
  */
 let access: PairingAccess | null = null;
 /** The only edits Settings › Decks may make. */
-const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck', 'setPanel', 'setDefaultPanel']);
+const VIRTUAL_DECK_EDITS = new Set(['addVirtualDeck', 'repairVirtualDeck', 'removeVirtualDeck']);
 
 /**
  * The settings window's OBS form, from the page: only the fields it may set,
@@ -928,30 +916,6 @@ function registerIpc(): void {
     const screen = await daemon.screens().then((r) => r.screens.find((x) => x.key === key), () => undefined);
     return { width: panel.size.width, height: panel.size.height, widthMm: screen?.widthMm ?? 0, heightMm: screen?.heightMm ?? 0 };
   });
-  // What a new size would drop, named, before it is asked for.
-  // A profile's own size (profile), or the default (null), which every
-  // profile without its own follows: named in each, with the profile when
-  // more than one is affected.
-  ipcMain.handle('virtualPanelPreview', (event, profile: unknown, key: unknown, panel: unknown) => {
-    if (!fromSettingsWindow(event) || (typeof profile !== 'string' && profile !== null) || typeof key !== 'string' || typeof panel !== 'object' || panel === null) return null;
-    const config = store?.state().config;
-    if (!config) return null;
-    const fallback = defaultPanelOf(config, key);
-    const affected = Object.entries(config.profiles).flatMap(([id, def]) => {
-      const layout = def.layouts[key];
-      if (!layout) return [];
-      if (profile === null ? layout.panel !== undefined : id !== profile) return [];
-      const shown = layout.panel ?? fallback;
-      return shown ? [{ name: def.name ?? id, layout: { ...layout, panel: shown } }] : [];
-    });
-    return affected.flatMap(({ name, layout }) =>
-      resizePanel(layout, panel as PanelDef).dropped.map((d) => {
-        const at = geometryOfPanel(layout.panel, '').keys.findIndex((k) => k.id === d.key);
-        const where = `“${layout.pages[d.page]?.name ?? d.page}”${affected.length > 1 ? ` in “${name}”` : ''}`;
-        return `${keyNamed(d.button, at >= 0 ? String(at + 1) : d.key)} on ${where}`;
-      }),
-    );
-  });
   ipcMain.handle('virtualDeckEdit', async (event, edit: unknown) => {
     const kind = (edit as { kind?: unknown } | null)?.kind;
     if (!fromSettingsWindow(event) || !store || typeof kind !== 'string' || !VIRTUAL_DECK_EDITS.has(kind)) return { ok: false, error: 'not allowed' };
@@ -1310,6 +1274,15 @@ function registerIpc(): void {
     let stored = readPositions((await preferences.read()).deckPositions);
     for (const [serial, position] of entries as [string, DeckPosition][]) stored = withPosition(stored, serial, position);
     await preferences.set({ deckPositions: stored });
+  });
+  // The grid last picked for each virtual deck's new page (shared/grid-choice).
+  ipcMain.handle('lastGrid', async (event, serial: unknown) =>
+    fromOurWindow(event) && validSerial(serial) ? (readGridChoices((await preferences.read()).lastGrids)[serial] ?? null) : null,
+  );
+  ipcMain.handle('setLastGrid', async (event, serial: unknown, choice: unknown) => {
+    const clean = cleanGridChoice(choice);
+    if (!fromOurWindow(event) || !validSerial(serial) || clean === null) return;
+    await preferences.set({ lastGrids: withGridChoice(readGridChoices((await preferences.read()).lastGrids), serial, clean) });
   });
   // The decks locked in place on the canvas, by serial; global, like the positions.
   ipcMain.handle('lockedDecks', async (event) => {

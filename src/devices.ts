@@ -34,12 +34,13 @@ export interface DeckDevice {
   close(): Promise<void>;
   /**
    * Optional: a device whose controls the layout defines — a virtual deck,
-   * whose panel can differ per profile. Called with each layout it is given
-   * (attaching, a profile switch, a reload); returns its controls for that
-   * layout, which replace `geometry` for the session. Pure: it only answers.
-   * A Stream Deck has none: its controls are its own.
+   * whose panel can differ from page to page. Called with the layout and the
+   * page shown (attaching, a page change, a profile switch, a reload);
+   * returns its controls for that page, which replace `geometry` for the
+   * session. Pure: it only answers. A Stream Deck has none: its controls are
+   * its own.
    */
-  layoutFrom?(layout: LayoutDef): DeckGeometry;
+  layoutFrom?(layout: LayoutDef, page: string): DeckGeometry;
   /** With layoutFrom: the controls the session now uses. Its screen is cleared, and drawn again key by key. */
   showGeometry?(geometry: DeckGeometry): void;
   /** Optional: the device asks for every control to be drawn again (its screen was resized, say). */

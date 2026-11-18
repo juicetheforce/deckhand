@@ -152,8 +152,13 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
   if (!(await control.start(socket))) throw new Error('control server did not start');
 
   async function attach(serial, fake) {
+    return attachDevice(serial, hidDevice(fake, serial));
+  }
+
+  /** A device as a driver opens it — a virtual deck through the real virtual driver and its fake helper, say. */
+  async function attachDevice(serial, device) {
     const id = profiles.chooseProfileFor(serial);
-    const session = new DeckSession(hidDevice(fake, serial), {
+    const session = new DeckSession(device, {
       serial: serial,
       hardware: state.config.decks?.[serial] ?? {},
       layout: profiles.layoutFor(id, serial),
@@ -183,7 +188,7 @@ export async function startDaemon(directory, config, extraDeps = {}, options = {
     for (const session of sessions.values()) await session.close();
   }
 
-  return { socket, control, events, profiles, failures, sessions, unattached, state, deps, attach, stop };
+  return { socket, control, events, profiles, failures, sessions, unattached, state, deps, attach, attachDevice, stop };
 }
 
 /**
