@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan's test list for stage 2 round 1, a layout per page (PR #6); then Codex's review, merge and release."
+next = "Stage 2 frame round: every deck always in its frame with its header (one deck or several); then round 2. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
