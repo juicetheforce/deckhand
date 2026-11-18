@@ -446,9 +446,9 @@ button:disabled {
   overflow: auto;
 }
 
-/* Several decks shown: the canvas (DeckCanvas.tsx). Decks are placed in key units and drawn at 100% inside a
+/* The canvas (DeckCanvas.tsx), one deck or several: decks are placed in key units and drawn at 100% inside a
    scaled layer; the sizes here must match canvas.ts (KEY_PX, GAP_PX,
-   PAD_X_PX, HEAD_PX, FOOT_PX). With one deck shown none of this is drawn. */
+   PAD_X_PX, HEAD_PX, FOOT_PX). With one deck, it sits centred at Fit and nothing arranges it. */
 
 .well-canvas {
   /* The canvas fills the well and scrolls itself. */
@@ -642,6 +642,11 @@ button:disabled {
   padding: 0;
   font-weight: 700;
   color: var(--text);
+  /* A long name gives way before the header's controls do. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deck-panel-name:not(:disabled):hover {
@@ -656,6 +661,8 @@ button:disabled {
 
 .deck-panel-size {
   font-size: 11.5px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .deck-panel-editing {
@@ -673,7 +680,27 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+/* The word only: the dropdown keeps every dropdown's look (Dropdown.tsx, check:settings). */
+.deck-panel-page > .muted {
   font-size: 12px;
+}
+
+/* A virtual deck's Change layout…, beside the Page ▾ and drawn as its trigger is. */
+.deck-panel-change-layout {
+  flex-shrink: 0;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.deck-panel-change-layout:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .deck-panel .no-layout {

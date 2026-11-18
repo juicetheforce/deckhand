@@ -81,9 +81,10 @@ check('electron ran the check', () => {
 });
 
 if (r && !r.error) {
-  check('opt-in: with two decks connected the editor opens showing one, as before — no panels', () => {
+  check('opt-in: with two decks connected the editor opens showing one, in its frame alone: one panel, no Editing marker', () => {
     assert.equal(r.opens.grids, 1);
-    assert.deepEqual(r.opens.panels, []);
+    assert.deepEqual(r.opens.panels, [XL]);
+    assert.deepEqual(r.opens.editing, [], 'nothing to arrange with one shown');
     assert.equal(r.opens.edited, XL);
     assert.equal(r.opens.trigger, 'Big deck');
   });
@@ -95,12 +96,12 @@ if (r && !r.error) {
     ]);
     assert.equal(r.menu.footer, "Hidden decks keep working. They just aren't shown in the editor.");
   });
-  check('ticking a deck adds it below, in the Device list\'s order; the focus stays; only the other deck has Page ▾', () => {
+  check('ticking a deck adds it below, in the Device list\'s order; the focus stays; every deck has its Page ▾, the focused one\'s included', () => {
     assert.equal(r.ticked.grids, 2);
     assert.deepEqual(r.ticked.panels, [XL, V2]);
     assert.equal(r.ticked.focused, XL);
     assert.deepEqual(r.ticked.editing, [XL]);
-    assert.deepEqual(r.ticked.pageMenus, [V2]);
+    assert.deepEqual(r.ticked.pageMenus, [XL, V2], 'every header has the Page ▾ (the frame round, 2026-11-18)');
     assert.equal(r.ticked.trigger, 'Big deck + Little deck');
     assert.deepEqual(r.ticked.tabs, ['Main'], 'the toolbar\'s tabs are the focused deck\'s');
     assert.deepEqual(r.ticked.sizes, ['8 × 4', '5 × 3']);
@@ -115,7 +116,7 @@ if (r && !r.error) {
     assert.deepEqual(r.clickFocus.tabs, ['Main', 'Extra']);
     assert.equal(r.clickFocus.selectedTab, 'Extra', 'on the page the V2 was showing');
     assert.equal(r.clickFocus.title, 'Key 3');
-    assert.deepEqual(r.clickFocus.pageMenus, [XL], 'the XL now has the Page ▾');
+    assert.deepEqual(r.clickFocus.pageMenus, [XL, V2], 'both keep their Page ▾ whichever is focused');
     assert.equal(r.clickFocus.xlPageMenu, 'main');
   });
   check('Ctrl+click never spans decks: on the other deck it focuses it with that key alone', () =>
@@ -165,13 +166,15 @@ if (r && !r.error) {
   });
   check('clicking a name in SHOW IN EDITOR shows that deck alone', () => {
     assert.equal(r.showOnly.grids, 1);
-    assert.deepEqual(r.showOnly.panels, []);
+    assert.deepEqual(r.showOnly.panels, [XL]);
+    assert.deepEqual(r.showOnly.editing, []);
     assert.equal(r.showOnly.edited, XL);
     assert.equal(r.showOnly.trigger, 'Big deck');
   });
   check('unticking the focused deck focuses the one left, on its own page, alone', () => {
     assert.equal(r.untickFocused.grids, 1);
-    assert.deepEqual(r.untickFocused.panels, []);
+    assert.deepEqual(r.untickFocused.panels, [V2]);
+    assert.deepEqual(r.untickFocused.editing, []);
     assert.equal(r.untickFocused.edited, V2);
     assert.deepEqual(r.untickFocused.tabs, ['Main', 'Extra']);
     assert.equal(r.untickFocused.selectedTab, 'Extra');

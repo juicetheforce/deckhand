@@ -1710,10 +1710,11 @@ async function bulk(api: DeckhandBridge, out: Record<string, unknown>): Promise<
 }
 
 /**
- * With one deck connected, the editor is a one-deck editor, exactly as before
- * multi-deck editing (scripts/check-one-deck.mjs). Reports the handful of
- * things that define one — not the whole DOM — and drives the everyday
- * operations once each.
+ * With one deck connected, the editor is a one-deck editor
+ * (scripts/check-one-deck.mjs): the deck in its frame with its header and
+ * Page ▾, centred at Fit, and nothing for arranging decks (the frame round,
+ * 2026-11-18). Reports the handful of things that define one — not the whole
+ * DOM — and drives the everyday operations once each.
  */
 async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promise<Record<string, unknown>> {
   const SERIAL = 'ONE-V2';
@@ -1762,7 +1763,44 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   // 1. What makes it a one-deck editor.
   const device = document.querySelector<HTMLElement>('[data-crumb="device"]');
   const crumbs = [...document.querySelectorAll('.toolbar .crumb-label')].map((l) => l.textContent);
+  const panel = () => document.querySelector<HTMLElement>(`[data-deck-panel="${SERIAL}"]`);
+  const headerPage = () => panel()?.querySelector<HTMLElement>('.deck-panel-page [data-dropdown]') ?? null;
+  const zoom = () => Number(document.querySelector<HTMLElement>('.canvas')?.dataset.zoom);
+  /** Where the frame sits in the canvas, and the zoom Fit would choose there (canvas.ts fitZoom: 24 px margins, never above 100%). */
+  const placement = () => {
+    const viewport = document.querySelector<HTMLElement>('.canvas-viewport')!.getBoundingClientRect();
+    const frame = panel()!.getBoundingClientRect();
+    const z = zoom();
+    const fit = Math.min(1, (viewport.width - 48) / (frame.width / z), (viewport.height - 48) / (frame.height / z));
+    return {
+      zoom: z,
+      fit: Math.max(0.25, fit),
+      offCentre: {
+        x: frame.left + frame.width / 2 - (viewport.left + viewport.width / 2),
+        y: frame.top + frame.height / 2 - (viewport.top + viewport.height / 2),
+      },
+      frame: { left: frame.left, top: frame.top, width: frame.width, height: frame.height },
+    };
+  };
+  await until(() => panel() !== null && headerPage() !== null);
   out.structure = {
+    canvases: document.querySelectorAll('.canvas').length,
+    panels: [...document.querySelectorAll<HTMLElement>('[data-deck-panel]')].map((p) => p.dataset.deckPanel),
+    gridInPanel: panel()?.querySelectorAll('.grid').length ?? 0,
+    header: {
+      name: panel()?.querySelector('.deck-panel-name')?.textContent ?? null,
+      size: panel()?.querySelector('.deck-panel-size')?.textContent ?? null,
+      pageOptions: headerPage() ? dropdownOptions(headerPage()!) : null,
+      page: headerPage()?.dataset.value ?? null,
+      changeLayout: panel()?.querySelector('.deck-panel-change-layout') !== null,
+    },
+    arranging: {
+      zoomBar: document.querySelector('.canvas-zoom') !== null,
+      lock: document.querySelector('.deck-panel-lock') !== null,
+      grip: document.querySelector('.deck-panel-grip') !== null,
+      editingMarker: document.querySelector('.deck-panel-editing') !== null,
+      showInEditor: document.querySelector('.show-in-editor-trigger') !== null,
+    },
     grids: document.querySelectorAll('.grid').length,
     keys: document.querySelectorAll('.grid .key').length,
     multideck: document.querySelectorAll('[data-multideck]').length,
@@ -1779,15 +1817,52 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
     pill: { state: document.querySelector('.pill')?.getAttribute('data-connection'), label: document.querySelector('.pill')?.textContent },
   };
 
-  // 2. A page tab switches the grid and the deck.
+  // 1b. Centred at Fit, never above 100%; nothing drags it; kept at Fit when the canvas changes size.
+  // With no frame there is nothing to measure: the structure above already says so, and the rest still runs.
+  if (panel() !== null && document.querySelector('.canvas-viewport') !== null) await measureCanvas();
+  async function measureCanvas() {
+    await sleep(100);
+    const atRest = placement();
+    const header = panel()!.querySelector<HTMLElement>('.deck-panel-header')!;
+    const h = header.getBoundingClientRect();
+    pointer('pointerdown', h.x + 4, h.y + h.height / 2);
+    pointer('pointermove', h.x + 60, h.y + 80);
+    pointer('pointermove', h.x + 120, h.y + 140);
+    await sleep(50);
+    pointer('pointerup', h.x + 120, h.y + 140);
+    await sleep(100);
+    const afterDrag = placement();
+    // The well made narrow, as a narrow window would make it: the deck is fitted again, still centred.
+    const well = document.querySelector<HTMLElement>('.well')!;
+    well.style.maxWidth = '360px';
+    await until(() => zoom() < atRest.zoom - 0.01, 3_000);
+    await sleep(100);
+    const narrow = placement();
+    well.style.maxWidth = '';
+    await until(() => Math.abs(zoom() - atRest.zoom) < 0.001, 3_000);
+    out.canvas = { atRest, afterDrag, narrow, restored: placement() };
+  }
+
+  // 2. A page tab switches the grid and the deck, and the header's Page ▾ follows it.
   document.querySelector<HTMLButtonElement>('.tab[data-tab="Second"]')!.click();
   out.tabSwitch = {
     tab: await until(() => document.querySelector('.tab-selected')?.textContent === 'Second'),
     deck: await until(async () => (await deckPage()) === 'second'),
     face: await until(() => key(0).textContent?.includes('Back') ?? false),
+    header: await until(() => headerPage()?.dataset.value === 'second'),
   };
-  document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
-  await until(async () => (await deckPage()) === 'main' && document.querySelector('.tab-selected')?.textContent === 'Main');
+  // 2a. The header's Page ▾ does what a tab does: the grid, the deck and the tabs follow it.
+  if (headerPage() === null) {
+    // Reported as missing by the structure; the tab puts the deck back for what follows.
+    document.querySelector<HTMLButtonElement>('.tab[data-tab="Main"]')!.click();
+    await until(async () => (await deckPage()) === 'main');
+  } else chooseInDropdown(headerPage()!, 'main');
+  out.headerSwitch = {
+    tab: await until(() => document.querySelector('.tab-selected')?.textContent === 'Main'),
+    deck: await until(async () => (await deckPage()) === 'main'),
+    face: await until(() => key(0).textContent?.includes('Jump') ?? false),
+    header: await until(() => headerPage()?.dataset.value === 'main'),
+  };
 
   // 2b. A Stream Deck's page has no layout of its own: its page menu and New page are as they were.
   document.querySelector('.tab[data-tab="Main"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));

@@ -265,8 +265,12 @@ await settle('page layouts', async () => {
     },
   };
   const since = async (before) => (await frames()).slice(before);
+  const laidOut = (await frames()).length;
   await session.setLayout(pages);
   check('the start page\'s own panel', session.keyCount === 6 && session.hasKey('k1') && session.currentPage() === 'main', String(session.keyCount));
+  // Every key of the start page drawn before the page change is measured: setLayout returns before
+  // the images reach the helper, and k1's, with its label, came after it often (31 runs in 40).
+  await until(async () => (await since(laidOut)).filter((f) => f.type === 'I').length >= 6);
   let before = (await frames()).length;
   await session.goToPage('wide');
   await until(async () => (await since(before)).filter((f) => f.type === 'I').length >= 2);

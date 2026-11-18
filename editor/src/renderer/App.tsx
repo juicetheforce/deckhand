@@ -238,9 +238,14 @@ function Editor({
   const geometry = pageGeometry(config, daemon, selection.serial, selection.profile, selection.page);
   /** Why there is no grid, or null when there is one. */
   const nothing = emptyState(config, daemon, selection);
-  /** The decks drawn. One is today's editor exactly: no panels, no headers. */
+  /** The decks drawn, each in its frame with its header; the controls for arranging them only with two or more. */
   const shown = shownDecks(config, daemon, selection);
   const several = shown.length > 1;
+  /** The shown decks the canvas can draw: a deck the daemon has not described yet is not drawn for that moment — its size is unknown. */
+  const canvasDecks = shown.flatMap((serial): CanvasDeck[] => {
+    const g = pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '');
+    return g ? [{ serial, name: deckLabel(config, daemon, serial), size: { columns: g.columns, rows: g.rows } }] : [];
+  });
   /** A key on another shown deck: that deck takes the focus, with this key alone selected. */
   const focusKey = (serial: string, key: string) =>
     setSelection((s) => ({ ...focusDeck(s, serial), key, keys: [key] }));
@@ -386,11 +391,22 @@ function Editor({
   // Deleting a page is confirmed here rather than in the toolbar, because the
   // confirmation has to name the keys it is about to clear.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  /** The page whose layout is being changed (a virtual deck's), or null. */
-  const [changingLayout, setChangingLayout] = useState<string | null>(null);
+  /** The page whose layout is being changed (a virtual deck's), with the deck and profile it belongs to, or null. */
+  const [changingAt, setChangingLayout] = useState<{ serial: string; profile: string; page: string } | null>(null);
+  // The card is for one page of one deck in one profile: another deck or profile closes it. A deck's
+  // header button focuses its deck and names it, so the focus it moves does not close the card it opens.
+  const changingHere = changingAt !== null && changingAt.serial === selection.serial && changingAt.profile === selection.profile;
+  useEffect(() => {
+    if (!changingHere) setChangingLayout(null);
+  }, [changingHere]);
+  const changingLayout = changingHere ? changingAt.page : null;
   const changing = changingLayout === null ? undefined : layout?.pages[changingLayout];
-  // The card is for one page of one deck in one profile: another deck or profile closes it.
-  useEffect(() => setChangingLayout(null), [selection.serial, selection.profile]);
+  /** Change layout… for a page of a shown deck: from its tab's menu, or the header's button on any shown deck. */
+  const changeLayout = (serial: string, pageId: string) => {
+    setPendingDelete(null);
+    if (serial !== selection.serial) setSelection((s) => focusDeck(s, serial));
+    setChangingLayout({ serial, profile: selection.profile, page: pageId });
+  };
   const deletion = pendingDelete === null ? null : pageDeletion(config, selection.profile, selection.serial, pendingDelete);
   const confirmDelete = async () => {
     if (pendingDelete === null) return;
@@ -554,10 +570,7 @@ function Editor({
           setPendingProfileDelete(profile);
         }}
         onDeletePage={setPendingDelete}
-        onChangeLayout={(pageId) => {
-          setPendingDelete(null);
-          setChangingLayout(pageId);
-        }}
+        onChangeLayout={(pageId) => changeLayout(selection.serial, pageId)}
         shown={shown}
         onShowOnly={(serial) => {
           select({ serial });
@@ -591,32 +604,33 @@ function Editor({
           {/* Say it once: when the empty state below already explains that
               the daemon is not running, the banner would only repeat it. */}
           <Notices store={store} daemon={daemon} switchError={switchError} daemonSaidBelow={nothing?.kind === 'daemon-down'} />
-          <div className={several ? 'well well-canvas' : 'well'}>
-            {several ? (
+          <div className={canvasDecks.length > 0 ? 'well well-canvas' : 'well'}>
+            {canvasDecks.length > 0 ? (
               <DeckCanvas
-                decks={shown.flatMap((serial): CanvasDeck[] => {
-                  // A deck the daemon has not described yet is not drawn for that moment: its size is unknown.
-                  const g = pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '');
-                  return g ? [{ serial, name: deckLabel(config, daemon, serial), size: { columns: g.columns, rows: g.rows } }] : [];
-                })}
+                decks={canvasDecks}
+                several={several}
                 positions={positions}
                 onMove={moveDecks}
                 locked={locked}
                 onLock={lockDeck}
                 panel={(serial, placement) => {
                   const layoutHere = layoutFor(config, selection.profile, serial);
+                  const pageHere = pageOf(selection, serial) ?? '';
+                  const focused = serial === selection.serial;
                   return (
                     <DeckPanel
                       key={serial}
                       serial={serial}
                       name={deckLabel(config, daemon, serial)}
-                      size={pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '')}
-                      focused={serial === selection.serial}
+                      size={pageGeometry(config, daemon, serial, selection.profile, pageHere)}
+                      focused={focused}
                       pages={layoutHere ? pageChoices(layoutHere) : []}
-                      page={pageOf(selection, serial) ?? ''}
+                      page={pageHere}
                       disabled={editingBlocked}
                       onFocus={() => setSelection((s) => focusDeck(s, serial))}
-                      onPage={(pageId) => showDeckPage(serial, pageId)}
+                      // The focused deck's Page ▾ is its tabs in another place; another deck's moves that deck alone.
+                      onPage={(pageId) => (focused ? select({ page: pageId }) : showDeckPage(serial, pageId))}
+                      onChangeLayout={config.decks?.[serial]?.virtual && layoutHere?.pages[pageHere] ? () => changeLayout(serial, pageHere) : undefined}
                       placement={placement}
                     >
                       {grid(serial) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial)}
@@ -626,7 +640,7 @@ function Editor({
               />
             ) : (
               <>
-                {/* One place says why there is no grid (model.ts emptyState). */}
+                {/* No deck to draw: one place says why (model.ts emptyState). */}
                 {nothing && emptyCard(nothing, selection.serial)}
                 {grid(selection.serial)}
               </>

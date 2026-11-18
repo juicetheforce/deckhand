@@ -106,7 +106,9 @@ try {
   r.twoFailed = await until(async () => Object.keys(await badges(editor)).length === 2);
   r.afterPresses = await badges(editor);
   // Measured inside the key's border: the padding box is the key's screen,
-  // where its icon is drawn, as the deck's badge is placed on its image. (No
+  // where its icon is drawn, as the deck's badge is placed on its image. All in
+  // screen pixels: the canvas may draw the deck below 100%, and clientWidth is
+  // the unscaled layout width. (No
   // // comments inside the page script: inPage sends it as one line.)
   r.placement = await inPage(
     editor,
@@ -114,7 +116,8 @@ try {
     `(() => {
       const screen = (el) => {
         const r = el.getBoundingClientRect();
-        return { left: r.left + el.clientLeft, top: r.top + el.clientTop, width: el.clientWidth, right: r.left + el.clientLeft + el.clientWidth };
+        const k = r.width / el.offsetWidth;
+        return { left: r.left + el.clientLeft * k, top: r.top + el.clientTop * k, width: el.clientWidth * k, right: r.left + (el.clientLeft + el.clientWidth) * k };
       };
       const keys = document.querySelectorAll('.grid .key');
       const key = screen(keys[0]);
