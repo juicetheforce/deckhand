@@ -389,6 +389,8 @@ function Editor({
   /** The page whose layout is being changed (a virtual deck's), or null. */
   const [changingLayout, setChangingLayout] = useState<string | null>(null);
   const changing = changingLayout === null ? undefined : layout?.pages[changingLayout];
+  // The card is for one page of one deck in one profile: another deck or profile closes it.
+  useEffect(() => setChangingLayout(null), [selection.serial, selection.profile]);
   const deletion = pendingDelete === null ? null : pageDeletion(config, selection.profile, selection.serial, pendingDelete);
   const confirmDelete = async () => {
     if (pendingDelete === null) return;
