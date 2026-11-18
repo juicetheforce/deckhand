@@ -74,8 +74,8 @@ touch panel.
 
 - **Set it up in the editor**, in **Settings › Decks › Add a virtual
   deck**: choose the screen, tap it so Deckhand knows which touchscreen is
-  its own, and choose a grid size: Small, Medium, Large, or your own rows
-  and columns. Pairing asks for your password once, to give Deckhand access to
+  its own, and choose a key size: Small, Medium, Large, or your own rows and
+  columns. Pairing asks for your password once, to give Deckhand access to
   that one touchscreen and no other ([why](SECURITY.md#device-access)). Edit its keys like any deck's. Nothing is ever edited on the
   touchscreen itself, so a stray touch can't change anything.
 - **Its touches go only to Deckhand.** Deckhand reads the touchscreen
@@ -91,9 +91,8 @@ touch panel.
   apart by their ports. A touchscreen with no serial number is remembered by
   its USB port, so if you move its USB cable, tap it again (**Tap again** in
   Settings).
-- **Each page can have its own grid.** New pages start at the size you chose
-  for the screen, or at the grid you pick, and **Change layout…** on a page
-  tab gives one page a different grid.
+- **Each profile can give the screen its own key size**, in Settings ›
+  Decks.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
   other, and Sleep all decks dims it too. Turned off, it draws pure black, but
