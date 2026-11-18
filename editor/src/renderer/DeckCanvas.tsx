@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { DeckPosition, DeckPositions } from '../shared/deck-positions.js';
 import {
   arrange,
@@ -37,6 +37,8 @@ export interface Placement {
   /** Locked in place: its header starts no drag. */
   locked: boolean;
   onLock: (locked: boolean) => void;
+  /** Two or more decks: there is something to arrange, so the grip, the lock and the Editing marker are drawn. */
+  arrange: boolean;
 }
 
 interface Props {
@@ -49,6 +51,11 @@ interface Props {
   /** A deck locked or unlocked, with every shown deck's position as drawn: it is locked where it is seen. */
   onLock: (serial: string, locked: boolean, positions: DeckPositions) => void;
   panel: (serial: string, placement: Placement) => ReactNode;
+  /**
+   * Two or more decks shown. With one, there is nothing to arrange: no
+   * dragging, no zoom bar, and it is kept at Fit as the window changes size.
+   */
+  several: boolean;
 }
 
 interface Drag {
@@ -76,16 +83,21 @@ interface Drag {
 const DRAG_START_PX = 4;
 
 /**
- * Several decks shown, arranged like KDE's displays: each drawn to its real proportions — every key the same size —
+ * Every shown deck, each in its frame with its header (DeckPanel.tsx), one
+ * deck or several (decided 2026-11-18: the frame round).
+ *
+ * Several decks are arranged like KDE's displays: each drawn to its real proportions — every key the same size —
  * and dragged by its header, snapping to the others' key columns, rows and
  * edges; decks never overlap. Positions are the person's, remembered by
  * serial; zoom is the window's — Fit all when the editor opens or the shown
  * decks change, never above 100%, and not otherwise changed under the
  * person (never on a resize).
  *
- * With one deck shown there is no canvas: App draws the grid alone.
+ * One deck has nothing to arrange: it sits centred at Fit, never above 100%,
+ * with no zoom bar, no dragging and no lock. With no zoom bar the person
+ * cannot change its zoom, so it is fitted again when the window changes size.
  */
-export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: Props) {
+export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, several }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   // The drag lives in a ref, read by the pointer handlers: a pointerup can
@@ -118,6 +130,16 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
   // and not as a drag moves the bounds: nothing rescales under the person.
   const shownKey = decks.map((d) => `${d.serial}:${d.size.columns}x${d.size.rows}`).join(',');
   useLayoutEffect(fit, [shownKey]);
+  // One deck: kept at Fit as the window changes size. Never with several — a manual zoom holds there.
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  useEffect(() => {
+    const el = viewport.current;
+    if (several || !el) return;
+    const observer = new ResizeObserver(() => fitRef.current());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [several]);
 
   if (!bounds) return null;
   const frame = drag?.frame ?? bounds;
@@ -128,7 +150,7 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
     decks.filter((d) => d.serial !== serial && placed[d.serial]).map((d) => ({ serial: d.serial, name: d.name, at: placed[d.serial], size: d.size }));
 
   const grab = (serial: string) => (e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0 || locked.includes(serial) || (e.target as Element).closest('button, select, label, input')) return;
+    if (!several || e.button !== 0 || locked.includes(serial) || (e.target as Element).closest('button, select, label, input')) return;
     e.preventDefault();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -172,7 +194,7 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
   };
 
   return (
-    <div className="canvas" data-multideck="" data-zoom={zoom}>
+    <div className="canvas" data-zoom={zoom}>
       <div className="canvas-viewport" ref={viewport}>
         <div
           className="canvas-sizer"
@@ -199,6 +221,7 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
                     refused: dragging && (drag?.refused ?? false),
                     locked: locked.includes(d.serial),
                     onLock: (lock) => onLock(d.serial, lock, placed),
+                    arrange: several,
                   })}
                 </div>
               );
@@ -222,23 +245,25 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel }: 
           </div>
         </div>
       </div>
-      <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom">
-        <button className="canvas-zoom-step" aria-label="Zoom out" onClick={() => setZoom(zoomOut)}>
-          −
-        </button>
-        <span className="canvas-zoom-level" aria-live="polite">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button className="canvas-zoom-step" aria-label="Zoom in" onClick={() => setZoom(zoomIn)}>
-          +
-        </button>
-        <button className="canvas-zoom-text" onClick={fit}>
-          Fit all
-        </button>
-        <button className="canvas-zoom-text canvas-zoom-reset" title="Zoom to 100%" onClick={() => setZoom(1)}>
-          Reset
-        </button>
-      </div>
+      {several && (
+        <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom" data-multideck="">
+          <button className="canvas-zoom-step" aria-label="Zoom out" onClick={() => setZoom(zoomOut)}>
+            −
+          </button>
+          <span className="canvas-zoom-level" aria-live="polite">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button className="canvas-zoom-step" aria-label="Zoom in" onClick={() => setZoom(zoomIn)}>
+            +
+          </button>
+          <button className="canvas-zoom-text" onClick={fit}>
+            Fit all
+          </button>
+          <button className="canvas-zoom-text canvas-zoom-reset" title="Zoom to 100%" onClick={() => setZoom(1)}>
+            Reset
+          </button>
+        </div>
+      )}
     </div>
   );
 }

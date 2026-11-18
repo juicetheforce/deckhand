@@ -1,10 +1,13 @@
-// With one deck connected, the editor is exactly the one-deck editor it was
-// before multi-deck editing: one grid, the plain Device dropdown, no
-// multi-deck element, the same crumbs and pill, and the everyday operations
-// working. Run by the pre-commit hook (scripts/hooks/pre-commit) on every
-// commit touching editor/ or src/, so a change that leaks multi-deck UI into
-// the one-deck case — the case most people have — is caught at the commit
-// that makes it.
+// With one deck connected, the editor shows that deck in its frame with its
+// header — name, size and Page dropdown — centred on the canvas at Fit, never
+// above 100%, and nothing for arranging decks: no dragging, lock, snapping,
+// zoom bar or Show in editor (the frame round, decided 2026-11-18; until then
+// a lone deck had no frame at all). Also the plain Device dropdown, the same
+// crumbs, tabs and pill, and the everyday operations working. Run by the
+// pre-commit hook (scripts/hooks/pre-commit) on every commit touching editor/
+// or src/, so a change that leaks the arranging controls into the one-deck
+// case — the case most people have — or loses its frame is caught at the
+// commit that makes it.
 //
 // It asserts the few things that define a one-deck editor, not a snapshot of
 // the whole DOM: a snapshot changes with every legitimate UI edit, and a
@@ -83,11 +86,51 @@ check('electron ran the check', () => {
 
 if (r && !r.error) {
   const s = r.structure;
-  check('exactly one grid, with the deck\'s 15 keys', () => {
+  check('the deck is in its frame on the canvas: one canvas, one panel, its one grid with 15 keys', () => {
+    assert.equal(s.canvases, 1);
+    assert.deepEqual(s.panels, [V2]);
+    assert.equal(s.gridInPanel, 1);
     assert.equal(s.grids, 1);
     assert.equal(s.keys, 15);
   });
-  check('no multi-deck element at all ([data-multideck])', () => assert.equal(s.multideck, 0));
+  check('its header: the name, columns × rows, and the Page dropdown on the page shown; no Change layout… on a Stream Deck', () =>
+    assert.deepEqual(s.header, {
+      name: 'Little deck',
+      size: '5 × 3',
+      pageOptions: [
+        { value: 'main', label: 'Main' },
+        { value: 'second', label: 'Second' },
+      ],
+      page: 'main',
+      changeLayout: false,
+    }));
+  check('nothing for arranging decks: no zoom bar, lock, grip, Editing marker or Show in editor', () =>
+    assert.deepEqual(s.arranging, { zoomBar: false, lock: false, grip: false, editingMarker: false, showInEditor: false }));
+  check('no element that exists only with several decks ([data-multideck])', () => assert.equal(s.multideck, 0));
+  const near = (a, b, within, what) => assert.ok(Math.abs(a - b) <= within, `${what}: ${a} vs ${b}`);
+  check('centred on the canvas at Fit, never above 100%', () => {
+    assert.ok(r.canvas, 'nothing to measure: no frame on a canvas');
+    const c = r.canvas.atRest;
+    assert.ok(c.zoom > 0 && c.zoom <= 1, `zoom ${c.zoom}`);
+    near(c.zoom, c.fit, 0.005, 'zoom is Fit');
+    near(c.offCentre.x, 0, 1, 'centred across');
+    near(c.offCentre.y, 0, 1, 'centred down');
+  });
+  check('dragging its header does not move it', () => {
+    assert.ok(r.canvas, 'nothing to measure: no frame on a canvas');
+    const a = r.canvas.atRest.frame;
+    const b = r.canvas.afterDrag.frame;
+    near(b.left, a.left, 0.5, 'left');
+    near(b.top, a.top, 0.5, 'top');
+  });
+  check('a narrower canvas fits it again, still centred; widened, it goes back', () => {
+    assert.ok(r.canvas, 'nothing to measure: no frame on a canvas');
+    const n = r.canvas.narrow;
+    assert.ok(n.zoom < r.canvas.atRest.zoom, `zoom ${n.zoom} after narrowing, ${r.canvas.atRest.zoom} before`);
+    near(n.zoom, n.fit, 0.005, 'zoom is Fit when narrow');
+    near(n.offCentre.x, 0, 1, 'centred across when narrow');
+    near(r.canvas.restored.zoom, r.canvas.atRest.zoom, 0.001, 'zoom when widened again');
+  });
   check('the Device control is the plain dropdown, with the one connected deck as its only option', () => {
     assert.equal(s.deviceIsDropdown, true, 'the plain Device dropdown');
     assert.deepEqual(s.deviceOptions, [{ value: V2, label: 'Little deck' }]);
@@ -105,8 +148,10 @@ if (r && !r.error) {
     assert.equal(s.settings, true);
   });
   check('the pill reads "Connected"', () => assert.deepEqual(s.pill, { state: 'connected', label: 'Connected' }));
-  check('a page tab switches the grid and shows the page on the deck', () =>
-    assert.deepEqual(r.tabSwitch, { tab: true, deck: true, face: true }));
+  check('a page tab switches the grid and shows the page on the deck; the header\'s Page dropdown follows', () =>
+    assert.deepEqual(r.tabSwitch, { tab: true, deck: true, face: true, header: true }));
+  check('the header\'s Page dropdown switches the grid, the deck and the tabs, as a tab does', () =>
+    assert.deepEqual(r.headerSwitch, { tab: true, deck: true, face: true, header: true }));
   check('a Stream Deck\'s page menu is Delete page… alone, and New page a name only: no layout of its own', () =>
     assert.deepEqual(r.pageMenu, { items: ['Delete page…'], newPageGrids: false, newPageButton: false }));
   check('click, Ctrl+click and Shift+click select keys, and the inspector follows', () => {

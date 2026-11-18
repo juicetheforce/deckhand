@@ -17,6 +17,8 @@ interface Props {
   disabled: boolean;
   onFocus: () => void;
   onPage: (page: string) => void;
+  /** A virtual deck's Change layout… for the page shown; absent on a Stream Deck, or with no page. */
+  onChangeLayout?: () => void;
   /** The grid, or the card saying why there is none. */
   children: ReactNode;
   /** On the canvas: where it is drawn, and its header picks it up. */
@@ -24,27 +26,38 @@ interface Props {
 }
 
 /**
- * One deck among several shown: a header
- * with its name, columns × rows (8 × 4, as decks are named) and, on the focused deck, the "Editing"
- * marker; then its grid. With one deck shown there is no panel and no
- * canvas — the grid sits in the well as it always has.
+ * One shown deck in its frame, one deck or several (the frame round,
+ * 2026-11-18): a header with its name, columns × rows (8 × 4, as decks are
+ * named), a virtual deck's Change layout…, and the Page ▾; then its grid.
  *
- * Page tabs stay in the toolbar for the focused deck; every other deck
- * carries only this compact Page ▾, which shows the page on the deck as a tab
- * does. Clicking its name focuses the deck; dragging its header moves it on
- * the canvas (DeckCanvas.tsx).
+ * Every header carries the Page ▾, the focused deck's included, so a header
+ * is the same whatever the number or position of decks; the toolbar's page
+ * tabs stay for the focused deck, for quick switching. What exists only to
+ * arrange several decks — the grip, the Editing marker, the lock — is drawn
+ * only with two or more (`data-multideck`, which check:one-deck counts).
+ * Clicking its name focuses the deck; dragging its header moves it on the
+ * canvas (DeckCanvas.tsx).
  */
-export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, children, placement }: Props) {
-  const classes = ['deck-panel', focused && 'deck-panel-focused', placement.dragging && 'deck-panel-dragging', placement.refused && 'deck-panel-refused', placement.locked && 'deck-panel-locked'].filter(Boolean).join(' ');
+export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, onChangeLayout, children, placement }: Props) {
+  const { arrange } = placement;
+  const classes = [
+    'deck-panel',
+    focused && arrange && 'deck-panel-focused',
+    placement.dragging && 'deck-panel-dragging',
+    placement.refused && 'deck-panel-refused',
+    (placement.locked || !arrange) && 'deck-panel-locked',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <section className={classes} data-multideck="" data-deck-panel={serial} style={placement.style}>
-      <header className="deck-panel-header" onPointerDown={placement.onGrab} title={placement.locked ? undefined : 'Drag to move'}>
-        {!placement.locked && (
-          <span className="deck-panel-grip" aria-hidden="true">
+    <section className={classes} data-deck-panel={serial} style={placement.style}>
+      <header className="deck-panel-header" onPointerDown={arrange ? placement.onGrab : undefined} title={arrange && !placement.locked ? 'Drag to move' : undefined}>
+        {arrange && !placement.locked && (
+          <span className="deck-panel-grip" aria-hidden="true" data-multideck="">
             ⠿
           </span>
         )}
-        <button className="deck-panel-name" onClick={onFocus} disabled={focused} title={focused ? undefined : `Edit ${name}`}>
+        <button className="deck-panel-name" onClick={onFocus} disabled={focused} title={focused ? name : `Edit ${name}`}>
           {name}
         </button>
         {size && (
@@ -52,23 +65,35 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
             {size.columns} × {size.rows}
           </span>
         )}
-        {focused && <span className="deck-panel-editing">Editing</span>}
+        {focused && arrange && (
+          <span className="deck-panel-editing" data-multideck="">
+            Editing
+          </span>
+        )}
         <span className="toolbar-spacer" />
-        {!focused && pages.length > 0 && (
+        {onChangeLayout && (
+          <button className="deck-panel-change-layout" disabled={disabled} onClick={onChangeLayout} title={`Change the layout of this page on ${name}`}>
+            Change layout…
+          </button>
+        )}
+        {pages.length > 0 && (
           <label className="deck-panel-page">
             <span className="muted">Page</span>
             <Dropdown aria-label={`Page on ${name}`} value={page} options={pages.map((p) => ({ value: p.id, label: p.label }))} disabled={disabled} onChange={onPage} />
           </label>
         )}
-        <button
-          className="deck-panel-lock"
-          aria-pressed={placement.locked}
-          aria-label={placement.locked ? `Unlock ${name}'s position` : `Lock ${name} in place`}
-          title={placement.locked ? 'Locked in place — click to let it be dragged' : 'Lock in place, so it cannot be dragged by accident'}
-          onClick={() => placement.onLock(!placement.locked)}
-        >
-          <LockIcon locked={placement.locked} size={16} />
-        </button>
+        {arrange && (
+          <button
+            className="deck-panel-lock"
+            data-multideck=""
+            aria-pressed={placement.locked}
+            aria-label={placement.locked ? `Unlock ${name}'s position` : `Lock ${name} in place`}
+            title={placement.locked ? 'Locked in place — click to let it be dragged' : 'Lock in place, so it cannot be dragged by accident'}
+            onClick={() => placement.onLock(!placement.locked)}
+          >
+            <LockIcon locked={placement.locked} size={16} />
+          </button>
+        )}
       </header>
       {children}
     </section>

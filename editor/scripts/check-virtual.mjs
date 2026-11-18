@@ -19,7 +19,9 @@
 //   and the fake helper: Change layout… on a page names the keys it drops and
 //   changes only that page once confirmed; New page offers the grids with the
 //   last choice preselected; the deck re-lays out on a page change only when
-//   the grid differs (the helper's frames); a Stream Deck gets none of it.
+//   the grid differs (the helper's frames); Change layout… is also a button in
+//   the deck's header, beside its Page ▾, and focuses that deck when another
+//   is being edited; a Stream Deck gets none of it.
 // - Touchscreen access (touch-access.ts): the real root helper,
 //   udev/deckhand-touch-access, run by a stand-in pkexec in its test mode
 //   against a scratch /dev with ACLs kept as files — the password refused
@@ -486,6 +488,34 @@ await until(async () => panelSession().currentPage() === r.newPage.id && (await 
 await sleep(400);
 r.otherGridSent = await sentSince(beforeOther);
 
+// CHANGE LAYOUT… FROM THE HEADER (the frame round, 2026-11-18): a button beside the
+// Page ▾, opening the same card for the page the deck shows.
+const headerChange = (serial) => `[data-deck-panel="${serial}"] .deck-panel-change-layout`;
+const cancelChange = () => inEditor("[...document.querySelectorAll('[data-change-layout] button')].find((b) => b.textContent === 'Cancel')?.click(), true");
+r.headerChangeOffered = await until(() => inEditorExists(headerChange(KEY)));
+r.headerChangeBesidePage = await inEditor(
+  `document.querySelector(${JSON.stringify(headerChange(KEY))})?.nextElementSibling?.classList.contains('deck-panel-page') ?? false`,
+);
+await clickEditor(headerChange(KEY));
+r.headerChangeOpened = await until(() => inEditorExists('[data-change-layout="Small page"] [data-vd-size] input:checked'));
+r.headerChangePreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
+await cancelChange();
+await until(async () => !(await inEditorExists('[data-change-layout]')));
+// Both decks shown, the Stream Deck focused: the virtual deck's button focuses it and opens its card.
+await clickEditor('.show-in-editor-trigger');
+await until(() => inEditorExists(`[data-show-deck="${XL}"] input`));
+await clickEditor(`[data-show-deck="${XL}"] input`);
+await inEditor("document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })), true");
+await until(() => inEditorExists(`[data-deck-panel="${XL}"] .deck-panel-name`));
+await clickEditor(`[data-deck-panel="${XL}"] .deck-panel-name`);
+await until(async () => (await inEditor("document.querySelector('.deck-panel-focused')?.dataset.deckPanel ?? null")) === XL);
+r.xlHeaderChange = await inEditorExists(headerChange(XL));
+await clickEditor(headerChange(KEY));
+r.headerChangeFocused = await until(async () => (await inEditor("document.querySelector('.deck-panel-focused')?.dataset.deckPanel ?? null")) === KEY);
+r.headerChangeOpenedOther = await until(() => inEditorExists('[data-change-layout="Small page"]'));
+await cancelChange();
+await until(async () => !(await inEditorExists('[data-change-layout]')));
+
 // A STREAM DECK gets none of it: its page menu has no Change layout, New page no grids.
 await clickEditor('.show-in-editor-trigger');
 await until(() => inEditorExists(`[data-show-deck="${XL}"] .show-in-editor-name`));
@@ -541,6 +571,17 @@ check('a page change between two pages of the same grid sends no canvas: the scr
 });
 check('a page change to another grid: one canvas, then every key of the new page, once', () =>
   assert.deepEqual(r.otherGridSent, { canvases: 1, images: 40 }));
+check('Change layout… is a button in the virtual deck\'s header, beside its Page ▾, opening the card for the page shown', () => {
+  assert.equal(r.headerChangeOffered, true);
+  assert.equal(r.headerChangeBesidePage, true);
+  assert.equal(r.headerChangeOpened, true);
+  assert.equal(r.headerChangePreselected, 'small');
+});
+check('…on a deck not being edited, it focuses that deck and opens its card; a Stream Deck\'s header has none', () => {
+  assert.equal(r.xlHeaderChange, false);
+  assert.equal(r.headerChangeFocused, true);
+  assert.equal(r.headerChangeOpenedOther, true);
+});
 check('a Stream Deck\'s page menu has no Change layout, and its New page no grids', () => {
   assert.equal(r.xlChangeOffered, false);
   assert.equal(r.xlPicker, false);
