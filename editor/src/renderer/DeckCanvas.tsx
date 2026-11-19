@@ -56,6 +56,14 @@ interface Props {
    * dragging, no zoom bar, and it is kept at Fit as the window changes size.
    */
   several: boolean;
+  /**
+   * Edit layout is open: the zoom bar is shown even for one deck, so small
+   * controls can be placed closely, and nothing refits it under the person
+   * (Ryan, 2026-11-18). Leaving goes back to Fit.
+   */
+  zoomable?: boolean;
+  /** Changing this fits again, as the shown decks changing does: opening and leaving Edit layout. */
+  fitKey?: string;
 }
 
 interface Drag {
@@ -97,7 +105,7 @@ const DRAG_START_PX = 4;
  * with no zoom bar, no dragging and no lock. With no zoom bar the person
  * cannot change its zoom, so it is fitted again when the window changes size.
  */
-export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, several }: Props) {
+export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, several, zoomable = false, fitKey = '' }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   // The drag lives in a ref, read by the pointer handlers: a pointerup can
@@ -128,18 +136,18 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, se
   };
   // On opening and whenever the shown decks change — never on a resize,
   // and not as a drag moves the bounds: nothing rescales under the person.
-  const shownKey = decks.map((d) => `${d.serial}:${d.size.columns}x${d.size.rows}`).join(',');
+  const shownKey = `${fitKey}|${decks.map((d) => `${d.serial}:${d.size.columns}x${d.size.rows}`).join(',')}`;
   useLayoutEffect(fit, [shownKey]);
   // One deck: kept at Fit as the window changes size. Never with several — a manual zoom holds there.
   const fitRef = useRef(fit);
   fitRef.current = fit;
   useEffect(() => {
     const el = viewport.current;
-    if (several || !el) return;
+    if (several || zoomable || !el) return;
     const observer = new ResizeObserver(() => fitRef.current());
     observer.observe(el);
     return () => observer.disconnect();
-  }, [several]);
+  }, [several, zoomable]);
 
   if (!bounds) return null;
   const frame = drag?.frame ?? bounds;
@@ -245,8 +253,8 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, se
           </div>
         </div>
       </div>
-      {several && (
-        <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom" data-multideck="">
+      {(several || zoomable) && (
+        <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom" data-multideck={several ? '' : undefined} data-zoom-bar="">
           <button className="canvas-zoom-step" aria-label="Zoom out" onClick={() => setZoom(zoomOut)}>
             −
           </button>
@@ -257,7 +265,7 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, se
             +
           </button>
           <button className="canvas-zoom-text" onClick={fit}>
-            Fit all
+            {several ? 'Fit all' : 'Fit'}
           </button>
           <button className="canvas-zoom-text canvas-zoom-reset" title="Zoom to 100%" onClick={() => setZoom(1)}>
             Reset

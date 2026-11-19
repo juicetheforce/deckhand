@@ -5,7 +5,7 @@ import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
 import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/links.js';
 import { deleteProfile } from '../shared/profile-deletion.js';
-import { defaultPanelOf, pagePanelOf } from '../../../src/panel-presets.js';
+import { defaultPanelOf, isCustomLayout, pagePanelOf } from '../../../src/panel-presets.js';
 import { regridPage } from '../shared/panel-size.js';
 
 export type { ButtonLocation, Edit, EditResult };
@@ -535,6 +535,22 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       // From what the page shows, by the editor's own lookup: a config not yet
       // migrated still has its panel on the layout (Codex, PR #6).
       layout.pages[edit.page] = regridPage(page, pagePanelOf(layout, edit.page, defaultPanelOf(config, edit.serial)), edit.panel).page;
+      return {};
+    }
+    case 'setLayout':
+    case 'restorePage': {
+      if (!config.decks?.[edit.serial]?.virtual) throw new EditError(`"${edit.serial}" is not a virtual deck`);
+      const layout = layoutAt(config, edit.profile, edit.serial);
+      const page = Object.prototype.hasOwnProperty.call(layout.pages, edit.page) ? layout.pages[edit.page] : undefined;
+      if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
+      if (edit.kind === 'setLayout' && !isCustomLayout(edit.panel)) throw new EditError('only a custom layout is edited in Edit layout');
+      // Never saved empty: the editor keeps an empty layout to itself (answer 2, 2026-11-18).
+      if (!Array.isArray(edit.panel.controls) || edit.panel.controls.length === 0) throw new EditError('a layout with no controls is never saved');
+      const ids = new Set(edit.panel.controls.map((c) => c.id));
+      for (const key of Object.keys(edit.buttons)) {
+        if (!ids.has(key)) throw new EditError(`key "${key}" is not a control on that layout`);
+      }
+      layout.pages[edit.page] = { ...page, panel: structuredClone(edit.panel), buttons: structuredClone(edit.buttons) };
       return {};
     }
     default: {

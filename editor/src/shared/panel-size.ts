@@ -1,6 +1,7 @@
 /**
  * One page of a virtual deck given another fixed grid ("Change layout…"):
- * its keys keep their row and column, as paste and Copy to device place
+ * from a fixed grid, its keys keep their row and column; from a custom
+ * layout, which has none, every key is lost, as paste and Copy to device place
  * keys. A key with no place in the new grid is dropped, after a warning
  * naming it. Only that page changes: every page has its own layout. No undo,
  * as on a Stream Deck; the rolling backup every config change gets is the
@@ -10,6 +11,7 @@
  * warning with it, and the main process applies the same result.
  */
 import { geometryOfPanel } from '../../../src/geometry.js';
+import { isCustomLayout } from '../../../src/panel-presets.js';
 import type { ButtonDef, PageDef, PanelDef } from '../../../src/types.js';
 
 export interface DroppedKey {
@@ -29,7 +31,8 @@ function places(panel: PanelDef | undefined): Map<string, string> {
  * given one — the deck's default.
  */
 export function regridPage(page: PageDef, from: PanelDef | undefined, panel: PanelDef): { page: PageDef; dropped: DroppedKey[] } {
-  const was = places(from);
+  // A custom layout has no rows or columns to keep: changed to a fixed grid, every key on the page is lost (decided 2026-11-17).
+  const was = isCustomLayout(from) ? new Map<string, string>() : places(from);
   const order = new Map(geometryOfPanel(from, '').keys.map((k, i) => [k.id, i + 1]));
   const to = new Map([...places(panel)].map(([id, place]) => [place, id]));
   const buttons: Record<string, ButtonDef> = {};

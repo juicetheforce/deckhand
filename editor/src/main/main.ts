@@ -1564,5 +1564,17 @@ function startTrayCheck(): void {
           .then((result: unknown) => trayCheckReport(command, { result }))
           .catch((err: unknown) => trayCheckReport(command, { error: err instanceof Error ? err.message : String(err) }));
     }
+    // The editor's window as a PNG, for looking at what a check drove (check:layout).
+    else if (command === 'capture') {
+      const file = rest.join(' ');
+      if (!window || window.isDestroyed() || file === '') trayCheckReport('captured', { error: 'no window or no path' });
+      else
+        // Only the first capture of a hidden window ever resolves (stayHidden, invalidate() and background
+        // throttling off did not change that, 2026-11-18): a check takes one per run.
+        void window.webContents
+          .capturePage()
+          .then((image) => fs.writeFile(file, image.toPNG()).then(() => trayCheckReport('captured', { path: file, ...image.getSize() })))
+          .catch((err: unknown) => trayCheckReport('captured', { error: String(err) }));
+    }
   });
 }

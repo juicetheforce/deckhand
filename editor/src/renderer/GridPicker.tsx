@@ -18,12 +18,18 @@ export function describeGrid(grid: Grid): string {
 }
 
 /** The picker: Small, Medium, Large with what each gives on this screen, or Grid Size's rows and columns. */
-export function GridPicker({ screen, size, rows, columns, onChange }: {
+export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
   screen: ScreenSize;
   size: PanelSize;
   rows: string;
   columns: string;
   onChange: (next: { size?: PanelSize; rows?: string; columns?: string }) => void;
+  /**
+   * New page and Change layout… only (round 2a): Blank, an empty custom
+   * layout, after the fixed grids. Never in Settings › Decks' Add, which
+   * offers only the fixed grids (Ryan, 2026-11-18).
+   */
+  blank?: { chosen: boolean; onChoose: () => void };
 }) {
   // Two pickers in one window must not share a radio group.
   const group = useId();
@@ -36,7 +42,7 @@ export function GridPicker({ screen, size, rows, columns, onChange }: {
           <input
             type="radio"
             name={group}
-            checked={size === s}
+            checked={size === s && !blank?.chosen}
             // Grid Size starts from the size picked before it, so its fields are never empty.
             onChange={() => onChange(s === 'custom' ? { size: s, rows: String(grid.rows), columns: String(grid.columns) } : { size: s })}
           />
@@ -44,7 +50,14 @@ export function GridPicker({ screen, size, rows, columns, onChange }: {
           <span className="muted small">{s === 'custom' ? 'set the rows and columns' : describeGrid(gridFor(screen, s))}</span>
         </label>
       ))}
-      {size === 'custom' && (
+      {blank && (
+        <label className="vd-size" data-vd-size="blank">
+          <input type="radio" name={group} checked={blank.chosen} onChange={blank.onChoose} />
+          <span className="vd-size-name">Blank</span>
+          <span className="muted small">Custom layout, empty</span>
+        </label>
+      )}
+      {size === 'custom' && !blank?.chosen && (
         <div className="sp-fields">
           <label className="sp-field sp-field-port">
             <span className="sp-field-label">Rows</span>
@@ -59,7 +72,7 @@ export function GridPicker({ screen, size, rows, columns, onChange }: {
           </span>
         </div>
       )}
-      {grid.verySmall && (
+      {grid.verySmall && !blank?.chosen && (
         <p className="muted small vd-warning" data-vd-warning="small">
           These keys are very small, and may be hard to press. You can still use them.
         </p>

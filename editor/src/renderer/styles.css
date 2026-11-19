@@ -4064,3 +4064,307 @@ body.settings-body {
 .dropdown-mark {
   color: var(--accent-glyph);
 }
+
+/*
+ * A virtual deck's page drawn positioned (round 2a, DeckGrid.tsx placeOf):
+ * each key where its panel puts it, at its size and shape, the panel scaled
+ * to fit its frame and centred. A Stream Deck keeps its grid.
+ */
+.grid.grid-positioned {
+  display: block;
+  position: relative;
+  gap: 0;
+  margin: auto;
+  flex-shrink: 0;
+}
+
+.key.key-placed {
+  aspect-ratio: auto;
+}
+
+/* The shape's largest inner rectangle (src/shapes.ts innerRect): where the label, marks and badge go, as on the deck. */
+.key-inner {
+  position: absolute;
+  container-type: size;
+  pointer-events: none;
+}
+
+.key-inner .key-failed {
+  top: 4cqmin;
+  right: 4cqmin;
+  width: 30cqmin;
+  height: 30cqmin;
+}
+
+.key-inner .key-mark {
+  top: 2px;
+  left: 2px;
+}
+
+/*
+ * A shaped key (round, hexagon, rounded corners): its outline is drawn on the
+ * shape, not the box, so selected, empty, held and the drop target follow it.
+ * The deck draws no outline: a button is its fill and icon only (2026-11-18).
+ */
+.key.key-shaped,
+.key.key-shaped:hover,
+.key.key-shaped.key-selected,
+.key.key-shaped.key-latched,
+.key.key-shaped.key-drop-target {
+  border: 0;
+  box-shadow: none;
+}
+
+.key-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.key-outline path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 4px;
+}
+
+.key-shaped.key-empty .key-outline path {
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-dasharray: 6 5;
+}
+
+.key-shaped.key-latched .key-outline path {
+  stroke: var(--accent);
+}
+
+.key-shaped.key-selected .key-outline path,
+.key-shaped.key-drop-target .key-outline path {
+  stroke: var(--accent);
+  stroke-width: 5px;
+}
+
+.key-shaped.key-drop-target .key-outline path {
+  stroke-dasharray: 6 5;
+}
+
+/* Edit layout, on a virtual deck's header: lit while the mode is open (19b). */
+.deck-panel-edit-wrap {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.deck-panel-edit-layout {
+  flex-shrink: 0;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.deck-panel-edit-layout:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.deck-panel-edit-layout[aria-pressed='true'] {
+  color: var(--accent-glyph);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* The preset-to-custom question, under the button (21e). In the window: the deck's frame clips. */
+.edit-layout-confirm {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 280px;
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+/* ---- Edit layout (round 2a; boards 21–23) ---- */
+
+/* The mode bar, in place of the crumbs and the page tabs. */
+.mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mode-bar-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-glyph);
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+}
+
+.mode-bar-where {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-bar button {
+  white-space: nowrap;
+}
+
+/* The page being edited: its controls where they sit, the selected one's frame and handles above everything. */
+.layout-canvas {
+  position: relative;
+  margin: auto;
+  flex-shrink: 0;
+  /* The panel's own area: the page is a fresh canvas behind the controls (its background comes in round 3). */
+  background: rgba(0, 0, 0, 0.35);
+  outline: 1px dashed rgba(255, 255, 255, 0.18);
+  touch-action: none;
+}
+
+.layout-canvas .key {
+  cursor: move;
+}
+
+.layout-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+}
+
+.layout-selection {
+  position: absolute;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.layout-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 2px;
+  border: 1.5px solid var(--accent);
+  background: #fff;
+  pointer-events: auto;
+}
+
+.layout-handle-nw { left: 0; top: 0; cursor: nwse-resize; }
+.layout-handle-n { left: 50%; top: 0; cursor: ns-resize; }
+.layout-handle-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.layout-handle-e { left: 100%; top: 50%; cursor: ew-resize; }
+.layout-handle-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.layout-handle-s { left: 50%; top: 100%; cursor: ns-resize; }
+.layout-handle-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.layout-handle-w { left: 0; top: 50%; cursor: ew-resize; }
+
+/* Something is on top of this control (22e): a quiet marker at its corner, above everything so it is seen. */
+.layout-overlap-marker {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -12px 0 0 -12px;
+  border-radius: 2px;
+  border: 1.5px solid var(--amber);
+  background: rgba(232, 180, 90, 0.25);
+  pointer-events: auto;
+}
+
+/* Where a control is, or how big, while it is dragged (22a, 22b). */
+.layout-readout {
+  position: absolute;
+  margin: -22px 0 0 6px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(10, 10, 16, 0.85);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.layout-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* The Controls palette, in the library's place. */
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+.palette-entry {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.palette-entry:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.palette-glyph {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* The layout inspector's fields. */
+.inspector-sub {
+  margin: -6px 0 10px;
+}
+
+.layout-fields {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.layout-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 12px;
+}
+
+.layout-field input {
+  width: 76px;
+}
+
+.layout-corners {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
