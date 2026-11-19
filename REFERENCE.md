@@ -232,7 +232,37 @@ layout…**, a button in the deck's top bar beside its Page menu, or in a page
 tab's right-click menu, gives that page another grid:
 keys keep their row and column, and any with no place in the new grid are
 named before anything changes, and removed only when you confirm. Only that
-page changes. **Tap again** pairs the
+page changes. Changing a custom layout to a grid, or any page to **Blank**,
+loses every key on the page, and says so first.
+
+**Custom layouts.** **Edit layout**, in a virtual deck's top bar, opens the
+page shown for laying out by hand; on a grid it first asks to make that page a
+custom layout, keeping every key where it is. While it is open the button
+stays lit (pressing it again is Done), a bar names the deck, profile and page
+in place of the page tabs, only that deck is shown, and the action library
+becomes **Controls**: drag a **Button** onto the panel, or click it to add one
+in the middle, about 30 mm across on any screen. Drag a control to move it, or
+one of its eight handles to resize it, or type its X, Y, width and height, in
+the screen's pixels; nothing leaves the panel. Each control is a
+**rectangle**, with corners from square to a full pill, **round** or a
+**hexagon**, point up; round and hexagon stretch with their box, and **Lock
+proportions** keeps a box's shape. A control under about 15 mm says it is very
+small. Controls may overlap: the later is on top, a touch goes to the control
+on top on its real shape, a control with something on top of it is marked,
+and **Bring to front** and **Send to back** change the order. **Duplicate**
+(Ctrl+D) adds a copy with its key; **Delete** names the key that goes with
+it, and deletes an empty control without asking; the arrow keys move the
+selected control a pixel. Every change is saved as it is made, so the
+touchscreen shows the layout as it is built. **Done** leaves; so do closing
+the window, changing profile and a deck key that changes page or profile.
+**Discard changes** puts the layout back as it was when Edit layout was
+opened, deleted controls with their keys. Outside Edit layout a layout cannot
+be changed, only filled with actions, icons and labels. **Blank**, in New page
+and Change layout…, starts an empty custom layout; a layout with no controls
+is never saved, so a new page left empty keeps the deck's default grid and an
+existing page left empty stays as it was. A virtual deck's top bar shows the
+grid's columns and rows on a grid page, and the screen's resolution on a custom
+one. **Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
 as a deck and takes away its touchscreen's access (your password again), and
@@ -392,19 +422,29 @@ without a choice. A panel:
 ```jsonc
 "panel": {
   "size": { "width": 1920, "height": 720 },  // the canvas, in the screen's pixels
-  "preset": "medium",                        // what made it; information only
-  "controls": [                              // each key, in pixels of the canvas
-    { "id": "k1", "x": 42, "y": 42, "w": 211, "h": 211, "shape": "square" }
+  "preset": "medium",                        // small, medium, large, custom (Grid Size), or free (a custom layout)
+  "controls": [                              // each key, in pixels of the canvas; the later is on top
+    { "id": "k1", "x": 42, "y": 42, "w": 211, "h": 211 },
+    { "id": "c1", "x": 300, "y": 42, "w": 300, "h": 120, "shape": "rectangle", "radius": 60 },
+    { "id": "c2", "x": 700, "y": 42, "w": 211, "h": 211, "shape": "round", "keepRatio": true }
   ]
 }
 ```
 
 A control's `id` is up to 32 letters, digits, `-` and `_`, unique in the
 panel and never derived from its position, so moving a key keeps its
-button. Every control must lie on the canvas, and `square` is the only shape
-for now. On a screen of another size the canvas is scaled to fit, centred.
-A page with no `panel` uses the deck's default; with none at all, a Medium
-grid for the screen, so a virtual deck never shows no keys. **Configs from
+button. Every control must lie on the canvas. `shape` is `rectangle` (the
+default; `square`, which older configs carry, is the same), `round` or
+`hexagon`; `radius` rounds a rectangle's corners, up to half its shorter side;
+`keepRatio` is Edit layout's Lock proportions. A key's background fills its
+whole shape and its icon is the square at the shorter side, centred; its label
+and failed mark sit in the largest rectangle inside the shape; nothing is drawn
+outside it. Where controls overlap, the later in `controls` is on top, on the
+screen and for touch. **Only a page whose `preset` is `free` is edited in Edit
+layout**; a grid is made custom first. On a screen of another size the canvas
+is scaled to fit, centred. A page with no `panel`, or a `panel` with no
+controls, uses the deck's default; with none at all, a Medium grid for the
+screen, so a virtual deck never shows no keys. **Configs from
 before every page had its own** — a `panel` on a profile's layout, shared by
 its pages — are read as they were: each page shows the layout's panel, else
 the deck's default (else, before `v0.8.1`'s defaults, the first profile's).
@@ -1161,7 +1201,7 @@ The checks:
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
