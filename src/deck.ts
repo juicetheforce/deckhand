@@ -9,7 +9,7 @@ import type { DeckDevice, TouchState } from './devices.js';
 import type { DeckGeometry } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
-import { fillScreen, renderButton } from './render.js';
+import { fillScreen, renderButton, renderFace } from './render.js';
 import { hasStates } from './state-icons.js';
 import type {
   ActionContext,
@@ -86,7 +86,8 @@ export class DeckSession implements DeckHandle {
    * A key without one (a Neo's touch keys, every Pedal key) is pressed but
    * never written to — the library refuses an image for it.
    */
-  private screens = new Map<string, { width: number; height: number }>();
+  /** Each key's screen; on a virtual deck, its control's shape too (src/shapes.ts), which drawKey cuts the face to. */
+  private screens = new Map<string, { width: number; height: number; shape?: string; radius?: number }>();
   private lastSent = new Map<string, Buffer>();
   private lastRenderAt = new Map<string, number>();
   /** Keys told their face may have changed (invalidateByType), drawn on the next tick whatever their kind. */
@@ -184,7 +185,9 @@ export class DeckSession implements DeckHandle {
     this.iconSize = geometry.iconSize;
     this.order = new Map(geometry.keys.map((key, i) => [key.id, i]));
     this.screens = new Map(
-      geometry.keys.flatMap((key) => (key.width && key.height ? [[key.id, { width: key.width, height: key.height }] as const] : [])),
+      geometry.keys.flatMap((key) =>
+        key.width && key.height ? [[key.id, geometry.units === 'pixels' ? { width: key.width, height: key.height, shape: key.shape, radius: key.radius } : { width: key.width, height: key.height }] as const] : [],
+      ),
     );
     for (const id of [...this.previews.keys()]) if (!this.order.has(id)) this.previews.delete(id);
     this.lastSent.clear();
@@ -594,8 +597,14 @@ export class DeckSession implements DeckHandle {
       this.onStateChange();
     }
 
-    const square = await renderButton(display, side, strictIcon);
-    const buffer = await fillScreen(square, side, screen.width, screen.height, display.background);
+    // A virtual deck's control is drawn at its own box and cut to its shape
+    // (render.ts renderFace): fill over the whole shape, the label in its
+    // largest inner rectangle, transparent outside it, with its outline
+    // inside its edge (render.ts OUTLINE_PX). A Stream Deck's key is
+    // drawn exactly as before: square, filled out to a screen that is not.
+    const buffer = this.geometry.units === 'pixels'
+      ? await renderFace(display, { ...screen, outline: true }, strictIcon)
+      : await fillScreen(await renderButton(display, side, strictIcon), side, screen.width, screen.height, display.background);
 
     this.lastRenderAt.set(index, Date.now());
 

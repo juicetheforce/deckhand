@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
@@ -11,6 +11,10 @@ import { pagesWithNoWayOff } from '../shared/links.js';
 import { EditIcon } from './icons.js';
 
 interface Props {
+  /** Edit layout is open: its mode bar stands in for the crumbs and the page tabs (21a, Ryan 2026-11-18). */
+  modeBar?: ReactNode;
+  /** A virtual deck's new page started from Blank: App selects it and opens Edit layout on it, empty. */
+  onBlankPage?: (page: string) => void;
   config: Config;
   daemon: DaemonView;
   selection: Selection;
@@ -50,7 +54,7 @@ export type AddProfileResult = { ok: true; profile: string } | { ok: false; erro
  * elsewhere. The selected profile is
  * the one showing, so the dropdown needs no marker for it.
  */
-export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage, onChangeLayout, shown, onShowOnly, onSetShown }: Props) {
+export function Toolbar({ modeBar, onBlankPage, config, daemon, selection, editingBlocked, onSelect, onAddPage, onAddProfile, onProfileAdded, onRenameDeck, onRenamePage, onRenameProfile, onDeleteProfile, onDeletePage, onChangeLayout, shown, onShowOnly, onSetShown }: Props) {
   const decks = deckChoices(config, selection.profile, daemon);
   const selectedDeck = decks.find((d) => d.id === selection.serial);
   const pill = connectionPill(config, daemon, selection);
@@ -62,6 +66,31 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
   const virtualKey = config.decks?.[selection.serial]?.virtual ? selection.serial : null;
   // The same treatment for a profile that leaves a connected deck showing
   // whatever it had.
+
+  // The right-hand end: the same in both, so updates, Settings and the connection stay where they were.
+  const end = (
+    <>
+      <UpdatePill />
+      {/* App settings: its own window, a child of this one. */}
+      <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
+        <SettingsGlyph size={18} />
+      </button>
+      {/* The connection state, always shown: nothing connected at all is
+          the case that most needs it, and then no deck is selected. */}
+      <span className={`pill pill-${pill.state}`} role="status" data-connection={pill.state}>
+        <span className="pill-dot" aria-hidden="true" />
+        {pill.label}
+      </span>
+    </>
+  );
+  if (modeBar) {
+    return (
+      <header className="toolbar glass toolbar-mode">
+        {modeBar}
+        {end}
+      </header>
+    );
+  }
 
   return (
     <header className="toolbar glass">
@@ -157,23 +186,13 @@ export function Toolbar({ config, daemon, selection, editingBlocked, onSelect, o
           disabled={editingBlocked}
           onAddPage={onAddPage}
           virtualDeck={virtualKey ? { key: virtualKey, defaultPanel: defaultPanelOf(config, virtualKey) } : null}
-          onPageAdded={(page) => onSelect({ page })}
+          onPageAdded={(page, blank) => (blank && onBlankPage ? onBlankPage(page) : onSelect({ page }))}
           onAddProfile={onAddProfile}
           onProfileAdded={onProfileAdded}
         />
       </nav>
       <span className="toolbar-spacer" />
-      <UpdatePill />
-      {/* App settings: its own window, a child of this one. */}
-      <button className="toolbar-settings" title="Settings" aria-label="Settings" onClick={() => void window.deckhand.openSettings()}>
-        <SettingsGlyph size={18} />
-      </button>
-      {/* The connection state, always shown: nothing connected at all is
-          the case that most needs it, and then no deck is selected. */}
-      <span className={`pill pill-${pill.state}`} role="status" data-connection={pill.state}>
-        <span className="pill-dot" aria-hidden="true" />
-        {pill.label}
-      </span>
+      {end}
     </header>
   );
 }
@@ -283,7 +302,8 @@ function AddPage({
   disabled: boolean;
   virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
   onAdd: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
-  onAdded: (page: string) => void;
+  /** `blank`: Blank was chosen, so Edit layout opens on the new page, empty. */
+  onAdded: (page: string, blank: boolean) => void;
 }) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -293,12 +313,18 @@ function AddPage({
   const defaultPanel = virtualDeck?.defaultPanel;
   const screen = useVirtualScreen(deckKey);
   const [grid, setGrid] = useState<GridState | null>(null);
+  // Blank: an empty custom layout, straight into Edit layout (20c).
+  const [blank, setBlank] = useState(false);
   useEffect(() => {
     if (deckKey === null) return;
     let alive = true;
     const fallback = gridStateOf(defaultPanel);
     void window.deckhand.lastGrid(deckKey).then(
-      (last) => alive && setGrid((g) => g ?? (last ? gridStateOfChoice(last) : fallback)),
+      (last) => {
+        if (!alive) return;
+        if (last?.size === 'blank') setBlank(true);
+        setGrid((g) => g ?? (last ? gridStateOfChoice(last) : fallback));
+      },
       () => alive && setGrid((g) => g ?? fallback),
     );
     return () => {
@@ -308,14 +334,17 @@ function AddPage({
 
   const submit = async () => {
     // Not yet known (the daemon has not said the screen's size): the deck's default, as for any page made without a choice.
-    const panel = deckKey !== null && screen && grid ? panelOf(screen, grid) : undefined;
+    // Blank: the page is made with the deck's default grid — what it keeps if it is left empty, since a layout
+    // with no controls is never saved — and Edit layout shows it empty until a control is added (2026-11-18).
+    const panel = deckKey !== null && screen && grid && !blank ? panelOf(screen, grid) : undefined;
     const result = await onAdd(name, panel);
     if (!result.ok) {
       setError(result.error); // e.g. a name this deck already has; the field stays open
       return;
     }
-    if (deckKey !== null && panel && grid) void window.deckhand.setLastGrid(deckKey, choiceOf(grid));
-    onAdded(result.page);
+    if (deckKey !== null && blank) void window.deckhand.setLastGrid(deckKey, { size: 'blank' });
+    else if (deckKey !== null && panel && grid) void window.deckhand.setLastGrid(deckKey, choiceOf(grid));
+    onAdded(result.page, deckKey !== null && blank);
   };
 
   const field = (
@@ -347,14 +376,24 @@ function AddPage({
     <span className="add-page add-page-virtual" data-add-page="virtual">
       {field}
       {screen && grid ? (
-        <GridPicker screen={screen} size={grid.size} rows={grid.rows} columns={grid.columns} onChange={(next) => setGrid((g) => ({ ...(g ?? gridStateOf(undefined)), ...next }))} />
+        <GridPicker
+          screen={screen}
+          size={grid.size}
+          rows={grid.rows}
+          columns={grid.columns}
+          onChange={(next) => {
+            setBlank(false);
+            setGrid((g) => ({ ...(g ?? gridStateOf(undefined)), ...next }));
+          }}
+          blank={{ chosen: blank, onChoose: () => setBlank(true) }}
+        />
       ) : (
         <span className="muted small">Asking the daemon for the screen's size…</span>
       )}
       {error && <span className="field-error">{error}</span>}
       <span className="button-row">
         <button className="primary" disabled={disabled || name.trim() === ''} onClick={() => void submit()} data-add-page-submit>
-          Add page
+          {blank ? 'Start blank' : 'Add page'}
         </button>
       </span>
     </span>
@@ -547,7 +586,7 @@ function AddMenu({
   onAddPage: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
   /** The deck being edited, when it is a virtual deck: its new page gets a grid picked here. */
   virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
-  onPageAdded: (page: string) => void;
+  onPageAdded: (page: string, blank: boolean) => void;
   onAddProfile: (name: string, serials: string[]) => Promise<AddProfileResult>;
   onProfileAdded: (profile: string) => void;
 }) {
@@ -613,9 +652,9 @@ function AddMenu({
             disabled={disabled}
             virtualDeck={virtualDeck}
             onAdd={onAddPage}
-            onAdded={(page) => {
+            onAdded={(page, blank) => {
               close();
-              onPageAdded(page);
+              onPageAdded(page, blank);
             }}
           />
         </div>

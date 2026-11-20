@@ -12,6 +12,7 @@ import {
   keyName,
   pasteAnchor,
   placeClipboard,
+  placeOnControls,
   rangeSelection,
   readingOrder,
   swapKeys,
@@ -94,6 +95,23 @@ await check('paste lands with its top-left on the anchor and replaces what is th
     ],
   );
   assert.deepEqual(placed.skipped, []);
+});
+
+await check('on a custom layout, keys land only on the controls given, one each, in the order copied', () => {
+  const layout = layoutWith({ main: { buttons: { c9: hotkey('f1', 'Old') } } });
+  const clip = copyKeys({ buttons: { '0': hotkey('ctrl+1'), '1': hotkey('ctrl+2'), '2': hotkey('ctrl+3') } }, XL, ids(0, 1, 2))!;
+  const two = placeOnControls(clip, ['c9', 'c4'], layout);
+  assert.deepEqual(two.writes.map((w) => [w.key, w.button?.action?.keys]), [['c9', 'ctrl+1'], ['c4', 'ctrl+2']], 'never by row and column');
+  assert.deepEqual(two.skipped.map((k) => k.button.action?.keys), ['ctrl+3'], 'one left over: no control for it');
+  const none = placeOnControls(clip, [], layout);
+  assert.deepEqual([none.writes.length, none.skipped.length], [0, 3], 'no control: nothing lands');
+});
+
+await check('on a custom layout, a Go to page with no target there is dropped as on a grid', () => {
+  const layout = layoutWith({ main: { buttons: {} } });
+  const clip = copyKeys({ buttons: { '0': { action: { type: 'page', to: 'elsewhere' }, label: 'Go' } } }, XL, ids(0))!;
+  const placed = placeOnControls(clip, ['c1'], layout);
+  assert.deepEqual([placed.writes[0].key, placed.lostNavigation.length], ['c1', 1]);
 });
 
 await check('the paste anchor is the first selected key in reading order, else where the keys came from', () => {

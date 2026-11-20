@@ -509,14 +509,14 @@ function joinNames(names: string[]): string {
  * skipped and what lost its navigation, because neither is
  * visible on the grid being looked at.
  */
-export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string): string {
+export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string, skippedWhy = 'no place on that deck'): string {
   const written = placement.writes.length;
   const parts: string[] = [];
   if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
   else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
   if (written > 0 && placement.skipped.length > 0) {
     const names = joinNames(placement.skipped.map((k) => keyNamed(k.button, k.sourceNumber)));
-    parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} no place on that deck.`);
+    parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} ${skippedWhy}.`);
   }
   if (placement.lostNavigation.length > 0) {
     const names = joinNames(placement.lostNavigation.map((l) => keyNamed(l.clip.button, l.clip.sourceNumber)));

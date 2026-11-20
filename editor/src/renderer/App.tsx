@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
-import type { Config, PanelDef } from '../../../src/types.js';
-import { pagePanelIn } from '../../../src/panel-presets.js';
+import type { ButtonDef, Config, PageDef, PanelDef } from '../../../src/types.js';
+import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
+import { geometryOfPanel } from '../../../src/geometry.js';
+import { addButton, blankPanel, buttonsFor, controlNames, deleteControl, duplicateControl, layoutChanges, madeCustom, moveControl } from '../shared/layout-edit.js';
+import { ControlsPalette, DeleteControl, DiscardChanges, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
+import { useVirtualScreen } from './GridPicker.js';
+import { GAP_PX, PAD_X_PX, PITCH_PX, type DeckSize } from './canvas.js';
 import { ChangeLayout } from './ChangeLayout.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
@@ -10,6 +15,7 @@ import { DeckGrid } from './DeckGrid.js';
 import { DeckCanvas, type CanvasDeck } from './DeckCanvas.js';
 import { DeckPanel } from './DeckPanel.js';
 import { roundPosition } from './canvas.js';
+import { keyKind } from './model.js';
 import { withPosition, type DeckPositions } from '../shared/deck-positions.js';
 import { Inspector, type Pick } from './Inspector.js';
 import { Library } from './Library.js';
@@ -65,6 +71,26 @@ import { keyCapture } from './key-capture.js';
 import { useBulk } from './useBulk.js';
 import { keyNumber } from '../shared/bulk.js';
 import { useEditor } from './useEditor.js';
+import type { Edit } from '../shared/edits.js';
+
+/**
+ * Edit layout, while it is open (round 2a): the deck, profile and page being
+ * edited; the page as the mode found it (`entry`: what Discard changes and an
+ * emptied layout put back, deleted controls with their keys); and whether the
+ * layout is shown empty — Blank before its first control, or after its last
+ * was deleted — which is never saved (Ryan, 2026-11-18). `seenOnDeck`: the
+ * deck has shown this page since the mode opened, so it moving off means a
+ * deck key changed page or profile, which acts as Done.
+ */
+interface LayoutMode {
+  serial: string;
+  profile: string;
+  page: string;
+  entry: PageDef & { panel: PanelDef };
+  blank: boolean;
+  startedBlank: boolean;
+  seenOnDeck: boolean;
+}
 
 export function App() {
   const snapshot = useEditor();
@@ -157,6 +183,19 @@ function Editor({
   /** The action last picked from the library, for the inspector to configure. */
   const [pick, setPick] = useState<Pick | null>(null);
 
+  /** Edit layout, while open (round 2a): see LayoutMode. */
+  const [mode, setMode] = useState<LayoutMode | null>(null);
+  /** The mode's warnings: deleting a control with a key, Discard changes. */
+  const [modeCard, setModeCard] = useState<{ kind: 'delete'; id: string } | { kind: 'discard' } | null>(null);
+  /** The mode asked for on a page not in this config yet (just made, or just made custom): opened once it arrives. */
+  const [pendingEnter, setPendingEnter] = useState<{ serial: string; profile: string; page: string; blank: boolean; custom: boolean } | null>(null);
+  /** A layout just saved, drawn until the saved config comes back, so a released drag does not jump back for a moment. */
+  const [optimistic, setOptimistic] = useState<{ panel: PanelDef; blank: boolean } | null>(null);
+  useEffect(() => setOptimistic(null), [config]);
+  /** Each virtual deck's header width, as it reports it: its frame is never narrower (Ryan, 2026-11-18). */
+  const [headerNeeds, setHeaderNeeds] = useState<Record<string, number>>({});
+  const noteHeaderNeed = (serial: string, px: number) => setHeaderNeeds((h) => (h[serial] === px ? h : { ...h, [serial]: px }));
+
   // Follow the decks: any change to the config or to what the
   // decks show moves the breadcrumb to match — unconditionally, mid-edit too.
   // The first time the daemon reports its decks, the decks remembered as
@@ -238,14 +277,210 @@ function Editor({
   const geometry = pageGeometry(config, daemon, selection.serial, selection.profile, selection.page);
   /** Why there is no grid, or null when there is one. */
   const nothing = emptyState(config, daemon, selection);
-  /** The decks drawn, each in its frame with its header; the controls for arranging them only with two or more. */
-  const shown = shownDecks(config, daemon, selection);
+
+  // ---- Edit layout (round 2a) ----
+  const modePage = mode ? layoutFor(config, mode.profile, mode.serial)?.pages[mode.page] : undefined;
+  /** A virtual deck's screen, as the editor knows it: its default panel's canvas (main.ts virtualScreenSize). */
+  const screenOf = (serial: string) => defaultPanelOf(config, serial)?.size;
+  // Shown empty while blank. A page not custom (yet) is one whose first control's save is still on its way
+  // back: until it arrives, whatever was just saved is drawn (optimistic, below), else the empty layout.
+  const savedPanel: PanelDef | null =
+    !mode || !modePage
+      ? null
+      : !mode.blank && isCustomLayout(modePage.panel)
+        ? (modePage.panel ?? null)
+        : blankPanel(screenOf(mode.serial) ?? mode.entry.panel.size);
+  /** The layout as the mode draws it: what was just saved, until the config catches up. */
+  const modePanel = optimistic && mode ? optimistic.panel : savedPanel;
+  const modeBlank = optimistic && mode ? optimistic.blank : (mode?.blank ?? false);
+  const modeScreen = useVirtualScreen(mode?.serial ?? null);
+  /** The keys the page had when the mode opened: a new control's id is never one of them, so Discard never meets a reused id. */
+  const entryIds = mode ? [...mode.entry.panel.controls.map((c) => c.id), ...Object.keys(mode.entry.buttons)] : [];
+  const modeChanges = mode && modePanel ? layoutChanges(mode.startedBlank ? blankPanel(modePanel.size) : mode.entry.panel, modePanel) : null;
+  const modeChanged = modeChanges !== null && (modeChanges.added + modeChanges.moved + modeChanges.deleted > 0 || modeChanges.reordered);
+
+  const leaveMode = () => {
+    setMode(null);
+    setModeCard(null);
+    setOptimistic(null);
+    setSelection((s) => ({ ...s, key: null, keys: [] }));
+  };
+
+  /** Open Edit layout on a page of a virtual deck: that deck focused, that page shown, on the deck too. */
+  const enterMode = (serial: string, pageId: string, blank: boolean, pageDef: PageDef) => {
+    const profile = selection.profile;
+    const panel = pageDef.panel ?? pagePanelIn(config, profile, serial, pageId);
+    if (!panel) return;
+    setPendingDelete(null);
+    setChangingLayout(null);
+    setKeyMenu(null);
+    setSelection((s) => ({ ...(s.serial === serial ? s : focusDeck(s, serial)), page: pageId, key: null, keys: [] }));
+    const deck = daemon.status?.decks.find((d) => d.serial === serial);
+    if (canSwitchDeck(daemon, serial) && deck?.page !== pageId) {
+      void sendSwitch(() => window.deckhand.showPage(serial, pageId), deckShows(serial, (d) => d.page === pageId));
+    }
+    setMode({ serial, profile, page: pageId, entry: { ...structuredClone(pageDef), panel: structuredClone(panel) }, blank, startedBlank: blank, seenOnDeck: false });
+  };
+
+  useEffect(() => {
+    if (!pendingEnter) return;
+    const p = layoutFor(config, pendingEnter.profile, pendingEnter.serial)?.pages[pendingEnter.page];
+    if (!p || (pendingEnter.custom && !isCustomLayout(p.panel))) return;
+    setPendingEnter(null);
+    if (pendingEnter.profile === selection.profile) enterMode(pendingEnter.serial, pendingEnter.page, pendingEnter.blank, p);
+  }, [config, pendingEnter]);
+
+  // Every way of leaving acts as Done (2026-11-17, 2026-11-18): another
+  // profile, a deck key that changes the page or the profile, the page or the
+  // deck gone. Nothing needs saving: every change is saved as it is made, and
+  // an empty layout is never saved — the page is already as it will stay.
+  useEffect(() => {
+    if (!mode) return;
+    if (selection.profile !== mode.profile || !modePage || geometryFor(daemon, mode.serial) === null) {
+      leaveMode();
+      return;
+    }
+    const deck = daemon.status?.decks.find((d) => d.serial === mode.serial);
+    const onPage = deck?.profile === mode.profile && deck?.page === mode.page;
+    if (onPage && !mode.seenOnDeck) setMode({ ...mode, seenOnDeck: true });
+    else if (deck && !onPage && mode.seenOnDeck) leaveMode();
+  });
+
+  /** Save a layout change, as it is made. A layout with no controls is never saved: the page goes back as the mode found it, and is shown empty. */
+  const saveLayout = (panel: PanelDef, extra: Record<string, ButtonDef> = {}) => {
+    if (!mode || !modePage) return;
+    const at = { profile: mode.profile, serial: mode.serial, page: mode.page };
+    let edit: Edit;
+    if (panel.controls.length === 0) {
+      setMode({ ...mode, blank: true });
+      edit = { kind: 'restorePage', ...at, panel: mode.entry.panel, buttons: mode.entry.buttons };
+    } else {
+      // From Blank, or after every control went: the page's old keys go with its old layout.
+      const buttons = buttonsFor(modeBlank ? { buttons: {} } : modePage, panel, extra);
+      if (mode.blank) setMode({ ...mode, blank: false });
+      edit = { kind: 'setLayout', ...at, panel, buttons };
+    }
+    setOptimistic({ panel: panel.controls.length === 0 ? blankPanel(panel.size) : panel, blank: panel.controls.length === 0 });
+    void window.deckhand.apply(edit).then((result) => {
+      if (result.ok) setSwitchError(null);
+      else {
+        setOptimistic(null);
+        setSwitchError(`Could not save the layout: ${result.error}`);
+      }
+    });
+  };
+
+  const selectedControl = mode && modePanel && selection.key !== null && modePanel.controls.some((c) => c.id === selection.key) ? selection.key : null;
+  const addControlAt = (clientX: number, clientY: number) => {
+    if (!mode || !modePanel) return;
+    const el = document.querySelector(`[data-layout-box="${CSS.escape(mode.serial)}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return;
+    const at = { x: ((clientX - r.left) / r.width) * modePanel.size.width, y: ((clientY - r.top) / r.height) * modePanel.size.height };
+    const added = addButton(modePanel, at, modeScreen, entryIds);
+    saveLayout(added.panel);
+    selectKeys([added.id]);
+  };
+  const addControlInMiddle = () => {
+    if (!mode || !modePanel) return;
+    const added = addButton(modePanel, { x: modePanel.size.width / 2, y: modePanel.size.height / 2 }, modeScreen, entryIds);
+    saveLayout(added.panel);
+    selectKeys([added.id]);
+  };
+  const duplicateSelected = () => {
+    if (!mode || !modePanel || !modePage || selectedControl === null) return;
+    const copy = duplicateControl(modePanel, modeBlank ? { buttons: {} } : modePage, selectedControl, entryIds);
+    if (!copy) return;
+    saveLayout(copy.panel, copy.button ? { [copy.id]: copy.button } : {});
+    selectKeys([copy.id]);
+  };
+  /** Delete warns and names the key lost; an empty control goes at once (23a). */
+  const deleteSelected = (id: string | null, confirmed: boolean) => {
+    if (!mode || !modePanel || !modePage || id === null) return;
+    if (!confirmed && !modeBlank && keyKind(modePage.buttons[id]) !== 'empty') {
+      setModeCard({ kind: 'delete', id });
+      return;
+    }
+    setModeCard(null);
+    saveLayout(deleteControl(modePanel, id));
+    selectKeys([]);
+  };
+  const nudge = (dx: number, dy: number) => {
+    const c = modePanel?.controls.find((k) => k.id === selectedControl);
+    if (!c || !modePanel) return;
+    const moved = moveControl(modePanel, c.id, c.x + dx, c.y + dy);
+    if (moved.controls.some((k, i) => k.x !== modePanel.controls[i].x || k.y !== modePanel.controls[i].y)) saveLayout(moved);
+  };
+  /** Discard changes: the layout put back as the mode found it — deleted controls with their keys — then the mode closes. */
+  const discardChanges = () => {
+    if (!mode) return;
+    const at = { profile: mode.profile, serial: mode.serial, page: mode.page };
+    void window.deckhand.apply({ kind: 'restorePage', ...at, panel: mode.entry.panel, buttons: mode.entry.buttons }).then((result) => {
+      if (!result.ok) setSwitchError(`Could not discard the changes: ${result.error}`);
+    });
+    leaveMode();
+  };
+  useModeShortcuts({
+    enabled: mode !== null && modeCard === null,
+    selected: selectedControl,
+    onDelete: () => deleteSelected(selectedControl, false),
+    onDuplicate: duplicateSelected,
+    onNudge: nudge,
+    onSelectNone: () => selectKeys([]),
+  });
+  // The window's title names the mode while it is open (21a).
+  useEffect(() => {
+    const before = document.title;
+    if (mode) document.title = `Edit layout — ${deckLabel(config, daemon, mode.serial)}`;
+    return () => {
+      document.title = before;
+    };
+  }, [mode?.serial]);
+
+  /** The decks drawn, each in its frame with its header; the controls for arranging them only with two or more. In Edit layout, only the deck being edited (21a). */
+  const shown = mode ? [mode.serial] : shownDecks(config, daemon, selection);
   const several = shown.length > 1;
+
+  /**
+   * A deck's frame on the canvas, in key units. A virtual deck's custom page
+   * has no rows or columns: it is drawn at the height its deck's default grid
+   * would take, so the frame does not jump from page to page (Ryan,
+   * 2026-11-18), and as wide as its screen's proportions make that. A virtual
+   * deck's frame is never narrower than its header needs.
+   */
+  const frameSize = (serial: string, g: { columns: number; rows: number }, pageId: string): DeckSize => {
+    if (!config.decks?.[serial]?.virtual) return { columns: g.columns, rows: g.rows };
+    const panel = mode && serial === mode.serial && modePanel ? modePanel : pagePanelIn(config, selection.profile, serial, pageId);
+    let size: DeckSize = { columns: g.columns, rows: g.rows };
+    if (panel && isCustomLayout(panel)) {
+      const rows = Math.max(1, geometryOfPanel(defaultPanelOf(config, serial), '').rows || g.rows);
+      const height = rows * PITCH_PX - GAP_PX;
+      size = { rows, columns: Math.max(1, Math.round(((height * panel.size.width) / panel.size.height + GAP_PX) / PITCH_PX)) };
+    }
+    const need = headerNeeds[serial];
+    if (need) size = { ...size, columns: Math.max(size.columns, Math.ceil((need - 2 * PAD_X_PX + GAP_PX) / PITCH_PX)) };
+    return size;
+  };
+  /** The room a deck's keys have in its frame, in pixels at 100%. */
+  const roomOf = (size: DeckSize) => ({ width: size.columns * PITCH_PX - GAP_PX, height: size.rows * PITCH_PX - GAP_PX });
   /** The shown decks the canvas can draw: a deck the daemon has not described yet is not drawn for that moment — its size is unknown. */
   const canvasDecks = shown.flatMap((serial): CanvasDeck[] => {
-    const g = pageGeometry(config, daemon, serial, selection.profile, pageOf(selection, serial) ?? '');
-    return g ? [{ serial, name: deckLabel(config, daemon, serial), size: { columns: g.columns, rows: g.rows } }] : [];
+    const pageId = pageOf(selection, serial) ?? '';
+    const g = pageGeometry(config, daemon, serial, selection.profile, pageId);
+    return g ? [{ serial, name: deckLabel(config, daemon, serial), size: frameSize(serial, g, pageId) }] : [];
   });
+  /** The header's size: columns × rows, or a virtual deck's screen resolution on a custom page (Ryan, 2026-11-18). */
+  const sizeText = (serial: string, pageId: string): string | null => {
+    const g = pageGeometry(config, daemon, serial, selection.profile, pageId);
+    if (!g) return null;
+    const panel = mode && serial === mode.serial && modePanel ? modePanel : pagePanelIn(config, selection.profile, serial, pageId);
+    if (config.decks?.[serial]?.virtual && panel && isCustomLayout(panel)) {
+      const screen = screenOf(serial) ?? panel.size;
+      return `${screen.width} × ${screen.height}`;
+    }
+    return `${g.columns} × ${g.rows}`;
+  };
   /** A key on another shown deck: that deck takes the focus, with this key alone selected. */
   const focusKey = (serial: string, key: string) =>
     setSelection((s) => ({ ...focusDeck(s, serial), key, keys: [key] }));
@@ -277,7 +512,8 @@ function Editor({
     });
   });
   useBulkShortcuts({
-    enabled: page !== undefined && geometry !== null && !editingBlocked,
+    // In Edit layout the keys act on controls (useModeShortcuts).
+    enabled: page !== undefined && geometry !== null && !editingBlocked && mode === null,
     hasSelection: selection.keys.length > 0,
     onCopy: bulk.copy,
     onPaste: () => void bulk.paste(),
@@ -461,7 +697,7 @@ function Editor({
    * on any other shown deck focuses that deck first, and a key drag there
    * swaps on that deck.
    */
-  const grid = (serial: string) => {
+  const grid = (serial: string, room?: { width: number; height: number }) => {
     const focused = serial === selection.serial;
     const pageId = pageOf(selection, serial) ?? '';
     const gridPage = layoutFor(config, selection.profile, serial)?.pages[pageId];
@@ -505,6 +741,7 @@ function Editor({
               }
         }
         onKeyDragOver={setKeyDragOver}
+        box={room}
         dropTarget={
           actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
         }
@@ -538,6 +775,20 @@ function Editor({
   return (
     <div className="app">
       <Toolbar
+        modeBar={
+          mode && modePanel ? (
+            <ModeBar
+              deck={deckLabel(config, daemon, mode.serial)}
+              size={sizeText(mode.serial, mode.page) ?? ''}
+              profile={profileLabel(config, mode.profile)}
+              page={layoutFor(config, mode.profile, mode.serial) ? pageLabel(layoutFor(config, mode.profile, mode.serial)!, mode.page) : mode.page}
+              changed={modeChanged}
+              onDiscard={() => setModeCard({ kind: 'discard' })}
+              onDone={leaveMode}
+            />
+          ) : undefined
+        }
+        onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true, custom: false })}
         config={config}
         daemon={daemon}
         selection={selection}
@@ -583,6 +834,9 @@ function Editor({
         }}
       />
       <div className="panes" style={{ gridTemplateColumns: paneColumns(paneWidths) }}>
+        {mode ? (
+          <ControlsPalette onDrop={addControlAt} onAdd={addControlInMiddle} />
+        ) : (
         <Library
           onPick={(type) => {
             if (actionDrag.takeSuppressedClick()) return;
@@ -599,6 +853,7 @@ function Editor({
             if (section) void window.deckhand.openSettings(section);
           }}
         />
+        )}
         <PaneDivider pane="library" width={paneWidths.library} onResize={resizePane} label="Resize the action library" />
         <main className="stage glass">
           {/* Say it once: when the empty state below already explains that
@@ -609,6 +864,8 @@ function Editor({
               <DeckCanvas
                 decks={canvasDecks}
                 several={several}
+                zoomable={mode !== null}
+                fitKey={mode ? 'edit-layout' : ''}
                 positions={positions}
                 onMove={moveDecks}
                 locked={locked}
@@ -616,13 +873,37 @@ function Editor({
                 panel={(serial, placement) => {
                   const layoutHere = layoutFor(config, selection.profile, serial);
                   const pageHere = pageOf(selection, serial) ?? '';
+                  const pageDef = layoutHere?.pages[pageHere];
                   const focused = serial === selection.serial;
+                  const virtual = config.decks?.[serial]?.virtual !== undefined;
+                  const panelHere = virtual && pageDef ? pagePanelIn(config, selection.profile, serial, pageHere) : undefined;
+                  const editing = mode !== null && mode.serial === serial;
+                  const room = roomOf(canvasDecks.find((d) => d.serial === serial)?.size ?? { columns: 1, rows: 1 });
                   return (
                     <DeckPanel
                       key={serial}
                       serial={serial}
                       name={deckLabel(config, daemon, serial)}
-                      size={pageGeometry(config, daemon, serial, selection.profile, pageHere)}
+                      size={sizeText(serial, pageHere)}
+                      editLayout={
+                        virtual && pageDef && panelHere
+                          ? {
+                              open: editing,
+                              preset: !isCustomLayout(panelHere),
+                              onOpen: () => enterMode(serial, pageHere, false, pageDef),
+                              onMakeCustom: async () => {
+                                // Every key and its action kept, in the same places; then straight in (21e).
+                                const result = await window.deckhand.apply({ kind: 'setLayout', profile: selection.profile, serial, page: pageHere, panel: madeCustom(panelHere), buttons: buttonsFor(pageDef, panelHere) });
+                                if (!result.ok) return result.error;
+                                setPendingEnter({ serial, profile: selection.profile, page: pageHere, blank: false, custom: true });
+                                return null;
+                              },
+                              onDone: leaveMode,
+                            }
+                          : undefined
+                      }
+                      pageLocked={mode !== null}
+                      onHeaderNeed={virtual ? (px) => noteHeaderNeed(serial, px) : undefined}
                       focused={focused}
                       pages={layoutHere ? pageChoices(layoutHere) : []}
                       page={pageHere}
@@ -633,7 +914,22 @@ function Editor({
                       onChangeLayout={config.decks?.[serial]?.virtual && layoutHere?.pages[pageHere] ? () => changeLayout(serial, pageHere) : undefined}
                       placement={placement}
                     >
-                      {grid(serial) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial)}
+                      {editing && modePanel && modePage ? (
+                        <LayoutCanvas
+                          config={config}
+                          serial={serial}
+                          panel={modePanel}
+                          page={modeBlank ? { buttons: {} } : modePage}
+                          box={room}
+                          selected={selectedControl}
+                          iconStamps={iconStamps}
+                          appIcons={appIcons}
+                          onSelect={(id) => selectKeys(id === null ? [] : [id])}
+                          onChange={(panel) => saveLayout(panel)}
+                        />
+                      ) : (
+                        (grid(serial, virtual ? room : undefined) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial))
+                      )}
                     </DeckPanel>
                   );
                 }}
@@ -680,6 +976,7 @@ function Editor({
                 pageName={pageLabel(layout, changingLayout)}
                 page={changing}
                 current={pagePanelIn(config, selection.profile, selection.serial, changingLayout)}
+                deckDefault={config.decks?.[selection.serial]?.virtual?.panel}
                 onApply={async (panel, choice) => {
                   const result = await window.deckhand.apply({ kind: 'setPagePanel', profile: selection.profile, serial: selection.serial, page: changingLayout, panel });
                   if (!result.ok) return result.error;
@@ -687,7 +984,28 @@ function Editor({
                   setChangingLayout(null);
                   return null;
                 }}
+                onBlank={() => {
+                  // Blank is a choice on this deck like any grid: the next picker preselects it.
+                  void window.deckhand.setLastGrid(selection.serial, { size: 'blank' });
+                  enterMode(selection.serial, changingLayout, true, changing);
+                }}
                 onCancel={() => setChangingLayout(null)}
+              />
+            )}
+            {mode && modePanel && modeCard?.kind === 'delete' && modePage?.buttons[modeCard.id] && (
+              <DeleteControl
+                name={controlNames(modePanel).get(modeCard.id) ?? 'This control'}
+                button={modePage.buttons[modeCard.id]}
+                onConfirm={() => deleteSelected(modeCard.id, true)}
+                onCancel={() => setModeCard(null)}
+              />
+            )}
+            {mode && modeChanges && modeCard?.kind === 'discard' && (
+              <DiscardChanges
+                page={layoutFor(config, mode.profile, mode.serial) ? pageLabel(layoutFor(config, mode.profile, mode.serial)!, mode.page) : mode.page}
+                changes={modeChanges}
+                onConfirm={discardChanges}
+                onCancel={() => setModeCard(null)}
               />
             )}
             {layout && deletion && pendingDelete !== null && (
@@ -704,6 +1022,18 @@ function Editor({
           <BulkStatus bulk={bulk} />
         </main>
         <PaneDivider pane="inspector" width={paneWidths.inspector} onResize={resizePane} label="Resize the inspector" />
+        {mode && modePanel && modePage ? (
+          <LayoutInspector
+            deckName={deckLabel(config, daemon, mode.serial)}
+            panel={modePanel}
+            page={modeBlank ? { buttons: {} } : modePage}
+            selected={selectedControl}
+            screen={modeScreen}
+            onChange={(panel) => saveLayout(panel)}
+            onDuplicate={duplicateSelected}
+            onDelete={() => deleteSelected(selectedControl, false)}
+          />
+        ) : (
         <Inspector
           selectedCount={selection.keys.length}
           bulk={bulk}
@@ -728,6 +1058,7 @@ function Editor({
             return result.ok ? null : result.error;
           }}
         />
+        )}
       </div>
       {actionDrag.drag && <DragLabel drag={actionDrag.drag} />}
     </div>
@@ -976,6 +1307,47 @@ function useBulkShortcuts(handlers: {
       else if (ctrl && event.code === 'KeyC') h.onCopy();
       else if (ctrl && event.code === 'KeyD') h.onDuplicate();
       else if (plain && event.code === 'Delete') h.onClear();
+      else if (plain && event.code === 'Escape') h.onSelectNone();
+      else handled = false;
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
+
+/**
+ * Edit layout's keys (round 2a): Delete deletes the selected control (and
+ * warns if it has a key), Ctrl+D duplicates it, the arrow keys nudge it a
+ * pixel, Escape selects nothing — on controls, never keys, while the mode is
+ * open (Ryan, 2026-11-18). Never while typing in a field or in a dropdown,
+ * as the grid's shortcuts.
+ */
+function useModeShortcuts(handlers: {
+  enabled: boolean;
+  selected: string | null;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onNudge: (dx: number, dy: number) => void;
+  onSelectNone: () => void;
+}) {
+  const latest = useRef(handlers);
+  latest.current = handlers;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const h = latest.current;
+      if (!h.enabled || keyCapture.active || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      if (target?.closest?.('[data-dropdown], [data-dropdown-menu], [data-add-page], [data-change-layout]')) return;
+      const plain = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+      const ctrl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+      const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      let handled = true;
+      if (h.selected === null) handled = false;
+      else if (plain && event.code === 'Delete' && !event.repeat) h.onDelete();
+      else if (ctrl && event.code === 'KeyD' && !event.repeat) h.onDuplicate();
+      else if (plain && arrows[event.key]) h.onNudge(...arrows[event.key]);
       else if (plain && event.code === 'Escape') h.onSelectNone();
       else handled = false;
       if (handled) event.preventDefault();

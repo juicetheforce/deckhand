@@ -12,8 +12,9 @@ import * as power from '../services/virtual-power.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
-import { defaultPanelOf, makePanel, pagePanelOf } from '../panel-presets.js';
+import { defaultPanelOf, makePanel, pagePanelOf, showable } from '../panel-presets.js';
 import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
+import { boxesOverlap, composeBox, type PlacedFace } from './panel-compose.js';
 import { brightnessFrame, canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
@@ -83,9 +84,17 @@ class PanelDevice implements DeckDevice {
   readonly driver = 'virtual';
   geometry: DeckGeometry;
   private rects = new Map<string, { x: number; y: number; w: number; h: number }>();
+  /** The controls in the panel's own order, bottom first: what overlaps resolve by, for touches and for drawing. */
   private controls: HitControl[] = [];
-  /** The newest image for each key not yet sent: a key drawn twice before the first went keeps only the second. */
-  private pending = new Map<string, Buffer[]>();
+  /** Each control's last face, as handed to draw() (never changed): what an overlapping control's image is combined from. */
+  private faces = new Map<string, Buffer>();
+  /**
+   * The keys drawn and not yet sent, by id: a key drawn twice before the first
+   * went is sent once. Its image is made when it is sent, from the faces as
+   * they are then — combined when queued, an overlapping key could carry a
+   * face since replaced, and nothing would draw over it again.
+   */
+  private pending = new Set<string>();
   private inFlight = false;
   private canvas: Buffer | null = null;
   private redrawListeners: Array<() => void> = [];
@@ -258,12 +267,15 @@ class PanelDevice implements DeckDevice {
 
   private sendNext(): void {
     if (this.inFlight) return;
-    const next = this.pending.entries().next();
+    const next = this.pending.values().next();
     if (next.done) return;
-    const [control, parts] = next.value;
+    const control = next.value;
     this.pending.delete(control);
+    const rect = this.rects.get(control);
+    const face = this.faces.get(control);
+    if (!rect || !face) return this.sendNext();
     this.inFlight = true;
-    for (const part of parts) this.write(part);
+    for (const part of imageFrameParts(rect.x, rect.y, rect.w, rect.h, this.imageFor(control, rect, face))) this.write(part);
   }
 
   /**
@@ -345,7 +357,8 @@ class PanelDevice implements DeckDevice {
    * the deck with "0 keys, no screens").
    */
   layoutFrom(layout: LayoutDef, page: string): DeckGeometry {
-    let panel = pagePanelOf(layout, page, this.defaultPanel());
+    // A panel with no controls is never shown (answer 2): the page falls back as one with no panel does.
+    let panel = showable(pagePanelOf(layout, page)) ?? showable(this.defaultPanel());
     if (!panel) {
       panel = makePanel({ width: this.ready.width, height: this.ready.height, widthMm: this.screenMm.widthMm, heightMm: this.screenMm.heightMm }, 'medium');
       if (!this.generatedSaid) {
@@ -359,7 +372,11 @@ class PanelDevice implements DeckDevice {
   showGeometry(geometry: DeckGeometry): void {
     this.geometry = geometry;
     this.rects = new Map(geometry.keys.map((k) => [k.id, { x: k.x, y: k.y, w: k.width ?? 0, h: k.height ?? 0 }]));
-    this.controls = geometry.keys.map((k) => ({ id: k.id, x: k.x, y: k.y, w: k.w, h: k.h, shape: k.shape }));
+    // In the panel's order (z), not reading order, so the later of two overlapping controls is on top.
+    this.controls = [...geometry.keys]
+      .sort((a, b) => (a.z ?? a.index) - (b.z ?? b.index))
+      .map((k) => ({ id: k.id, x: k.x, y: k.y, w: k.w, h: k.h, shape: k.shape, radius: k.radius }));
+    this.faces.clear();
     // A touch that started on the old controls belongs to none of the new
     // ones; the session lets go of what was held on a panel change.
     this.contacts.clear();
@@ -373,8 +390,28 @@ class PanelDevice implements DeckDevice {
   async draw(control: string, rgba: Buffer): Promise<void> {
     const rect = this.rects.get(control);
     if (!rect) throw new Error(`no key "${control}" on this panel`);
-    this.pending.set(control, imageFrameParts(rect.x, rect.y, rect.w, rect.h, rgba));
+    this.faces.set(control, rgba);
+    this.pending.add(control);
     this.sendNext();
+  }
+
+  /**
+   * What to send for a control: its own face, or — when another control's
+   * box overlaps its own — every control touching its box, combined in the
+   * panel's order (panel-compose.ts), since the helper puts the background
+   * under the whole rectangle. A control with no overlap costs nothing more.
+   */
+  private imageFor(control: string, rect: { x: number; y: number; w: number; h: number }, rgba: Buffer): Buffer {
+    const target = { x: Math.round(rect.x), y: Math.round(rect.y), w: rect.w, h: rect.h };
+    const layers: PlacedFace[] = [];
+    for (const c of this.controls) {
+      const face = this.faces.get(c.id);
+      const r = this.rects.get(c.id);
+      if (!face || !r) continue;
+      const box = { x: Math.round(r.x), y: Math.round(r.y), w: r.w, h: r.h };
+      if (c.id === control || boxesOverlap(box, target)) layers.push({ ...box, rgba: face });
+    }
+    return layers.length === 1 ? rgba : composeBox(target, layers);
   }
 
   async clear(): Promise<void> {

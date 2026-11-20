@@ -90,3 +90,9 @@ export async function inPage(editor, which, expression) {
   if (report.error) throw new Error(`${which} window: ${report.error}`);
   return report.result;
 }
+
+/** The editor's window as a PNG at `file` (check mode 'tray' only), for looking at it; null if it could not. */
+export async function capture(editor, file) {
+  const report = await ask(editor, `capture ${file}`, 'captured');
+  return report && !report.error ? report : null;
+}

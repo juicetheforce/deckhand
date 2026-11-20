@@ -5,6 +5,7 @@ import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-ico
 import { DEFAULTS, expandPath } from './config.js';
 import { connectingBadgeSvg, failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
+import { cornerRadius, fillsBox, innerPixels, shapeName, shapePath } from './shapes.js';
 import { readIconFile } from './icon-file.js';
 import type { Display } from './types.js';
 
@@ -19,12 +20,17 @@ const cache = new Map<string, Buffer>();
 const MAX_CACHE = 512;
 const warnedMissing = new Set<string>();
 
-/** The label, each line fitted to the key on its own (label-fit.ts), so a short line keeps its full text beside a long one. */
-async function labelSvg(display: Display, size: number): Promise<Buffer> {
+/**
+ * The label, each line fitted to the key on its own (label-fit.ts), so a short
+ * line keeps its full text beside a long one. Laid out in a box `width` wide
+ * and `height` high: a key's whole face, or a shaped control's largest inner
+ * rectangle (shapes.ts innerRect) — the same rule either way.
+ */
+async function labelSvg(display: Display, width: number, height: number = width): Promise<Buffer> {
   const fontSize = display.labelSize;
   const given = (display.label ?? '').split('\n').filter((l) => l.length > 0);
   if (given.length === 0) return Buffer.alloc(0);
-  const lines = await Promise.all(given.map((line) => fitLine(line, fontSize, size)));
+  const lines = await Promise.all(given.map((line) => fitLine(line, fontSize, width)));
 
   const lineHeight = Math.round(fontSize * 1.15);
   const block = lineHeight * lines.length;
@@ -33,19 +39,19 @@ async function labelSvg(display: Display, size: number): Promise<Buffer> {
   if (display.labelPosition === 'top') {
     firstBaseline = fontSize + 2;
   } else if (display.labelPosition === 'center') {
-    firstBaseline = Math.round((size - block) / 2) + fontSize;
+    firstBaseline = Math.round((height - block) / 2) + fontSize;
   } else {
-    firstBaseline = size - block + fontSize - 2;
+    firstBaseline = height - block + fontSize - 2;
   }
 
   const tspans = lines
     .map((line, i) => {
       const y = firstBaseline + i * lineHeight;
-      return `<text x="${size / 2}" y="${y}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>`;
+      return `<text x="${width / 2}" y="${y}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>`;
     })
     .join('');
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
   <style>
     ${labelStyle(fontSize, display.labelColor)}
   </style>
@@ -60,33 +66,17 @@ async function labelSvg(display: Display, size: number): Promise<Buffer> {
  * bottom when the label is at the top — in the label's style and size,
  * fitted as a label line is. Never moves the label.
  */
-async function levelSvg(display: Display, size: number): Promise<Buffer> {
+async function levelSvg(display: Display, width: number, height: number = width): Promise<Buffer> {
   if (!display.level) return Buffer.alloc(0);
   const fontSize = display.labelSize;
-  const line = await fitLine(display.level, fontSize, size);
-  const baseline = display.labelPosition === 'top' ? size - 2 - Math.round(fontSize * 0.15) : fontSize + 2;
-  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  const line = await fitLine(display.level, fontSize, width);
+  const baseline = display.labelPosition === 'top' ? height - 2 - Math.round(fontSize * 0.15) : fontSize + 2;
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
   <style>
     ${labelStyle(fontSize, display.labelColor)}
   </style>
-  <text x="${size / 2}" y="${baseline}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>
+  <text x="${width / 2}" y="${baseline}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>
 </svg>`);
-}
-
-/** The failed-key badge (src/failed-badge.ts), placed over a finished key. */
-function failedBadge(size: number): OverlayOptions {
-  const { diameter, inset } = failedBadgePlacement(size);
-  return { input: Buffer.from(failedBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
-}
-
-function unsetBadge(size: number): OverlayOptions {
-  const { diameter, inset } = failedBadgePlacement(size);
-  return { input: Buffer.from(unsetBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
-}
-
-function connectingBadge(size: number): OverlayOptions {
-  const { diameter, inset } = failedBadgePlacement(size);
-  return { input: Buffer.from(connectingBadgeSvg(diameter)), top: inset, left: size - diameter - inset };
 }
 
 /** An icon layer at 40% opacity: a key whose integration is not set up, as app-launch-unset is drawn. */
@@ -199,13 +189,64 @@ export async function fillScreen(face: Buffer, side: number, width: number, heig
  * the cache (which may hold an earlier placeholder render): the control
  * socket's preview uses this to tell the editor the file is bad.
  */
-export async function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
+export function renderButton(display: Display, size: number, strictIcon = false): Promise<Buffer> {
+  return renderFace(display, { width: size, height: size }, strictIcon);
+}
+
+/** A face's box: its size in pixels, and on a virtual deck its shape (shapes.ts). */
+export interface FaceBox {
+  width: number;
+  height: number;
+  shape?: string;
+  radius?: number;
+  /** A virtual deck's control: drawn with its outline (OUTLINE_PX), never a Stream Deck's key. */
+  outline?: boolean;
+}
+
+/**
+ * A virtual deck's button outline (Ryan, 2026-11-20): a thin, light line on
+ * the shape's edge, **inside the shape**, so the touch area and what overlaps
+ * it are unchanged. One rule for every shape and every page, custom or a
+ * preset grid; a Stream Deck's key has none. Always on for now. White at the
+ * editor's own outline opacity (styles.css, .key-outline), 2 canvas pixels.
+ */
+export const OUTLINE_PX = 2;
+const OUTLINE_OPACITY = 0.22;
+
+/**
+ * Render a control's face to raw RGBA, `width` × `height` — renderButton()
+ * for a box of any size and shape. One rule for every shape (Ryan,
+ * 2026-11-18):
+ *
+ * - **the key's fill covers the whole shape**, solid: no transparency inside
+ *   a button, ever;
+ * - **the icon is the square at the shorter side, centred**, as a non-square
+ *   key's has always been;
+ * - **the label, a live level and the failed badge are laid out in the
+ *   shape's largest inner rectangle** (shapes.ts innerPixels), exactly as on a
+ *   key whose face is that rectangle — no branch here knows which shape it is;
+ * - **everything outside the shape is fully transparent** (alpha 0), edges
+ *   anti-aliased, so the display helper shows the page's background there
+ *   (panel/panel.c puts it under every image).
+ *
+ * A square box with square corners is exactly renderButton()'s key, pixel for
+ * pixel: the inner rectangle is the whole face and nothing is cut away.
+ */
+export async function renderFace(display: Display, box: FaceBox, strictIcon = false): Promise<Buffer> {
+  const { width, height } = box;
+  const shapeBox = { w: width, h: height, shape: box.shape, radius: box.radius };
+  const cut = !fillsBox(shapeBox);
+  const inner = innerPixels(shapeBox);
+  const side = Math.min(width, height);
+  const iconLeft = Math.floor((width - side) / 2);
+  const iconTop = Math.floor((height - side) / 2);
   // `builtin:<name>` names a shipped icon; anything else is a path, `~/` allowed.
   const builtinPath = display.icon ? builtinRefPath(display.icon) : null;
   const builtinSize = display.builtinIconSize ?? DEFAULTS.builtinIconSize;
   const iconPath = display.icon ? (builtinPath ?? expandPath(display.icon)) : undefined;
   const stamp = iconPath ? await iconStamp(iconPath) : 'none';
-  const cacheKey = `${size}|${stamp}|${JSON.stringify(display)}`;
+  const shapeKey = cut ? `|${shapeName(box.shape)}:${cornerRadius(shapeBox)}` : '';
+  const cacheKey = `${width}x${height}${shapeKey}${box.outline ? '|outline' : ''}|${stamp}|${JSON.stringify(display)}`;
 
   if (strictIcon && stamp === 'missing') throw new Error(`cannot read icon ${iconPath}: file not found`);
   const hit = strictIcon ? undefined : cache.get(cacheKey);
@@ -213,8 +254,8 @@ export async function renderButton(display: Display, size: number, strictIcon = 
 
   let base = sharp({
     create: {
-      width: size,
-      height: size,
+      width,
+      height,
       channels: 4,
       background: display.background,
     },
@@ -226,33 +267,51 @@ export async function renderButton(display: Display, size: number, strictIcon = 
     try {
       // A built-in, by default or chosen by name, at its own size; a file as the person set it.
       const icon = builtinPath !== null
-        ? await builtinIconLayer(builtinPath, size, builtinSize)
-        : await iconLayer(iconPath, size, display.iconFit === 'contain' ? 'contain' : 'cover');
-      layers.push({ input: display.unset ? await dimmed(icon) : icon, top: 0, left: 0 });
+        ? await builtinIconLayer(builtinPath, side, builtinSize)
+        : await iconLayer(iconPath, side, display.iconFit === 'contain' ? 'contain' : 'cover');
+      layers.push({ input: display.unset ? await dimmed(icon) : icon, top: iconTop, left: iconLeft });
     } catch (err) {
       if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
       if (!warnedMissing.has(iconPath)) {
         warnedMissing.add(iconPath);
         console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message} — showing the missing-icon placeholder`);
       }
-      const missing = await builtinLayer('missing', size, builtinSize);
-      if (missing) layers.push({ input: missing, top: 0, left: 0 });
+      const missing = await builtinLayer('missing', side, builtinSize);
+      if (missing) layers.push({ input: missing, top: iconTop, left: iconLeft });
     }
   }
 
-  const svg = await labelSvg(display, size);
-  if (svg.length > 0) layers.push({ input: svg, top: 0, left: 0 });
-  const level = await levelSvg(display, size);
-  if (level.length > 0) layers.push({ input: level, top: 0, left: 0 });
+  const svg = await labelSvg(display, inner.w, inner.h);
+  if (svg.length > 0) layers.push({ input: svg, top: inner.y, left: inner.x });
+  const level = await levelSvg(display, inner.w, inner.h);
+  if (level.length > 0) layers.push({ input: level, top: inner.y, left: inner.x });
+
+  // The outline: a stroke twice as wide as wanted, centred on the edge, of
+  // which only the inner half survives — the outer half is cut by the shape's
+  // mask below, or falls outside the image for a box with square corners. So
+  // it is inside every shape by one rule. Under the badge, which is inside it.
+  if (box.outline) {
+    const outline = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><path d="${shapePath(shapeBox)}" fill="none" stroke="#fff" stroke-opacity="${OUTLINE_OPACITY}" stroke-width="${OUTLINE_PX * 2}"/></svg>`;
+    layers.push({ input: Buffer.from(outline), top: 0, left: 0 });
+  }
 
   // Last, so it is over the label as well as the icon. `failed` is part of the
   // cache key (JSON.stringify(display), above), so a marked face and a clean
   // one are two entries and never stand in for each other.
   // Not set up says why the key cannot work, so it stands in for a failure mark;
   // connecting says it will work in a moment, so it does too, until connected.
-  if (display.unset) layers.push(unsetBadge(size));
-  else if (display.connecting) layers.push(connectingBadge(size));
-  else if (display.failed) layers.push(failedBadge(size));
+  // At the top-right of the inner rectangle, so it is inside every shape.
+  const badge = display.unset ? unsetBadgeSvg : display.connecting ? connectingBadgeSvg : display.failed ? failedBadgeSvg : null;
+  if (badge) {
+    const { diameter, inset } = failedBadgePlacement(Math.min(inner.w, inner.h));
+    layers.push({ input: Buffer.from(badge(diameter)), top: inner.y + inset, left: inner.x + inner.w - diameter - inset });
+  }
+
+  // The shape cuts everything else away: alpha 0 outside it, anti-aliased at its edge.
+  if (cut) {
+    const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><path d="${shapePath(shapeBox)}" fill="#fff"/></svg>`;
+    layers.push({ input: Buffer.from(mask), top: 0, left: 0, blend: 'dest-in' });
+  }
 
   if (layers.length > 0) base = base.composite(layers);
 

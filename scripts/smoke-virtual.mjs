@@ -92,7 +92,11 @@ check('a panel of controls on its canvas validates', !refused(base(grid('k', 2, 
 check('two controls with one id are refused', refused(base({ size: { width: 100, height: 100 }, controls: [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }, { id: 'a', x: 20, y: 0, w: 10, h: 10 }] })));
 check('a control off the canvas is refused', refused(base({ size: { width: 100, height: 100 }, controls: [{ id: 'a', x: 95, y: 0, w: 10, h: 10 }] })));
 check('a control id with ":" is refused', refused(base({ size: { width: 100, height: 100 }, controls: [{ id: 'a:b', x: 0, y: 0, w: 10, h: 10 }] })));
-check('a shape other than square is refused, for now', refused(base({ size: { width: 100, height: 100 }, controls: [{ id: 'a', x: 0, y: 0, w: 10, h: 10, shape: 'round' }] })));
+const shaped = (extra) => base({ size: { width: 100, height: 100 }, controls: [{ id: 'a', x: 0, y: 0, w: 10, h: 10, ...extra }] });
+check('rectangle, round, hexagon and the old square are accepted', ['square', 'rectangle', 'round', 'hexagon'].every((shape) => !refused(shaped({ shape }))));
+check('any other shape is refused', refused(shaped({ shape: 'triangle' })) && refused(shaped({ shape: 7 })));
+check('a corner radius must be a number, 0 or more', !refused(shaped({ shape: 'rectangle', radius: 4 })) && refused(shaped({ radius: -1 })) && refused(shaped({ radius: '4' })));
+check('keepRatio must be true or false', !refused(shaped({ keepRatio: true })) && refused(shaped({ keepRatio: 'yes' })));
 check('a canvas of 0 is refused', refused(base({ size: { width: 0, height: 100 }, controls: [] })));
 check('virtual.output must name a connector', refused(base(grid('k', 1, 1, 100), { virtual: { output: 'DP 4; rm' } })) && refused(base(grid('k', 1, 1, 100), { virtual: {} })));
 
@@ -193,6 +197,10 @@ await settle('opening', async () => {
   const firstCanvas = all.findIndex((f) => f.type === 'K');
   const images = all.filter((f) => f.type === 'I');
   check('the canvas first, at the panel\'s size', firstCanvas >= 0 && all[firstCanvas].width === 1920 && all[firstCanvas].height === 720 && all.findIndex((f) => f.type === 'I') > firstCanvas);
+  // Every key of a virtual deck carries its outline (Ryan, 2026-11-20): a square key's first pixel, its
+  // top-left corner, is the light line, never the key's own fill.
+  const firsts = images.map((f) => f.first);
+  check('each key\'s outline: its corner pixel is a light line over the key colour, the same on every key', firsts.length === 6 && firsts.every((p) => p.join() === firsts[0].join()) && firsts[0][0] > 40 && firsts[0][3] === 255, JSON.stringify(firsts));
   check('one image per key, at its place and size', images.length === 6 && images.some((f) => f.x === 252 && f.y === 252 && f.w === 216 && f.h === 216 && f.bytes === 216 * 216 * 4), JSON.stringify(images.map((f) => [f.x, f.y, f.w])));
 });
 
@@ -252,6 +260,51 @@ await settle('relayout', async () => {
   check('the deck takes the other panel\'s two keys', session.keyCount === 2 && session.hasKey('t2') && !session.hasKey('k1'));
   check('a new canvas, then its keys at their places', after[0]?.type === 'K' && after.filter((f) => f.type === 'I').every((f) => f.w === 336) && after.some((f) => f.type === 'I' && f.x === 372), JSON.stringify(after.slice(0, 4)));
   check('the socket\'s geometry is the new one', session.geometry.keys.map((k) => k.id).join() === 't1,t2');
+});
+
+console.log('overlapping controls (custom layouts)');
+await settle('overlap', async () => {
+  // Driven directly, as "newest wins" is: a 20 × 20 square under a round control at 10,10.
+  config.decks['output-DP-5'] = { virtual: { output: 'DP-5' } };
+  await plug('DP-5', 'connected');
+  const dev = await (await driver.list()).find((f) => f.id === 'output-DP-5').open();
+  dev.showGeometry(geometryOfPanel({ size: { width: 100, height: 100 }, controls: [{ id: 'low', x: 0, y: 0, w: 20, h: 20 }, { id: 'top', x: 10, y: 10, w: 20, h: 20, shape: 'round' }] }, 'Overlap'));
+  const red = Buffer.alloc(20 * 20 * 4);
+  for (let i = 0; i < 400; i++) red.set([255, 0, 0, 255], i * 4);
+  // The round control's face as renderFace draws it: blue on the circle, clear outside.
+  const blue = Buffer.alloc(20 * 20 * 4);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) if ((x - 9.5) ** 2 + (y - 9.5) ** 2 <= 100) blue.set([0, 0, 255, 255], (y * 20 + x) * 4);
+  const before = (await frames()).filter((f) => f.type === 'I').length;
+  await dev.draw('low', red);
+  await dev.draw('top', blue);
+  await dev.draw('low', red);
+  await until(async () => (await frames()).filter((f) => f.type === 'I').length >= before + 3);
+  const [lowFirst, topImage, lowAgain] = (await frames()).filter((f) => f.type === 'I').slice(before);
+  const pixel = (frame, x, y) => [...Buffer.from(frame.rgba, 'base64').subarray((y * frame.w + x) * 4, (y * frame.w + x) * 4 + 4)].join();
+  check('a control alone in its box is sent as its own face', pixel(lowFirst, 15, 15) === '255,0,0,255' && lowFirst.w === 20);
+  check('the round control on top: its box carries the square under its clear corner', topImage.x === 10 && pixel(topImage, 0, 0) === '255,0,0,255' && pixel(topImage, 9, 9) === '0,0,255,255', JSON.stringify([pixel(topImage, 0, 0), pixel(topImage, 9, 9)]));
+  check('…and is clear where neither control is (no gap filled)', pixel(topImage, 19, 19) === '0,0,0,0', pixel(topImage, 19, 19));
+  check('the square redrawn under it: the round one stays on top in its image', pixel(lowAgain, 0, 0) === '255,0,0,255' && pixel(lowAgain, 19, 19) === '0,0,255,255', pixel(lowAgain, 19, 19));
+  // Draws piling up behind one in flight: low red, top, then low green. The queue holds low (green)
+  // before top, so top goes last — and must carry green where the square shows through, never the
+  // red it would have carried had it been combined when queued (a stale face nothing redraws).
+  const green = Buffer.alloc(20 * 20 * 4);
+  for (let i = 0; i < 400; i++) green.set([0, 255, 0, 255], i * 4);
+  const queued = (await frames()).filter((f) => f.type === 'I').length;
+  await dev.draw('top', blue);
+  await dev.draw('low', red);
+  await dev.draw('top', blue);
+  await dev.draw('low', green);
+  await until(async () => (await frames()).filter((f) => f.type === 'I').length >= queued + 3);
+  await sleep(100);
+  const lastTop = (await frames()).filter((f) => f.type === 'I' && f.x === 10).at(-1);
+  check('queued behind a frame in flight, the control on top is combined when sent: the latest face under it, not the one when queued', pixel(lastTop, 0, 0) === '0,255,0,255', pixel(lastTop, 0, 0));
+  // No layout with no controls ever reaches the screen (Ryan, 2026-11-18): one written by hand falls back as a page with no panel does.
+  const empty = dev.layoutFrom({ pages: { e: { panel: { size: { width: 1920, height: 720 }, controls: [], preset: 'free' }, buttons: {} } } }, 'e');
+  check('a page whose panel has no controls is shown with a grid, never with none', empty.keyCount > 0, String(empty.keyCount));
+  await dev.close();
+  delete config.decks['output-DP-5'];
+  await plug('DP-5', 'disconnected');
 });
 
 console.log('a page with its own panel (every page has its own layout)');

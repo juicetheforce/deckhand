@@ -302,6 +302,8 @@ try {
   first.stdout.on('data', (c) => firstOutput.push(c));
   const firstExited = new Promise((resolve) => first.on('exit', (c) => resolve(c)));
   await until(() => /attached Test panel/.test(firstOutput.join('')));
+  // The socket starts after the decks, so attached is not listening.
+  await until(() => /\[control\] listening on/.test(firstOutput.join('')));
   const firstClient = await connect(SOCKET);
   await firstClient.request('virtual.power', { deck: KEY, on: false });
   await until(() => /closed: it is turned off/.test(firstOutput.join('')));

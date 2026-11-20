@@ -22,8 +22,11 @@ export interface GeometrySource {
   CONTROLS?: ReadonlyArray<RawControl>;
 }
 
-/** The shapes a control can have. Stage 1 draws only squares; the rest come with custom layouts. */
-export type ControlShape = 'square';
+/**
+ * The shapes a control can have (src/shapes.ts): a Stream Deck's keys and
+ * every control from before custom layouts are 'square'.
+ */
+export type ControlShape = 'square' | 'rectangle' | 'round' | 'hexagon';
 
 export interface KeyPosition {
   /**
@@ -45,6 +48,14 @@ export interface KeyPosition {
   w: number;
   h: number;
   shape: ControlShape;
+  /** A rectangle's corner radius, in the geometry's units; absent for square corners. */
+  radius?: number;
+  /**
+   * Its place in the panel's own order, where the later is on top of an
+   * overlap (src/hit-test.ts); keys themselves are in reading order. Absent
+   * on a Stream Deck, whose keys never overlap.
+   */
+  z?: number;
   /** 'lcd' keys have a screen; 'rgb' and 'none' do not. */
   feedback: string;
   /** An 'lcd' key's screen in pixels, as the library gives it — not always square (a Studio's are 144×112). */
@@ -150,14 +161,14 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
  */
 export interface PanelSource {
   size: { width: number; height: number };
-  controls: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number; shape?: 'square' }>;
+  controls: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number; shape?: ControlShape; radius?: number }>;
 }
 
 export function geometryOfPanel(panel: PanelSource | undefined, productName: string): DeckGeometry {
-  const controls = [...(panel?.controls ?? [])].sort((a, b) => a.y - b.y || a.x - b.x);
-  const tops = [...new Set(controls.map((c) => c.y))].sort((a, b) => a - b);
-  const lefts = [...new Set(controls.map((c) => c.x))].sort((a, b) => a - b);
-  const keys: KeyPosition[] = controls.map((c, index) => ({
+  const controls = (panel?.controls ?? []).map((c, z) => ({ c, z })).sort((a, b) => a.c.y - b.c.y || a.c.x - b.c.x);
+  const tops = [...new Set(controls.map(({ c }) => c.y))].sort((a, b) => a - b);
+  const lefts = [...new Set(controls.map(({ c }) => c.x))].sort((a, b) => a - b);
+  const keys: KeyPosition[] = controls.map(({ c, z }, index) => ({
     id: c.id,
     index,
     row: tops.indexOf(c.y),
@@ -167,6 +178,8 @@ export function geometryOfPanel(panel: PanelSource | undefined, productName: str
     w: c.w,
     h: c.h,
     shape: c.shape ?? 'square',
+    ...(c.radius ? { radius: c.radius } : {}),
+    z,
     feedback: 'lcd',
     width: Math.max(1, Math.round(c.w)),
     height: Math.max(1, Math.round(c.h)),

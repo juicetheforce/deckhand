@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isCustomLayout } from '../../../src/panel-presets.js';
 import type { Config, LayoutDef, PageDef } from '../../../src/types.js';
 import type { DaemonView } from '../shared/bridge.js';
 import {
@@ -7,6 +8,8 @@ import {
   duplicateKeys,
   pasteAnchor,
   placeClipboard,
+  placeOnControls,
+  readingOrder,
   swapKeys,
   type ButtonWrite,
   type Clipboard,
@@ -98,13 +101,21 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
 
     paste: async () => {
       if (!ready || clipboard === null) return;
-      const placement = placeClipboard(clipboard, pasteAnchor(geometry, selection.keys, clipboard), geometry, layout);
+      // On a custom layout a key lands only on a control: the selected ones,
+      // one each, in reading order (Ryan, 2026-11-20). Nothing selected, nothing lands.
+      const custom = isCustomLayout(page.panel);
+      const targets = custom ? readingOrder(geometry, selection.keys) : [];
+      if (custom && targets.length === 0) {
+        setMessage('Nothing pasted: on a custom layout, select the controls to paste onto.');
+        return;
+      }
+      const placement = custom ? placeOnControls(clipboard, targets, layout) : placeClipboard(clipboard, pasteAnchor(geometry, selection.keys, clipboard), geometry, layout);
       const failure = await put(placement.writes);
       if (failure !== null) {
         setMessage(`Could not paste: ${failure}`);
         return;
       }
-      setMessage(placementMessage('Pasted', placement, `“${pageLabel(layout, selection.page)}”`));
+      setMessage(placementMessage('Pasted', placement, `“${pageLabel(layout, selection.page)}”`, custom ? 'no selected control to land on' : undefined));
       // Select what landed, so the next thing done acts on the pasted keys.
       if (placement.writes.length > 0) selectKeys(placement.writes.map((w) => w.key));
     },
@@ -132,6 +143,11 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       const targetLayout = layoutFor(config, selection.profile, serial);
       const targetGeometry = pageGeometry(config, daemon, serial, selection.profile, pageId);
       if (targetLayout === null || !Object.prototype.hasOwnProperty.call(targetLayout.pages, pageId)) return;
+      // Copy to the same places means nothing on a custom layout: refused (Ryan, 2026-11-20).
+      if (isCustomLayout(targetLayout.pages[pageId].panel)) {
+        setMessage(`Not copied: “${pageLabel(targetLayout, pageId)}” has a custom layout. Drag or paste keys onto its controls instead.`);
+        return;
+      }
       if (targetGeometry === null) {
         setMessage('That deck is not connected, so where the keys would land cannot be worked out. Plug it in to copy to it.');
         return;
@@ -165,7 +181,10 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       if (clip === null) return;
       // Anchored on the key dropped on: one key always has a place there, so
       // nothing is skipped; a page key whose target is not on that deck loses the link.
-      const placement = placeClipboard(clip, { row: toPosition.row, column: toPosition.column }, toGeometry!, toLayout);
+      // On a custom layout, that control itself: rows and columns there can name another.
+      const placement = isCustomLayout(toLayout.pages[to.page].panel)
+        ? placeOnControls(clip, [to.key], toLayout)
+        : placeClipboard(clip, { row: toPosition.row, column: toPosition.column }, toGeometry!, toLayout);
       const failure = await put(placement.writes, to.serial, to.page);
       if (failure !== null) {
         setMessage(`Could not copy the key: ${failure}`);

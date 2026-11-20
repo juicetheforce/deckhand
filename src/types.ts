@@ -96,15 +96,31 @@ export interface PanelControlDef {
   y: number;
   w: number;
   h: number;
-  shape?: 'square';
+  /**
+   * src/shapes.ts: a rectangle unless set. `"square"`, which every control
+   * written before custom layouts carries, is a rectangle with square corners.
+   */
+  shape?: 'square' | 'rectangle' | 'round' | 'hexagon';
+  /** A rectangle's corner radius in canvas pixels, from 0 to half its shorter side (a full pill). */
+  radius?: number;
+  /** Edit layout's Lock proportions: resizing keeps the box's proportions. The editor's only; the daemon ignores it. */
+  keepRatio?: boolean;
 }
 
-/** A virtual deck's controls for one profile: shared by every page of that layout. */
+/** A virtual deck's controls on one page. */
 export interface PanelDef {
   /** The canvas, in pixels: the screen's size when it was laid out. Shown scaled to fit, centred, on any other. */
   size: { width: number; height: number };
+  /**
+   * In this order on the screen: where two overlap, the later is on top
+   * (src/hit-test.ts). Bring to front and Send to back reorder this list.
+   */
   controls: PanelControlDef[];
-  /** What generated it ("small", "medium", "large") — information only. */
+  /**
+   * What made it: "small", "medium", "large" or "custom" (Grid Size) for a
+   * fixed grid, which nothing can move or reshape; **"free" for a custom
+   * layout**, positioned in Edit layout (src/panel-presets.ts isCustomLayout).
+   */
   preset?: string;
 }
 

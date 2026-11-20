@@ -1793,6 +1793,13 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
       pageOptions: headerPage() ? dropdownOptions(headerPage()!) : null,
       page: headerPage()?.dataset.value ?? null,
       changeLayout: panel()?.querySelector('.deck-panel-change-layout') !== null,
+      editLayout: panel()?.querySelector('[data-edit-layout]') !== null,
+    },
+    // Custom layouts (round 2a) are a virtual deck's only: none of it on a Stream Deck.
+    layoutMode: {
+      positioned: document.querySelectorAll('.grid-positioned, .key-placed').length,
+      palette: document.querySelector('[data-controls-palette]') !== null,
+      modeBar: document.querySelector('[data-mode-bar]') !== null,
     },
     arranging: {
       zoomBar: document.querySelector('.canvas-zoom') !== null,

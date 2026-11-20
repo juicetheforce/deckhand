@@ -248,7 +248,12 @@ export async function connect(socketPath) {
     }
   });
   const closed = new Promise((resolve) => socket.on('close', resolve));
-  await new Promise((resolve) => socket.once('connect', resolve));
+  // A refused or missing socket rejects: swallowed, it left the caller
+  // waiting for a connect that would never come, and hung the whole suite.
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('error', reject);
+  });
   return {
     socket,
     events,

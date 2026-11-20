@@ -196,6 +196,19 @@ let config = validateConfig({
             two: { buttons: { k1: { action: { type: 'page', to: 'main' } } } },
             // A page with its own panel: two 576 px keys across the top-left.
             wide: { panel: grid(1, 2, 600), buttons: {} },
+            // A custom layout: a round control over a square one, and a hexagon.
+            shaped: {
+              panel: {
+                size: { width: 1920, height: 720 },
+                preset: 'free',
+                controls: [
+                  { id: 'sq', x: 100, y: 100, w: 300, h: 300 },
+                  { id: 'ball', x: 300, y: 300, w: 300, h: 300, shape: 'round' },
+                  { id: 'hex', x: 800, y: 100, w: 300, h: 346, shape: 'hexagon' },
+                ],
+              },
+              buttons: {},
+            },
           },
         },
       },
@@ -289,6 +302,18 @@ await settle('touch', async () => {
   inputs.length = 0;
   await helperSays('DP-4', down(10, 'k2', centre('k2')), up(10));
   check('…and where the old grid had k2, the new page\'s k1 is pressed', inputs.join() === 'k1 down,k1 up', inputs.join());
+
+  // Custom layouts: a touch is tested on the real shape, the later control on top.
+  await session.goToPage('shaped');
+  inputs.length = 0;
+  await helperSays('DP-4', down(11, 'sq', { x: 320, y: 320 }), up(11));
+  check('a touch in the round control\'s corner, over the square, presses the square', inputs.join() === 'sq down,sq up', inputs.join());
+  inputs.length = 0;
+  await helperSays('DP-4', down(12, 'ball', { x: 380, y: 380 }), up(12));
+  check('where both are, the later in the panel is on top', inputs.join() === 'ball down,ball up', inputs.join());
+  inputs.length = 0;
+  await helperSays('DP-4', down(13, 'hex', { x: 805, y: 105 }), up(13), down(14, 'hex', { x: 950, y: 273 }), up(14));
+  check('a hexagon\'s box corner is nothing; its middle is the hexagon', inputs.join() === 'hex down,hex up', inputs.join());
   await session.goToPage('main');
 });
 

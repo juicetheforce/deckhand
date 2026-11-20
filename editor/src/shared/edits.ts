@@ -4,7 +4,7 @@
  *
  * Types only, importing nothing that touches Node: the renderer imports this.
  */
-import type { ActionDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
 import type { ButtonWrite } from './bulk.js';
 import type { PairIconField } from './icons.js';
 
@@ -98,6 +98,20 @@ export type Edit =
   | { kind: 'removeVirtualDeck'; key: string }
   /** "Change layout…": one page of a virtual deck at another fixed grid. Its keys keep their row and column (shared/panel-size.ts); the rest are dropped. */
   | { kind: 'setPagePanel'; profile: string; serial: string; page: string; panel: PanelDef }
+  /**
+   * Edit layout's save (round 2a): one page of a virtual deck given a custom
+   * layout — its panel, and its keys whole, each by a control on that panel.
+   * **Refused for a panel with no controls**: a layout with no controls is
+   * never saved (Ryan, 2026-11-18). Making a preset custom is this, with the
+   * same controls and keys.
+   */
+  | { kind: 'setLayout'; profile: string; serial: string; page: string; panel: PanelDef; buttons: Record<string, ButtonDef> }
+  /**
+   * A page put back exactly as Edit layout found it — its panel, a fixed grid
+   * or custom, and its keys: Discard changes, and a layout left with no
+   * controls (never saved empty: it goes back instead, 2026-11-18).
+   */
+  | { kind: 'restorePage'; profile: string; serial: string; page: string; panel: PanelDef; buttons: Record<string, ButtonDef> }
   /**
    * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a

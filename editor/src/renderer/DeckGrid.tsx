@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import missingIconUrl from '../../../assets/icons/missing.svg';
 import { failedBadgeSvg, unsetBadgeSvg } from '../../../src/failed-badge.js';
+import { cornerRadius, fillsBox, innerRect, shapeName, shapePath } from '../../../src/shapes.js';
 import type { LiveFace } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
@@ -39,6 +40,12 @@ interface Props {
   onKeyDragOver: (over: KeyRef | null) => void;
   /** The key on this deck something is being dragged over — an action from the library, or a key from this deck or another — drawn as the drop target. */
   dropTarget: string | null;
+  /**
+   * A virtual deck's room in its frame, in pixels at 100%: its page is drawn
+   * positioned (keys where the panel puts them, at their size and shape),
+   * scaled to fit and centred. Absent, it takes its frame's width.
+   */
+  box?: { width: number; height: number };
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
@@ -169,17 +176,21 @@ function scaled(scale: number): CSSProperties {
   return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
-  const gridStyle: CSSProperties = {
-    gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
-    gridTemplateRows: `repeat(${geometry.rows}, auto)`,
-    // Keys keep roughly the deck's proportions whatever the column count.
-    maxWidth: `calc(${geometry.columns} * 104px)`,
-  };
+  // A virtual deck: every page drawn as its panel places it (round 2a). A Stream Deck: its grid, as always.
+  const canvas = geometry.units === 'pixels' && geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0 ? geometry.canvas : null;
+  const gridStyle: CSSProperties = canvas
+    ? positionedBox(canvas, box)
+    : {
+        gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${geometry.rows}, auto)`,
+        // Keys keep roughly the deck's proportions whatever the column count.
+        maxWidth: `calc(${geometry.columns} * 104px)`,
+      };
 
   return (
-    <div className="grid" style={gridStyle} data-deck={geometry.serial}>
+    <div className={canvas ? 'grid grid-positioned' : 'grid'} style={gridStyle} data-deck={geometry.serial}>
       {geometry.keys.map((k, i) => (
         <Key
           key={k.id}
@@ -189,8 +200,9 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           number={i + 1}
           row={k.row}
           column={k.column}
+          place={canvas ? placeOf(k, canvas) : undefined}
           hasScreen={k.feedback === 'lcd'}
-          iconSize={geometry.iconSize}
+          iconSize={canvas ? null : geometry.iconSize}
           button={page.buttons[k.id]}
           iconStamps={iconStamps}
           appIcons={appIcons}
@@ -212,7 +224,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
   );
 }
 
-interface KeyProps {
+export interface KeyProps {
   /** The deck this key is on, for the drags (keyUnder.ts). */
   serial: string;
   config: Config;
@@ -222,6 +234,8 @@ interface KeyProps {
   number: number;
   row: number;
   column: number;
+  /** On a virtual deck: where the key sits on its panel and its shape (placeOf). Absent on a Stream Deck's grid. */
+  place?: Place;
   hasScreen: boolean;
   iconSize: number | null;
   button: ButtonDef | undefined;
@@ -245,11 +259,12 @@ interface KeyProps {
   dropTarget: boolean;
 }
 
-function Key({ serial, config, id, number, row, column, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, live, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+export function Key({ serial, config, id, number, row, column, place, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, live, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
   const unsetName = INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].name;
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
-  const face = keyFace(config, button, iconSize, live, appIcons);
+  // A placed key's label is sized to its inner rectangle (shapes.ts): the deck lays it out there.
+  const face = keyFace(config, button, place ? place.inner.px : iconSize, live, appIcons);
   const stamp = face.icon === null ? undefined : iconStamps[face.icon];
   // Which icon failed to load, by path and stamp, so a changed path — or the
   // same path whose file changed — is tried again.
@@ -266,6 +281,8 @@ function Key({ serial, config, id, number, row, column, hasScreen, iconSize, but
     incomplete ? 'key-incomplete' : '',
     latched ? 'key-latched' : '',
     unset ? 'key-unset' : '',
+    place ? 'key-placed' : '',
+    place && !place.fills ? 'key-shaped' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -274,36 +291,8 @@ function Key({ serial, config, id, number, row, column, hasScreen, iconSize, but
       ? `Key ${number}: empty`
       : `Key ${number}: ${describeAction(button)}${latched ? ' — held down now' : ''}${unset ? ` — ${unsetName} is not set up` : ''}`;
 
-  return (
-    <button
-      className={classes}
-      style={{ gridRow: row + 1, gridColumn: column + 1, background: kind === 'empty' ? undefined : face.background }}
-      title={title}
-      aria-label={title}
-      aria-pressed={selected}
-      data-deck={serial}
-      data-key={id}
-      onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
-      onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onMenu(e.clientX, e.clientY);
-      }}
-    >
-      {face.icon && !iconMissing && (
-        <img
-          className="key-icon"
-          src={iconUrl(face.icon, stamp)}
-          alt=""
-          style={{ objectFit: face.iconFit, ...scaled(face.iconScale) }}
-          draggable={false}
-          onError={() => setMissingIcon(iconId)}
-        />
-      )}
-      {iconMissing && (
-        // The same built-in the deck draws for an icon it cannot read.
-        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} style={scaled(face.builtinScale)} draggable={false} />
-      )}
+  const faceText = (
+    <>
       {face.label && (
         <span
           className={`key-label key-label-${face.labelPosition}`}
@@ -341,6 +330,115 @@ function Key({ serial, config, id, number, row, column, hasScreen, iconSize, but
         // inlined: the page's CSP refuses data: images. Sized in CSS.
         <span className="key-failed" title={`Its last press failed: ${failure}`} dangerouslySetInnerHTML={{ __html: failedBadgeSvg(100) }} />
       )}
+    </>
+  );
+
+  return (
+    <button
+      className={classes}
+      style={{ ...(place ? place.style : { gridRow: row + 1, gridColumn: column + 1 }), background: kind === 'empty' ? undefined : face.background }}
+      title={title}
+      aria-label={title}
+      aria-pressed={selected}
+      data-deck={serial}
+      data-key={id}
+      onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
+      onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(e.clientX, e.clientY);
+      }}
+    >
+      {face.icon && !iconMissing && (
+        <img
+          className="key-icon"
+          src={iconUrl(face.icon, stamp)}
+          alt=""
+          style={{ objectFit: face.iconFit, ...(place ? iconBox(place, face.iconScale) : scaled(face.iconScale)) }}
+          draggable={false}
+          onError={() => setMissingIcon(iconId)}
+        />
+      )}
+      {iconMissing && (
+        // The same built-in the deck draws for an icon it cannot read.
+        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} style={place ? iconBox(place, face.builtinScale) : scaled(face.builtinScale)} draggable={false} />
+      )}
+      {place ? (
+        // The label, the marks and the badge in the shape's largest inner rectangle, as the deck draws them (src/render.ts renderFace).
+        <span className="key-inner" style={place.inner.style}>
+          {faceText}
+        </span>
+      ) : (
+        faceText
+      )}
+      {place && !place.fills && (
+        // The shape's outline: the editor's own (the deck draws none), its colour saying selected or empty.
+        <svg className="key-outline" viewBox={`0 0 ${place.w} ${place.h}`} preserveAspectRatio="none" aria-hidden="true">
+          <path d={place.path} vectorEffect="non-scaling-stroke" />
+        </svg>
+      )}
     </button>
   );
+}
+
+/** A key's place on a virtual deck's panel, as CSS: in percent of the panel, so it scales with it. */
+export interface Place {
+  style: CSSProperties;
+  /** Its box in canvas pixels. */
+  w: number;
+  h: number;
+  /** A rectangle with square corners: drawn as a plain key, with no outline of its own. */
+  fills: boolean;
+  /** Its outline (shapes.ts shapePath), in its box's pixels. */
+  path: string;
+  /** Its largest inner rectangle: where the label, marks and badge go, and its width in canvas pixels. */
+  inner: { style: CSSProperties; px: number };
+}
+
+const pct = (v: number) => `${v * 100}%`;
+
+/** The hexagon's six corners, as a clip-path: in percent, so it stretches with its box as the deck's does. */
+const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)';
+
+export function placeOf(k: { x: number; y: number; w: number; h: number; shape: string; radius?: number; z?: number; index: number }, canvas: { width: number; height: number }): Place {
+  const box = { w: k.w, h: k.h, shape: k.shape, radius: k.radius };
+  const shape = shapeName(k.shape);
+  const r = cornerRadius(box);
+  const inner = innerRect(box);
+  const style: CSSProperties = {
+    position: 'absolute',
+    left: pct(k.x / canvas.width),
+    top: pct(k.y / canvas.height),
+    width: pct(k.w / canvas.width),
+    height: pct(k.h / canvas.height),
+    // The panel's own order: the later is on top, as on the deck.
+    zIndex: (k.z ?? k.index) + 1,
+    aspectRatio: 'auto',
+    borderRadius: shape === 'round' ? '50%' : `${pct(r / k.w)} / ${pct(r / k.h)}`,
+    ...(shape === 'hexagon' ? { clipPath: HEXAGON_CLIP } : {}),
+  };
+  return {
+    style,
+    w: k.w,
+    h: k.h,
+    fills: fillsBox(box),
+    path: shapePath(box),
+    inner: {
+      style: { left: pct(inner.x / k.w), top: pct(inner.y / k.h), width: pct(inner.w / k.w), height: pct(inner.h / k.h) },
+      px: inner.w,
+    },
+  };
+}
+
+/** The icon on a placed key: the square at its shorter side, centred, at `scale` of it (render.ts renderFace). */
+function iconBox(place: Place, scale: number): CSSProperties {
+  const side = Math.min(place.w, place.h) * Math.min(1, scale);
+  return { inset: 'auto', left: pct((place.w - side) / 2 / place.w), top: pct((place.h - side) / 2 / place.h), width: pct(side / place.w), height: pct(side / place.h) };
+}
+
+/** The panel drawn at its own proportions, as large as fits the room it has, centred. */
+function positionedBox(canvas: { width: number; height: number }, room: { width: number; height: number } | undefined): CSSProperties {
+  if (!room) return { width: '100%', aspectRatio: `${canvas.width} / ${canvas.height}` };
+  const scale = Math.min(room.width / canvas.width, room.height / canvas.height);
+  return { width: Math.floor(canvas.width * scale), height: Math.floor(canvas.height * scale) };
 }

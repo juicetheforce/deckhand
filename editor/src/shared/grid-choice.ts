@@ -10,7 +10,8 @@ import type { PanelDef } from '../../../src/types.js';
 import { validSerial } from './deck-positions.js';
 
 export interface GridChoice {
-  size: PanelSize;
+  /** A fixed grid, or 'blank': New page and Change layout… also offer an empty custom layout (round 2a). */
+  size: PanelSize | 'blank';
   /** Grid Size's rows and columns; absent for a preset. */
   rows?: number;
   columns?: number;
@@ -19,7 +20,7 @@ export interface GridChoice {
 /** At most this many decks remembered: a guard against a corrupt preferences file, not a limit. */
 export const MAX_GRID_CHOICES = 32;
 
-const SIZES = new Set<string>(['small', 'medium', 'large', 'custom']);
+const SIZES = new Set<string>(['small', 'medium', 'large', 'custom', 'blank']);
 const whole = (v: unknown, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= max;
 
 /** A choice as stored or sent, or null when it is not one. */
@@ -27,7 +28,7 @@ export function cleanGridChoice(value: unknown): GridChoice | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
   if (typeof v.size !== 'string' || !SIZES.has(v.size)) return null;
-  if (v.size !== 'custom') return { size: v.size as PanelSize };
+  if (v.size !== 'custom') return { size: v.size as PanelSize | 'blank' };
   return whole(v.rows, MAX_CUSTOM_ROWS) && whole(v.columns, MAX_CUSTOM_COLUMNS) ? { size: 'custom', rows: v.rows, columns: v.columns } : null;
 }
 
@@ -81,8 +82,9 @@ export function gridStateOf(panel: PanelDef | undefined): GridState {
   return { size, rows: String(Math.max(1, rows)), columns: String(Math.max(1, columns)) };
 }
 
+/** The picker's grid for a remembered choice: Blank remembers no grid, so Medium stands behind it. */
 export function gridStateOfChoice(choice: GridChoice): GridState {
-  return { size: choice.size, rows: String(choice.rows ?? 3), columns: String(choice.columns ?? 8) };
+  return { size: choice.size === 'blank' ? 'medium' : choice.size, rows: String(choice.rows ?? 3), columns: String(choice.columns ?? 8) };
 }
 
 export function choiceOf(state: GridState): GridChoice {

@@ -239,3 +239,47 @@ export function migratePagePanels<P>(config: PanelConfig<P>): boolean {
   }
   return changed;
 }
+
+/**
+ * What a custom layout stores as its `preset` (types.ts PanelDef): Ryan's
+ * call, 2026-11-18, accepted — not "custom", which already means Grid Size in
+ * every config written before custom layouts.
+ */
+export const CUSTOM_LAYOUT = 'free';
+
+/** Whether a page's panel is a custom layout (Edit layout can change it), not a fixed grid. */
+export function isCustomLayout(panel: { preset?: string } | null | undefined): boolean {
+  return panel?.preset === CUSTOM_LAYOUT;
+}
+
+/**
+ * A panel that can be shown: one with at least one control. **No layout with
+ * no controls ever reaches the screen** (Ryan, 2026-11-18, answer 2): the
+ * editor never saves one, and one written by hand is passed over for the
+ * deck's default, as a page with no panel is.
+ */
+export function showable<P extends { controls: ReadonlyArray<unknown> }>(panel: P | null | undefined): P | undefined {
+  return panel && panel.controls.length > 0 ? panel : undefined;
+}
+
+/**
+ * A new Button's side on this screen, in its pixels: Medium's key, about
+ * 30 mm, so a control dropped on any screen is a size a finger can use
+ * (scope §7, "Controls in the mode"). Medium's 240 px when the screen's size
+ * is not known.
+ */
+export function newButtonSide(screen: ScreenSize): number {
+  return gridFor(screen, 'medium').keyPx;
+}
+
+/** A side in millimetres on this screen, or null when its physical size is not known. */
+export function sideMm(screen: ScreenSize, px: number): number | null {
+  const perMm = pxPerMm(screen);
+  return perMm === null ? null : px / perMm;
+}
+
+/** Whether a control this size gets the gentle very-small warning: under SMALL_KEY_MM on its shorter side, or SMALL_KEY_PX with no plausible size. Never a refusal. */
+export function isVerySmall(screen: ScreenSize, w: number, h: number): boolean {
+  const mm = sideMm(screen, Math.min(w, h));
+  return mm !== null ? mm < SMALL_KEY_MM : Math.min(w, h) < SMALL_KEY_PX;
+}
