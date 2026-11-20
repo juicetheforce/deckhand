@@ -281,6 +281,20 @@ await settle('overlap', async () => {
   check('the round control on top: its box carries the square under its clear corner', topImage.x === 10 && pixel(topImage, 0, 0) === '255,0,0,255' && pixel(topImage, 9, 9) === '0,0,255,255', JSON.stringify([pixel(topImage, 0, 0), pixel(topImage, 9, 9)]));
   check('…and is clear where neither control is (no gap filled)', pixel(topImage, 19, 19) === '0,0,0,0', pixel(topImage, 19, 19));
   check('the square redrawn under it: the round one stays on top in its image', pixel(lowAgain, 0, 0) === '255,0,0,255' && pixel(lowAgain, 19, 19) === '0,0,255,255', pixel(lowAgain, 19, 19));
+  // Draws piling up behind one in flight: low red, top, then low green. The queue holds low (green)
+  // before top, so top goes last — and must carry green where the square shows through, never the
+  // red it would have carried had it been combined when queued (a stale face nothing redraws).
+  const green = Buffer.alloc(20 * 20 * 4);
+  for (let i = 0; i < 400; i++) green.set([0, 255, 0, 255], i * 4);
+  const queued = (await frames()).filter((f) => f.type === 'I').length;
+  await dev.draw('top', blue);
+  await dev.draw('low', red);
+  await dev.draw('top', blue);
+  await dev.draw('low', green);
+  await until(async () => (await frames()).filter((f) => f.type === 'I').length >= queued + 3);
+  await sleep(100);
+  const lastTop = (await frames()).filter((f) => f.type === 'I' && f.x === 10).at(-1);
+  check('queued behind a frame in flight, the control on top is combined when sent: the latest face under it, not the one when queued', pixel(lastTop, 0, 0) === '0,255,0,255', pixel(lastTop, 0, 0));
   // No layout with no controls ever reaches the screen (Ryan, 2026-11-18): one written by hand falls back as a page with no panel does.
   const empty = dev.layoutFrom({ pages: { e: { panel: { size: { width: 1920, height: 720 }, controls: [], preset: 'free' }, buttons: {} } } }, 'e');
   check('a page whose panel has no controls is shown with a grid, never with none', empty.keyCount > 0, String(empty.keyCount));

@@ -88,8 +88,13 @@ class PanelDevice implements DeckDevice {
   private controls: HitControl[] = [];
   /** Each control's last face, as handed to draw() (never changed): what an overlapping control's image is combined from. */
   private faces = new Map<string, Buffer>();
-  /** The newest image for each key not yet sent: a key drawn twice before the first went keeps only the second. */
-  private pending = new Map<string, Buffer[]>();
+  /**
+   * The keys drawn and not yet sent, by id: a key drawn twice before the first
+   * went is sent once. Its image is made when it is sent, from the faces as
+   * they are then — combined when queued, an overlapping key could carry a
+   * face since replaced, and nothing would draw over it again.
+   */
+  private pending = new Set<string>();
   private inFlight = false;
   private canvas: Buffer | null = null;
   private redrawListeners: Array<() => void> = [];
@@ -262,12 +267,15 @@ class PanelDevice implements DeckDevice {
 
   private sendNext(): void {
     if (this.inFlight) return;
-    const next = this.pending.entries().next();
+    const next = this.pending.values().next();
     if (next.done) return;
-    const [control, parts] = next.value;
+    const control = next.value;
     this.pending.delete(control);
+    const rect = this.rects.get(control);
+    const face = this.faces.get(control);
+    if (!rect || !face) return this.sendNext();
     this.inFlight = true;
-    for (const part of parts) this.write(part);
+    for (const part of imageFrameParts(rect.x, rect.y, rect.w, rect.h, this.imageFor(control, rect, face))) this.write(part);
   }
 
   /**
@@ -383,7 +391,7 @@ class PanelDevice implements DeckDevice {
     const rect = this.rects.get(control);
     if (!rect) throw new Error(`no key "${control}" on this panel`);
     this.faces.set(control, rgba);
-    this.pending.set(control, imageFrameParts(rect.x, rect.y, rect.w, rect.h, this.imageFor(control, rect, rgba)));
+    this.pending.add(control);
     this.sendNext();
   }
 
