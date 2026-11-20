@@ -257,8 +257,15 @@ touchscreen shows the layout as it is built. **Done** leaves; so do closing
 the window, changing profile and a deck key that changes page or profile.
 **Discard changes** puts the layout back as it was when Edit layout was
 opened, deleted controls with their keys. Outside Edit layout a layout cannot
-be changed, only filled with actions, icons and labels. **Blank**, in New page
-and Change layout…, starts an empty custom layout; a layout with no controls
+be changed, only filled with actions, icons and labels. On a custom layout a
+key lands only on a control: **paste** puts the copied keys on the selected
+controls, one each, and pastes nothing with none selected; a key **dragged**
+from another deck goes on the control it is dropped on, and nowhere if there
+is none; **Copy to page** and **Copy to device**, which copy to the same
+places, are refused onto a custom layout. Every button on a virtual deck is
+drawn with a thin, light outline inside its edge. **Blank**, in New page
+and Change layout…, starts an empty custom layout (Change layout… on a custom
+page preselects the last choice made on that deck); a layout with no controls
 is never saved, so a new page left empty keeps the deck's default grid and an
 existing page left empty stays as it was. A virtual deck's top bar shows the
 grid's columns and rows on a grid page, and the screen's resolution on a custom
