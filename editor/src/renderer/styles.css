@@ -4149,13 +4149,10 @@ body.settings-body {
   stroke-dasharray: 6 5;
 }
 
-/* Edit layout, on a virtual deck's header: lit while the mode is open (19b). */
-.deck-panel-edit-wrap {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.deck-panel-edit-layout {
+/* Edit layout, on a virtual deck's header: lit while the mode is open (19b); Discard changes and Done beside it then. */
+.deck-panel-edit-layout,
+.deck-panel-discard,
+.deck-panel-done {
   flex-shrink: 0;
   color: var(--text);
   background: rgba(255, 255, 255, 0.06);
@@ -4165,7 +4162,8 @@ body.settings-body {
   white-space: nowrap;
 }
 
-.deck-panel-edit-layout:not(:disabled):hover {
+.deck-panel-edit-layout:not(:disabled):hover,
+.deck-panel-discard:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -4175,16 +4173,17 @@ body.settings-body {
   border-color: var(--accent);
 }
 
-/* The preset-to-custom question, under the button (21e). In the window: the deck's frame clips. */
-.edit-layout-confirm {
-  position: fixed;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 280px;
-  padding: 12px 14px;
-  border-radius: 12px;
+/* Done: the way out, the primary button in the accent colour (Ryan, 2026-11-20). */
+.deck-panel-done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 5px 14px;
+}
+
+.deck-panel-done:hover {
+  filter: brightness(1.12);
 }
 
 /* ---- Edit layout (round 2a; boards 21–23) ---- */

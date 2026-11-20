@@ -4,7 +4,7 @@ import { startPageOf } from '../../../src/config-common.js';
 import type { ButtonDef, Config, PageDef, PanelDef } from '../../../src/types.js';
 import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { geometryOfPanel } from '../../../src/geometry.js';
-import { addButton, blankPanel, buttonsFor, controlNames, deleteControl, duplicateControl, layoutChanges, madeCustom, moveControl } from '../shared/layout-edit.js';
+import { addButton, blankPanel, buttonsFor, controlNames, deleteControl, duplicateControl, layoutChanges, moveControl } from '../shared/layout-edit.js';
 import { ControlsPalette, DeleteControl, DiscardChanges, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
 import { useVirtualScreen } from './GridPicker.js';
 import { GAP_PX, PAD_X_PX, PITCH_PX, type DeckSize } from './canvas.js';
@@ -187,8 +187,8 @@ function Editor({
   const [mode, setMode] = useState<LayoutMode | null>(null);
   /** The mode's warnings: deleting a control with a key, Discard changes. */
   const [modeCard, setModeCard] = useState<{ kind: 'delete'; id: string } | { kind: 'discard' } | null>(null);
-  /** The mode asked for on a page not in this config yet (just made, or just made custom): opened once it arrives. */
-  const [pendingEnter, setPendingEnter] = useState<{ serial: string; profile: string; page: string; blank: boolean; custom: boolean } | null>(null);
+  /** The mode asked for on a page not in this config yet (just made from Blank): opened once it arrives. */
+  const [pendingEnter, setPendingEnter] = useState<{ serial: string; profile: string; page: string; blank: boolean;  } | null>(null);
   /** A layout just saved, drawn until the saved config comes back, so a released drag does not jump back for a moment. */
   const [optimistic, setOptimistic] = useState<{ panel: PanelDef; blank: boolean } | null>(null);
   useEffect(() => setOptimistic(null), [config]);
@@ -325,7 +325,7 @@ function Editor({
   useEffect(() => {
     if (!pendingEnter) return;
     const p = layoutFor(config, pendingEnter.profile, pendingEnter.serial)?.pages[pendingEnter.page];
-    if (!p || (pendingEnter.custom && !isCustomLayout(p.panel))) return;
+    if (!p) return;
     setPendingEnter(null);
     if (pendingEnter.profile === selection.profile) enterMode(pendingEnter.serial, pendingEnter.page, pendingEnter.blank, p);
   }, [config, pendingEnter]);
@@ -636,9 +636,11 @@ function Editor({
     if (!changingHere) setChangingLayout(null);
   }, [changingHere]);
   const changingLayout = changingHere ? changingAt.page : null;
-  const changing = changingLayout === null ? undefined : layout?.pages[changingLayout];
+  const changing = changingLayout === null || isCustomLayout(pagePanelIn(config, selection.profile, selection.serial, changingLayout)) ? undefined : layout?.pages[changingLayout];
   /** Change layout… for a page of a shown deck: from its tab's menu, or the header's button on any shown deck. */
   const changeLayout = (serial: string, pageId: string) => {
+    // A grid page's only: a custom page is changed in Edit layout alone (Ryan, 2026-11-20).
+    if (isCustomLayout(pagePanelIn(config, selection.profile, serial, pageId))) return;
     setPendingDelete(null);
     if (serial !== selection.serial) setSelection((s) => focusDeck(s, serial));
     setChangingLayout({ serial, profile: selection.profile, page: pageId });
@@ -782,13 +784,10 @@ function Editor({
               size={sizeText(mode.serial, mode.page) ?? ''}
               profile={profileLabel(config, mode.profile)}
               page={layoutFor(config, mode.profile, mode.serial) ? pageLabel(layoutFor(config, mode.profile, mode.serial)!, mode.page) : mode.page}
-              changed={modeChanged}
-              onDiscard={() => setModeCard({ kind: 'discard' })}
-              onDone={leaveMode}
             />
           ) : undefined
         }
-        onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true, custom: false })}
+        onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true })}
         config={config}
         daemon={daemon}
         selection={selection}
@@ -886,18 +885,14 @@ function Editor({
                       name={deckLabel(config, daemon, serial)}
                       size={sizeText(serial, pageHere)}
                       editLayout={
-                        virtual && pageDef && panelHere
+                        // Only on a custom page: a page is a grid or custom for its whole life (Ryan, 2026-11-20).
+                        // While open, always: a new page started from Blank is the deck's default grid on disk until its first control.
+                        virtual && pageDef && panelHere && (editing || isCustomLayout(panelHere))
                           ? {
                               open: editing,
-                              preset: !isCustomLayout(panelHere),
+                              changed: editing && modeChanged,
                               onOpen: () => enterMode(serial, pageHere, false, pageDef),
-                              onMakeCustom: async () => {
-                                // Every key and its action kept, in the same places; then straight in (21e).
-                                const result = await window.deckhand.apply({ kind: 'setLayout', profile: selection.profile, serial, page: pageHere, panel: madeCustom(panelHere), buttons: buttonsFor(pageDef, panelHere) });
-                                if (!result.ok) return result.error;
-                                setPendingEnter({ serial, profile: selection.profile, page: pageHere, blank: false, custom: true });
-                                return null;
-                              },
+                              onDiscard: () => setModeCard({ kind: 'discard' }),
                               onDone: leaveMode,
                             }
                           : undefined
@@ -911,7 +906,7 @@ function Editor({
                       onFocus={() => setSelection((s) => focusDeck(s, serial))}
                       // The focused deck's Page ▾ is its tabs in another place; another deck's moves that deck alone.
                       onPage={(pageId) => (focused ? select({ page: pageId }) : showDeckPage(serial, pageId))}
-                      onChangeLayout={config.decks?.[serial]?.virtual && layoutHere?.pages[pageHere] ? () => changeLayout(serial, pageHere) : undefined}
+                      onChangeLayout={virtual && pageDef && panelHere && !isCustomLayout(panelHere) && !editing ? () => changeLayout(serial, pageHere) : undefined}
                       placement={placement}
                     >
                       {editing && modePanel && modePage ? (
@@ -976,18 +971,12 @@ function Editor({
                 pageName={pageLabel(layout, changingLayout)}
                 page={changing}
                 current={pagePanelIn(config, selection.profile, selection.serial, changingLayout)}
-                deckDefault={config.decks?.[selection.serial]?.virtual?.panel}
                 onApply={async (panel, choice) => {
                   const result = await window.deckhand.apply({ kind: 'setPagePanel', profile: selection.profile, serial: selection.serial, page: changingLayout, panel });
                   if (!result.ok) return result.error;
                   void window.deckhand.setLastGrid(selection.serial, choice);
                   setChangingLayout(null);
                   return null;
-                }}
-                onBlank={() => {
-                  // Blank is a choice on this deck like any grid: the next picker preselects it.
-                  void window.deckhand.setLastGrid(selection.serial, { size: 'blank' });
-                  enterMode(selection.serial, changingLayout, true, changing);
                 }}
                 onCancel={() => setChangingLayout(null)}
               />

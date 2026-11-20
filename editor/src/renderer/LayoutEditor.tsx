@@ -442,11 +442,12 @@ function NumberField({ label, value, onSave }: { label: string; value: number; o
 }
 
 /**
- * The mode bar (21a, 23d), in place of the toolbar's crumbs and page tabs:
- * the deck and its size, the profile and the page being edited, then Discard
- * changes — dimmed until something has changed — and Done.
+ * The mode bar (21a), in place of the toolbar's crumbs and page tabs: the
+ * deck and its size, the profile and the page being edited. Discard changes
+ * and Done are on the deck's own header, beside the lit Edit layout (Ryan,
+ * 2026-11-20), not here.
  */
-export function ModeBar({ deck, size, profile, page, changed, onDiscard, onDone }: { deck: string; size: string; profile: string; page: string; changed: boolean; onDiscard: () => void; onDone: () => void }) {
+export function ModeBar({ deck, size, profile, page }: { deck: string; size: string; profile: string; page: string }) {
   return (
     <div className="mode-bar" data-mode-bar="">
       <span className="mode-bar-tag">Edit layout</span>
@@ -454,12 +455,6 @@ export function ModeBar({ deck, size, profile, page, changed, onDiscard, onDone 
         <strong>{deck}</strong> <span className="muted">· {size}</span> <span className="crumb-sep">›</span> {profile} <span className="crumb-sep">›</span> <strong>{page}</strong>
       </span>
       <span className="toolbar-spacer" />
-      <button className="mode-bar-discard" disabled={!changed} onClick={onDiscard} data-discard-changes="">
-        Discard changes
-      </button>
-      <button className="primary mode-bar-done" onClick={onDone} data-done="">
-        Done
-      </button>
     </div>
   );
 }

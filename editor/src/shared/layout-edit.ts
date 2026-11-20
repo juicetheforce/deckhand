@@ -153,11 +153,6 @@ export function blankPanel(size: { width: number; height: number }): PanelDef {
   return { size: { ...size }, controls: [], preset: CUSTOM_LAYOUT };
 }
 
-/** A fixed grid made custom (21e): the same controls in the same places, every key kept. */
-export function madeCustom(panel: PanelDef): PanelDef {
-  return { ...structuredClone(panel), preset: CUSTOM_LAYOUT };
-}
-
 /**
  * Duplicate (Ctrl+D): one new control on the page being edited, the same
  * size and shape, offset by one grid step and on top, carrying what the

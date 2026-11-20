@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { Placement } from './DeckCanvas.js';
 import { Dropdown } from './Dropdown.js';
 import { LockIcon } from './icons.js';
@@ -23,15 +22,15 @@ interface Props {
   disabled: boolean;
   onFocus: () => void;
   onPage: (page: string) => void;
-  /** A virtual deck's Change layout… for the page shown; absent on a Stream Deck, or with no page. */
+  /** A virtual deck's Change layout… for a grid page shown; absent on a custom page, a Stream Deck, or with no page. */
   onChangeLayout?: () => void;
   /**
-   * A virtual deck's Edit layout, for the page shown; absent on a Stream Deck.
-   * `open`: the mode is open on this deck, so the button is lit, and pressing
-   * it is Done. `preset`: the page is a fixed grid, so the first press asks
-   * once whether to make it custom (21e).
+   * A virtual deck's Edit layout, for a custom page shown; absent on a grid
+   * page and on a Stream Deck. `open`: the mode is open on this deck, so the
+   * button is lit, pressing it is Done, and Discard changes (`changed`: dimmed
+   * until something has) and Done sit beside it.
    */
-  editLayout?: { open: boolean; preset: boolean; onOpen: () => void; onMakeCustom: () => Promise<string | null>; onDone: () => void };
+  editLayout?: { open: boolean; changed: boolean; onOpen: () => void; onDiscard: () => void; onDone: () => void };
   /** In Edit layout: the Page ▾ and Change layout… are dimmed (the person edits the page they entered on). */
   pageLocked?: boolean;
   /**
@@ -106,7 +105,7 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
           </span>
         )}
         <span className="toolbar-spacer" />
-        {editLayout && <EditLayoutButton name={name} disabled={disabled} {...editLayout} />}
+        {editLayout && <EditLayoutButton disabled={disabled} {...editLayout} />}
         {onChangeLayout && (
           <button className="deck-panel-change-layout" disabled={disabled || pageLocked} onClick={onChangeLayout} title={`Change the layout of this page on ${name}`}>
             Change layout…
@@ -137,79 +136,35 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
 }
 
 /**
- * Edit layout, on a virtual deck's header (19b): lit while the mode is open,
- * when pressing it is Done. On a fixed grid it asks once, in a small
- * confirmation under the button, whether to make that page a custom layout,
- * every key kept (21e); Esc, Cancel or a click outside changes nothing.
+ * Edit layout, on a virtual deck's header (19b), on a custom page only — a
+ * grid page has no Edit layout (Ryan, 2026-11-20: a page is a grid or custom
+ * for its whole life). Lit while the mode is open, when pressing it is Done;
+ * then Discard changes and Done sit beside it, Done as the primary button, so
+ * the way out is on the deck being edited (Ryan, 2026-11-20).
  */
-function EditLayoutButton({ name, disabled, open, preset, onOpen, onMakeCustom, onDone }: { name: string; disabled: boolean } & NonNullable<Props['editLayout']>) {
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const wrap = useRef<HTMLSpanElement>(null);
-  const card = useRef<HTMLSpanElement>(null);
-  // Under the button, in the window: the deck's frame clips what overflows it.
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!asking || !wrap.current) return;
-    const r = wrap.current.getBoundingClientRect();
-    setAt({ left: r.left, top: r.bottom + 6 });
-  }, [asking]);
-  useEffect(() => {
-    if (!asking) return;
-    const away = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node) && !card.current?.contains(e.target as Node)) setAsking(false);
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setAsking(false);
-    };
-    window.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', key);
-    return () => {
-      window.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', key);
-    };
-  }, [asking]);
-  const press = () => {
-    if (open) onDone();
-    else if (preset) {
-      setError(null);
-      setAsking((a) => !a);
-    } else onOpen();
-  };
-  const makeCustom = async () => {
-    setBusy(true);
-    const failure = await onMakeCustom();
-    setBusy(false);
-    if (failure === null) setAsking(false);
-    else setError(failure);
-  };
+function EditLayoutButton({ disabled, open, changed, onOpen, onDiscard, onDone }: { disabled: boolean } & NonNullable<Props['editLayout']>) {
   return (
-    <span className="deck-panel-edit-wrap" ref={wrap}>
+    <>
       <button
         className="deck-panel-edit-layout"
         aria-pressed={open}
         disabled={disabled && !open}
-        onClick={press}
+        onClick={open ? onDone : onOpen}
         title={open ? 'Done' : 'Move, resize and add controls'}
         data-edit-layout={open ? 'open' : 'closed'}
       >
         Edit layout
       </button>
-      {asking && at && createPortal(
-        <span ref={card} className="edit-layout-confirm glass" style={{ left: at.left, top: at.top }} role="dialog" aria-label={`Make this page on ${name} a custom layout`} data-make-custom="">
-          <strong>Make this page a custom layout?</strong>
-          <span className="muted small">Every key and its action is kept.</span>
-          {error && <span className="field-error">{error}</span>}
-          <span className="button-row">
-            <button onClick={() => setAsking(false)}>Cancel</button>
-            <button className="primary" disabled={busy} onClick={() => void makeCustom()} data-make-custom-confirm="">
-              Make it custom
-            </button>
-          </span>
-        </span>,
-        document.body,
+      {open && (
+        <>
+          <button className="deck-panel-discard" disabled={!changed} onClick={onDiscard} data-discard-changes="">
+            Discard changes
+          </button>
+          <button className="primary deck-panel-done" onClick={onDone} data-done="">
+            Done
+          </button>
+        </>
       )}
-    </span>
+    </>
   );
 }

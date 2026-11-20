@@ -3,7 +3,7 @@ import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
 import type { Config, PanelDef } from '../../../src/types.js';
-import { defaultPanelOf } from '../../../src/panel-presets.js';
+import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { choiceOf, GridPicker, gridStateOf, gridStateOfChoice, panelOf, useVirtualScreen, type GridState } from './GridPicker.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { connectionPill, deckChoices, geometryFor, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
@@ -164,7 +164,7 @@ export function Toolbar({ modeBar, onBlankPage, config, daemon, selection, editi
                 disabled={editingBlocked}
                 onSelect={() => onSelect({ page: p.id })}
                 onDelete={() => onDeletePage(p.id)}
-                onChangeLayout={virtualKey ? () => onChangeLayout(p.id) : undefined}
+                onChangeLayout={virtualKey && !isCustomLayout(pagePanelIn(config, selection.profile, virtualKey, p.id)) ? () => onChangeLayout(p.id) : undefined}
               />
               {/* One pencil, on the selected tab only: a control per tab would
                   multiply with every page created. */}
@@ -420,7 +420,7 @@ function PageTab({
   disabled: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  /** A virtual deck's page only: its layout is its own. Absent on a Stream Deck, whose menu is as it was. */
+  /** A virtual deck's grid page only (a custom page is changed in Edit layout alone). Absent on a Stream Deck, whose menu is as it was. */
   onChangeLayout?: () => void;
 }) {
   const [menu, setMenu] = useState(false);

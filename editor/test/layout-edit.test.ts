@@ -20,7 +20,6 @@ import {
   DUPLICATE_OFFSET,
   freshControlId,
   layoutChanges,
-  madeCustom,
   moveControl,
   overlaps,
   resizeBox,
@@ -194,10 +193,12 @@ const apply = (config: Config, edit: Edit) => {
   return validateConfig(config);
 };
 const at = { profile: 'p', serial: KEY, page: 'main' };
-check('making a preset custom keeps every control and key in place', () => {
+check('a custom layout saved with the same controls keeps every key in place', () => {
   const config = withPage();
   const page = config.profiles.p.layouts[KEY].pages.main;
-  const panel = madeCustom(page.panel!);
+  const panel = { ...structuredClone(page.panel!), preset: 'free' };
+  // Custom already (as 2a's pages made custom are): only then are its keys edited with it.
+  page.panel = structuredClone(panel);
   const after = apply(config, { kind: 'setLayout', ...at, panel, buttons: page.buttons });
   const p = after.profiles.p.layouts[KEY].pages.main;
   assert.equal(p.panel!.preset, 'free');
@@ -206,6 +207,21 @@ check('making a preset custom keeps every control and key in place', () => {
 });
 check('a layout with no controls is refused, never saved', () => {
   assert.throws(() => apply(withPage(), { kind: 'setLayout', ...at, panel: free([]), buttons: {} }), /no controls is never saved/);
+});
+check('a grid page with keys is never made custom; one with none (Blank, waiting) is', () => {
+  const config = withPage();
+  const page = config.profiles.p.layouts[KEY].pages.main;
+  assert.throws(() => apply(config, { kind: 'setLayout', ...at, panel: { ...structuredClone(page.panel!), preset: 'free' }, buttons: page.buttons }), /grid page is not made custom/);
+  const empty = withPage();
+  empty.profiles.p.layouts[KEY].pages.main.buttons = {};
+  const after = apply(empty, { kind: 'setLayout', ...at, panel: free([{ id: 'c1', x: 0, y: 0, w: 99, h: 99 }]), buttons: {} });
+  assert.equal(after.profiles.p.layouts[KEY].pages.main.panel!.preset, 'free');
+});
+check('Change layout… never touches a custom page, and never makes one', () => {
+  const custom = apply(withPage(), { kind: 'restorePage', ...at, panel: free([{ id: 'c1', x: 0, y: 0, w: 99, h: 99 }]), buttons: {} });
+  assert.throws(() => apply(custom, { kind: 'setPagePanel', ...at, panel: makePanel(SCREEN, 'small') }), /custom page is changed in Edit layout/);
+  assert.throws(() => apply(withPage(), { kind: 'setPagePanel', ...at, panel: free([{ id: 'c1', x: 0, y: 0, w: 99, h: 99 }]) }), /never a custom layout/);
+  assert.equal(apply(withPage(), { kind: 'setPagePanel', ...at, panel: makePanel(SCREEN, 'small') }).profiles.p.layouts[KEY].pages.main.panel!.preset, 'small');
 });
 check('a fixed grid is not edited by it', () => {
   assert.throws(() => apply(withPage(), { kind: 'setLayout', ...at, panel: makePanel(SCREEN, 'small'), buttons: {} }), /only a custom layout/);
@@ -221,28 +237,24 @@ check('a Stream Deck has no layout of its own to edit', () => {
 });
 check('shapes and a radius are saved and pass the daemon\'s validation', () => {
   const panel = free([{ id: 'c1', x: 0, y: 0, w: 300, h: 100, shape: 'rectangle', radius: 40, keepRatio: true }, { id: 'c2', x: 400, y: 0, w: 200, h: 231, shape: 'hexagon' }]);
-  const after = apply(withPage(), { kind: 'setLayout', ...at, panel, buttons: {} });
+  const config = withPage();
+  config.profiles.p.layouts[KEY].pages.main.panel!.preset = 'free';
+  const after = apply(config, { kind: 'setLayout', ...at, panel, buttons: {} });
   assert.deepEqual(after.profiles.p.layouts[KEY].pages.main.panel, panel);
 });
 
 check('restorePage puts a fixed grid back with its keys; never empty either', () => {
   const config = withPage();
   const before = structuredClone(config.profiles.p.layouts[KEY].pages.main);
+  // Saved over the grid as Blank's first control is (a page with no keys yet), then put back as the mode found it.
+  config.profiles.p.layouts[KEY].pages.main.buttons = {};
   let after = apply(config, { kind: 'setLayout', ...at, panel: free([{ id: 'c1', x: 0, y: 0, w: 99, h: 99 }]), buttons: {} });
   after = apply(after, { kind: 'restorePage', ...at, panel: before.panel!, buttons: before.buttons });
   assert.deepEqual(after.profiles.p.layouts[KEY].pages.main, before);
   assert.throws(() => apply(withPage(), { kind: 'restorePage', ...at, panel: free([]), buttons: {} }), /no controls is never saved/);
 });
 
-console.log('Change layout… from a custom page');
-check('to a fixed grid: every key is lost, buttons included, even where a control sat on the grid', () => {
-  const medium = makePanel(SCREEN, 'medium');
-  const custom = madeCustom(medium);
-  const page = { panel: custom, buttons: { k1: { label: 'one' }, k2: { label: 'two' } } };
-  const { page: after, dropped } = regridPage(page, custom, makePanel(SCREEN, 'medium'));
-  assert.deepEqual(after.buttons, {});
-  assert.deepEqual(dropped.map((d) => d.key), ['k1', 'k2']);
-});
+console.log('Change layout…');
 check('one fixed grid to another still keeps keys by row and column', () => {
   const page = { panel: makePanel(SCREEN, 'medium'), buttons: { k1: { label: 'one' } } };
   assert.deepEqual(regridPage(page, page.panel, makePanel(SCREEN, 'small')).page.buttons, { k1: { label: 'one' } });

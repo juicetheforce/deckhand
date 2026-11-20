@@ -143,9 +143,10 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       const targetLayout = layoutFor(config, selection.profile, serial);
       const targetGeometry = pageGeometry(config, daemon, serial, selection.profile, pageId);
       if (targetLayout === null || !Object.prototype.hasOwnProperty.call(targetLayout.pages, pageId)) return;
-      // Copy to the same places means nothing on a custom layout: refused (Ryan, 2026-11-20).
-      if (isCustomLayout(targetLayout.pages[pageId].panel)) {
-        setMessage(`Not copied: “${pageLabel(targetLayout, pageId)}” has a custom layout. Drag or paste keys onto its controls instead.`);
+      // Copy to the same places means nothing on a custom layout, either way: refused whenever either side is one (Ryan, 2026-11-20).
+      if (isCustomLayout(page.panel) || isCustomLayout(targetLayout.pages[pageId].panel)) {
+        const which = isCustomLayout(page.panel) ? `“${pageLabel(layout, selection.page)}”` : `“${pageLabel(targetLayout, pageId)}”`;
+        setMessage(`Not copied: ${which} has a custom layout. Drag or paste keys one at a time instead.`);
         return;
       }
       if (targetGeometry === null) {

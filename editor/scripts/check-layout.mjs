@@ -8,10 +8,13 @@
 //   them, their shapes); a Stream Deck's grid as it was. The header: columns
 //   × rows on a preset page, the screen's resolution on a custom page; its
 //   frame never narrower than its header.
-// - Entering: Edit layout only on a virtual deck's header; on a preset it
-//   asks once, Cancel changes nothing, Make it custom keeps every key. The
-//   mode: lit button, mode bar for crumbs and tabs, Controls palette, the Page
-//   ▾ and Change layout… dimmed, only the deck being edited shown, zoom.
+// - A page's kind for its whole life (Ryan, 2026-11-20): Edit layout only on a
+//   custom page's header, Change layout… only on a grid page's (header and
+//   tab menu), offering only the fixed grids. The mode: lit button, Discard
+//   changes and Done beside it on the deck's header — Done seen on screen at
+//   the window's normal size, near the deck, in the accent colour — the mode
+//   bar for crumbs and tabs, Controls palette, the Page ▾ dimmed, only the
+//   deck being edited shown, zoom.
 // - In the mode: moving and resizing by dragging (stopped at the canvas's
 //   edges, saved on release), typed values, shape and corners, Lock
 //   proportions, the very-small warning, overlap and its marker and line,
@@ -19,9 +22,11 @@
 //   warning for a key and not for an empty control, the palette.
 // - Leaving: Discard changes puts the page back, deleted keys included; every
 //   control deleted puts it back and shows it empty, never saved empty;
-//   Blank from New page and Change layout… are shown empty and saved only at a
-//   first control; Done, a profile change and a deck key changing page all
-//   leave; Change layout… from a custom page loses every key.
+//   Blank from New page is shown empty and saved only at a first control; Done,
+//   a profile change and a deck key changing page all leave; Change layout…
+//   from one grid to another.
+// - Keys onto a custom page only onto controls; whole-page copies refused
+//   whenever either side is a custom page.
 //
 // Usage: npm run check:layout   (builds first)
 // DECKHAND_LAYOUT_SHOTS=<dir> DECKHAND_LAYOUT_SHOT=<name> also saves the window as <dir>/<name>.png at the
@@ -90,7 +95,8 @@ const xlPage = { startPage: 'main', pages: { main: { name: 'Main', buttons: { 0:
 const virtualLayout = () => ({
   startPage: 'main',
   pages: {
-    main: { name: 'Main', panel: structuredClone(MEDIUM), buttons: { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } } },
+    // A custom page: Medium's controls, made custom in 2a's way (a page's kind is now fixed for its life).
+    main: { name: 'Main', panel: { ...structuredClone(MEDIUM), preset: 'free' }, buttons: { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } } },
     big: { name: 'Big', panel: structuredClone(LARGE), buttons: { k1: { label: 'Large one' } } },
     // Grid Size 2 × 2: two columns, a frame of 214 px — far narrower than a virtual deck's header.
     narrow: { name: 'Narrow', panel: makePanel(SCREEN, 'custom', { rows: 2, columns: 2 }), buttons: {} },
@@ -199,31 +205,75 @@ await until(async () => (await count('.well [data-key]')) === 24);
 r.positioned = await inEditor(`(() => { const g = document.querySelector('.grid[data-deck="${KEY}"]'); return g ? [g.classList.contains('grid-positioned'), document.querySelectorAll('.grid [data-key].key-placed').length] : null; })()`);
 // Medium on 1920 × 720 is 3 rows of 8, 240 px apart: k2 sits right of k1, the same size, in proportion.
 r.placed = await inEditor(`(() => { const k = (id) => document.querySelector('.grid [data-key="' + id + '"]').getBoundingClientRect(); const a = k('k1'); const b = k('k2'); const g = document.querySelector('.grid[data-deck="${KEY}"]').getBoundingClientRect(); return { sameTop: Math.abs(a.top - b.top) < 0.5, pitch: (b.left - a.left) / g.width, ratio: g.width / g.height }; })()`);
-r.sizePreset = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
-r.editOnVirtual = await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-await shot('1-preset-page');
+const tabMenu = async (tab) => {
+  await inEditor(`(() => { const t = [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === ${JSON.stringify(tab)}); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return true; })()`);
+  await until(() => exists('.tab-menu'));
+  const items = await inEditor("[...document.querySelectorAll('.tab-menu .tab-menu-item')].map((b) => b.textContent.trim())");
+  await inEditor("(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()");
+  await until(async () => !(await exists('.tab-menu')), 2000);
+  return items;
+};
+const showTab = async (tab, keys) => {
+  await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === ${JSON.stringify(tab)}).click(); return true; })()`);
+  await until(async () => (await count('.well [data-key]')) === keys);
+};
 
-// ---- ENTERING, FROM A PRESET ----
+// ---- A PAGE'S KIND: Edit layout on a custom page only, Change layout… on a grid page only ----
+r.sizeCustomPage = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
+r.editOnCustom = await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+r.noChangeOnCustom = !(await exists(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`));
+r.tabMenuCustom = await tabMenu('Main');
+await showTab('Big', 10);
+r.sizePreset = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
+r.noEditOnGrid = !(await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`));
+r.tabMenuGrid = await tabMenu('Big');
+await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
+await until(() => exists('[data-change-layout] [data-vd-size=small] input'));
+r.changeChoices = await inEditor("[...document.querySelectorAll('[data-change-layout] [data-vd-size]')].map((e) => e.dataset.vdSize)");
+r.changeNoTemplates = !(await exists('[data-change-layout] [data-template]'));
+await inEditor(`(() => { [...document.querySelectorAll('[data-change-layout] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
+await until(async () => !(await exists('[data-change-layout]')));
+await showTab('Main', 24);
+await shot('1-custom-page');
+
+// ---- ENTERING ----
+r.entryPage = await page('Main');
 await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-r.asked = await until(() => exists('[data-make-custom]'));
-r.askedText = await text('[data-make-custom]');
-await shot('2-make-custom');
-await inEditor(`(() => { [...document.querySelectorAll('[data-make-custom] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
-r.cancelGone = await until(async () => !(await exists('[data-make-custom]')));
-r.cancelNotMode = !(await inMode());
-r.cancelUnchanged = (await page('Main')).panel.preset === 'medium';
-await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-await until(() => exists('[data-make-custom-confirm]'));
-await click('[data-make-custom-confirm]');
-r.madeCustom = await until(async () => (await page('Main')).panel?.preset === 'free');
-r.madeCustomKept = await page('Main');
 r.inMode = await until(inMode);
 r.lit = await inEditor(`document.querySelector('[data-deck-panel="${KEY}"] [data-edit-layout]')?.getAttribute('aria-pressed')`);
+// Done: on the deck's header, beside the lit button, seen — on screen at the window's normal size, not covered — and the accent colour.
+await sleep(300);
+r.done = await inEditor(`(() => {
+  const d = document.querySelector('[data-done]');
+  if (!d) return null;
+  const panel = document.querySelector('[data-deck-panel="${KEY}"]');
+  const b = d.getBoundingClientRect();
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  const lit = panel.querySelector('[data-edit-layout]').getBoundingClientRect();
+  const discard = panel.querySelector('[data-discard-changes]')?.getBoundingClientRect() ?? null;
+  const canvas = panel.querySelector('.layout-canvas').getBoundingClientRect();
+  const probe = document.createElement('span');
+  probe.style.background = 'var(--accent)';
+  document.body.append(probe);
+  const accent = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return {
+    window: [innerWidth, innerHeight],
+    size: [b.width, b.height],
+    onScreen: b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight,
+    notCovered: hit === d || d.contains(hit),
+    inDeckHeader: d.closest('[data-deck-panel="${KEY}"] .deck-panel-header') !== null,
+    besideLit: discard !== null && discard.left >= lit.right && discard.left - lit.right < 24 && b.left >= discard.right && b.left - discard.right < 24 && Math.abs(b.top - lit.top) < 4,
+    aboveDeck: canvas.top - b.bottom,
+    accent: getComputedStyle(d).backgroundColor === accent && accent !== 'rgba(0, 0, 0, 0)',
+    notInModeBar: document.querySelector('[data-mode-bar] [data-done], [data-mode-bar] [data-discard-changes]') === null,
+  };
+})()`);
 r.palette = await exists('[data-controls-palette] [data-palette=button]');
 r.noLibrary = !(await exists('.library:not(.controls-palette)'));
 r.noTabs = !(await exists('.tabs'));
 r.modeBarText = await text('[data-mode-bar] .mode-bar-where');
-r.pageLocked = await inEditor(`[...document.querySelectorAll('[data-deck-panel="${KEY}"] .deck-panel-page button, [data-deck-panel="${KEY}"] .deck-panel-change-layout')].every((b) => b.disabled)`);
+r.pageLocked = await inEditor(`[...document.querySelectorAll('[data-deck-panel="${KEY}"] .deck-panel-page button')].every((b) => b.disabled) && !document.querySelector('[data-deck-panel="${KEY}"] .deck-panel-change-layout')`);
 r.onlyThisDeck = await inEditor(`[...document.querySelectorAll('[data-deck-panel]')].map((p) => p.dataset.deckPanel)`);
 r.zoom = await exists('[data-zoom-bar]');
 r.sizeCustom = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
@@ -333,7 +383,7 @@ await click('[data-discard-changes]');
 r.discardAsked = await until(() => exists('[data-discard-card]'));
 r.discardText = await text('[data-discard-card]');
 await click('[data-discard-confirm]');
-r.discarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.madeCustomKept));
+r.discarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
 r.discardLeft = await until(async () => !(await inMode()));
 r.tabsBack = await exists('.tabs');
 
@@ -352,7 +402,7 @@ r.oneLeft = (await controlsOf('Main')).length;
 await select(all.at(-1));
 await key('Delete');
 r.lastShownEmpty = await until(() => exists('.layout-empty'));
-r.lastPutBack = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.madeCustomKept));
+r.lastPutBack = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
 r.neverEmptyOnDisk = (await controlsOf('Main')).length > 0;
 await shot('7-emptied');
 await click('[data-done]');
@@ -392,22 +442,14 @@ r.lastChoiceBlank = await (async () => {
   return checked;
 })();
 
-// ---- BLANK FROM CHANGE LAYOUT…, LEFT EMPTY ----
-await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) !== null);
-await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Big').click(); return true; })()`);
-await until(async () => (await count('.well [data-key]')) === 10);
-const bigBefore = await page('Big');
-await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
-await until(() => exists('[data-change-layout] [data-vd-size=blank] input'));
-await click('[data-change-layout] [data-vd-size=blank] input');
-r.blankWarning = await text('[data-change-loses-all]');
-await click('[data-change-layout-apply]');
-r.changeBlankMode = await until(async () => (await inMode()) && (await exists('.layout-empty')));
-r.changeBlankUntouched = JSON.stringify(await page('Big')) === JSON.stringify(bigBefore);
-// Left by a profile change: acts as Done; the page stays as it was.
+// ---- A PROFILE CHANGE ACTS AS DONE ---- on Pads, custom since its first control.
+await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Pads');
+const padsBefore = await page('Pads');
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+r.padsMode = await until(inMode);
 await daemon.profiles.switchTo('second', daemon.sessions);
 r.profileLeft = await until(async () => !(await inMode()), 5000);
-r.bigAfter = JSON.stringify(await page('Big')) === JSON.stringify(bigBefore);
+r.padsAfter = JSON.stringify(await page('Pads')) === JSON.stringify(padsBefore);
 
 // ---- A DECK KEY CHANGING PAGE ACTS AS DONE ----
 await daemon.profiles.switchTo('default', daemon.sessions);
@@ -420,25 +462,15 @@ await sleep(300);
 await daemon.sessions.get(KEY).goToPage('big');
 r.deckKeyLeft = await until(async () => !(await inMode()), 5000);
 
-// ---- CHANGE LAYOUT… FROM A CUSTOM PAGE TO A FIXED GRID ----
+// ---- CHANGE LAYOUT… FROM ONE GRID TO ANOTHER ----
 await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Big', 5000);
-// Small chosen for Big (a preset) first: the last choice on this deck, which a custom page's picker preselects.
 await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
 await until(() => exists('[data-change-layout] [data-vd-size=small] input'));
+r.gridPreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
 await click('[data-change-layout] [data-vd-size=small] input');
 await click('[data-change-layout-apply]');
 r.bigSmall = await until(async () => (await page('Big')).panel?.preset === 'small');
-await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
-await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Main');
-await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
-await until(() => exists('[data-change-layout] [data-vd-size=medium] input'));
-await until(async () => (await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null")) === 'small', 3000);
-r.customPreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
-await click('[data-change-layout] [data-vd-size=medium] input');
-r.customWarning = await text('[data-change-loses-all]');
-await click('[data-change-layout-apply]');
-r.backToGrid = await until(async () => (await page('Main')).panel?.preset === 'medium');
-r.backToGridKeys = (await page('Main')).buttons;
+r.bigSmallKeys = (await page('Big')).buttons;
 
 // ---- A STREAM DECK ----
 await click('.show-in-editor-trigger');
@@ -475,8 +507,10 @@ await sleep(1000);
 }
 const shapes = async () => (await pageOnDisk('Shapes')) ?? {};
 await until(async () => (await inEditor(`[...document.querySelectorAll('.tabs [data-tab]')].some((t) => t.dataset.tab === 'Shapes')`)) === true, 8000);
+// The daemon must have the page before the tab asks the deck to show it, or the deck stays on Narrow — also four keys — and the editor follows it back there.
+await until(() => daemon.state.config?.profiles.default.layouts[KEY].pages.shapes !== undefined, 8000);
 await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Shapes').click(); return true; })()`);
-await until(async () => (await count(`.grid[data-deck="${KEY}"] [data-key]`)) === 4);
+await until(async () => daemon.sessions.get(KEY)?.currentPage() === 'shapes' && (await exists(`.grid[data-deck="${KEY}"] [data-key="c4"]`)), 8000);
 const bulkMessage = () => text('.bulk-message');
 const clickKey = (deck, id) => inEditor(`(() => { document.querySelector('.grid[data-deck="${deck}"] [data-key="${id}"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
 // Paste: onto the selected control.
@@ -509,6 +543,16 @@ const beforeCopyTo = JSON.stringify((await shapes()).buttons);
 r.copyToOffered = await inEditor(`(() => { const item = [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.trim() === 'Shapes'); if (!item) return false; item.click(); return true; })()`);
 await sleep(500);
 r.copyToRefused = [JSON.stringify((await shapes()).buttons) === beforeCopyTo, await bulkMessage()];
+// And from a custom page onto a grid: refused as well (either side, Ryan, 2026-11-20).
+const xlBefore = JSON.stringify((await onDisk()).profiles.default.layouts[XL]);
+await clickKey(KEY, 'c1');
+await inEditor(`(() => { const k = document.querySelector('.grid[data-deck="${KEY}"] [data-key="c1"]'); const b = k.getBoundingClientRect(); k.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 })); return true; })()`);
+await until(() => exists('.key-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.startsWith('Copy to device')).click(); return true; })()`);
+await sleep(200);
+r.copyFromOffered = await inEditor(`(() => { const item = [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.trim() === 'Main'); if (!item) return false; item.click(); return true; })()`);
+await sleep(500);
+r.copyFromRefused = [JSON.stringify((await onDisk()).profiles.default.layouts[XL]) === xlBefore, await bulkMessage()];
 // A drag from the Stream Deck: onto c2, it lands there; onto the round control's empty corner, nothing.
 const dragKey = (fromDeck, fromId, target) =>
   inEditor(`(() => {
@@ -543,25 +587,34 @@ check('a virtual deck\'s page is drawn positioned: every key placed, at the pane
   assert.ok(Math.abs(r.placed.pitch - 240 / 1920) < 0.01, JSON.stringify(r.placed));
   assert.ok(Math.abs(r.placed.ratio - 1920 / 720) < 0.05, JSON.stringify(r.placed));
 });
-check('the header: columns × rows on a preset page, the screen\'s resolution on a custom page', () => {
-  assert.equal(r.sizePreset, '8 × 3');
+check('the header: columns × rows on a grid page, the screen\'s resolution on a custom page', () => {
+  assert.equal(r.sizePreset, '5 × 2');
+  assert.equal(r.sizeCustomPage, '1920 × 720');
   assert.equal(r.sizeCustom, '1920 × 720');
 });
-check('Edit layout on a preset asks once; Cancel changes nothing', () => {
-  assert.equal(r.editOnVirtual, true);
-  assert.equal(r.asked, true);
-  assert.match(r.askedText, /Make this page a custom layout\?.*Every key and its action is kept/);
-  assert.equal(r.cancelGone, true);
-  assert.equal(r.cancelNotMode, true);
-  assert.equal(r.cancelUnchanged, true);
-});
-check('Make it custom: the same controls in the same places, every key kept, then straight into the mode', () => {
-  assert.equal(r.madeCustom, true);
-  assert.deepEqual(r.madeCustomKept.panel.controls, medium);
-  assert.deepEqual(r.madeCustomKept.buttons, { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } });
+check('a page\'s kind is fixed: Edit layout only on a custom page, Change layout… only on a grid page, offering only the fixed grids', () => {
+  assert.equal(r.editOnCustom, true);
+  assert.equal(r.noChangeOnCustom, true);
+  assert.deepEqual(r.tabMenuCustom, ['Delete page…']);
+  assert.equal(r.noEditOnGrid, true);
+  assert.deepEqual(r.tabMenuGrid, ['Change layout…', 'Delete page…']);
+  assert.deepEqual(r.changeChoices, ['small', 'medium', 'large', 'custom']);
+  assert.equal(r.changeNoTemplates, true);
   assert.equal(r.inMode, true);
 });
-check('the mode: the button lit, the mode bar for crumbs and tabs, the palette for the library, the Page ▾ and Change layout… dimmed', () => {
+check('Done is seen: on the deck\'s header beside the lit Edit layout and Discard changes, on screen at the normal window size, not covered, in the accent colour', () => {
+  assert.ok(r.done, 'no Done');
+  assert.deepEqual(r.done.window, [1400, 900], 'the window is not its normal size');
+  assert.ok(r.done.size[0] >= 40 && r.done.size[1] >= 20, JSON.stringify(r.done));
+  assert.equal(r.done.onScreen, true, JSON.stringify(r.done));
+  assert.equal(r.done.notCovered, true, JSON.stringify(r.done));
+  assert.equal(r.done.inDeckHeader, true, JSON.stringify(r.done));
+  assert.equal(r.done.besideLit, true, JSON.stringify(r.done));
+  assert.ok(r.done.aboveDeck >= 0 && r.done.aboveDeck < 48, `${r.done.aboveDeck} px above the deck`);
+  assert.equal(r.done.accent, true, JSON.stringify(r.done));
+  assert.equal(r.done.notInModeBar, true);
+});
+check('the mode: the button lit, the mode bar for crumbs and tabs, the palette for the library, the Page ▾ dimmed', () => {
   assert.equal(r.lit, 'true');
   assert.equal(r.palette, true);
   assert.equal(r.noLibrary, true);
@@ -649,7 +702,7 @@ check('every control deleted: shown empty, never saved empty — the page goes b
   assert.equal(r.lastPutBack, true);
   assert.equal(r.neverEmptyOnDisk, true);
   assert.equal(r.doneLeft, true);
-  assert.deepEqual(r.afterEmptyDone, r.madeCustomKept);
+  assert.deepEqual(r.afterEmptyDone, r.entryPage);
 });
 check('Blank from New page: the page made with the deck\'s default grid, shown empty in the mode; a first control saves it custom', () => {
   assert.equal(r.startBlankLabel, 'Start blank');
@@ -662,33 +715,31 @@ check('Blank from New page: the page made with the deck\'s default grid, shown e
   assert.equal(r.litIsDone, true);
   assert.equal(r.lastChoiceBlank, 'blank');
 });
-check('Blank from Change layout… warns, then leaves the page exactly as it was while it is empty; a profile change acts as Done', () => {
-  assert.match(r.blankWarning, /starts again from Blank\. Every key on this page is lost/);
-  assert.equal(r.changeBlankMode, true);
-  assert.equal(r.changeBlankUntouched, true);
+check('a profile change while the mode is open acts as Done, the page as it was', () => {
+  assert.equal(r.padsMode, true);
   assert.equal(r.profileLeft, true);
-  assert.equal(r.bigAfter, true);
+  assert.equal(r.padsAfter, true);
 });
 check('a deck key changing the page while the mode is open acts as Done', () => {
   assert.equal(r.reentered, true);
   assert.equal(r.deckKeyLeft, true);
 });
-check('Change layout… from a custom page to a fixed grid: the deck\'s last choice preselected, warned, and every key is lost', () => {
-  // A custom page is none of the fixed grids: the last choice made on this deck is preselected (Ryan, 2026-11-20).
+check('Change layout… from one fixed grid to another: its own grid preselected, keys kept by row and column', () => {
+  assert.equal(r.gridPreselected, 'large');
   assert.equal(r.bigSmall, true);
-  assert.equal(r.customPreselected, 'small');
-  assert.match(r.customWarning, /becomes a grid of buttons\. Every key on this page is lost, buttons included/);
-  assert.equal(r.backToGrid, true);
-  assert.deepEqual(r.backToGridKeys, {});
+  assert.deepEqual(r.bigSmallKeys, { k1: { label: 'Large one' } });
 });
-check('keys onto a custom page land only on a control: pasted onto the one selected, none selected none, Copy to device refused, a drag onto the control dropped on, and onto no control nothing', () => {
+check('keys onto a custom page land only on a control: pasted onto the one selected, none selected none, Copy to device refused either way, a drag onto the control dropped on, and onto no control nothing', () => {
   assert.equal(r.pastedOnControl, true);
   assert.equal(r.pastedOnlyThere, '["c1","c3"]');
   assert.equal(r.noSelectionPaste[0], true);
   assert.match(r.noSelectionPaste[1] ?? '', /Nothing pasted: on a custom layout, select the controls to paste onto/);
   assert.equal(r.copyToOffered, true);
   assert.equal(r.copyToRefused[0], true);
-  assert.match(r.copyToRefused[1] ?? '', /Not copied: “Shapes” has a custom layout\. Drag or paste keys onto its controls instead/);
+  assert.match(r.copyToRefused[1] ?? '', /Not copied: “Shapes” has a custom layout\. Drag or paste keys one at a time instead/);
+  assert.equal(r.copyFromOffered, true);
+  assert.equal(r.copyFromRefused[0], true, 'copied from a custom page onto a grid');
+  assert.match(r.copyFromRefused[1] ?? '', /Not copied: “Shapes” has a custom layout/);
   assert.equal(r.draggedOnControl, true);
   assert.equal(r.notTheOneUnder, null, 'the control under it, at the same row and column, untouched');
   assert.equal(r.cornerUnder, null, 'the round control\'s box corner is not the control');
