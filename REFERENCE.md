@@ -224,23 +224,23 @@ about 23, 30 and 45 mm apart, from the screen's own reported size, or from
 its pixels when that size is implausible; **Grid Size** sets the rows and
 columns, up to 12 × 24, and says when the keys get very small. **Every page
 of a virtual deck has its own layout**, and the deck switches to it with the
-page. **The size chosen at Add is the deck's default**: its first page has
-it, and so does every page made for it without asking — a profile's first
-page for the deck included. **New page** on a virtual deck offers the same
-grids, the one you last picked on that deck already chosen. **Change
-layout…**, a button in the deck's top bar beside its Page menu, or in a page
-tab's right-click menu, gives that page another grid:
-keys keep their row and column, and any with no place in the new grid are
-named before anything changes, and removed only when you confirm. Only that
-page changes. Changing a custom layout to a grid, or any page to **Blank**,
-loses every key on the page, and says so first.
+page. **A page is a grid or a custom layout for its whole life**: to change
+which, delete the page and make a new one. **The size chosen at Add is the
+deck's default**: its first page has it, and so does every page made for it
+without asking — a profile's first page for the deck included. **New page**
+on a virtual deck offers the grids, **Blank** (an empty custom layout, opened
+straight in Edit layout) and your saved **templates**, whatever you last
+picked on that deck already chosen. **Change layout…**, on a grid page only —
+a button in the deck's top bar beside its Page menu, or in a page tab's
+right-click menu — gives that page another grid: keys keep their row and
+column, and any with no place in the new grid are named before anything
+changes, and removed only when you confirm. Only that page changes.
 
-**Custom layouts.** **Edit layout**, in a virtual deck's top bar, opens the
-page shown for laying out by hand; on a grid it first asks to make that page a
-custom layout, keeping every key where it is. While it is open the button
-stays lit (pressing it again is Done), a bar names the deck, profile and page
-in place of the page tabs, only that deck is shown, and the action library
-becomes **Controls**: drag a **Button** onto the panel, or click it to add one
+**Custom layouts.** **Edit layout**, in a virtual deck's top bar on a custom
+page, opens it for laying out by hand. While it is open the button stays lit,
+with **Discard changes** and **Done** beside it, a bar names the deck, profile
+and page in place of the page tabs, only that deck is shown, and the action
+library becomes **Controls**: drag a **Button** onto the panel, or click it to add one
 in the middle, about 30 mm across on any screen. Drag a control to move it, or
 one of its eight handles to resize it, or type its X, Y, width and height, in
 the screen's pixels; nothing leaves the panel. Each control is a
@@ -250,11 +250,21 @@ proportions** keeps a box's shape. A control under about 15 mm says it is very
 small. Controls may overlap: the later is on top, a touch goes to the control
 on top on its real shape, a control with something on top of it is marked,
 and **Bring to front** and **Send to back** change the order. **Duplicate**
-(Ctrl+D) adds a copy with its key; **Delete** names the key that goes with
-it, and deletes an empty control without asking; the arrow keys move the
-selected control a pixel. Every change is saved as it is made, so the
-touchscreen shows the layout as it is built. **Done** leaves; so do closing
-the window, changing profile and a deck key that changes page or profile.
+(Ctrl+D) adds a copy with its key, one grid step on; **Delete** names the
+keys that go with it, and deletes empty controls without asking. **Grid** and
+**Snap**, at the foot of the canvas, are separate switches: the grid's lines
+are drawn at the pitch you choose (10 to 120 pixels, or any other), and moving
+and resizing land on them; snapping catches the other controls' edges and
+centres and the panel's, showing a dashed guide. Hold **Shift** while
+dragging to ignore both. The arrow keys move the selection a pixel, or one
+grid step with the grid on. A **marquee** dragged over empty canvas selects
+every control it touches; **Ctrl-click** adds or removes one, Ctrl+A selects
+all. Several selected move together and can be **aligned** (six ways, against
+their own bounds), **distributed** across or down, and **matched** in width or
+height to the first one selected. Every change is saved as it is made, so the
+touchscreen shows the layout as it is built. **Done**, or the lit Edit layout,
+leaves; so do closing the window, changing profile and a deck key that changes
+page or profile.
 **Discard changes** puts the layout back as it was when Edit layout was
 opened, deleted controls with their keys. Outside Edit layout a layout cannot
 be changed, only filled with actions, icons and labels. On a custom layout a
@@ -262,12 +272,18 @@ key lands only on a control: **paste** puts the copied keys on the selected
 controls, one each, and pastes nothing with none selected; a key **dragged**
 from another deck goes on the control it is dropped on, and nowhere if there
 is none; **Copy to page** and **Copy to device**, which copy to the same
-places, are refused onto a custom layout. Every button on a virtual deck is
-drawn with a thin, light outline inside its edge. **Blank**, in New page
-and Change layout…, starts an empty custom layout (Change layout… on a custom
-page preselects the last choice made on that deck); a layout with no controls
-is never saved, so a new page left empty keeps the deck's default grid and an
-existing page left empty stays as it was. A virtual deck's top bar shows the
+places, are refused whenever either page is a custom layout. Every button on a
+virtual deck is drawn with a thin, light outline inside its edge. A layout with
+no controls is never saved, so a new Blank page left empty keeps the deck's
+default grid. **Save as template**, in Edit layout's bar, keeps the layout —
+each control's place, size and shape, nothing it shows — under a name; a name
+already in use offers to replace that template, and Discard changes does not
+undo it. Templates are offered in New page on every touchscreen, newest first,
+and are renamed or deleted from there (… beside each); a page made from one is
+not linked to it. A template saved on a screen of another size keeps its own
+size, shown scaled to fit and centred, as Edit layout's "Made for" chip says.
+Templates are kept in `config.json` (`templates`), so a backup and an export
+carry them. A virtual deck's top bar shows the
 grid's columns and rows on a grid page, and the screen's resolution on a custom
 one. **Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
@@ -448,7 +464,7 @@ whole shape and its icon is the square at the shorter side, centred; its label
 and failed mark sit in the largest rectangle inside the shape; nothing is drawn
 outside it. Where controls overlap, the later in `controls` is on top, on the
 screen and for touch. **Only a page whose `preset` is `free` is edited in Edit
-layout**; a grid is made custom first. On a screen of another size the canvas
+layout**; a page's `preset` never changes between a grid and `free`. On a screen of another size the canvas
 is scaled to fit, centred. A page with no `panel`, or a `panel` with no
 controls, uses the deck's default; with none at all, a Medium grid for the
 screen, so a virtual deck never shows no keys. **Configs from

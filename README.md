@@ -94,11 +94,13 @@ touch panel.
 - **Each page can have its own grid.** New pages start at the size you chose
   for the screen, or at the grid you pick, and **Change layout…**, in the
   deck's top bar, gives one page a different grid.
-- **Or lay a page out by hand.** **Edit layout**, in the deck's top bar, lets
-  you place buttons anywhere on the screen at any size, as rectangles with
-  square to fully rounded corners, circles or hexagons, overlapping if you
-  like. The touchscreen shows the layout as you build it, and a touch goes to
-  the button's real shape.
+- **Or lay a page out by hand.** A page started from **Blank**, or from a
+  template you saved, is a custom layout: **Edit layout**, in the deck's top
+  bar, lets you place buttons anywhere on the screen at any size, as rectangles
+  with square to fully rounded corners, circles or hexagons, overlapping if you
+  like, with a grid, snapping, and tools to align and space several at once.
+  The touchscreen shows the layout as you build it, and a touch goes to the
+  button's real shape.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
   other, and Sleep all decks dims it too. Turned off, it draws pure black, but
