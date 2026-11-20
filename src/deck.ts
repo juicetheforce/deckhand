@@ -599,10 +599,11 @@ export class DeckSession implements DeckHandle {
 
     // A virtual deck's control is drawn at its own box and cut to its shape
     // (render.ts renderFace): fill over the whole shape, the label in its
-    // largest inner rectangle, transparent outside it. A Stream Deck's key is
+    // largest inner rectangle, transparent outside it, with its outline
+    // inside its edge (render.ts OUTLINE_PX). A Stream Deck's key is
     // drawn exactly as before: square, filled out to a screen that is not.
     const buffer = this.geometry.units === 'pixels'
-      ? await renderFace(display, screen, strictIcon)
+      ? await renderFace(display, { ...screen, outline: true }, strictIcon)
       : await fillScreen(await renderButton(display, side, strictIcon), side, screen.width, screen.height, display.background);
 
     this.lastRenderAt.set(index, Date.now());

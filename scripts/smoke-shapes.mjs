@@ -84,6 +84,9 @@ console.log('a shaped face');
   const square = await renderFace(face({ label: 'Hi' }), { width: 96, height: 96, shape: 'square' });
   const button = await renderButton(face({ label: 'Hi' }), 96);
   check('a square key with square corners is renderButton\'s key, byte for byte', Buffer.compare(square, button) === 0);
+  check('a Stream Deck\'s key has no outline: its corner is the key colour', rgb(button, 96, 0, 0) === '32,48,64' && rgb(button, 96, 1, 1) === '32,48,64', rgb(button, 96, 0, 0));
+  const outlined = await renderFace(face({ label: 'Hi' }), { width: 96, height: 96, shape: 'square', outline: true });
+  check('a virtual deck\'s face with its outline: lighter at the corner, the key colour two pixels in', rgb(outlined, 96, 0, 0) !== '32,48,64' && rgb(outlined, 96, 2, 2) === '32,48,64', rgb(outlined, 96, 0, 0));
 
   // Alpha: 255 on the shape, 0 off it, anything only within a pixel of its edge.
   for (const box of [

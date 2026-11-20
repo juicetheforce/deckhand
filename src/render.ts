@@ -199,7 +199,19 @@ export interface FaceBox {
   height: number;
   shape?: string;
   radius?: number;
+  /** A virtual deck's control: drawn with its outline (OUTLINE_PX), never a Stream Deck's key. */
+  outline?: boolean;
 }
+
+/**
+ * A virtual deck's button outline (Ryan, 2026-11-20): a thin, light line on
+ * the shape's edge, **inside the shape**, so the touch area and what overlaps
+ * it are unchanged. One rule for every shape and every page, custom or a
+ * preset grid; a Stream Deck's key has none. Always on for now. White at the
+ * editor's own outline opacity (styles.css, .key-outline), 2 canvas pixels.
+ */
+export const OUTLINE_PX = 2;
+const OUTLINE_OPACITY = 0.22;
 
 /**
  * Render a control's face to raw RGBA, `width` × `height` — renderButton()
@@ -234,7 +246,7 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
   const iconPath = display.icon ? (builtinPath ?? expandPath(display.icon)) : undefined;
   const stamp = iconPath ? await iconStamp(iconPath) : 'none';
   const shapeKey = cut ? `|${shapeName(box.shape)}:${cornerRadius(shapeBox)}` : '';
-  const cacheKey = `${width}x${height}${shapeKey}|${stamp}|${JSON.stringify(display)}`;
+  const cacheKey = `${width}x${height}${shapeKey}${box.outline ? '|outline' : ''}|${stamp}|${JSON.stringify(display)}`;
 
   if (strictIcon && stamp === 'missing') throw new Error(`cannot read icon ${iconPath}: file not found`);
   const hit = strictIcon ? undefined : cache.get(cacheKey);
@@ -273,6 +285,15 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
   if (svg.length > 0) layers.push({ input: svg, top: inner.y, left: inner.x });
   const level = await levelSvg(display, inner.w, inner.h);
   if (level.length > 0) layers.push({ input: level, top: inner.y, left: inner.x });
+
+  // The outline: a stroke twice as wide as wanted, centred on the edge, of
+  // which only the inner half survives — the outer half is cut by the shape's
+  // mask below, or falls outside the image for a box with square corners. So
+  // it is inside every shape by one rule. Under the badge, which is inside it.
+  if (box.outline) {
+    const outline = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><path d="${shapePath(shapeBox)}" fill="none" stroke="#fff" stroke-opacity="${OUTLINE_OPACITY}" stroke-width="${OUTLINE_PX * 2}"/></svg>`;
+    layers.push({ input: Buffer.from(outline), top: 0, left: 0 });
+  }
 
   // Last, so it is over the label as well as the icon. `failed` is part of the
   // cache key (JSON.stringify(display), above), so a marked face and a clean

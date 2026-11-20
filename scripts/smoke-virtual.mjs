@@ -197,6 +197,10 @@ await settle('opening', async () => {
   const firstCanvas = all.findIndex((f) => f.type === 'K');
   const images = all.filter((f) => f.type === 'I');
   check('the canvas first, at the panel\'s size', firstCanvas >= 0 && all[firstCanvas].width === 1920 && all[firstCanvas].height === 720 && all.findIndex((f) => f.type === 'I') > firstCanvas);
+  // Every key of a virtual deck carries its outline (Ryan, 2026-11-20): a square key's first pixel, its
+  // top-left corner, is the light line, never the key's own fill.
+  const firsts = images.map((f) => f.first);
+  check('each key\'s outline: its corner pixel is a light line over the key colour, the same on every key', firsts.length === 6 && firsts.every((p) => p.join() === firsts[0].join()) && firsts[0][0] > 40 && firsts[0][3] === 255, JSON.stringify(firsts));
   check('one image per key, at its place and size', images.length === 6 && images.some((f) => f.x === 252 && f.y === 252 && f.w === 216 && f.h === 216 && f.bytes === 216 * 216 * 4), JSON.stringify(images.map((f) => [f.x, f.y, f.w])));
 });
 

@@ -238,6 +238,43 @@ try {
     check('what is drawn once it is back is on the screen', px(503, 303) === '[0,0,255]' && px(10, 10) === '[1,2,3]', JSON.stringify([px(503, 303), px(10, 10)]));
   }
 
+  console.log('a virtual deck\'s button outline, on the screen');
+  {
+    // Faces as the daemon renders them for a virtual deck (deck.ts: outline on), at 1:1, on black:
+    // the outline is OUTLINE_PX of light line inside each shape's edge, the fill inward of it, and
+    // nothing outside the shape — every shape by the one rule (Ryan, 2026-11-20).
+    const { renderFace, OUTLINE_PX } = await import(path.join(REPO, 'dist/render.js'));
+    const key = { background: { r: 16, g: 16, b: 20, alpha: 1 } };
+    const shots = path.join(TMP, 'outline.ppm');
+    const o = helper(['--output', 'Virtual-1', '--dump', shots]);
+    await until(() => o.events.some((e) => e.ev === 'ready'));
+    o.proc.stdin.write(canvasFrame(1920, 720, [0, 0, 0]));
+    const faces = [
+      ['rectangle', 100],
+      ['round', 300],
+      ['hexagon', 500],
+    ];
+    for (const [shape, x] of faces) {
+      for (const part of imageFrameParts(x, 100, 120, 120, await renderFace(key, { width: 120, height: 120, shape, outline: true }))) o.proc.stdin.write(part);
+    }
+    await until(() => o.events.filter((e) => e.ev === 'drawn').length === faces.length);
+    o.proc.stdin.write(quitFrame());
+    await o.exited;
+    const shot = await fs.readFile(shots);
+    const head = shot.subarray(0, 20).toString('latin1').match(/^P6\n(\d+) (\d+)\n255\n/);
+    const px = (x, y) => [...shot.subarray(head[0].length + (y * 1920 + x) * 3, head[0].length + (y * 1920 + x) * 3 + 3)];
+    const light = (p) => p[0] > 50 && p[0] < 90 && Math.abs(p[0] - p[1]) <= 2;
+    const fill = (p) => JSON.stringify(p) === '[16,16,20]';
+    const black = (p) => JSON.stringify(p) === '[0,0,0]';
+    // Across the middle row (y 160) from the left edge of each box: a hexagon's side corner is there too.
+    for (const [shape, x] of faces) {
+      const row = [x - 1, x, x + OUTLINE_PX - 1, x + OUTLINE_PX, x + 60].map((xx) => px(xx, 160));
+      check(`${shape}: outside black, ${OUTLINE_PX} px of light outline inside the edge, then the fill`, black(row[0]) && light(row[1]) && light(row[2]) && fill(row[3]) && fill(row[4]), JSON.stringify(row));
+    }
+    check('a round button\'s box corner, outside its shape: black, no outline there', black(px(301, 101)), JSON.stringify(px(301, 101)));
+    check('a rectangle\'s corner is outlined on both edges', light(px(100, 100)) && light(px(101, 101)) && fill(px(102, 102)), JSON.stringify([px(100, 100), px(101, 101), px(102, 102)]));
+  }
+
   console.log('drawn darker, by the deck\'s brightness');
   {
     const shots = path.join(TMP, 'dim.ppm');
