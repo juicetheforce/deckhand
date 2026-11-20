@@ -976,6 +976,7 @@ function Editor({
                 pageName={pageLabel(layout, changingLayout)}
                 page={changing}
                 current={pagePanelIn(config, selection.profile, selection.serial, changingLayout)}
+                deckDefault={config.decks?.[selection.serial]?.virtual?.panel}
                 onApply={async (panel, choice) => {
                   const result = await window.deckhand.apply({ kind: 'setPagePanel', profile: selection.profile, serial: selection.serial, page: changingLayout, panel });
                   if (!result.ok) return result.error;
@@ -983,7 +984,11 @@ function Editor({
                   setChangingLayout(null);
                   return null;
                 }}
-                onBlank={() => enterMode(selection.serial, changingLayout, true, changing)}
+                onBlank={() => {
+                  // Blank is a choice on this deck like any grid: the next picker preselects it.
+                  void window.deckhand.setLastGrid(selection.serial, { size: 'blank' });
+                  enterMode(selection.serial, changingLayout, true, changing);
+                }}
                 onCancel={() => setChangingLayout(null)}
               />
             )}

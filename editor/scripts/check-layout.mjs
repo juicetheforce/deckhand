@@ -422,10 +422,17 @@ r.deckKeyLeft = await until(async () => !(await inMode()), 5000);
 
 // ---- CHANGE LAYOUT… FROM A CUSTOM PAGE TO A FIXED GRID ----
 await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Big', 5000);
+// Small chosen for Big (a preset) first: the last choice on this deck, which a custom page's picker preselects.
+await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
+await until(() => exists('[data-change-layout] [data-vd-size=small] input'));
+await click('[data-change-layout] [data-vd-size=small] input');
+await click('[data-change-layout-apply]');
+r.bigSmall = await until(async () => (await page('Big')).panel?.preset === 'small');
 await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
 await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Main');
 await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
 await until(() => exists('[data-change-layout] [data-vd-size=medium] input'));
+await until(async () => (await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null")) === 'small', 3000);
 r.customPreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
 await click('[data-change-layout] [data-vd-size=medium] input');
 r.customWarning = await text('[data-change-loses-all]');
@@ -451,6 +458,78 @@ await sleep(300);
 r.headerFits = await inEditor(`(() => { const p = document.querySelector('[data-deck-panel="${KEY}"]'); const pr = p.getBoundingClientRect(); const items = [...p.querySelectorAll('.deck-panel-header > *:not(.toolbar-spacer)')]; return items.map((i) => { const b = i.getBoundingClientRect(); return b.right <= pr.right + 0.5 && b.width > 0; }); })()`);
 r.narrowCentred = await inEditor(`(() => { const p = document.querySelector('[data-deck-panel="${KEY}"]').getBoundingClientRect(); const g = document.querySelector('.grid[data-deck="${KEY}"]').getBoundingClientRect(); return Math.abs((g.left - p.left) - (p.right - g.right)) < 2; })()`);
 await shot('9-narrow-header');
+
+// ---- KEYS ONTO A CUSTOM PAGE: only onto a control that exists (Ryan, 2026-11-20) ----
+// A custom page written to disk (the editor reloads it, having nothing unsaved): a round control
+// first, so its box's corner is a point inside the deck with no control under it; c4 smaller, on
+// c2 at the same x and y — the same row and column, so only the control itself tells them apart.
+await sleep(1000);
+{
+  const c = await onDisk();
+  c.profiles.default.layouts[KEY].pages.shapes = {
+    name: 'Shapes',
+    panel: { size: { width: 1920, height: 720 }, preset: 'free', controls: [{ id: 'c1', x: 100, y: 100, w: 300, h: 300, shape: 'round' }, { id: 'c2', x: 500, y: 100, w: 300, h: 300 }, { id: 'c3', x: 900, y: 100, w: 300, h: 300 }, { id: 'c4', x: 500, y: 100, w: 150, h: 150 }] },
+    buttons: { c1: { label: 'Src', action: { type: 'noop' } } },
+  };
+  await fs.writeFile(configFile, JSON.stringify(c, null, 2) + '\n');
+}
+const shapes = async () => (await pageOnDisk('Shapes')) ?? {};
+await until(async () => (await inEditor(`[...document.querySelectorAll('.tabs [data-tab]')].some((t) => t.dataset.tab === 'Shapes')`)) === true, 8000);
+await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Shapes').click(); return true; })()`);
+await until(async () => (await count(`.grid[data-deck="${KEY}"] [data-key]`)) === 4);
+const bulkMessage = () => text('.bulk-message');
+const clickKey = (deck, id) => inEditor(`(() => { document.querySelector('.grid[data-deck="${deck}"] [data-key="${id}"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
+// Paste: onto the selected control.
+await clickKey(KEY, 'c1');
+await key('KeyC', { key: 'c', ctrl: true });
+await clickKey(KEY, 'c3');
+await key('KeyV', { key: 'v', ctrl: true });
+r.pastedOnControl = await until(async () => (await shapes()).buttons?.c3?.label === 'Src');
+r.pastedOnlyThere = JSON.stringify(Object.keys((await shapes()).buttons).sort());
+// Nothing selected: nothing lands, and it says why.
+await key('Escape');
+await until(async () => (await count('.key-selected')) === 0);
+const beforeEmptyPaste = JSON.stringify((await shapes()).buttons);
+await key('KeyV', { key: 'v', ctrl: true });
+await sleep(500);
+r.noSelectionPaste = [JSON.stringify((await shapes()).buttons) === beforeEmptyPaste, await bulkMessage()];
+// Both decks shown, for Copy to device and a drag from the Stream Deck.
+await click('.show-in-editor-trigger');
+await until(() => exists(`[data-show-deck="${XL}"]`));
+await inEditor(`(() => { const row = document.querySelector('[data-show-deck="${XL}"]'); const box = row.querySelector('input[type=checkbox]'); if (box && !box.checked) box.click(); return true; })()`);
+await click('.show-in-editor-trigger');
+await until(async () => (await count('.grid[data-deck]')) === 2, 5000);
+// Copy to device onto a custom page: refused, with a short message.
+await clickKey(XL, '0');
+await inEditor(`(() => { const k = document.querySelector('.grid[data-deck="${XL}"] [data-key="0"]'); const b = k.getBoundingClientRect(); k.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 })); return true; })()`);
+await until(() => exists('.key-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.startsWith('Copy to device')).click(); return true; })()`);
+await sleep(200);
+const beforeCopyTo = JSON.stringify((await shapes()).buttons);
+r.copyToOffered = await inEditor(`(() => { const item = [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.trim() === 'Shapes'); if (!item) return false; item.click(); return true; })()`);
+await sleep(500);
+r.copyToRefused = [JSON.stringify((await shapes()).buttons) === beforeCopyTo, await bulkMessage()];
+// A drag from the Stream Deck: onto c2, it lands there; onto the round control's empty corner, nothing.
+const dragKey = (fromDeck, fromId, target) =>
+  inEditor(`(() => {
+    const from = document.querySelector('.grid[data-deck="${fromDeck}"] [data-key="${fromId}"]');
+    const f = from.getBoundingClientRect();
+    const t = (${target})();
+    const at = (x, y) => ({ bubbles: true, cancelable: true, pointerId: 7, button: 0, clientX: x, clientY: y });
+    from.dispatchEvent(new PointerEvent('pointerdown', at(f.x + f.width / 2, f.y + f.height / 2)));
+    window.dispatchEvent(new PointerEvent('pointermove', at(t.x, t.y)));
+    window.dispatchEvent(new PointerEvent('pointermove', at(t.x + 1, t.y + 1)));
+    window.dispatchEvent(new PointerEvent('pointerup', at(t.x + 1, t.y + 1)));
+    return [t.x, t.y];
+  })()`);
+await dragKey(XL, '0', `() => { const b = document.querySelector('.grid[data-deck="${KEY}"] [data-key="c4"]').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }`);
+r.draggedOnControl = await until(async () => (await shapes()).buttons?.c4?.label === 'XL');
+r.notTheOneUnder = (await shapes()).buttons?.c2 ?? null;
+const beforeCornerDrop = JSON.stringify((await shapes()).buttons);
+r.cornerTarget = await dragKey(XL, '0', `() => { const b = document.querySelector('.grid[data-deck="${KEY}"] [data-key="c1"]').getBoundingClientRect(); return { x: b.x + 2, y: b.y + 2 }; }`);
+r.cornerUnder = await inEditor(`(() => { const [x, y] = ${JSON.stringify(r.cornerTarget)}; return document.elementFromPoint(x + 1, y + 1)?.closest('[data-key]')?.dataset.key ?? null; })()`);
+await sleep(500);
+r.cornerNothing = JSON.stringify((await shapes()).buttons) === beforeCornerDrop;
 
 editor.child.kill();
 stopWatching();
@@ -594,12 +673,26 @@ check('a deck key changing the page while the mode is open acts as Done', () => 
   assert.equal(r.reentered, true);
   assert.equal(r.deckKeyLeft, true);
 });
-check('Change layout… from a custom page to a fixed grid: warned, and every key is lost', () => {
-  // A custom page is none of the fixed grids: Blank stands for its own choice (Claude's call).
-  assert.equal(r.customPreselected, 'blank');
+check('Change layout… from a custom page to a fixed grid: the deck\'s last choice preselected, warned, and every key is lost', () => {
+  // A custom page is none of the fixed grids: the last choice made on this deck is preselected (Ryan, 2026-11-20).
+  assert.equal(r.bigSmall, true);
+  assert.equal(r.customPreselected, 'small');
   assert.match(r.customWarning, /becomes a grid of buttons\. Every key on this page is lost, buttons included/);
   assert.equal(r.backToGrid, true);
   assert.deepEqual(r.backToGridKeys, {});
+});
+check('keys onto a custom page land only on a control: pasted onto the one selected, none selected none, Copy to device refused, a drag onto the control dropped on, and onto no control nothing', () => {
+  assert.equal(r.pastedOnControl, true);
+  assert.equal(r.pastedOnlyThere, '["c1","c3"]');
+  assert.equal(r.noSelectionPaste[0], true);
+  assert.match(r.noSelectionPaste[1] ?? '', /Nothing pasted: on a custom layout, select the controls to paste onto/);
+  assert.equal(r.copyToOffered, true);
+  assert.equal(r.copyToRefused[0], true);
+  assert.match(r.copyToRefused[1] ?? '', /Not copied: “Shapes” has a custom layout\. Drag or paste keys onto its controls instead/);
+  assert.equal(r.draggedOnControl, true);
+  assert.equal(r.notTheOneUnder, null, 'the control under it, at the same row and column, untouched');
+  assert.equal(r.cornerUnder, null, 'the round control\'s box corner is not the control');
+  assert.equal(r.cornerNothing, true);
 });
 check('a Stream Deck: no Edit layout, and its grid as it was', () => {
   assert.equal(r.xlEdit, false);

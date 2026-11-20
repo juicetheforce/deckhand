@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PageDef, PanelDef } from '../../../src/types.js';
 import { keyNamed } from '../shared/bulk.js';
 import { regridPage } from '../shared/panel-size.js';
 import { isCustomLayout } from '../../../src/panel-presets.js';
-import { choiceOf, GridPicker, gridStateOf, panelOf, sizeName, useVirtualScreen, type GridState } from './GridPicker.js';
+import { choiceOf, GridPicker, gridStateOf, gridStateOfChoice, panelOf, sizeName, useVirtualScreen, type GridState } from './GridPicker.js';
 
 /**
  * "Change layout…" for one page of a virtual deck (decided 2026-11-17): the
- * fixed grids, the page's own preselected, and — before anything changes — a
+ * fixed grids, the page's own preselected — on a custom page, the last choice
+ * made on the deck, else its default grid (Ryan, 2026-11-20) — and, before anything changes, a
  * warning naming every key on that page with no place in the grid picked.
  * One fixed grid to another keeps keys by row and column; only this page
  * changes. **A custom page changed to a fixed grid, and any page changed to
@@ -21,6 +22,7 @@ export function ChangeLayout({
   pageName,
   page,
   current,
+  deckDefault,
   onApply,
   onBlank,
   onCancel,
@@ -30,6 +32,8 @@ export function ChangeLayout({
   page: PageDef;
   /** What the page shows now: its own panel, else the deck's default. */
   current: PanelDef | undefined;
+  /** The deck's default grid: preselected on a custom page when nothing has been chosen on this deck yet. */
+  deckDefault: PanelDef | undefined;
   onApply: (panel: PanelDef, remember: ReturnType<typeof choiceOf>) => Promise<string | null>;
   /** Blank chosen: App opens Edit layout on the page, shown empty. */
   onBlank: () => void;
@@ -37,9 +41,22 @@ export function ChangeLayout({
 }) {
   const screen = useVirtualScreen(deckKey);
   const fromCustom = isCustomLayout(current);
-  const [grid, setGrid] = useState<GridState>(() => gridStateOf(fromCustom ? undefined : current));
-  // A custom page's own choice is none of the fixed grids: Blank, the custom layout's starting point, stands for it (Claude's call).
-  const [blank, setBlank] = useState(fromCustom);
+  // A preset page: its own grid preselected. A custom page is none of the fixed grids, so the last
+  // choice made on this deck is, Blank included, else the deck's default (Ryan, 2026-11-20, overruling Blank).
+  const [grid, setGrid] = useState<GridState>(() => gridStateOf(fromCustom ? deckDefault : current));
+  const [blank, setBlank] = useState(false);
+  useEffect(() => {
+    if (!fromCustom) return;
+    let alive = true;
+    void window.deckhand.lastGrid(deckKey).then((last) => {
+      if (!alive || !last) return;
+      if (last.size === 'blank') setBlank(true);
+      else setGrid(gridStateOfChoice(last));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [deckKey, fromCustom]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const panel = screen ? panelOf(screen, grid) : null;

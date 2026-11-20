@@ -127,26 +127,45 @@ export function placeClipboard(clip: Clipboard, anchor: { row: number; column: n
   const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
   for (const clipped of clip.keys) {
     const key = keyAt(grid, anchor.row + clipped.rowOffset, anchor.column + clipped.columnOffset);
-    if (key === null) {
-      placement.skipped.push(clipped);
-      continue;
-    }
-    const button = structuredClone(clipped.button);
-    let dropped = false;
-    for (const where of ['action', 'onRelease'] as const) {
-      const action = button[where] as ActionDef | undefined;
-      if (!action) continue;
-      const kept = keepResolvableNavigation(action, layout);
-      if (!kept.dropped) continue;
-      dropped = true;
-      if (kept.action) button[where] = kept.action;
-      else delete button[where];
-    }
-    if (dropped) placement.lostNavigation.push({ key, clip: clipped });
-    // A button left with nothing on it is an empty slot, written as one.
-    placement.writes.push({ key, button: Object.keys(button).length === 0 ? null : button });
+    if (key === null) placement.skipped.push(clipped);
+    else placeOne(placement, clipped, key, layout);
   }
   return placement;
+}
+
+/**
+ * Where a clipboard lands on a **custom layout** (Ryan, 2026-11-20): a key
+ * lands only on a control that already exists — rows and columns mean nothing
+ * there. The copied keys, in the order they were copied (reading order), go
+ * onto `targets`, one each: the selected controls for a paste, the control
+ * dropped on for a drag. Copied keys left over have nowhere to go and are
+ * skipped; with no target, nothing lands.
+ */
+export function placeOnControls(clip: Clipboard, targets: ReadonlyArray<string>, layout: LayoutDef): Placement {
+  const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
+  clip.keys.forEach((clipped, i) => {
+    if (i < targets.length) placeOne(placement, clipped, targets[i], layout);
+    else placement.skipped.push(clipped);
+  });
+  return placement;
+}
+
+/** One copied key written onto `key`: a Go to page whose target is not in `layout` is dropped, the rest kept. */
+function placeOne(placement: Placement, clipped: ClipKey, key: string, layout: LayoutDef): void {
+  const button = structuredClone(clipped.button);
+  let dropped = false;
+  for (const where of ['action', 'onRelease'] as const) {
+    const action = button[where] as ActionDef | undefined;
+    if (!action) continue;
+    const kept = keepResolvableNavigation(action, layout);
+    if (!kept.dropped) continue;
+    dropped = true;
+    if (kept.action) button[where] = kept.action;
+    else delete button[where];
+  }
+  if (dropped) placement.lostNavigation.push({ key, clip: clipped });
+  // A button left with nothing on it is an empty slot, written as one.
+  placement.writes.push({ key, button: Object.keys(button).length === 0 ? null : button });
 }
 
 /**
