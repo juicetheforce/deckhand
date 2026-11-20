@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Round 2b: first make 'custom' never mean 'erase' in Change layout, a visible Done in Edit layout, and refuse whole-page copies to or from custom pages; then the grid, snap, multi-select and templates. Nothing released until v2 is done."
+next = "Open the round 2b pull request (round/precision-and-templates, refused in-session by a permission check), then Codex review and the 2b test list on the 10.3\" panel. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -45,4 +45,5 @@ Release hold (2026-11-18): nothing released until editor v2 is complete; rounds 
 Frame round (PR #7, 2026-11-18): every deck always in its frame with its header, one deck or several; tested and merged, not released.
 Round 2 split (2026-11-18): 2a = shapes (rectangle, round, hexagon), overlap and Edit layout by hand, opened as PR #8; 2b = grid, snap, multi-select, align, templates.
 Round 2a merged 2026-11-20 (PR #8), not released: tested on the 10.3" panel, plus an outline on every virtual-deck button and keys landing only on existing controls on custom pages.
+Round 2b built 2026-11-20, branch pushed, PR to open: a page is a grid or custom for its whole life (no conversion); Done on the deck's header; grid, snap, Shift, nudging, multi-select with align/distribute/match; templates in config.json.
 """
