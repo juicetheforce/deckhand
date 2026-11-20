@@ -4,7 +4,7 @@ import { geometryOfPanel } from '../../../src/geometry.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
 import { cornerRadius, shapeName, SHAPE_NAMES, type ShapeName } from '../../../src/shapes.js';
 import type { ButtonDef, Config, PageDef, PanelControlDef, PanelDef } from '../../../src/types.js';
-import { bringToFront, clampBox, controlNames, HANDLES, overlaps, resizeBox, sendToBack, setShape, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
+import { bringToFront, clampBox, controlNames, HANDLES, overlaps, resizeBox, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
 import { describeAction, keyKind, type AppIcons } from './model.js';
 import { Key, placeOf } from './DeckGrid.js';
 import { Checkbox, Row, Segmented } from './inspector/controls.js';
@@ -345,8 +345,8 @@ export function LayoutInspector({
       <section className="inspector-section">
         <h3 className="section-heading">Size</h3>
         <div className="layout-fields">
-          <NumberField label="W" value={c.w} onSave={(w) => set(c.keepRatio ? { w, h: Math.round((w * c.h) / c.w) } : { w })} />
-          <NumberField label="H" value={c.h} onSave={(h) => set(c.keepRatio ? { h, w: Math.round((h * c.w) / c.h) } : { h })} />
+          <NumberField label="W" value={c.w} onSave={(w) => set(typedSize(c, 'w', w, panel.size))} />
+          <NumberField label="H" value={c.h} onSave={(h) => set(typedSize(c, 'h', h, panel.size))} />
         </div>
         <Checkbox label="Lock proportions" checked={!!c.keepRatio} disabled={false} onChange={(on) => set(on ? { keepRatio: true } : { keepRatio: undefined })} />
         {small && (

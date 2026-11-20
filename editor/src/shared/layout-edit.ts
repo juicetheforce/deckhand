@@ -60,6 +60,27 @@ export function moveControl(panel: PanelDef, id: string, x: number, y: number): 
   return withControl(panel, id, { x, y });
 }
 
+/** A width or height typed into the inspector: with Lock proportions, the other follows. */
+export function typedSize(c: Box & { keepRatio?: boolean }, field: 'w' | 'h', value: number, canvas: { width: number; height: number }): { w: number; h: number } {
+  if (!c.keepRatio) return field === 'w' ? { w: value, h: c.h } : { w: c.w, h: value };
+  const ratio = c.w / c.h;
+  const sized = field === 'w' ? fitRatio(value, value / ratio, canvas.width, canvas.height) : fitRatio(value * ratio, value, canvas.width, canvas.height);
+  return { w: Math.round(sized.w), h: Math.round(sized.h) };
+}
+
+/**
+ * A locked size brought within its limits by one factor for both sides, so
+ * the ratio survives a limit: grown until neither side is under MIN_SIDE,
+ * then shrunk until both fit maxW × maxH (the larger limit wins if both
+ * cannot hold). Clamping each side alone loses the ratio for good, as the
+ * next edit takes the distorted box as its ratio.
+ */
+function fitRatio(w: number, h: number, maxW: number, maxH: number): { w: number; h: number } {
+  const grow = Math.max(1, MIN_SIDE / w, MIN_SIDE / h);
+  const shrink = Math.min(1, maxW / (w * grow), maxH / (h * grow));
+  return { w: w * grow * shrink, h: h * grow * shrink };
+}
+
 /** The eight handles: which edges each one moves. */
 export type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export const HANDLES: ReadonlyArray<Handle> = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -100,9 +121,7 @@ export function resizeBox(from: Box, handle: Handle, dx: number, dy: number, can
   // Fitted on the canvas from the fixed side, keeping the ratio.
   const maxW = handle.includes('w') ? right0 : horizontal ? canvas.width - left0 : canvas.width;
   const maxH = handle.includes('n') ? bottom0 : vertical ? canvas.height - top0 : canvas.height;
-  const fit = Math.min(1, maxW / w, maxH / h);
-  w *= fit;
-  h *= fit;
+  ({ w, h } = fitRatio(w, h, maxW, maxH));
   const x = handle.includes('w') ? right0 - w : horizontal ? left0 : from.x + (from.w - w) / 2;
   const y = handle.includes('n') ? bottom0 - h : vertical ? top0 : from.y + (from.h - h) / 2;
   return clampBox({ x, y, w, h }, canvas);

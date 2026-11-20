@@ -27,6 +27,7 @@ import {
   sendToBack,
   setShape,
   shapesOverlap,
+  typedSize,
   verySmallMm,
   withControl,
 } from '../src/shared/layout-edit.js';
@@ -75,6 +76,20 @@ check('Lock proportions near an edge: stops where the ratio still fits', () => {
   const r = resizeBox(from, 'se', 500, 500, CANVAS, true);
   assert.equal(r.w, r.h);
   assert.ok(r.x + r.w <= 1920 && r.y + r.h <= 720, JSON.stringify(r));
+});
+check('Lock proportions at the smallest size: both sides stop together, the ratio kept', () => {
+  const from = { x: 100, y: 100, w: 200, h: 100 };
+  const r = resizeBox(from, 'e', -500, 0, CANVAS, true);
+  assert.deepEqual([r.w, r.h], [16, 8], JSON.stringify(r));
+});
+check('Lock proportions on a typed size past the canvas: both sides stop together, the ratio kept', () => {
+  const c = { id: 'a', x: 0, y: 0, w: 200, h: 100, keepRatio: true };
+  const typed = typedSize(c, 'w', 1800, CANVAS);
+  const saved = withControl(free([c]), 'a', typed).controls[0];
+  assert.deepEqual([saved.w, saved.h], [1440, 720], JSON.stringify(saved));
+});
+check('a typed size without the lock changes only that side', () => {
+  assert.deepEqual(typedSize({ x: 0, y: 0, w: 200, h: 100 }, 'w', 300, CANVAS), { w: 300, h: 100 });
 });
 check('a radius follows a box made smaller: never past a full pill', () => {
   const p = free([{ id: 'a', x: 0, y: 0, w: 300, h: 300, shape: 'rectangle', radius: 120 }]);
