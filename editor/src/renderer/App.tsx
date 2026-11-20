@@ -10,6 +10,8 @@ import { ControlsPalette, DeleteControl, DiscardChanges, GuidesBar, LayoutCanvas
 import { useVirtualScreen } from './GridPicker.js';
 import { GAP_PX, PAD_X_PX, PITCH_PX, type DeckSize } from './canvas.js';
 import { ChangeLayout } from './ChangeLayout.js';
+import { MadeForChip, SaveAsTemplate } from './Templates.js';
+import { madeForAnother, templateNamed } from '../shared/templates.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
@@ -470,7 +472,9 @@ function Editor({
     if (panel && isCustomLayout(panel)) {
       const rows = Math.max(1, geometryOfPanel(defaultPanelOf(config, serial), '').rows || g.rows);
       const height = rows * PITCH_PX - GAP_PX;
-      size = { rows, columns: Math.max(1, Math.round(((height * panel.size.width) / panel.size.height + GAP_PX) / PITCH_PX)) };
+      // The screen's proportions: a layout made for another size sits inside, scaled to fit and centred, as on the deck.
+      const area = screenOf(serial) ?? panel.size;
+      size = { rows, columns: Math.max(1, Math.round(((height * area.width) / area.height + GAP_PX) / PITCH_PX)) };
     }
     const need = headerNeeds[serial];
     if (need) size = { ...size, columns: Math.max(size.columns, Math.ceil((need - 2 * PAD_X_PX + GAP_PX) / PITCH_PX)) };
@@ -798,7 +802,17 @@ function Editor({
               size={sizeText(mode.serial, mode.page) ?? ''}
               profile={profileLabel(config, mode.profile)}
               page={layoutFor(config, mode.profile, mode.serial) ? pageLabel(layoutFor(config, mode.profile, mode.serial)!, mode.page) : mode.page}
-            />
+            >
+              <SaveAsTemplate
+                hasControls={modePanel.controls.length > 0}
+                existing={(name) => templateNamed(config.templates, name)?.name ?? null}
+                onSave={async (name, replace) => {
+                  // The layout only, as it is now; not linked to this page, and not undone by Discard changes (21g).
+                  const result = await window.deckhand.apply({ kind: 'saveTemplate', name, panel: modePanel, replace });
+                  return result.ok ? null : result.error;
+                }}
+              />
+            </ModeBar>
           ) : undefined
         }
         onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true })}
@@ -930,6 +944,7 @@ function Editor({
                           panel={modePanel}
                           page={modeBlank ? { buttons: {} } : modePage}
                           box={room}
+                          screen={screenOf(serial)}
                           selected={selectedControls}
                           guides={guides}
                           iconStamps={iconStamps}
@@ -952,6 +967,7 @@ function Editor({
               </>
             )}
             {mode && canvasDecks.length > 0 && <GuidesBar guides={guides} onChange={setGuides} />}
+            {mode && modePanel && canvasDecks.length > 0 && madeForAnother(modePanel.size, screenOf(mode.serial)) && <MadeForChip layout={modePanel.size} screen={screenOf(mode.serial)!} />}
             {keyMenu && (
               <KeyMenu
                 x={keyMenu.x}

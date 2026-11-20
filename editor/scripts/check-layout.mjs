@@ -562,6 +562,101 @@ await click('[data-discard-confirm]');
 r.precisionDiscarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
 void k1at;
 
+// ---- TEMPLATES (round 2b) ----
+const templatesOnDisk = async () => (await onDisk()).templates ?? [];
+const openNewPage = async () => {
+  await click('.tab-add');
+  await until(() => exists('.add-menu-wrap .tab-menu-item'));
+  await click('.add-menu-wrap .tab-menu-item');
+  await until(() => exists('[data-add-page=virtual] [data-vd-size=blank] input'));
+  await sleep(200);
+};
+const saveTemplate = async (name) => {
+  await click('[data-save-template]');
+  await until(() => exists('[data-template-name]'));
+  await typeInto('[data-template-name]', name);
+  await click('[data-template-save]');
+};
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+// Moved first, so Discard changes has something to put back — and must leave the template alone.
+await drag('.layout-canvas [data-key="k8"]', -40, 0);
+await until(async () => (await controlOf('Main', 'k8'))?.x === r.entryPage.panel.controls[7].x - 40);
+await saveTemplate('Mixer');
+r.templateSaved = await until(async () => (await templatesOnDisk()).length === 1);
+r.templateOnDisk = (await templatesOnDisk())[0];
+r.savedSays = await until(async () => (await text('[data-save-template]')) === 'Saved');
+r.stillInMode = await inMode();
+// The same name, any case: it offers to replace, and replacing keeps one template.
+await saveTemplate('MIXER');
+r.clash = await until(() => exists('[data-template-clash]'));
+r.clashText = await text('[data-template-clash]');
+r.replaceLabel = await text('[data-template-save]');
+await click('[data-template-save]');
+r.replaced = await until(async () => {
+  const t = await templatesOnDisk();
+  return t.length === 1 && t[0].name === 'MIXER';
+});
+await click('[data-discard-changes]');
+await until(() => exists('[data-discard-confirm]'));
+await click('[data-discard-confirm]');
+await until(async () => !(await inMode()));
+r.templateAfterDiscard = (await templatesOnDisk()).map((t) => t.name);
+// New page: the template listed after Blank, with its number of controls; a page made from it is custom, every control empty.
+await openNewPage();
+r.pickerRow = await inEditor(`(() => { const row = document.querySelector('[data-template="MIXER"]'); return row ? [row.textContent, !!row.querySelector('.template-preview'), [...document.querySelectorAll('[data-add-page] [data-vd-size], [data-add-page] [data-template]')].map((e) => e.dataset.vdSize ?? 'template:' + e.dataset.template)] : null; })()`);
+await click('[data-template="MIXER"] input[type=radio]');
+await typeInto('[data-add-page] input[aria-label="New page name"]', 'From mix');
+await sleep(100);
+r.useLabel = await text('[data-add-page-submit]');
+await click('[data-add-page-submit]');
+r.fromTemplate = await until(async () => (await page('From mix')).panel?.preset === 'free');
+r.fromTemplatePage = await page('From mix');
+r.fromTemplateNotMode = !(await inMode());
+// The last choice remembered: the next New page has the template chosen.
+await openNewPage();
+r.lastTemplate = await inEditor("document.querySelector('[data-template] input:checked')?.closest('[data-template]').dataset.template ?? null");
+// Rename from its … menu, in place.
+await click('[data-template="MIXER"] [data-template-more]');
+await until(() => exists('.vd-template-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.vd-template-menu .tab-menu-item')].find((b) => b.textContent === 'Rename').click(); return true; })()`);
+await until(() => exists('[data-template-rename]'));
+await typeInto('[data-template-rename]', 'Desk');
+await inEditor(`(() => { document.querySelector('[data-template-rename]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+r.renamed = await until(async () => (await templatesOnDisk())[0]?.name === 'Desk');
+// A template saved on a wider screen: listed as made for it; a page from it keeps its own canvas.
+await inEditor(`window.deckhand.apply({ kind: 'saveTemplate', name: 'Wide', replace: false, panel: { size: { width: 2560, height: 720 }, preset: 'free', controls: [{ id: 'c1', x: 100, y: 100, w: 400, h: 400, shape: 'round' }, { id: 'c2', x: 2060, y: 100, w: 400, h: 400 }] } })`);
+await until(() => exists('[data-template="Wide"]'));
+r.wideSub = await text('[data-template="Wide"] .vd-template-choice .muted');
+r.newestFirst = await inEditor("[...document.querySelectorAll('[data-add-page] [data-template]')].map((e) => e.dataset.template)");
+// Delete…: asks once; the page made from it is not changed.
+const fromMixBefore = JSON.stringify(await page('From mix'));
+await click('[data-template="Desk"] [data-template-more]');
+await until(() => exists('.vd-template-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.vd-template-menu .tab-menu-item')].find((b) => b.textContent.startsWith('Delete')).click(); return true; })()`);
+r.deleteAsks = await until(() => exists('[data-template-delete]'));
+r.deleteAskText = await text('[data-template-delete]');
+await click('[data-template-delete-confirm]');
+r.deletedTemplate = await until(async () => (await templatesOnDisk()).every((t) => t.name !== 'Desk'));
+r.pageUnchanged = JSON.stringify(await page('From mix')) === fromMixBefore;
+await click('[data-template="Wide"] input[type=radio]');
+await typeInto('[data-add-page] input[aria-label="New page name"]', 'Wide one');
+await sleep(100);
+await click('[data-add-page-submit]');
+r.widePage = await until(async () => (await page('Wide one')).panel?.size?.width === 2560);
+await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Wide one');
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+r.madeFor = await until(() => exists('[data-made-for="2560x720"]'));
+r.madeForText = await text('[data-made-for]');
+r.layoutScreen = await inEditor(`(() => { const s = document.querySelector('[data-layout-screen]'); const c = document.querySelector('.layout-canvas'); if (!s || !c) return null; const a = s.getBoundingClientRect(); const b = c.getBoundingClientRect(); return { screen: s.dataset.layoutScreen, ratio: Math.round((a.width / a.height) * 100) / 100, centred: Math.abs((b.left - a.left) - (a.right - b.right)) < 2 && Math.abs((b.top - a.top) - (a.bottom - b.bottom)) < 2, dashed: getComputedStyle(c).outlineStyle }; })()`);
+await shot('11-made-for');
+await click('[data-done]');
+await until(async () => !(await inMode()));
+r.noChipOutside = !(await exists('[data-made-for]'));
+await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
+await until(async () => (await count('.well [data-key]')) === 24);
+
 // ---- BLANK FROM NEW PAGE ----
 await click('.tab-add');
 await until(() => exists('.add-menu-wrap .tab-menu-item'));
@@ -574,6 +669,7 @@ r.startBlankLabel = await text('[data-add-page-submit]');
 await click('[data-add-page-submit]');
 r.blankMode = await until(async () => (await inMode()) && (await exists('.layout-empty')));
 r.blankOnDisk = await page('Pads');
+r.saveDimmedEmpty = await inEditor("document.querySelector('[data-save-template]')?.disabled ?? null");
 await shot('8-blank');
 await inEditor(`(() => { document.querySelector('[data-palette=button]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 5, clientX: 10, clientY: 10 })); window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 5, clientX: 10, clientY: 10 })); return true; })()`);
 r.blankFirst = await until(async () => (await controlsOf('Pads')).length === 1);
@@ -899,6 +995,55 @@ check('Duplicate and Delete with several: a copy of each, selected; one warning 
   assert.equal(r.deleteSeveralAsked, true);
   assert.match(r.deleteSeveralText, /Delete 3 controls\?.*Their keys go with them:.*Mic.*Two/);
   assert.equal(r.precisionDiscarded, true);
+});
+check('Save as template: the layout only, saved under its name, the button saying so, the mode still open', () => {
+  assert.equal(r.templateSaved, true);
+  assert.equal(r.templateOnDisk.name, 'Mixer');
+  assert.equal(r.templateOnDisk.panel.preset, 'free');
+  assert.equal(r.templateOnDisk.panel.controls.length, 24);
+  assert.ok(r.templateOnDisk.panel.controls.every((c) => Object.keys(c).every((k) => ['id', 'x', 'y', 'w', 'h', 'shape', 'radius', 'keepRatio'].includes(k))), JSON.stringify(r.templateOnDisk));
+  assert.equal(r.templateOnDisk.buttons, undefined);
+  assert.equal(r.savedSays, true);
+  assert.equal(r.stillInMode, true);
+  assert.equal(r.saveDimmedEmpty, true, 'Save as template is dimmed with no controls');
+});
+check('a name in use offers to replace that template; Discard changes does not undo a save', () => {
+  assert.equal(r.clash, true);
+  assert.match(r.clashText, /There is already a template called Mixer\./);
+  assert.equal(r.replaceLabel, 'Replace it');
+  assert.equal(r.replaced, true);
+  assert.deepEqual(r.templateAfterDiscard, ['MIXER']);
+});
+check('New page lists templates after Blank, newest first, with a preview and their controls; one makes a custom page, every control empty, remembered as the last choice', () => {
+  assert.ok(r.pickerRow, 'no template row');
+  assert.match(r.pickerRow[0], /MIXER.*24 controls/);
+  assert.equal(r.pickerRow[1], true);
+  assert.deepEqual(r.pickerRow[2], ['small', 'medium', 'large', 'custom', 'blank', 'template:MIXER']);
+  assert.equal(r.useLabel, 'Use MIXER');
+  assert.equal(r.fromTemplate, true);
+  assert.equal(r.fromTemplatePage.panel.controls.length, 24);
+  assert.deepEqual(r.fromTemplatePage.buttons, {});
+  assert.equal(r.fromTemplateNotMode, true);
+  assert.equal(r.lastTemplate, 'MIXER');
+  assert.deepEqual(r.newestFirst, ['Wide', 'Desk']);
+});
+check('rename in place and Delete… from the picker; the page made from it unchanged', () => {
+  assert.equal(r.renamed, true);
+  assert.equal(r.deleteAsks, true);
+  assert.match(r.deleteAskText, /Delete Desk\? Pages made from it are not changed\./);
+  assert.equal(r.deletedTemplate, true);
+  assert.equal(r.pageUnchanged, true);
+});
+check('a template from another screen size: "Made for", its own canvas kept, the mode drawing the screen whole with the layout dashed and centred, and the chip', () => {
+  assert.equal(r.wideSub, 'Made for 2560 × 720');
+  assert.equal(r.widePage, true);
+  assert.equal(r.madeFor, true);
+  assert.match(r.madeForText, /Made for 2560 × 720\s*shown at 75%, centred/);
+  assert.equal(r.layoutScreen?.screen, '1920x720', JSON.stringify(r.layoutScreen));
+  assert.ok(Math.abs(r.layoutScreen.ratio - 1920 / 720) < 0.05, JSON.stringify(r.layoutScreen));
+  assert.equal(r.layoutScreen.centred, true);
+  assert.equal(r.layoutScreen.dashed, 'dashed');
+  assert.equal(r.noChipOutside, true);
 });
 check('Blank from New page: the page made with the deck\'s default grid, shown empty in the mode; a first control saves it custom', () => {
   assert.equal(r.startBlankLabel, 'Start blank');

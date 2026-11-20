@@ -1,6 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import { gridFor, MAX_CUSTOM_COLUMNS, MAX_CUSTOM_ROWS, PRESET_SIZES, type Grid, type PanelSize, type ScreenSize } from '../../../src/panel-presets.js';
 import { customOf, SIZE_NAMES } from '../shared/grid-choice.js';
+import { newestFirst } from '../shared/templates.js';
+import type { TemplateDef } from '../../../src/types.js';
+import { TemplateRows } from './Templates.js';
 
 // The grid picker, shared by Settings › Decks' Add (the deck's default size) and the
 // main window's New page and Change layout…. Its state and the panels it makes are pure, in shared/grid-choice.ts, so they are tested without a DOM.
@@ -18,7 +21,7 @@ export function describeGrid(grid: Grid): string {
 }
 
 /** The picker: Small, Medium, Large with what each gives on this screen, or Grid Size's rows and columns. */
-export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
+export function GridPicker({ screen, size, rows, columns, onChange, blank, templates }: {
   screen: ScreenSize;
   size: PanelSize;
   rows: string;
@@ -30,6 +33,11 @@ export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
    * offers only the fixed grids (Ryan, 2026-11-18).
    */
   blank?: { chosen: boolean; onChoose: () => void };
+  /**
+   * New page only (round 2b): the saved templates after Blank, newest first,
+   * in the same radio group, renamed and deleted from here (20a–20g).
+   */
+  templates?: { list: TemplateDef[]; chosen: string | null; onChoose: (name: string) => void; onRename: (name: string, to: string) => Promise<string | null>; onDelete: (name: string) => Promise<string | null> };
 }) {
   // Two pickers in one window must not share a radio group.
   const group = useId();
@@ -42,7 +50,7 @@ export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
           <input
             type="radio"
             name={group}
-            checked={size === s && !blank?.chosen}
+            checked={size === s && !blank?.chosen && !templates?.chosen}
             // Grid Size starts from the size picked before it, so its fields are never empty.
             onChange={() => onChange(s === 'custom' ? { size: s, rows: String(grid.rows), columns: String(grid.columns) } : { size: s })}
           />
@@ -57,7 +65,8 @@ export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
           <span className="muted small">Custom layout, empty</span>
         </label>
       )}
-      {size === 'custom' && !blank?.chosen && (
+      {templates && <TemplateRows group={group} templates={newestFirst(templates.list)} screen={screen} chosen={templates.chosen} onChoose={templates.onChoose} onRename={templates.onRename} onDelete={templates.onDelete} />}
+      {size === 'custom' && !blank?.chosen && !templates?.chosen && (
         <div className="sp-fields">
           <label className="sp-field sp-field-port">
             <span className="sp-field-label">Rows</span>
@@ -72,7 +81,7 @@ export function GridPicker({ screen, size, rows, columns, onChange, blank }: {
           </span>
         </div>
       )}
-      {grid.verySmall && !blank?.chosen && (
+      {grid.verySmall && !blank?.chosen && !templates?.chosen && (
         <p className="muted small vd-warning" data-vd-warning="small">
           These keys are very small, and may be hard to press. You can still use them.
         </p>

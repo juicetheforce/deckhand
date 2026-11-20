@@ -142,7 +142,9 @@ export function freshControlId(panel: PanelDef, also: Iterable<string> = []): st
  * known yet, Medium's pixels for this canvas.
  */
 export function addButton(panel: PanelDef, at: { x: number; y: number }, screen: ScreenSize | null, also: Iterable<string> = []): { panel: PanelDef; id: string } {
-  const side = newButtonSide(screen ?? { width: panel.size.width, height: panel.size.height });
+  // About 30 mm on the screen; in a layout made for another size, shown smaller or larger, as many of its pixels as that takes.
+  const on = screen ?? { width: panel.size.width, height: panel.size.height };
+  const side = newButtonSide(on) / Math.min(on.width / panel.size.width, on.height / panel.size.height);
   const id = freshControlId(panel, also);
   const box = clampBox({ x: at.x - side / 2, y: at.y - side / 2, w: side, h: side }, panel.size);
   return { panel: { ...panel, controls: [...panel.controls, { id, ...box }] }, id };
@@ -256,9 +258,10 @@ export function controlNames(panel: PanelDef): Map<string, string> {
 
 /** The very-small warning's figure (22f): about how many mm the shorter side is, or null with no warning. */
 export function verySmallMm(screen: ScreenSize | null, panel: PanelDef, c: { w: number; h: number }): { mm: number | null } | null {
-  // Measured on the screen it is shown on: the panel's own canvas when the screen is not known.
+  // Measured on the screen it is shown on: the panel's own canvas when the screen is not known. A layout
+  // made for another size is shown at one scale, the largest that fits (24c).
   const on = screen ?? { width: panel.size.width, height: panel.size.height };
-  const scale = on.width / panel.size.width;
+  const scale = Math.min(on.width / panel.size.width, on.height / panel.size.height);
   const w = c.w * scale;
   const h = c.h * scale;
   if (!isVerySmall(on, w, h)) return null;

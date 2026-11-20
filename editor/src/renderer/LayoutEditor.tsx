@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { geometryOfPanel } from '../../../src/geometry.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
@@ -7,6 +7,7 @@ import type { ButtonDef, Config, PageDef, PanelControlDef, PanelDef } from '../.
 import { bringToFront, controlNames, HANDLES, overlaps, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
 import { align, ALIGNMENTS, distribute, GRID_PITCHES, groupPosition, inMarquee, match, MAX_PITCH, MIN_PITCH, moveGroupTo, placeGroup, placeMoved, placeResized, SNAP_SCREEN_PX, snapTargets, type Alignment, type Guides, type Placing, type SnapGuide } from '../shared/layout-arrange.js';
 import { Dropdown } from './Dropdown.js';
+import { fitScale, madeForAnother } from '../shared/templates.js';
 import { Switch } from './settings-ui.js';
 import { describeAction, keyKind, type AppIcons } from './model.js';
 import { Key, placeOf } from './DeckGrid.js';
@@ -57,6 +58,7 @@ export function LayoutCanvas({
   panel,
   page,
   box,
+  screen,
   selected,
   guides,
   iconStamps,
@@ -71,6 +73,12 @@ export function LayoutCanvas({
   page: PageDef;
   /** The room in the deck's frame, in pixels at 100%. */
   box: { width: number; height: number };
+  /**
+   * The screen's pixels, when known. A layout made for another size (a
+   * template from another screen) is drawn as the deck shows it: the screen
+   * whole, the layout scaled to fit and centred, its own area dashed (24c).
+   */
+  screen?: { width: number; height: number } | null;
   /** The selected controls, in the order they were selected. */
   selected: string[];
   /** Grid, its pitch, and Snap (22g). */
@@ -98,7 +106,10 @@ export function LayoutCanvas({
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const shown = live ?? panel;
   const size = shown.size;
-  const scale = Math.min(box.width / size.width, box.height / size.height);
+  const other = madeForAnother(size, screen) ? screen! : null;
+  // On another screen size: the screen fitted to the room, then the layout at the one scale the deck uses.
+  const screenScale = other ? Math.min(box.width / other.width, box.height / other.height) : 0;
+  const scale = other ? screenScale * fitScale(size, other) : Math.min(box.width / size.width, box.height / size.height);
   const style: CSSProperties = { width: Math.floor(size.width * scale), height: Math.floor(size.height * scale) };
   const geometry = geometryOfPanel(shown, '');
   const names = controlNames(shown);
@@ -207,10 +218,10 @@ export function LayoutCanvas({
   const dragging = dragRef.current?.moved && dragRef.current.ids.length === 1 ? control(dragRef.current.ids[0]) : undefined;
   const chosen = selected.map((id) => control(id)).filter((c): c is PanelControlDef => c !== undefined);
 
-  return (
+  const canvas = (
     <div
       ref={surface}
-      className="layout-canvas"
+      className={other ? 'layout-canvas layout-canvas-other' : 'layout-canvas'}
       style={style}
       data-layout-box={serial}
       data-layout-size={`${size.width}x${size.height}`}
@@ -311,6 +322,12 @@ export function LayoutCanvas({
         )}
       </div>
       {shown.controls.length === 0 && <p className="layout-empty muted">Drag a control here</p>}
+    </div>
+  );
+  if (!other) return canvas;
+  return (
+    <div className="layout-screen" style={{ width: Math.floor(other.width * screenScale), height: Math.floor(other.height * screenScale) }} data-layout-screen={`${other.width}x${other.height}`}>
+      {canvas}
     </div>
   );
 }
@@ -714,11 +731,11 @@ function NumberField({ label, value, onSave }: { label: string; value: number; o
 
 /**
  * The mode bar (21a), in place of the toolbar's crumbs and page tabs: the
- * deck and its size, the profile and the page being edited. Discard changes
- * and Done are on the deck's own header, beside the lit Edit layout (Ryan,
- * 2026-11-20), not here.
+ * deck and its size, the profile and the page being edited, then Save as
+ * template (21g). Discard changes and Done are on the deck's own header,
+ * beside the lit Edit layout (Ryan, 2026-11-20), not here.
  */
-export function ModeBar({ deck, size, profile, page }: { deck: string; size: string; profile: string; page: string }) {
+export function ModeBar({ deck, size, profile, page, children }: { deck: string; size: string; profile: string; page: string; children?: ReactNode }) {
   return (
     <div className="mode-bar" data-mode-bar="">
       <span className="mode-bar-tag">Edit layout</span>
@@ -726,6 +743,7 @@ export function ModeBar({ deck, size, profile, page }: { deck: string; size: str
         <strong>{deck}</strong> <span className="muted">· {size}</span> <span className="crumb-sep">›</span> {profile} <span className="crumb-sep">›</span> <strong>{page}</strong>
       </span>
       <span className="toolbar-spacer" />
+      {children}
     </div>
   );
 }

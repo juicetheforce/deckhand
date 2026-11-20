@@ -193,6 +193,23 @@ export interface Config {
    * it was made with. No Settings UI (REFERENCE).
    */
   twitch?: { clientId?: string };
+  /**
+   * Saved layouts for virtual decks' pages (Edit layout's Save as template),
+   * oldest first: offered when a page is added on any touchscreen, scaled to
+   * fit it. The editor's alone; the daemon never reads them.
+   */
+  templates?: TemplateDef[];
+}
+
+/**
+ * A template: a layout and nothing more — each control's place, size and
+ * shape (src/shapes.ts), at the size of the screen it was saved on. No
+ * actions, art, labels or background. A page made from one is not linked to it.
+ */
+export interface TemplateDef {
+  /** Its name in the picker: unique, ignoring case. */
+  name: string;
+  panel: PanelDef;
 }
 
 /** What a button should look like right now, after dynamic state is applied. */

@@ -7,6 +7,7 @@ import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/li
 import { deleteProfile } from '../shared/profile-deletion.js';
 import { defaultPanelOf, isCustomLayout, pagePanelOf } from '../../../src/panel-presets.js';
 import { regridPage } from '../shared/panel-size.js';
+import { renamedTemplate, withoutTemplate, withTemplate } from '../shared/templates.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -560,6 +561,21 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
         throw new EditError('a grid page is not made custom: make a new page from Blank or a template');
       }
       layout.pages[edit.page] = { ...page, panel: structuredClone(edit.panel), buttons: structuredClone(edit.buttons) };
+      return {};
+    }
+    case 'saveTemplate':
+    case 'renameTemplate':
+    case 'deleteTemplate': {
+      try {
+        config.templates =
+          edit.kind === 'saveTemplate'
+            ? withTemplate(config.templates, edit.name, edit.panel, edit.replace)
+            : edit.kind === 'renameTemplate'
+              ? renamedTemplate(config.templates, edit.name, edit.to)
+              : withoutTemplate(config.templates, edit.name);
+      } catch (err) {
+        throw new EditError((err as Error).message);
+      }
       return {};
     }
     default: {

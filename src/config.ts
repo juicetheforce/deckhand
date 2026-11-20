@@ -100,6 +100,28 @@ function validatePanel(panel: unknown, where: string): void {
   if (panel.preset !== undefined && typeof panel.preset !== 'string') throw new Error(`${where}: "panel.preset" must be a string`);
 }
 
+/** At most this many templates: a guard against a runaway file, not a limit anyone meets. */
+export const MAX_TEMPLATES = 200;
+/** A template's name: at most this many characters. */
+export const MAX_TEMPLATE_NAME = 64;
+
+/** Edit layout's saved templates (types.ts TemplateDef): a name each, unique ignoring case, and a layout with controls. */
+function validateTemplates(templates: unknown): void {
+  if (!Array.isArray(templates)) throw new Error('"templates" must be a list');
+  if (templates.length > MAX_TEMPLATES) throw new Error(`"templates" may hold at most ${MAX_TEMPLATES}`);
+  const names = new Set<string>();
+  for (const t of templates) {
+    if (!isObject(t) || typeof t.name !== 'string' || t.name.trim() === '' || t.name.length > MAX_TEMPLATE_NAME) {
+      throw new Error(`every template needs a "name" of 1 to ${MAX_TEMPLATE_NAME} characters`);
+    }
+    const key = t.name.trim().toLowerCase();
+    if (names.has(key)) throw new Error(`two templates are called "${t.name.trim()}"`);
+    names.add(key);
+    validatePanel(t.panel, `template "${t.name}"`);
+    if ((t.panel as { controls: unknown[] }).controls.length === 0) throw new Error(`template "${t.name}" has no controls`);
+  }
+}
+
 function validateLayout(layout: unknown, where: string): void {
   if (!isObject(layout)) throw new Error(`${where} must be an object`);
   if (!isObject(layout.pages)) throw new Error(`${where} is missing a "pages" object`);
@@ -197,6 +219,8 @@ export function validateConfig(config: unknown): Config {
       throw new Error('"twitch.clientId" must be a Twitch client ID: lowercase letters and digits');
     }
   }
+
+  if (config.templates !== undefined) validateTemplates(config.templates);
 
   if (config.startProfile !== undefined) {
     const valid = config as unknown as Config;
