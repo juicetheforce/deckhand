@@ -154,7 +154,8 @@ const key = (code, opts = {}) =>
 /**
  * A pointer drag in the mode: down on `selector` (a control's face, or a
  * handle) at its middle, then moved by dx, dy canvas pixels and let go, the
- * moves sent to the layout canvas as its pointer capture would.
+ * moves sent to the layout canvas as its pointer capture would. Shift held, so
+ * neither the grid nor snapping moves it: these steps are about moving.
  */
 const drag = (selector, dx, dy) =>
   inEditor(`(() => {
@@ -165,7 +166,7 @@ const drag = (selector, dx, dy) =>
     const r = el.getBoundingClientRect();
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
-    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 9, button: 0, clientX: tx, clientY: ty });
+    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 9, button: 0, clientX: tx, clientY: ty, shiftKey: true });
     el.dispatchEvent(new PointerEvent('pointerdown', at(x, y)));
     surface.dispatchEvent(new PointerEvent('pointermove', at(x + (${dx} * scale) / 2, y + (${dy} * scale) / 2)));
     surface.dispatchEvent(new PointerEvent('pointermove', at(x + ${dx} * scale, y + ${dy} * scale)));
@@ -409,6 +410,157 @@ await click('[data-done]');
 r.doneLeft = await until(async () => !(await inMode()));
 r.afterEmptyDone = await page('Main');
 void savesBefore;
+
+// ---- PRECISION (round 2b): snap, Shift, the grid, nudging, several selected ----
+/** A point on the layout canvas, in canvas pixels, as client coordinates. */
+const canvasPoint = (x, y) => `(() => { const s = document.querySelector('.layout-canvas'); const r = s.getBoundingClientRect(); const [w, h] = s.dataset.layoutSize.split('x').map(Number); return [r.left + (${x} / w) * r.width, r.top + (${y} / h) * r.height]; })()`;
+/** Press and release on a control's face, Ctrl held or not: a click in the mode. */
+const pressOn = (id, opts = {}) =>
+  inEditor(`(() => {
+    const el = document.querySelector('.layout-canvas [data-key="${id}"]');
+    const r = el.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true, pointerId: 11, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, ctrlKey: ${!!opts.ctrl} };
+    el.dispatchEvent(new PointerEvent('pointerdown', at));
+    document.querySelector('.layout-canvas').dispatchEvent(new PointerEvent('pointerup', at));
+    return true;
+  })()`);
+/** A drag of a control by dx, dy canvas pixels, Shift held or not: the snap guides drawn before the release, then released. */
+const dragSeen = (id, dx, dy, opts = {}) =>
+  inEditor(`(async () => {
+    const el = document.querySelector('.layout-canvas [data-key="${id}"]');
+    const surface = document.querySelector('.layout-canvas');
+    const scale = surface.getBoundingClientRect().width / Number(surface.dataset.layoutSize.split('x')[0]);
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 12, button: 0, clientX: tx, clientY: ty, shiftKey: ${!!opts.shift} });
+    el.dispatchEvent(new PointerEvent('pointerdown', at(x, y)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(x + (${dx} * scale) / 2, y + (${dy} * scale) / 2)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(x + ${dx} * scale, y + ${dy} * scale)));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const seen = [...document.querySelectorAll('[data-snap-guide]')].map((g) => g.dataset.snapGuide);
+    surface.dispatchEvent(new PointerEvent('pointerup', at(x + ${dx} * scale, y + ${dy} * scale)));
+    return seen;
+  })()`);
+/** A marquee over empty canvas from one canvas point to another. */
+const marqueeOver = (from, to, opts = {}) =>
+  inEditor(`(async () => {
+    const surface = document.querySelector('.layout-canvas');
+    const a = ${canvasPoint(from[0], from[1])};
+    const b = ${canvasPoint(to[0], to[1])};
+    const at = (p) => ({ bubbles: true, cancelable: true, pointerId: 13, button: 0, clientX: p[0], clientY: p[1], ctrlKey: ${!!opts.ctrl} });
+    surface.dispatchEvent(new PointerEvent('pointerdown', at(a)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2])));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(b)));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const drawn = document.querySelector('[data-marquee]') !== null;
+    surface.dispatchEvent(new PointerEvent('pointerup', at(b)));
+    return drawn;
+  })()`);
+const selectedNow = () => inEditor("[...document.querySelectorAll('[data-selected-control]')].map((e) => e.dataset.selectedControl).sort()");
+const switchOn = (id, on) => inEditor(`(() => { const i = document.getElementById('${id}'); if (i.checked !== ${on}) i.click(); return i.checked; })()`);
+const arrow = (k) => inEditor(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: '${k}', key: '${k}' })); return true; })()`);
+
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+r.guidesBar = await inEditor("(() => { const b = document.querySelector('[data-guides-bar]'); return b ? [document.getElementById('layout-grid').checked, document.getElementById('layout-snap').checked, b.querySelector('.dropdown-trigger')?.textContent.replace('▾', '').trim()] : null; })()");
+r.noGridLines = !(await exists('[data-layout-grid]'));
+// The marquee: from empty canvas at the top-left over the first row's first two keys.
+r.marqueeDrawn = await marqueeOver([3, 3], [470, 120]);
+r.marqueeSelected = await selectedNow();
+// Ctrl-click adds k9 and takes k2 out.
+await pressOn('k9', { ctrl: true });
+await pressOn('k2', { ctrl: true });
+r.ctrlSelected = await selectedNow();
+r.severalTitle = await text('[data-layout-inspector=several] .inspector-title');
+await key('Escape', { key: 'Escape' });
+r.escapeNone = (await selectedNow()).length === 0;
+
+// Snap: k1 dragged right by 236 lands with its left edge on 255 (k2's), the guide naming what it met.
+const k1at = await controlOf('Main', 'k1');
+r.snapGuides = await dragSeen('k1', 236, 0);
+r.snapped = await until(async () => (await controlOf('Main', 'k1'))?.x === 255);
+r.snappedAt = await controlOf('Main', 'k1');
+// Shift: free to the pixel — the same drag back by 236 from 255 lands on 19, no guide.
+r.shiftGuides = await dragSeen('k1', -236, 0, { shift: true });
+r.shifted = await until(async () => (await controlOf('Main', 'k1'))?.x === 19);
+// Snap off, the grid on at 40: a drag lands the left and top edges on its lines; the lines drawn.
+await switchOn('layout-snap', false);
+await switchOn('layout-grid', true);
+r.gridLines = await until(async () => (await inEditor("document.querySelector('[data-layout-grid]')?.dataset.layoutGrid ?? null")) === '40');
+await dragSeen('k1', 103, 61);
+r.onGrid = await until(async () => {
+  const c = await controlOf('Main', 'k1');
+  return c?.x === 120 && c?.y === 80;
+});
+r.onGridAt = await controlOf('Main', 'k1');
+// The pitch from the shared dropdown, remembered in the editor's preferences.
+await click('[data-guides-bar] .dropdown-trigger');
+await until(() => exists('[data-dropdown-menu]'));
+await inEditor(`(() => { [...document.querySelectorAll('[data-dropdown-menu] [role=option]')].find((o) => o.textContent.trim() === '60 px').click(); return true; })()`);
+r.pitch60 = await until(async () => (await inEditor("document.querySelector('[data-layout-grid]')?.dataset.layoutGrid ?? null")) === '60');
+r.pitchKept = await inEditor('window.deckhand.layoutGuides()');
+// Nudging: one grid step with the grid on, 1 px with it off.
+await pressOn('k1');
+await arrow('ArrowRight');
+r.nudgedGrid = await until(async () => (await controlOf('Main', 'k1'))?.x === 180);
+await switchOn('layout-grid', false);
+await arrow('ArrowDown');
+r.nudgedPixel = await until(async () => (await controlOf('Main', 'k1'))?.y === 81);
+await switchOn('layout-snap', true);
+
+// Several: k2, k3, k4 (the first row), moved together, aligned, distributed, matched — k3 first set apart, smaller.
+await pressOn('k3');
+await typeAndLeave('[data-layout-field=W]', '150');
+await typeAndLeave('[data-layout-field=H]', '150');
+await typeAndLeave('[data-layout-field=X]', '540');
+await typeAndLeave('[data-layout-field=Y]', '60');
+await until(async () => (await controlOf('Main', 'k3'))?.y === 60);
+await pressOn('k2');
+await pressOn('k3', { ctrl: true });
+await pressOn('k4', { ctrl: true });
+const row = async () => Promise.all(['k2', 'k3', 'k4'].map((id) => controlOf('Main', id)));
+const rowBefore = await row();
+await dragSeen('k3', 0, 333, { shift: true });
+r.movedTogether = await until(async () => (await row()).every((c, i) => c.y === rowBefore[i].y + 333 && c.x === rowBefore[i].x));
+const shiftedRow = await row();
+await typeAndLeave('[data-layout-field=Y]', '100');
+// The bounds' top (the highest of the three) to 100: every one moved by the same amount.
+const top = Math.min(...shiftedRow.map((c) => c.y));
+r.typedGroupY = await until(async () => (await row()).every((c, i) => c.y === shiftedRow[i].y - (top - 100)));
+await inEditor(`(() => { document.querySelector('[data-align=top]').click(); return true; })()`);
+r.alignedTop = await until(async () => (await row()).every((c) => c.y === 100));
+await inEditor(`(() => { document.querySelector('[data-align=bottom]').click(); return true; })()`);
+r.alignedBottom = await until(async () => new Set((await row()).map((c) => c.y + c.h)).size === 1);
+await inEditor(`(() => { document.querySelector('[data-distribute=across]').click(); return true; })()`);
+r.distributed = await (async () => {
+  await sleep(400);
+  const [a, b, c] = await row();
+  return [b.x - (a.x + a.w), c.x - (b.x + b.w)];
+})();
+await inEditor(`(() => { document.querySelector('[data-match=w]').click(); return true; })()`);
+await until(async () => (await controlOf('Main', 'k3'))?.w === 211);
+r.matched = await row();
+// Duplicate with several: a copy of each, one grid step on, the copies selected.
+const nBefore = (await controlsOf('Main')).length;
+await key('KeyD', { ctrl: true, key: 'd' });
+r.duplicatedSeveral = await until(async () => (await controlsOf('Main')).length === nBefore + 3);
+r.copiesSelected = (await selectedNow()).length;
+// Delete with several, one of them keyed (k2, "Two" — its copy): asks once, naming it.
+await pressOn('k1');
+await pressOn('k2', { ctrl: true });
+await pressOn('k5', { ctrl: true });
+await key('Delete');
+r.deleteSeveralAsked = await until(() => exists('[data-delete-control]'));
+r.deleteSeveralText = await text('[data-delete-control]');
+await inEditor(`(() => { [...document.querySelectorAll('[data-delete-control] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
+await shot('10-several');
+// Back as it was: Discard changes.
+await click('[data-discard-changes]');
+await until(() => exists('[data-discard-confirm]'));
+await click('[data-discard-confirm]');
+r.precisionDiscarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
+void k1at;
 
 // ---- BLANK FROM NEW PAGE ----
 await click('.tab-add');
@@ -703,6 +855,50 @@ check('every control deleted: shown empty, never saved empty — the page goes b
   assert.equal(r.neverEmptyOnDisk, true);
   assert.equal(r.doneLeft, true);
   assert.deepEqual(r.afterEmptyDone, r.entryPage);
+});
+check('the grid and snapping: separate switches at the canvas\'s foot, the grid off and Snap on to start, 40 px', () => {
+  assert.deepEqual(r.guidesBar, [false, true, '40 px']);
+  assert.equal(r.noGridLines, true);
+});
+check('snap: a drag lands on another control\'s edge within reach, with a dashed guide naming it; Shift ignores it', () => {
+  assert.equal(r.snapped, true, JSON.stringify(r.snappedAt));
+  // k1 and k2 are the same width, so its left edge and its centre meet Key 2's at once: either names it.
+  assert.ok(r.snapGuides.some((g) => /^(left edge|centre) of Key (2|10)$/.test(g)), JSON.stringify(r.snapGuides));
+  assert.equal(r.shifted, true);
+  assert.deepEqual(r.shiftGuides, []);
+});
+check('the grid: lines drawn at its pitch, a drag lands on them, the pitch chosen from the dropdown and remembered', () => {
+  assert.equal(r.gridLines, true);
+  assert.equal(r.onGrid, true, JSON.stringify(r.onGridAt));
+  assert.equal(r.pitch60, true);
+  assert.deepEqual(r.pitchKept, { grid: true, pitch: 60, snap: false });
+});
+check('the arrow keys nudge one grid step with the grid on, 1 px with it off', () => {
+  assert.equal(r.nudgedGrid, true);
+  assert.equal(r.nudgedPixel, true);
+});
+check('several: a marquee takes what it touches, Ctrl-click adds and removes, Escape none; the inspector says how many', () => {
+  assert.equal(r.marqueeDrawn, true, JSON.stringify([r.marqueeDrawn, r.marqueeSelected, r.ctrlSelected, r.severalTitle, r.escapeNone]));
+  assert.deepEqual(r.marqueeSelected, ['k1', 'k2']);
+  assert.deepEqual(r.ctrlSelected, ['k1', 'k9']);
+  assert.equal(r.severalTitle, '3 controls'.replace('3', '2'));
+  assert.equal(r.escapeNone, true);
+});
+check('several move together, take a typed Y together, align, distribute with equal gaps, and match the first one\'s width', () => {
+  assert.equal(r.movedTogether, true, JSON.stringify([r.movedTogether, r.typedGroupY, r.alignedTop, r.alignedBottom, r.distributed, r.matched]));
+  assert.equal(r.typedGroupY, true, JSON.stringify([r.typedGroupY, r.alignedTop, r.alignedBottom, r.distributed, r.matched]));
+  assert.equal(r.alignedTop, true);
+  assert.equal(r.alignedBottom, true);
+  // k3 (150 wide, at 540) between k2 (255–466) and k4 (735–946): gaps of 74 and 45 become two of 59.5, in whole pixels.
+  assert.deepEqual([...r.distributed].sort(), [59, 60]);
+  assert.deepEqual(r.matched.map((c) => c.w), [211, 211, 211]);
+});
+check('Duplicate and Delete with several: a copy of each, selected; one warning naming every key lost', () => {
+  assert.equal(r.duplicatedSeveral, true);
+  assert.equal(r.copiesSelected, 3);
+  assert.equal(r.deleteSeveralAsked, true);
+  assert.match(r.deleteSeveralText, /Delete 3 controls\?.*Their keys go with them:.*Mic.*Two/);
+  assert.equal(r.precisionDiscarded, true);
 });
 check('Blank from New page: the page made with the deck\'s default grid, shown empty in the mode; a first control saves it custom', () => {
   assert.equal(r.startBlankLabel, 'Start blank');

@@ -4,7 +4,10 @@ import { geometryOfPanel } from '../../../src/geometry.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
 import { cornerRadius, shapeName, SHAPE_NAMES, type ShapeName } from '../../../src/shapes.js';
 import type { ButtonDef, Config, PageDef, PanelControlDef, PanelDef } from '../../../src/types.js';
-import { bringToFront, clampBox, controlNames, HANDLES, overlaps, resizeBox, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
+import { bringToFront, controlNames, HANDLES, overlaps, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
+import { align, ALIGNMENTS, distribute, GRID_PITCHES, groupPosition, inMarquee, match, MAX_PITCH, MIN_PITCH, moveGroupTo, placeGroup, placeMoved, placeResized, SNAP_SCREEN_PX, snapTargets, type Alignment, type Guides, type Placing, type SnapGuide } from '../shared/layout-arrange.js';
+import { Dropdown } from './Dropdown.js';
+import { Switch } from './settings-ui.js';
 import { describeAction, keyKind, type AppIcons } from './model.js';
 import { Key, placeOf } from './DeckGrid.js';
 import { Checkbox, Row, Segmented } from './inspector/controls.js';
@@ -17,16 +20,29 @@ import { Checkbox, Row, Segmented } from './inspector/controls.js';
  * pixels. App.tsx owns the mode and saves; this draws it.
  */
 
-/** A drag in progress: the box as it was picked up, and the pointer then. */
+/** A drag in progress: the boxes as they were picked up, and the pointer then. */
 interface Drag {
-  id: string;
-  /** null: the control itself moves; a handle: that edge or corner. */
+  /** The controls moving: one with a handle, or every selected one. */
+  ids: string[];
+  /** null: the controls themselves move; a handle: that edge or corner of the one. */
   handle: Handle | null;
   pointer: number;
-  from: { x: number; y: number; w: number; h: number };
+  from: Array<{ id: string; x: number; y: number; w: number; h: number }>;
   start: { x: number; y: number };
   /** Screen pixels per canvas pixel when it began (the canvas's zoom included). */
   scale: number;
+  moved: boolean;
+  /** What a move can snap to, from the controls not moving: worked out once, when the drag begins. */
+  targets: ReturnType<typeof snapTargets>;
+}
+
+/** A marquee being dragged over empty canvas (22c): where it began, in canvas pixels; Ctrl adds to the selection. */
+interface Marquee {
+  pointer: number;
+  start: { x: number; y: number };
+  at: { x: number; y: number };
+  add: boolean;
+  before: string[];
   moved: boolean;
 }
 
@@ -42,6 +58,7 @@ export function LayoutCanvas({
   page,
   box,
   selected,
+  guides,
   iconStamps,
   appIcons,
   onSelect,
@@ -54,15 +71,19 @@ export function LayoutCanvas({
   page: PageDef;
   /** The room in the deck's frame, in pixels at 100%. */
   box: { width: number; height: number };
-  selected: string | null;
+  /** The selected controls, in the order they were selected. */
+  selected: string[];
+  /** Grid, its pitch, and Snap (22g). */
+  guides: Guides;
   iconStamps: Record<string, string>;
   appIcons: AppIcons;
-  onSelect: (id: string | null) => void;
+  onSelect: (ids: string[]) => void;
   /** A change made: saved by App as it is made (a drag on its release). */
   onChange: (panel: PanelDef) => void;
 }) {
   const surface = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
+  const marqueeRef = useRef<Marquee | null>(null);
   // While a drag is in progress, the layout as drawn: saved when it ends. The
   // ref is what the release reads: a release can come before React has drawn
   // the last move, and the state it closed over would be a move behind.
@@ -72,6 +93,9 @@ export function LayoutCanvas({
     liveRef.current = next;
     setLiveState(next);
   };
+  /** The lines snapped to, drawn while a drag holds them (22a). */
+  const [snapped, setSnapped] = useState<SnapGuide[]>([]);
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
   const shown = live ?? panel;
   const size = shown.size;
   const scale = Math.min(box.width / size.width, box.height / size.height);
@@ -80,6 +104,12 @@ export function LayoutCanvas({
   const names = controlNames(shown);
   const layered = overlaps(shown);
   const control = (id: string | null) => (id === null ? undefined : shown.controls.find((c) => c.id === id));
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  /** A pointer's place in canvas pixels. */
+  const canvasAt = (clientX: number, clientY: number) => {
+    const r = surface.current!.getBoundingClientRect();
+    return { x: ((clientX - r.left) / r.width) * size.width, y: ((clientY - r.top) / r.height) * size.height };
+  };
 
   const begin = (id: string, handle: Handle | null) => (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
@@ -88,16 +118,44 @@ export function LayoutCanvas({
     const c = control(id);
     const el = surface.current;
     if (!c || !el) return;
-    onSelect(id);
+    // Ctrl-click adds a control to the selection, or takes it out (22c); it does not move anything.
+    if (e.ctrlKey && handle === null) {
+      onSelect(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+      return;
+    }
+    // A control already among several selected moves them all; any other is selected alone.
+    const ids = handle === null && selected.includes(id) && selected.length > 1 ? selected.filter((s) => shown.controls.some((k) => k.id === s)) : [id];
+    if (ids.length === 1) onSelect([id]);
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
       // A synthetic pointer (the checks) has nothing to capture.
     }
-    dragRef.current = { id, handle, pointer: e.pointerId, from: { x: c.x, y: c.y, w: c.w, h: c.h }, start: { x: e.clientX, y: e.clientY }, scale: el.getBoundingClientRect().width / size.width, moved: false };
+    dragRef.current = {
+      ids,
+      handle,
+      pointer: e.pointerId,
+      from: ids.map((k) => ({ ...shown.controls.find((x) => x.id === k)! })).map(({ id: k, x, y, w, h }) => ({ id: k, x, y, w, h })),
+      start: { x: e.clientX, y: e.clientY },
+      scale: el.getBoundingClientRect().width / size.width,
+      moved: false,
+      targets: snapTargets(shown, new Set(ids)),
+    };
   };
 
   const move = (e: ReactPointerEvent) => {
+    const m = marqueeRef.current;
+    if (m && m.pointer === e.pointerId) {
+      const at = canvasAt(e.clientX, e.clientY);
+      const scaleNow = surface.current!.getBoundingClientRect().width / size.width;
+      if (!m.moved && Math.hypot((at.x - m.start.x) * scaleNow, (at.y - m.start.y) * scaleNow) < DRAG_START_PX) return;
+      const next = { ...m, at, moved: true };
+      marqueeRef.current = next;
+      setMarquee(next);
+      const hits = inMarquee(shown, marqueeBox(next));
+      onSelect(next.add ? [...next.before, ...hits.filter((h) => !next.before.includes(h))] : hits);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointer !== e.pointerId) return;
     const sx = e.clientX - drag.start.x;
@@ -106,18 +164,38 @@ export function LayoutCanvas({
     drag.moved = true;
     const dx = sx / drag.scale;
     const dy = sy / drag.scale;
-    const c = control(drag.id) ?? panel.controls.find((k) => k.id === drag.id);
+    // Shift held: free to the pixel, the grid and snapping both ignored (22a).
+    const how: Placing = { grid: guides.grid && !e.shiftKey, pitch: guides.pitch, snap: guides.snap && !e.shiftKey, reach: SNAP_SCREEN_PX / drag.scale, targets: drag.targets };
+    if (drag.ids.length > 1) {
+      const placed = placeGroup(panel, drag.ids, drag.from, dx, dy, how);
+      setSnapped(placed.guides);
+      setLive(placed.panel);
+      return;
+    }
+    const id = drag.ids[0];
+    const c = panel.controls.find((k) => k.id === id);
     if (!c) return;
-    const next = drag.handle === null ? clampBox({ ...drag.from, x: drag.from.x + dx, y: drag.from.y + dy }, size) : resizeBox(drag.from, drag.handle, dx, dy, size, !!c.keepRatio);
-    setLive(withControl(panel, drag.id, next));
+    const from = drag.from[0];
+    const placed = drag.handle === null ? placeMoved({ ...from, x: from.x + dx, y: from.y + dy }, size, how) : placeResized(from, drag.handle, dx, dy, size, !!c.keepRatio, how);
+    setSnapped(placed.guides);
+    setLive(withControl(panel, id, placed.box));
   };
 
   const end = (e: ReactPointerEvent) => {
+    const m = marqueeRef.current;
+    if (m && m.pointer === e.pointerId) {
+      marqueeRef.current = null;
+      setMarquee(null);
+      // A click on empty canvas, not a marquee: nothing selected (Ctrl-click there changes nothing).
+      if (!m.moved && !m.add) onSelect([]);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointer !== e.pointerId) return;
     dragRef.current = null;
     const result = liveRef.current;
     setLive(null);
+    setSnapped([]);
     if (drag.moved && result) onChange(result);
   };
 
@@ -126,7 +204,8 @@ export function LayoutCanvas({
     if (!dragRef.current) setLive(null);
   }, [panel]);
 
-  const dragging = dragRef.current?.moved ? control(dragRef.current.id) : undefined;
+  const dragging = dragRef.current?.moved && dragRef.current.ids.length === 1 ? control(dragRef.current.ids[0]) : undefined;
+  const chosen = selected.map((id) => control(id)).filter((c): c is PanelControlDef => c !== undefined);
 
   return (
     <div
@@ -136,16 +215,36 @@ export function LayoutCanvas({
       data-layout-box={serial}
       data-layout-size={`${size.width}x${size.height}`}
       onPointerDown={(e) => {
-        // Empty canvas: nothing selected.
-        if (e.button === 0 && e.target === e.currentTarget) onSelect(null);
+        // Empty canvas: a marquee begins, or a click selects nothing (on release).
+        if (e.button !== 0 || e.target !== e.currentTarget) return;
+        e.preventDefault();
+        try {
+          surface.current?.setPointerCapture(e.pointerId);
+        } catch {
+          // A synthetic pointer (the checks) has nothing to capture.
+        }
+        const at = canvasAt(e.clientX, e.clientY);
+        marqueeRef.current = { pointer: e.pointerId, start: at, at, add: e.ctrlKey, before: selected, moved: false };
       }}
       onPointerMove={move}
       onPointerUp={end}
       onPointerCancel={() => {
         dragRef.current = null;
+        marqueeRef.current = null;
+        setMarquee(null);
+        setSnapped([]);
         setLive(null);
       }}
     >
+      {/* The grid's lines, drawn only in the editor (22g): behind the controls. */}
+      {guides.grid && (
+        <div
+          className="layout-grid"
+          aria-hidden="true"
+          data-layout-grid={guides.pitch}
+          style={{ backgroundSize: `${pct(guides.pitch, size.width)} ${pct(guides.pitch, size.height)}` }}
+        />
+      )}
       {geometry.keys.map((k, i) => {
         const place = placeOf(k, size);
         return (
@@ -167,7 +266,7 @@ export function LayoutCanvas({
             unset={false}
             latched={false}
             live={null}
-            selected={k.id === selected}
+            selected={selected.includes(k.id)}
             onClick={() => {}}
             onMenu={() => {}}
             onPointerDown={(_occupied, e) => begin(k.id, null)(e)}
@@ -176,7 +275,7 @@ export function LayoutCanvas({
           />
         );
       })}
-      {/* Above every control: the marker, the selected one's frame and its handles. */}
+      {/* Above every control: the marker, the selection's frames and handles, the guides and the marquee. */}
       <div className="layout-overlay">
         {shown.controls.map((c) => {
           const over = layered.get(c.id)?.under ?? [];
@@ -185,15 +284,28 @@ export function LayoutCanvas({
             <span
               key={c.id}
               className="layout-overlap-marker"
-              style={{ left: `${((c.x + c.w) / size.width) * 100}%`, top: `${((c.y + c.h) / size.height) * 100}%` }}
+              style={{ left: pct(c.x + c.w, size.width), top: pct(c.y + c.h, size.height) }}
               title={`${names.get(c.id)} has ${over.map((id) => names.get(id)).join(' and ')} on top of it`}
               data-overlapped={c.id}
             />
           );
         })}
-        {control(selected) && <Selection c={control(selected)!} size={size} onHandle={(h) => begin(selected!, h)} />}
+        {chosen.length === 1 && <Selection c={chosen[0]} size={size} onHandle={(h) => begin(chosen[0].id, h)} />}
+        {chosen.length > 1 &&
+          chosen.map((c) => (
+            <span key={c.id} className="layout-selection layout-selection-several" style={{ left: pct(c.x, size.width), top: pct(c.y, size.height), width: pct(c.w, size.width), height: pct(c.h, size.height) }} data-selected-control={c.id} />
+          ))}
+        {snapped.map((g, i) => (
+          <span key={i} className={`layout-snap layout-snap-${g.axis}`} style={g.axis === 'x' ? { left: pct(g.at, size.width) } : { top: pct(g.at, size.height) }} data-snap-guide={g.label}>
+            <span className="layout-snap-label">snap · {g.label}</span>
+          </span>
+        ))}
+        {marquee && marquee.moved && (() => {
+          const b = marqueeBox(marquee);
+          return <span className="layout-marquee" style={{ left: pct(b.x, size.width), top: pct(b.y, size.height), width: pct(b.w, size.width), height: pct(b.h, size.height) }} data-marquee="" />;
+        })()}
         {dragging && (
-          <span className="layout-readout" style={{ left: `${((dragging.x + dragging.w) / size.width) * 100}%`, top: `${(dragging.y / size.height) * 100}%` }}>
+          <span className="layout-readout" style={{ left: pct(dragging.x + dragging.w, size.width), top: pct(dragging.y, size.height) }}>
             {dragRef.current?.handle === null ? `${dragging.x}, ${dragging.y}` : `${dragging.w} × ${dragging.h}`}
           </span>
         )}
@@ -201,6 +313,11 @@ export function LayoutCanvas({
       {shown.controls.length === 0 && <p className="layout-empty muted">Drag a control here</p>}
     </div>
   );
+}
+
+/** A marquee's rectangle in canvas pixels, whichever way it was dragged. */
+function marqueeBox(m: Marquee): { x: number; y: number; w: number; h: number } {
+  return { x: Math.min(m.start.x, m.at.x), y: Math.min(m.start.y, m.at.y), w: Math.abs(m.at.x - m.start.x), h: Math.abs(m.at.y - m.start.y) };
 }
 
 /** The selected control's frame and its eight handles. */
@@ -307,14 +424,16 @@ export function LayoutInspector({
   deckName: string;
   panel: PanelDef;
   page: PageDef;
-  selected: string | null;
+  /** The selected controls, in the order they were selected. */
+  selected: string[];
   screen: ScreenSize | null;
   onChange: (panel: PanelDef) => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const c = selected === null ? undefined : panel.controls.find((k) => k.id === selected);
   const size = `${panel.size.width} × ${panel.size.height}`;
+  if (selected.length > 1) return <SeveralInspector panel={panel} selected={selected} onChange={onChange} onDuplicate={onDuplicate} onDelete={onDelete} />;
+  const c = selected.length === 0 ? undefined : panel.controls.find((k) => k.id === selected[0]);
   if (!c) {
     return (
       <aside className="inspector glass" aria-label="Inspector" data-layout-inspector="none">
@@ -412,6 +531,158 @@ export function LayoutInspector({
   );
 }
 
+const ALIGN_LABELS: Record<Alignment, string> = { left: 'Align left edges', centre: 'Align centres', right: 'Align right edges', top: 'Align top edges', middle: 'Align middles', bottom: 'Align bottom edges' };
+
+/**
+ * The inspector with several controls selected (22c, 22d): the tools in place
+ * of shape and order — align six ways against the selection's own bounds,
+ * distribute across or down (three or more), match width or height to the
+ * first one selected — then the selection's position, Duplicate and Delete.
+ */
+function SeveralInspector({ panel, selected, onChange, onDuplicate, onDelete }: { panel: PanelDef; selected: string[]; onChange: (panel: PanelDef) => void; onDuplicate: () => void; onDelete: () => void }) {
+  const at = groupPosition(panel, selected) ?? { x: 0, y: 0 };
+  const names = controlNames(panel);
+  const first = names.get(selected[0]) ?? '';
+  const apply = (next: PanelDef) => {
+    if (next !== panel) onChange(next);
+  };
+  return (
+    <aside className="inspector glass" aria-label="Inspector" data-layout-inspector="several">
+      <h2 className="inspector-title">{selected.length} controls</h2>
+      <p className="muted inspector-sub">Buttons</p>
+
+      <section className="inspector-section">
+        <h3 className="section-heading">Align</h3>
+        <div className="layout-align" role="group" aria-label="Align">
+          {ALIGNMENTS.map((a) => (
+            <button key={a} className="layout-tool" title={ALIGN_LABELS[a]} aria-label={ALIGN_LABELS[a]} data-align={a} onClick={() => apply(align(panel, selected, a))}>
+              <AlignGlyph how={a} />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="inspector-section">
+        <h3 className="section-heading">Distribute</h3>
+        <div className="button-row">
+          <button disabled={selected.length < 3} title={selected.length < 3 ? 'Select three or more' : 'Equal gaps from left to right'} data-distribute="across" onClick={() => apply(distribute(panel, selected, 'across'))}>
+            Across
+          </button>
+          <button disabled={selected.length < 3} title={selected.length < 3 ? 'Select three or more' : 'Equal gaps from top to bottom'} data-distribute="down" onClick={() => apply(distribute(panel, selected, 'down'))}>
+            Down
+          </button>
+        </div>
+      </section>
+
+      <section className="inspector-section">
+        <h3 className="section-heading">Match</h3>
+        <div className="button-row">
+          <button title={`The width of ${first}, the first selected`} data-match="w" onClick={() => apply(match(panel, selected, 'w'))}>
+            Width
+          </button>
+          <button title={`The height of ${first}, the first selected`} data-match="h" onClick={() => apply(match(panel, selected, 'h'))}>
+            Height
+          </button>
+        </div>
+        <p className="muted small">To {first}, the first selected.</p>
+      </section>
+
+      <section className="inspector-section">
+        <h3 className="section-heading">Position</h3>
+        <div className="layout-fields">
+          <NumberField label="X" value={at.x} onSave={(x) => apply(moveGroupTo(panel, selected, { x }))} />
+          <NumberField label="Y" value={at.y} onSave={(y) => apply(moveGroupTo(panel, selected, { y }))} />
+        </div>
+      </section>
+
+      <div className="button-row">
+        <button onClick={onDuplicate} title="Ctrl+D">
+          Duplicate
+        </button>
+        <button className="danger" onClick={onDelete} title="Delete">
+          Delete…
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+/** A small drawing of each alignment: a line, and two bars set against it. */
+function AlignGlyph({ how }: { how: Alignment }) {
+  const vertical = how === 'left' || how === 'centre' || how === 'right';
+  const line = how === 'left' || how === 'top' ? 2 : how === 'right' || how === 'bottom' ? 14 : 8;
+  const bars = vertical
+    ? [{ x: how === 'left' ? 3 : how === 'right' ? 13 - 9 : 8 - 4.5, y: 3, w: 9, h: 4 }, { x: how === 'left' ? 3 : how === 'right' ? 13 - 6 : 8 - 3, y: 9, w: 6, h: 4 }]
+    : [{ x: 3, y: how === 'top' ? 3 : how === 'bottom' ? 13 - 9 : 8 - 4.5, w: 4, h: 9 }, { x: 9, y: how === 'top' ? 3 : how === 'bottom' ? 13 - 6 : 8 - 3, w: 4, h: 6 }];
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      {vertical ? <line x1={line} y1="1" x2={line} y2="15" stroke="currentColor" strokeWidth="1.4" /> : <line x1="1" y1={line} x2="15" y2={line} stroke="currentColor" strokeWidth="1.4" />}
+      {bars.map((b, i) => (
+        <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx="1" fill="currentColor" opacity="0.7" />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * Grid and Snap at the foot of the canvas (22g): two separate switches, and
+ * the grid's pitch in the shared dropdown, with Other… for any pitch. Holding
+ * Shift while dragging ignores both.
+ */
+export function GuidesBar({ guides, onChange }: { guides: Guides; onChange: (next: Guides) => void }) {
+  const listed = GRID_PITCHES.includes(guides.pitch);
+  const [other, setOther] = useState(!listed);
+  const [text, setText] = useState(String(guides.pitch));
+  useEffect(() => setText(String(guides.pitch)), [guides.pitch]);
+  const saveOther = () => {
+    const n = Math.round(Number(text));
+    if (Number.isFinite(n) && n >= MIN_PITCH && n <= MAX_PITCH) onChange({ ...guides, pitch: n });
+    else setText(String(guides.pitch));
+  };
+  return (
+    <div className="layout-guides glass" role="toolbar" aria-label="Grid and snapping" data-guides-bar="" title="Hold Shift while dragging to ignore the grid and snapping">
+      <label className="layout-guides-item">
+        Grid
+        <Switch id="layout-grid" checked={guides.grid} onChange={(grid) => onChange({ ...guides, grid })} />
+      </label>
+      <Dropdown
+        aria-label="Grid pitch"
+        value={other ? 'other' : String(guides.pitch)}
+        options={[...GRID_PITCHES.map((p) => ({ value: String(p), label: `${p} px` })), { value: 'other', label: 'Other…' }]}
+        onChange={(v) => {
+          if (v === 'other') setOther(true);
+          else {
+            setOther(false);
+            onChange({ ...guides, pitch: Number(v) });
+          }
+        }}
+      />
+      {other && (
+        <input
+          className="sp-input layout-guides-pitch"
+          type="number"
+          min={MIN_PITCH}
+          max={MAX_PITCH}
+          aria-label="Grid pitch in pixels"
+          value={text}
+          data-guides-pitch=""
+          onChange={(e) => setText(e.target.value)}
+          onBlur={saveOther}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') saveOther();
+            if (e.key === 'Escape') setText(String(guides.pitch));
+          }}
+        />
+      )}
+      <span className="layout-guides-sep" aria-hidden="true" />
+      <label className="layout-guides-item">
+        Snap
+        <Switch id="layout-snap" checked={guides.snap} onChange={(snap) => onChange({ ...guides, snap })} />
+      </label>
+    </div>
+  );
+}
+
 /** A whole number of canvas pixels: saved on Enter or leaving the field, put back on Escape. */
 function NumberField({ label, value, onSave }: { label: string; value: number; onSave: (value: number) => void }) {
   const [text, setText] = useState(String(value));
@@ -459,23 +730,30 @@ export function ModeBar({ deck, size, profile, page }: { deck: string; size: str
   );
 }
 
-/** The Delete warning (23a): names the key lost with the control. An empty control is deleted without asking (App.tsx). */
-export function DeleteControl({ name, button, onConfirm, onCancel }: { name: string; button: ButtonDef; onConfirm: () => void; onCancel: () => void }) {
+/**
+ * The Delete warning (23a): names every key lost with the controls. Empty
+ * controls are deleted without asking (App.tsx); with several selected, it
+ * asks once if any of them has a key.
+ */
+export function DeleteControl({ keys, count, onConfirm, onCancel }: { keys: Array<{ name: string; button: ButtonDef }>; count: number; onConfirm: () => void; onCancel: () => void }) {
+  const one = count === 1;
   return (
-    <div className="confirm-card glass" role="alertdialog" aria-label="Delete this control" data-delete-control="">
+    <div className="confirm-card glass" role="alertdialog" aria-label={one ? 'Delete this control' : `Delete ${count} controls`} data-delete-control="">
       <p>
-        <strong>Delete this control?</strong> Its key goes with it:
+        <strong>{one ? 'Delete this control?' : `Delete ${count} controls?`}</strong> {keys.length === 1 ? 'Its key goes with it:' : 'Their keys go with them:'}
       </p>
       <ul className="link-list">
-        <li>
-          {button.label ? `${button.label.replace(/\n/g, ' ')} — ` : `${name} — `}
-          {describeAction(button)}
-        </li>
+        {keys.map(({ name, button }) => (
+          <li key={name}>
+            {button.label ? `${button.label.replace(/\n/g, ' ')} — ` : `${name} — `}
+            {describeAction(button)}
+          </li>
+        ))}
       </ul>
       <div className="button-row">
         <button onClick={onCancel}>Cancel</button>
         <button className="danger" onClick={onConfirm} data-delete-control-confirm="">
-          Delete control
+          {one ? 'Delete control' : `Delete ${count} controls`}
         </button>
       </div>
     </div>

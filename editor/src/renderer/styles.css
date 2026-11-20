@@ -4279,6 +4279,112 @@ body.settings-body {
 }
 
 /* Where a control is, or how big, while it is dragged (22a, 22b). */
+/* Several selected (22c): each one's frame, no handles. */
+.layout-selection-several {
+  outline-style: solid;
+  outline-width: 1.5px;
+}
+
+/* The grid's lines (22g), drawn only in the editor, behind the controls. */
+.layout-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-position: 0 0;
+}
+
+/* A snap guide while dragging (22a): dashed, across the whole panel, with what it is. */
+.layout-snap {
+  position: absolute;
+  pointer-events: none;
+}
+
+.layout-snap-x {
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed #ff8fb0;
+}
+
+.layout-snap-y {
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #ff8fb0;
+}
+
+.layout-snap-label {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(10, 10, 16, 0.85);
+  color: #ffc2d4;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* The marquee (22c). */
+.layout-marquee {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgba(91, 110, 232, 0.12);
+  pointer-events: none;
+}
+
+/* Grid and Snap at the foot of the canvas (22g), left of the zoom bar. */
+.layout-guides {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.layout-guides-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-guides-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.layout-guides-pitch {
+  width: 64px;
+}
+
+/* Align's six buttons (22d). */
+.layout-align {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.layout-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.layout-tool:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .layout-readout {
   position: absolute;
   margin: -22px 0 0 6px;
