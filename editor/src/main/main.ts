@@ -1563,12 +1563,15 @@ function startTrayCheck(): void {
     // Run script in a window's page, as a person clicking there would, and report what it returns.
     else if (command === 'editor-js' || command === 'settings-js') {
       const target = command === 'editor-js' ? window : settingsWindow;
-      const script = rest.join(' ');
+      // Wrapped so a throw in the page reports its own message: executeJavaScript
+      // gives every page exception as "Script failed to execute", which hid which
+      // step of a run had stopped and why.
+      const script = `(async () => { try { return { value: await (${rest.join(' ')}) }; } catch (e) { return { thrown: String((e && e.message) || e) }; } })()`;
       if (!target || target.isDestroyed()) trayCheckReport(command, { error: 'no such window' });
       else
         void target.webContents
           .executeJavaScript(script)
-          .then((result: unknown) => trayCheckReport(command, { result }))
+          .then((r: { value?: unknown; thrown?: string }) => trayCheckReport(command, r.thrown !== undefined ? { error: r.thrown } : { result: r.value }))
           .catch((err: unknown) => trayCheckReport(command, { error: err instanceof Error ? err.message : String(err) }));
     }
     // The editor's window as a PNG, for looking at what a check drove (check:layout).

@@ -322,10 +322,16 @@ function AddPage({
   const templates = virtualDeck?.templates ?? [];
   const template = templateName === null ? undefined : templateNamed(templates, templateName);
   const chosenTemplate = template?.name ?? null;
+  // The remembered choice is read once, as New page opens for this deck. Not on
+  // every change of defaultPanel: that is an object inside the config, new on
+  // every save, so a save while this is open (deleting a template from its own
+  // … menu) re-read it and put the old choice back over the one just made.
+  const defaultPanelNow = useRef(defaultPanel);
+  defaultPanelNow.current = defaultPanel;
   useEffect(() => {
     if (deckKey === null) return;
     let alive = true;
-    const fallback = gridStateOf(defaultPanel);
+    const fallback = gridStateOf(defaultPanelNow.current);
     void window.deckhand.lastGrid(deckKey).then(
       (last) => {
         if (!alive) return;
@@ -338,7 +344,7 @@ function AddPage({
     return () => {
       alive = false;
     };
-  }, [deckKey, defaultPanel]);
+  }, [deckKey]);
 
   const submit = async () => {
     // Not yet known (the daemon has not said the screen's size): the deck's default, as for any page made without a choice.

@@ -629,7 +629,10 @@ await inEditor(`window.deckhand.apply({ kind: 'saveTemplate', name: 'Wide', repl
 await until(() => exists('[data-template="Wide"]'));
 r.wideSub = await text('[data-template="Wide"] .vd-template-choice .muted');
 r.newestFirst = await inEditor("[...document.querySelectorAll('[data-add-page] [data-template]')].map((e) => e.dataset.template)");
-// Delete…: asks once; the page made from it is not changed.
+// Delete…: asks once; the page made from it is not changed. Wide is chosen first: a save while New page is
+// open (this delete) must not put back the choice remembered from before — it did, by re-reading it on
+// every config change, and the page was then made from the wrong choice (the check's old flake).
+await click('[data-template="Wide"] input[type=radio]');
 const fromMixBefore = JSON.stringify(await page('From mix'));
 await click('[data-template="Desk"] [data-template-more]');
 await until(() => exists('.vd-template-menu'));
@@ -639,7 +642,11 @@ r.deleteAskText = await text('[data-template-delete]');
 await click('[data-template-delete-confirm]');
 r.deletedTemplate = await until(async () => (await templatesOnDisk()).every((t) => t.name !== 'Desk'));
 r.pageUnchanged = JSON.stringify(await page('From mix')) === fromMixBefore;
-await click('[data-template="Wide"] input[type=radio]');
+await until(async () => !(await exists('[data-template="Desk"]')));
+await sleep(300);
+r.choiceKept = await inEditor("document.querySelector('[data-add-page] input[type=radio]:checked')?.closest('[data-template]')?.dataset.template ?? null");
+// Chosen again if it was lost, so the rest of the run goes on and the check above fails by name.
+if (r.choiceKept !== 'Wide') await click('[data-template="Wide"] input[type=radio]');
 await typeInto('[data-add-page] input[aria-label="New page name"]', 'Wide one');
 await sleep(100);
 await click('[data-add-page-submit]');
@@ -1033,6 +1040,9 @@ check('rename in place and Delete… from the picker; the page made from it unch
   assert.match(r.deleteAskText, /Delete Desk\? Pages made from it are not changed\./);
   assert.equal(r.deletedTemplate, true);
   assert.equal(r.pageUnchanged, true);
+});
+check('a choice made in New page survives a save while it is open (deleting another template)', () => {
+  assert.equal(r.choiceKept, 'Wide');
 });
 check('a template from another screen size: "Made for", its own canvas kept, the mode drawing the screen whole with the layout dashed and centred, and the chip', () => {
   assert.equal(r.wideSub, 'Made for 2560 × 720');
