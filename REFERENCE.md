@@ -250,7 +250,7 @@ proportions** keeps a box's shape. A control under about 15 mm says it is very
 small. Controls may overlap: the later is on top, a touch goes to the control
 on top on its real shape, a control with something on top of it is marked,
 and **Bring to front** and **Send to back** change the order. **Duplicate**
-(Ctrl+D) adds a copy with its key, one grid step on; **Delete** names the
+(Ctrl+D) adds a copy with its key, one grid step on — with several selected, a copy of each, stacked as the originals are; **Delete** names the
 keys that go with it, and deletes empty controls without asking. **Grid** and
 **Snap**, at the foot of the canvas, are separate switches: the grid's lines
 are drawn at the pitch you choose (10 to 120 pixels, or any other), and moving
