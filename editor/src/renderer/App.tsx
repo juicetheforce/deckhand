@@ -4,11 +4,14 @@ import { startPageOf } from '../../../src/config-common.js';
 import type { ButtonDef, Config, PageDef, PanelDef } from '../../../src/types.js';
 import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { geometryOfPanel } from '../../../src/geometry.js';
-import { addButton, blankPanel, buttonsFor, controlNames, deleteControl, duplicateControl, layoutChanges, madeCustom, moveControl } from '../shared/layout-edit.js';
-import { ControlsPalette, DeleteControl, DiscardChanges, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
+import { addButton, blankPanel, buttonsFor, controlNames, duplicateControls, layoutChanges } from '../shared/layout-edit.js';
+import { DEFAULT_GUIDES, nudge, type Guides } from '../shared/layout-arrange.js';
+import { ControlsPalette, DeleteControl, DiscardChanges, GuidesBar, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
 import { useVirtualScreen } from './GridPicker.js';
 import { GAP_PX, PAD_X_PX, PITCH_PX, type DeckSize } from './canvas.js';
 import { ChangeLayout } from './ChangeLayout.js';
+import { MadeForChip, SaveAsTemplate } from './Templates.js';
+import { madeForAnother, templateNamed } from '../shared/templates.js';
 import { planProfileDeletion, type ProfileDeletion } from '../shared/profile-deletion.js';
 import type { DaemonResult, DaemonView, StoreState } from '../shared/bridge.js';
 import { DeckGrid } from './DeckGrid.js';
@@ -185,10 +188,19 @@ function Editor({
 
   /** Edit layout, while open (round 2a): see LayoutMode. */
   const [mode, setMode] = useState<LayoutMode | null>(null);
-  /** The mode's warnings: deleting a control with a key, Discard changes. */
-  const [modeCard, setModeCard] = useState<{ kind: 'delete'; id: string } | { kind: 'discard' } | null>(null);
-  /** The mode asked for on a page not in this config yet (just made, or just made custom): opened once it arrives. */
-  const [pendingEnter, setPendingEnter] = useState<{ serial: string; profile: string; page: string; blank: boolean; custom: boolean } | null>(null);
+  /** The mode's warnings: deleting controls with keys, Discard changes. */
+  const [modeCard, setModeCard] = useState<{ kind: 'delete'; ids: string[] } | { kind: 'discard' } | null>(null);
+  /** Edit layout's Grid, its pitch, and Snap (22g): editor preferences, the same for every deck. */
+  const [guides, setGuidesState] = useState<Guides>(DEFAULT_GUIDES);
+  useEffect(() => {
+    void window.deckhand.layoutGuides().then(setGuidesState);
+  }, []);
+  const setGuides = (next: Guides) => {
+    setGuidesState(next);
+    void window.deckhand.setLayoutGuides(next);
+  };
+  /** The mode asked for on a page not in this config yet (just made from Blank): opened once it arrives. */
+  const [pendingEnter, setPendingEnter] = useState<{ serial: string; profile: string; page: string; blank: boolean;  } | null>(null);
   /** A layout just saved, drawn until the saved config comes back, so a released drag does not jump back for a moment. */
   const [optimistic, setOptimistic] = useState<{ panel: PanelDef; blank: boolean } | null>(null);
   useEffect(() => setOptimistic(null), [config]);
@@ -325,7 +337,7 @@ function Editor({
   useEffect(() => {
     if (!pendingEnter) return;
     const p = layoutFor(config, pendingEnter.profile, pendingEnter.serial)?.pages[pendingEnter.page];
-    if (!p || (pendingEnter.custom && !isCustomLayout(p.panel))) return;
+    if (!p) return;
     setPendingEnter(null);
     if (pendingEnter.profile === selection.profile) enterMode(pendingEnter.serial, pendingEnter.page, pendingEnter.blank, p);
   }, [config, pendingEnter]);
@@ -370,7 +382,8 @@ function Editor({
     });
   };
 
-  const selectedControl = mode && modePanel && selection.key !== null && modePanel.controls.some((c) => c.id === selection.key) ? selection.key : null;
+  /** The controls selected in the mode, in the order they were selected (22c): Ctrl-click and the marquee add to it. */
+  const selectedControls = mode && modePanel ? selection.keys.filter((id) => modePanel.controls.some((c) => c.id === id)) : [];
   const addControlAt = (clientX: number, clientY: number) => {
     if (!mode || !modePanel) return;
     const el = document.querySelector(`[data-layout-box="${CSS.escape(mode.serial)}"]`);
@@ -388,29 +401,31 @@ function Editor({
     saveLayout(added.panel);
     selectKeys([added.id]);
   };
+  /** Duplicate: a copy of each selected control with its key, one grid step on (22h); the copies selected. */
   const duplicateSelected = () => {
-    if (!mode || !modePanel || !modePage || selectedControl === null) return;
-    const copy = duplicateControl(modePanel, modeBlank ? { buttons: {} } : modePage, selectedControl, entryIds);
-    if (!copy) return;
-    saveLayout(copy.panel, copy.button ? { [copy.id]: copy.button } : {});
-    selectKeys([copy.id]);
+    if (!mode || !modePanel || !modePage || selectedControls.length === 0) return;
+    const copy = duplicateControls(modePanel, modeBlank ? { buttons: {} } : modePage, selectedControls, entryIds, guides.pitch);
+    if (copy.ids.length === 0) return;
+    saveLayout(copy.panel, copy.buttons);
+    selectKeys(copy.ids);
   };
-  /** Delete warns and names the key lost; an empty control goes at once (23a). */
-  const deleteSelected = (id: string | null, confirmed: boolean) => {
-    if (!mode || !modePanel || !modePage || id === null) return;
-    if (!confirmed && !modeBlank && keyKind(modePage.buttons[id]) !== 'empty') {
-      setModeCard({ kind: 'delete', id });
+  /** Delete warns and names the keys lost; empty controls go at once (23a). */
+  const deleteSelected = (ids: string[], confirmed: boolean) => {
+    if (!mode || !modePanel || !modePage || ids.length === 0) return;
+    if (!confirmed && !modeBlank && ids.some((id) => keyKind(modePage.buttons[id]) !== 'empty')) {
+      setModeCard({ kind: 'delete', ids });
       return;
     }
     setModeCard(null);
-    saveLayout(deleteControl(modePanel, id));
+    const gone = new Set(ids);
+    saveLayout({ ...modePanel, controls: modePanel.controls.filter((c) => !gone.has(c.id)) });
     selectKeys([]);
   };
-  const nudge = (dx: number, dy: number) => {
-    const c = modePanel?.controls.find((k) => k.id === selectedControl);
-    if (!c || !modePanel) return;
-    const moved = moveControl(modePanel, c.id, c.x + dx, c.y + dy);
-    if (moved.controls.some((k, i) => k.x !== modePanel.controls[i].x || k.y !== modePanel.controls[i].y)) saveLayout(moved);
+  /** The arrow keys: 1 px, or one grid step with the grid on; several together (22h). */
+  const nudgeSelected = (dx: number, dy: number) => {
+    if (!modePanel || selectedControls.length === 0) return;
+    const moved = nudge(modePanel, selectedControls, dx, dy, guides);
+    if (moved !== modePanel) saveLayout(moved);
   };
   /** Discard changes: the layout put back as the mode found it — deleted controls with their keys — then the mode closes. */
   const discardChanges = () => {
@@ -423,10 +438,11 @@ function Editor({
   };
   useModeShortcuts({
     enabled: mode !== null && modeCard === null,
-    selected: selectedControl,
-    onDelete: () => deleteSelected(selectedControl, false),
+    selected: selectedControls.length > 0,
+    onDelete: () => deleteSelected(selectedControls, false),
     onDuplicate: duplicateSelected,
-    onNudge: nudge,
+    onNudge: nudgeSelected,
+    onSelectAll: () => modePanel && selectKeys(modePanel.controls.map((c) => c.id)),
     onSelectNone: () => selectKeys([]),
   });
   // The window's title names the mode while it is open (21a).
@@ -456,7 +472,9 @@ function Editor({
     if (panel && isCustomLayout(panel)) {
       const rows = Math.max(1, geometryOfPanel(defaultPanelOf(config, serial), '').rows || g.rows);
       const height = rows * PITCH_PX - GAP_PX;
-      size = { rows, columns: Math.max(1, Math.round(((height * panel.size.width) / panel.size.height + GAP_PX) / PITCH_PX)) };
+      // The screen's proportions: a layout made for another size sits inside, scaled to fit and centred, as on the deck.
+      const area = screenOf(serial) ?? panel.size;
+      size = { rows, columns: Math.max(1, Math.round(((height * area.width) / area.height + GAP_PX) / PITCH_PX)) };
     }
     const need = headerNeeds[serial];
     if (need) size = { ...size, columns: Math.max(size.columns, Math.ceil((need - 2 * PAD_X_PX + GAP_PX) / PITCH_PX)) };
@@ -636,9 +654,11 @@ function Editor({
     if (!changingHere) setChangingLayout(null);
   }, [changingHere]);
   const changingLayout = changingHere ? changingAt.page : null;
-  const changing = changingLayout === null ? undefined : layout?.pages[changingLayout];
+  const changing = changingLayout === null || isCustomLayout(pagePanelIn(config, selection.profile, selection.serial, changingLayout)) ? undefined : layout?.pages[changingLayout];
   /** Change layout… for a page of a shown deck: from its tab's menu, or the header's button on any shown deck. */
   const changeLayout = (serial: string, pageId: string) => {
+    // A grid page's only: a custom page is changed in Edit layout alone (Ryan, 2026-11-20).
+    if (isCustomLayout(pagePanelIn(config, selection.profile, serial, pageId))) return;
     setPendingDelete(null);
     if (serial !== selection.serial) setSelection((s) => focusDeck(s, serial));
     setChangingLayout({ serial, profile: selection.profile, page: pageId });
@@ -742,6 +762,7 @@ function Editor({
         }
         onKeyDragOver={setKeyDragOver}
         box={room}
+        screen={config.decks?.[serial]?.virtual ? screenOf(serial) : null}
         dropTarget={
           actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
         }
@@ -782,13 +803,20 @@ function Editor({
               size={sizeText(mode.serial, mode.page) ?? ''}
               profile={profileLabel(config, mode.profile)}
               page={layoutFor(config, mode.profile, mode.serial) ? pageLabel(layoutFor(config, mode.profile, mode.serial)!, mode.page) : mode.page}
-              changed={modeChanged}
-              onDiscard={() => setModeCard({ kind: 'discard' })}
-              onDone={leaveMode}
-            />
+            >
+              <SaveAsTemplate
+                hasControls={modePanel.controls.length > 0}
+                existing={(name) => templateNamed(config.templates, name)?.name ?? null}
+                onSave={async (name, replace) => {
+                  // The layout only, as it is now; not linked to this page, and not undone by Discard changes (21g).
+                  const result = await window.deckhand.apply({ kind: 'saveTemplate', name, panel: modePanel, replace });
+                  return result.ok ? null : result.error;
+                }}
+              />
+            </ModeBar>
           ) : undefined
         }
-        onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true, custom: false })}
+        onBlankPage={(pageId) => setPendingEnter({ serial: selection.serial, profile: selection.profile, page: pageId, blank: true })}
         config={config}
         daemon={daemon}
         selection={selection}
@@ -886,18 +914,14 @@ function Editor({
                       name={deckLabel(config, daemon, serial)}
                       size={sizeText(serial, pageHere)}
                       editLayout={
-                        virtual && pageDef && panelHere
+                        // Only on a custom page: a page is a grid or custom for its whole life (Ryan, 2026-11-20).
+                        // While open, always: a new page started from Blank is the deck's default grid on disk until its first control.
+                        virtual && pageDef && panelHere && (editing || isCustomLayout(panelHere))
                           ? {
                               open: editing,
-                              preset: !isCustomLayout(panelHere),
+                              changed: editing && modeChanged,
                               onOpen: () => enterMode(serial, pageHere, false, pageDef),
-                              onMakeCustom: async () => {
-                                // Every key and its action kept, in the same places; then straight in (21e).
-                                const result = await window.deckhand.apply({ kind: 'setLayout', profile: selection.profile, serial, page: pageHere, panel: madeCustom(panelHere), buttons: buttonsFor(pageDef, panelHere) });
-                                if (!result.ok) return result.error;
-                                setPendingEnter({ serial, profile: selection.profile, page: pageHere, blank: false, custom: true });
-                                return null;
-                              },
+                              onDiscard: () => setModeCard({ kind: 'discard' }),
                               onDone: leaveMode,
                             }
                           : undefined
@@ -911,7 +935,7 @@ function Editor({
                       onFocus={() => setSelection((s) => focusDeck(s, serial))}
                       // The focused deck's Page ▾ is its tabs in another place; another deck's moves that deck alone.
                       onPage={(pageId) => (focused ? select({ page: pageId }) : showDeckPage(serial, pageId))}
-                      onChangeLayout={config.decks?.[serial]?.virtual && layoutHere?.pages[pageHere] ? () => changeLayout(serial, pageHere) : undefined}
+                      onChangeLayout={virtual && pageDef && panelHere && !isCustomLayout(panelHere) && !editing ? () => changeLayout(serial, pageHere) : undefined}
                       placement={placement}
                     >
                       {editing && modePanel && modePage ? (
@@ -921,10 +945,12 @@ function Editor({
                           panel={modePanel}
                           page={modeBlank ? { buttons: {} } : modePage}
                           box={room}
-                          selected={selectedControl}
+                          screen={screenOf(serial)}
+                          selected={selectedControls}
+                          guides={guides}
                           iconStamps={iconStamps}
                           appIcons={appIcons}
-                          onSelect={(id) => selectKeys(id === null ? [] : [id])}
+                          onSelect={selectKeys}
                           onChange={(panel) => saveLayout(panel)}
                         />
                       ) : (
@@ -941,6 +967,8 @@ function Editor({
                 {grid(selection.serial)}
               </>
             )}
+            {mode && canvasDecks.length > 0 && <GuidesBar guides={guides} onChange={setGuides} />}
+            {mode && modePanel && canvasDecks.length > 0 && madeForAnother(modePanel.size, screenOf(mode.serial)) && <MadeForChip layout={modePanel.size} screen={screenOf(mode.serial)!} />}
             {keyMenu && (
               <KeyMenu
                 x={keyMenu.x}
@@ -976,7 +1004,6 @@ function Editor({
                 pageName={pageLabel(layout, changingLayout)}
                 page={changing}
                 current={pagePanelIn(config, selection.profile, selection.serial, changingLayout)}
-                deckDefault={config.decks?.[selection.serial]?.virtual?.panel}
                 onApply={async (panel, choice) => {
                   const result = await window.deckhand.apply({ kind: 'setPagePanel', profile: selection.profile, serial: selection.serial, page: changingLayout, panel });
                   if (!result.ok) return result.error;
@@ -984,19 +1011,14 @@ function Editor({
                   setChangingLayout(null);
                   return null;
                 }}
-                onBlank={() => {
-                  // Blank is a choice on this deck like any grid: the next picker preselects it.
-                  void window.deckhand.setLastGrid(selection.serial, { size: 'blank' });
-                  enterMode(selection.serial, changingLayout, true, changing);
-                }}
                 onCancel={() => setChangingLayout(null)}
               />
             )}
-            {mode && modePanel && modeCard?.kind === 'delete' && modePage?.buttons[modeCard.id] && (
+            {mode && modePanel && modePage && modeCard?.kind === 'delete' && (
               <DeleteControl
-                name={controlNames(modePanel).get(modeCard.id) ?? 'This control'}
-                button={modePage.buttons[modeCard.id]}
-                onConfirm={() => deleteSelected(modeCard.id, true)}
+                keys={modeCard.ids.flatMap((id) => (keyKind(modePage.buttons[id]) === 'empty' ? [] : [{ name: controlNames(modePanel).get(id) ?? id, button: modePage.buttons[id] }]))}
+                count={modeCard.ids.length}
+                onConfirm={() => deleteSelected(modeCard.ids, true)}
                 onCancel={() => setModeCard(null)}
               />
             )}
@@ -1027,11 +1049,11 @@ function Editor({
             deckName={deckLabel(config, daemon, mode.serial)}
             panel={modePanel}
             page={modeBlank ? { buttons: {} } : modePage}
-            selected={selectedControl}
+            selected={selectedControls}
             screen={modeScreen}
             onChange={(panel) => saveLayout(panel)}
             onDuplicate={duplicateSelected}
-            onDelete={() => deleteSelected(selectedControl, false)}
+            onDelete={() => deleteSelected(selectedControls, false)}
           />
         ) : (
         <Inspector
@@ -1317,18 +1339,21 @@ function useBulkShortcuts(handlers: {
 }
 
 /**
- * Edit layout's keys (round 2a): Delete deletes the selected control (and
- * warns if it has a key), Ctrl+D duplicates it, the arrow keys nudge it a
- * pixel, Escape selects nothing — on controls, never keys, while the mode is
+ * Edit layout's keys (rounds 2a, 2b): Delete deletes the selected controls
+ * (and warns if any has a key), Ctrl+D duplicates them, the arrow keys nudge
+ * them a pixel or a grid step, Ctrl+A selects every control, Escape selects
+ * nothing — on controls, never keys, while the mode is
  * open (Ryan, 2026-11-18). Never while typing in a field or in a dropdown,
  * as the grid's shortcuts.
  */
 function useModeShortcuts(handlers: {
   enabled: boolean;
-  selected: string | null;
+  /** Something is selected. */
+  selected: boolean;
   onDelete: () => void;
   onDuplicate: () => void;
   onNudge: (dx: number, dy: number) => void;
+  onSelectAll: () => void;
   onSelectNone: () => void;
 }) {
   const latest = useRef(handlers);
@@ -1344,7 +1369,8 @@ function useModeShortcuts(handlers: {
       const ctrl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
       const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
       let handled = true;
-      if (h.selected === null) handled = false;
+      if (ctrl && event.code === 'KeyA') h.onSelectAll();
+      else if (!h.selected) handled = false;
       else if (plain && event.code === 'Delete' && !event.repeat) h.onDelete();
       else if (ctrl && event.code === 'KeyD' && !event.repeat) h.onDuplicate();
       else if (plain && arrows[event.key]) h.onNudge(...arrows[event.key]);

@@ -7,6 +7,7 @@ import { multiSteps, pageLinks, targetsPage, targetsProfile } from '../shared/li
 import { deleteProfile } from '../shared/profile-deletion.js';
 import { defaultPanelOf, isCustomLayout, pagePanelOf } from '../../../src/panel-presets.js';
 import { regridPage } from '../shared/panel-size.js';
+import { renamedTemplate, withoutTemplate, withTemplate } from '../shared/templates.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -534,7 +535,11 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
       // From what the page shows, by the editor's own lookup: a config not yet
       // migrated still has its panel on the layout (Codex, PR #6).
-      layout.pages[edit.page] = regridPage(page, pagePanelOf(layout, edit.page, defaultPanelOf(config, edit.serial)), edit.panel).page;
+      const shows = pagePanelOf(layout, edit.page, defaultPanelOf(config, edit.serial));
+      // A page is a grid or custom for its whole life (Ryan, 2026-11-20): this changes one grid to another only.
+      if (isCustomLayout(shows)) throw new EditError('a custom page is changed in Edit layout, not by Change layout…');
+      if (isCustomLayout(edit.panel)) throw new EditError('Change layout… gives a page another fixed grid, never a custom layout');
+      layout.pages[edit.page] = regridPage(page, shows, edit.panel).page;
       return {};
     }
     case 'setLayout':
@@ -550,7 +555,27 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       for (const key of Object.keys(edit.buttons)) {
         if (!ids.has(key)) throw new EditError(`key "${key}" is not a control on that layout`);
       }
+      // A page's kind is for its whole life (Ryan, 2026-11-20). A grid page becomes custom only while it holds no
+      // key: a new page started from Blank, which waits on disk as the deck's default grid until its first control.
+      if (edit.kind === 'setLayout' && !isCustomLayout(page.panel) && Object.values(page.buttons).some((b) => Object.keys(b).length > 0)) {
+        throw new EditError('a grid page is not made custom: make a new page from Blank or a template');
+      }
       layout.pages[edit.page] = { ...page, panel: structuredClone(edit.panel), buttons: structuredClone(edit.buttons) };
+      return {};
+    }
+    case 'saveTemplate':
+    case 'renameTemplate':
+    case 'deleteTemplate': {
+      try {
+        config.templates =
+          edit.kind === 'saveTemplate'
+            ? withTemplate(config.templates, edit.name, edit.panel, edit.replace)
+            : edit.kind === 'renameTemplate'
+              ? renamedTemplate(config.templates, edit.name, edit.to)
+              : withoutTemplate(config.templates, edit.name);
+      } catch (err) {
+        throw new EditError((err as Error).message);
+      }
       return {};
     }
     default: {

@@ -8,10 +8,13 @@
 //   them, their shapes); a Stream Deck's grid as it was. The header: columns
 //   × rows on a preset page, the screen's resolution on a custom page; its
 //   frame never narrower than its header.
-// - Entering: Edit layout only on a virtual deck's header; on a preset it
-//   asks once, Cancel changes nothing, Make it custom keeps every key. The
-//   mode: lit button, mode bar for crumbs and tabs, Controls palette, the Page
-//   ▾ and Change layout… dimmed, only the deck being edited shown, zoom.
+// - A page's kind for its whole life (Ryan, 2026-11-20): Edit layout only on a
+//   custom page's header, Change layout… only on a grid page's (header and
+//   tab menu), offering only the fixed grids. The mode: lit button, Discard
+//   changes and Done beside it on the deck's header — Done seen on screen at
+//   the window's normal size, near the deck, in the accent colour — the mode
+//   bar for crumbs and tabs, Controls palette, the Page ▾ dimmed, only the
+//   deck being edited shown, zoom.
 // - In the mode: moving and resizing by dragging (stopped at the canvas's
 //   edges, saved on release), typed values, shape and corners, Lock
 //   proportions, the very-small warning, overlap and its marker and line,
@@ -19,9 +22,11 @@
 //   warning for a key and not for an empty control, the palette.
 // - Leaving: Discard changes puts the page back, deleted keys included; every
 //   control deleted puts it back and shows it empty, never saved empty;
-//   Blank from New page and Change layout… are shown empty and saved only at a
-//   first control; Done, a profile change and a deck key changing page all
-//   leave; Change layout… from a custom page loses every key.
+//   Blank from New page is shown empty and saved only at a first control; Done,
+//   a profile change and a deck key changing page all leave; Change layout…
+//   from one grid to another.
+// - Keys onto a custom page only onto controls; whole-page copies refused
+//   whenever either side is a custom page.
 //
 // Usage: npm run check:layout   (builds first)
 // DECKHAND_LAYOUT_SHOTS=<dir> DECKHAND_LAYOUT_SHOT=<name> also saves the window as <dir>/<name>.png at the
@@ -90,7 +95,8 @@ const xlPage = { startPage: 'main', pages: { main: { name: 'Main', buttons: { 0:
 const virtualLayout = () => ({
   startPage: 'main',
   pages: {
-    main: { name: 'Main', panel: structuredClone(MEDIUM), buttons: { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } } },
+    // A custom page: Medium's controls, made custom in 2a's way (a page's kind is now fixed for its life).
+    main: { name: 'Main', panel: { ...structuredClone(MEDIUM), preset: 'free' }, buttons: { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } } },
     big: { name: 'Big', panel: structuredClone(LARGE), buttons: { k1: { label: 'Large one' } } },
     // Grid Size 2 × 2: two columns, a frame of 214 px — far narrower than a virtual deck's header.
     narrow: { name: 'Narrow', panel: makePanel(SCREEN, 'custom', { rows: 2, columns: 2 }), buttons: {} },
@@ -148,7 +154,8 @@ const key = (code, opts = {}) =>
 /**
  * A pointer drag in the mode: down on `selector` (a control's face, or a
  * handle) at its middle, then moved by dx, dy canvas pixels and let go, the
- * moves sent to the layout canvas as its pointer capture would.
+ * moves sent to the layout canvas as its pointer capture would. Shift held, so
+ * neither the grid nor snapping moves it: these steps are about moving.
  */
 const drag = (selector, dx, dy) =>
   inEditor(`(() => {
@@ -159,7 +166,7 @@ const drag = (selector, dx, dy) =>
     const r = el.getBoundingClientRect();
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
-    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 9, button: 0, clientX: tx, clientY: ty });
+    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 9, button: 0, clientX: tx, clientY: ty, shiftKey: true });
     el.dispatchEvent(new PointerEvent('pointerdown', at(x, y)));
     surface.dispatchEvent(new PointerEvent('pointermove', at(x + (${dx} * scale) / 2, y + (${dy} * scale) / 2)));
     surface.dispatchEvent(new PointerEvent('pointermove', at(x + ${dx} * scale, y + ${dy} * scale)));
@@ -199,31 +206,75 @@ await until(async () => (await count('.well [data-key]')) === 24);
 r.positioned = await inEditor(`(() => { const g = document.querySelector('.grid[data-deck="${KEY}"]'); return g ? [g.classList.contains('grid-positioned'), document.querySelectorAll('.grid [data-key].key-placed').length] : null; })()`);
 // Medium on 1920 × 720 is 3 rows of 8, 240 px apart: k2 sits right of k1, the same size, in proportion.
 r.placed = await inEditor(`(() => { const k = (id) => document.querySelector('.grid [data-key="' + id + '"]').getBoundingClientRect(); const a = k('k1'); const b = k('k2'); const g = document.querySelector('.grid[data-deck="${KEY}"]').getBoundingClientRect(); return { sameTop: Math.abs(a.top - b.top) < 0.5, pitch: (b.left - a.left) / g.width, ratio: g.width / g.height }; })()`);
-r.sizePreset = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
-r.editOnVirtual = await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-await shot('1-preset-page');
+const tabMenu = async (tab) => {
+  await inEditor(`(() => { const t = [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === ${JSON.stringify(tab)}); t.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return true; })()`);
+  await until(() => exists('.tab-menu'));
+  const items = await inEditor("[...document.querySelectorAll('.tab-menu .tab-menu-item')].map((b) => b.textContent.trim())");
+  await inEditor("(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()");
+  await until(async () => !(await exists('.tab-menu')), 2000);
+  return items;
+};
+const showTab = async (tab, keys) => {
+  await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === ${JSON.stringify(tab)}).click(); return true; })()`);
+  await until(async () => (await count('.well [data-key]')) === keys);
+};
 
-// ---- ENTERING, FROM A PRESET ----
+// ---- A PAGE'S KIND: Edit layout on a custom page only, Change layout… on a grid page only ----
+r.sizeCustomPage = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
+r.editOnCustom = await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+r.noChangeOnCustom = !(await exists(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`));
+r.tabMenuCustom = await tabMenu('Main');
+await showTab('Big', 10);
+r.sizePreset = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
+r.noEditOnGrid = !(await exists(`[data-deck-panel="${KEY}"] [data-edit-layout]`));
+r.tabMenuGrid = await tabMenu('Big');
+await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
+await until(() => exists('[data-change-layout] [data-vd-size=small] input'));
+r.changeChoices = await inEditor("[...document.querySelectorAll('[data-change-layout] [data-vd-size]')].map((e) => e.dataset.vdSize)");
+r.changeNoTemplates = !(await exists('[data-change-layout] [data-template]'));
+await inEditor(`(() => { [...document.querySelectorAll('[data-change-layout] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
+await until(async () => !(await exists('[data-change-layout]')));
+await showTab('Main', 24);
+await shot('1-custom-page');
+
+// ---- ENTERING ----
+r.entryPage = await page('Main');
 await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-r.asked = await until(() => exists('[data-make-custom]'));
-r.askedText = await text('[data-make-custom]');
-await shot('2-make-custom');
-await inEditor(`(() => { [...document.querySelectorAll('[data-make-custom] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
-r.cancelGone = await until(async () => !(await exists('[data-make-custom]')));
-r.cancelNotMode = !(await inMode());
-r.cancelUnchanged = (await page('Main')).panel.preset === 'medium';
-await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
-await until(() => exists('[data-make-custom-confirm]'));
-await click('[data-make-custom-confirm]');
-r.madeCustom = await until(async () => (await page('Main')).panel?.preset === 'free');
-r.madeCustomKept = await page('Main');
 r.inMode = await until(inMode);
 r.lit = await inEditor(`document.querySelector('[data-deck-panel="${KEY}"] [data-edit-layout]')?.getAttribute('aria-pressed')`);
+// Done: on the deck's header, beside the lit button, seen — on screen at the window's normal size, not covered — and the accent colour.
+await sleep(300);
+r.done = await inEditor(`(() => {
+  const d = document.querySelector('[data-done]');
+  if (!d) return null;
+  const panel = document.querySelector('[data-deck-panel="${KEY}"]');
+  const b = d.getBoundingClientRect();
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  const lit = panel.querySelector('[data-edit-layout]').getBoundingClientRect();
+  const discard = panel.querySelector('[data-discard-changes]')?.getBoundingClientRect() ?? null;
+  const canvas = panel.querySelector('.layout-canvas').getBoundingClientRect();
+  const probe = document.createElement('span');
+  probe.style.background = 'var(--accent)';
+  document.body.append(probe);
+  const accent = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return {
+    window: [innerWidth, innerHeight],
+    size: [b.width, b.height],
+    onScreen: b.left >= 0 && b.top >= 0 && b.right <= innerWidth && b.bottom <= innerHeight,
+    notCovered: hit === d || d.contains(hit),
+    inDeckHeader: d.closest('[data-deck-panel="${KEY}"] .deck-panel-header') !== null,
+    besideLit: discard !== null && discard.left >= lit.right && discard.left - lit.right < 24 && b.left >= discard.right && b.left - discard.right < 24 && Math.abs(b.top - lit.top) < 4,
+    aboveDeck: canvas.top - b.bottom,
+    accent: getComputedStyle(d).backgroundColor === accent && accent !== 'rgba(0, 0, 0, 0)',
+    notInModeBar: document.querySelector('[data-mode-bar] [data-done], [data-mode-bar] [data-discard-changes]') === null,
+  };
+})()`);
 r.palette = await exists('[data-controls-palette] [data-palette=button]');
 r.noLibrary = !(await exists('.library:not(.controls-palette)'));
 r.noTabs = !(await exists('.tabs'));
 r.modeBarText = await text('[data-mode-bar] .mode-bar-where');
-r.pageLocked = await inEditor(`[...document.querySelectorAll('[data-deck-panel="${KEY}"] .deck-panel-page button, [data-deck-panel="${KEY}"] .deck-panel-change-layout')].every((b) => b.disabled)`);
+r.pageLocked = await inEditor(`[...document.querySelectorAll('[data-deck-panel="${KEY}"] .deck-panel-page button')].every((b) => b.disabled) && !document.querySelector('[data-deck-panel="${KEY}"] .deck-panel-change-layout')`);
 r.onlyThisDeck = await inEditor(`[...document.querySelectorAll('[data-deck-panel]')].map((p) => p.dataset.deckPanel)`);
 r.zoom = await exists('[data-zoom-bar]');
 r.sizeCustom = await text(`[data-deck-panel="${KEY}"] .deck-panel-size`);
@@ -333,7 +384,7 @@ await click('[data-discard-changes]');
 r.discardAsked = await until(() => exists('[data-discard-card]'));
 r.discardText = await text('[data-discard-card]');
 await click('[data-discard-confirm]');
-r.discarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.madeCustomKept));
+r.discarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
 r.discardLeft = await until(async () => !(await inMode()));
 r.tabsBack = await exists('.tabs');
 
@@ -352,13 +403,289 @@ r.oneLeft = (await controlsOf('Main')).length;
 await select(all.at(-1));
 await key('Delete');
 r.lastShownEmpty = await until(() => exists('.layout-empty'));
-r.lastPutBack = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.madeCustomKept));
+r.lastPutBack = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
 r.neverEmptyOnDisk = (await controlsOf('Main')).length > 0;
 await shot('7-emptied');
 await click('[data-done]');
 r.doneLeft = await until(async () => !(await inMode()));
 r.afterEmptyDone = await page('Main');
 void savesBefore;
+
+// ---- PRECISION (round 2b): snap, Shift, the grid, nudging, several selected ----
+/** A point on the layout canvas, in canvas pixels, as client coordinates. */
+const canvasPoint = (x, y) => `(() => { const s = document.querySelector('.layout-canvas'); const r = s.getBoundingClientRect(); const [w, h] = s.dataset.layoutSize.split('x').map(Number); return [r.left + (${x} / w) * r.width, r.top + (${y} / h) * r.height]; })()`;
+/** Press and release on a control's face, Ctrl held or not: a click in the mode. */
+const pressOn = (id, opts = {}) =>
+  inEditor(`(() => {
+    const el = document.querySelector('.layout-canvas [data-key="${id}"]');
+    const r = el.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true, pointerId: 11, button: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, ctrlKey: ${!!opts.ctrl} };
+    el.dispatchEvent(new PointerEvent('pointerdown', at));
+    document.querySelector('.layout-canvas').dispatchEvent(new PointerEvent('pointerup', at));
+    return true;
+  })()`);
+/** A drag of a control by dx, dy canvas pixels, Shift held or not: the snap guides drawn before the release, then released. */
+const dragSeen = (id, dx, dy, opts = {}) =>
+  inEditor(`(async () => {
+    const el = document.querySelector('.layout-canvas [data-key="${id}"]');
+    const surface = document.querySelector('.layout-canvas');
+    const scale = surface.getBoundingClientRect().width / Number(surface.dataset.layoutSize.split('x')[0]);
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const at = (tx, ty) => ({ bubbles: true, cancelable: true, pointerId: 12, button: 0, clientX: tx, clientY: ty, shiftKey: ${!!opts.shift} });
+    el.dispatchEvent(new PointerEvent('pointerdown', at(x, y)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(x + (${dx} * scale) / 2, y + (${dy} * scale) / 2)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(x + ${dx} * scale, y + ${dy} * scale)));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const seen = [...document.querySelectorAll('[data-snap-guide]')].map((g) => g.dataset.snapGuide);
+    surface.dispatchEvent(new PointerEvent('pointerup', at(x + ${dx} * scale, y + ${dy} * scale)));
+    return seen;
+  })()`);
+/** A marquee over empty canvas from one canvas point to another. */
+const marqueeOver = (from, to, opts = {}) =>
+  inEditor(`(async () => {
+    const surface = document.querySelector('.layout-canvas');
+    const a = ${canvasPoint(from[0], from[1])};
+    const b = ${canvasPoint(to[0], to[1])};
+    const at = (p) => ({ bubbles: true, cancelable: true, pointerId: 13, button: 0, clientX: p[0], clientY: p[1], ctrlKey: ${!!opts.ctrl} });
+    surface.dispatchEvent(new PointerEvent('pointerdown', at(a)));
+    surface.dispatchEvent(new PointerEvent('pointermove', at([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2])));
+    surface.dispatchEvent(new PointerEvent('pointermove', at(b)));
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const drawn = document.querySelector('[data-marquee]') !== null;
+    surface.dispatchEvent(new PointerEvent('pointerup', at(b)));
+    return drawn;
+  })()`);
+const selectedNow = () => inEditor("[...document.querySelectorAll('[data-selected-control]')].map((e) => e.dataset.selectedControl).sort()");
+const switchOn = (id, on) => inEditor(`(() => { const i = document.getElementById('${id}'); if (i.checked !== ${on}) i.click(); return i.checked; })()`);
+const arrow = (k) => inEditor(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: '${k}', key: '${k}' })); return true; })()`);
+
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+r.guidesBar = await inEditor("(() => { const b = document.querySelector('[data-guides-bar]'); return b ? [document.getElementById('layout-grid').checked, document.getElementById('layout-snap').checked, b.querySelector('.dropdown-trigger')?.textContent.replace('▾', '').trim()] : null; })()");
+r.noGridLines = !(await exists('[data-layout-grid]'));
+// The marquee: from empty canvas at the top-left over the first row's first two keys.
+r.marqueeDrawn = await marqueeOver([3, 3], [470, 120]);
+r.marqueeSelected = await selectedNow();
+// Ctrl-click adds k9 and takes k2 out.
+await pressOn('k9', { ctrl: true });
+await pressOn('k2', { ctrl: true });
+r.ctrlSelected = await selectedNow();
+r.severalTitle = await text('[data-layout-inspector=several] .inspector-title');
+await key('Escape', { key: 'Escape' });
+r.escapeNone = (await selectedNow()).length === 0;
+
+// Snap: k1 dragged right by 236 lands with its left edge on 255 (k2's), the guide naming what it met.
+const k1at = await controlOf('Main', 'k1');
+r.snapGuides = await dragSeen('k1', 236, 0);
+r.snapped = await until(async () => (await controlOf('Main', 'k1'))?.x === 255);
+r.snappedAt = await controlOf('Main', 'k1');
+// Shift: free to the pixel — the same drag back by 236 from 255 lands on 19, no guide.
+r.shiftGuides = await dragSeen('k1', -236, 0, { shift: true });
+r.shifted = await until(async () => (await controlOf('Main', 'k1'))?.x === 19);
+// Snap off, the grid on at 40: a drag lands the left and top edges on its lines; the lines drawn.
+await switchOn('layout-snap', false);
+await switchOn('layout-grid', true);
+r.gridLines = await until(async () => (await inEditor("document.querySelector('[data-layout-grid]')?.dataset.layoutGrid ?? null")) === '40');
+await dragSeen('k1', 103, 61);
+r.onGrid = await until(async () => {
+  const c = await controlOf('Main', 'k1');
+  return c?.x === 120 && c?.y === 80;
+});
+r.onGridAt = await controlOf('Main', 'k1');
+// The pitch from the shared dropdown, remembered in the editor's preferences.
+await click('[data-guides-bar] .dropdown-trigger');
+await until(() => exists('[data-dropdown-menu]'));
+await inEditor(`(() => { [...document.querySelectorAll('[data-dropdown-menu] [role=option]')].find((o) => o.textContent.trim() === '60 px').click(); return true; })()`);
+r.pitch60 = await until(async () => (await inEditor("document.querySelector('[data-layout-grid]')?.dataset.layoutGrid ?? null")) === '60');
+r.pitchKept = await inEditor('window.deckhand.layoutGuides()');
+// Nudging: one grid step with the grid on, 1 px with it off.
+await pressOn('k1');
+await arrow('ArrowRight');
+r.nudgedGrid = await until(async () => (await controlOf('Main', 'k1'))?.x === 180);
+await switchOn('layout-grid', false);
+await arrow('ArrowDown');
+r.nudgedPixel = await until(async () => (await controlOf('Main', 'k1'))?.y === 81);
+await switchOn('layout-snap', true);
+
+// Several: k2, k3, k4 (the first row), moved together, aligned, distributed, matched — k3 first set apart, smaller.
+await pressOn('k3');
+await typeAndLeave('[data-layout-field=W]', '150');
+await typeAndLeave('[data-layout-field=H]', '150');
+await typeAndLeave('[data-layout-field=X]', '540');
+await typeAndLeave('[data-layout-field=Y]', '60');
+await until(async () => (await controlOf('Main', 'k3'))?.y === 60);
+await pressOn('k2');
+await pressOn('k3', { ctrl: true });
+await pressOn('k4', { ctrl: true });
+const row = async () => Promise.all(['k2', 'k3', 'k4'].map((id) => controlOf('Main', id)));
+const rowBefore = await row();
+await dragSeen('k3', 0, 333, { shift: true });
+r.movedTogether = await until(async () => (await row()).every((c, i) => c.y === rowBefore[i].y + 333 && c.x === rowBefore[i].x));
+const shiftedRow = await row();
+await typeAndLeave('[data-layout-field=Y]', '100');
+// The bounds' top (the highest of the three) to 100: every one moved by the same amount.
+const top = Math.min(...shiftedRow.map((c) => c.y));
+r.typedGroupY = await until(async () => (await row()).every((c, i) => c.y === shiftedRow[i].y - (top - 100)));
+await inEditor(`(() => { document.querySelector('[data-align=top]').click(); return true; })()`);
+r.alignedTop = await until(async () => (await row()).every((c) => c.y === 100));
+await inEditor(`(() => { document.querySelector('[data-align=bottom]').click(); return true; })()`);
+r.alignedBottom = await until(async () => new Set((await row()).map((c) => c.y + c.h)).size === 1);
+await inEditor(`(() => { document.querySelector('[data-distribute=across]').click(); return true; })()`);
+r.distributed = await (async () => {
+  await sleep(400);
+  const [a, b, c] = await row();
+  return [b.x - (a.x + a.w), c.x - (b.x + b.w)];
+})();
+await inEditor(`(() => { document.querySelector('[data-match=w]').click(); return true; })()`);
+await until(async () => (await controlOf('Main', 'k3'))?.w === 211);
+r.matched = await row();
+// Duplicate with several: a copy of each, one grid step on, the copies selected.
+const nBefore = (await controlsOf('Main')).length;
+await key('KeyD', { ctrl: true, key: 'd' });
+r.duplicatedSeveral = await until(async () => (await controlsOf('Main')).length === nBefore + 3);
+r.copiesSelected = (await selectedNow()).length;
+// Delete with several, one of them keyed (k2, "Two" — its copy): asks once, naming it.
+await pressOn('k1');
+await pressOn('k2', { ctrl: true });
+await pressOn('k5', { ctrl: true });
+await key('Delete');
+r.deleteSeveralAsked = await until(() => exists('[data-delete-control]'));
+r.deleteSeveralText = await text('[data-delete-control]');
+await inEditor(`(() => { [...document.querySelectorAll('[data-delete-control] button')].find((b) => b.textContent === 'Cancel').click(); return true; })()`);
+await shot('10-several');
+// Back as it was: Discard changes.
+await click('[data-discard-changes]');
+await until(() => exists('[data-discard-confirm]'));
+await click('[data-discard-confirm]');
+r.precisionDiscarded = await until(async () => JSON.stringify(await page('Main')) === JSON.stringify(r.entryPage));
+void k1at;
+
+// ---- TEMPLATES (round 2b) ----
+const templatesOnDisk = async () => (await onDisk()).templates ?? [];
+const openNewPage = async () => {
+  await click('.tab-add');
+  await until(() => exists('.add-menu-wrap .tab-menu-item'));
+  await click('.add-menu-wrap .tab-menu-item');
+  await until(() => exists('[data-add-page=virtual] [data-vd-size=blank] input'));
+  await sleep(200);
+};
+const saveTemplate = async (name) => {
+  await click('[data-save-template]');
+  await until(() => exists('[data-template-name]'));
+  await typeInto('[data-template-name]', name);
+  await click('[data-template-save]');
+};
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+// Moved first, so Discard changes has something to put back — and must leave the template alone.
+await drag('.layout-canvas [data-key="k8"]', -40, 0);
+await until(async () => (await controlOf('Main', 'k8'))?.x === r.entryPage.panel.controls[7].x - 40);
+await saveTemplate('Mixer');
+r.templateSaved = await until(async () => (await templatesOnDisk()).length === 1);
+r.templateOnDisk = (await templatesOnDisk())[0];
+r.savedSays = await until(async () => (await text('[data-save-template]')) === 'Saved');
+r.stillInMode = await inMode();
+// The same name, any case: it offers to replace, and replacing keeps one template.
+await saveTemplate('MIXER');
+r.clash = await until(() => exists('[data-template-clash]'));
+r.clashText = await text('[data-template-clash]');
+r.replaceLabel = await text('[data-template-save]');
+await click('[data-template-save]');
+r.replaced = await until(async () => {
+  const t = await templatesOnDisk();
+  return t.length === 1 && t[0].name === 'MIXER';
+});
+await click('[data-discard-changes]');
+await until(() => exists('[data-discard-confirm]'));
+await click('[data-discard-confirm]');
+await until(async () => !(await inMode()));
+r.templateAfterDiscard = (await templatesOnDisk()).map((t) => t.name);
+// New page: the template listed after Blank, with its number of controls; a page made from it is custom, every control empty.
+await openNewPage();
+r.pickerRow = await inEditor(`(() => { const row = document.querySelector('[data-template="MIXER"]'); return row ? [row.textContent, !!row.querySelector('.template-preview'), [...document.querySelectorAll('[data-add-page] [data-vd-size], [data-add-page] [data-template]')].map((e) => e.dataset.vdSize ?? 'template:' + e.dataset.template)] : null; })()`);
+await click('[data-template="MIXER"] input[type=radio]');
+await typeInto('[data-add-page] input[aria-label="New page name"]', 'From mix');
+await sleep(100);
+r.useLabel = await text('[data-add-page-submit]');
+await click('[data-add-page-submit]');
+r.fromTemplate = await until(async () => (await page('From mix')).panel?.preset === 'free');
+r.fromTemplatePage = await page('From mix');
+r.fromTemplateNotMode = !(await inMode());
+// The last choice remembered: the next New page has the template chosen.
+await openNewPage();
+r.lastTemplate = await inEditor("document.querySelector('[data-template] input:checked')?.closest('[data-template]').dataset.template ?? null");
+// Rename from its … menu, in place.
+await click('[data-template="MIXER"] [data-template-more]');
+await until(() => exists('.vd-template-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.vd-template-menu .tab-menu-item')].find((b) => b.textContent === 'Rename').click(); return true; })()`);
+await until(() => exists('[data-template-rename]'));
+await typeInto('[data-template-rename]', 'Desk');
+await inEditor(`(() => { document.querySelector('[data-template-rename]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+r.renamed = await until(async () => (await templatesOnDisk())[0]?.name === 'Desk');
+// A template saved on a wider screen: listed as made for it; a page from it keeps its own canvas.
+await inEditor(`window.deckhand.apply({ kind: 'saveTemplate', name: 'Wide', replace: false, panel: { size: { width: 2560, height: 720 }, preset: 'free', controls: [{ id: 'c1', x: 100, y: 100, w: 400, h: 400, shape: 'round' }, { id: 'c2', x: 2060, y: 100, w: 400, h: 400 }] } })`);
+await until(() => exists('[data-template="Wide"]'));
+r.wideSub = await text('[data-template="Wide"] .vd-template-choice .muted');
+r.newestFirst = await inEditor("[...document.querySelectorAll('[data-add-page] [data-template]')].map((e) => e.dataset.template)");
+// Delete…: asks once; the page made from it is not changed. Wide is chosen first: a save while New page is
+// open (this delete) must not put back the choice remembered from before — it did, by re-reading it on
+// every config change, and the page was then made from the wrong choice (the check's old flake).
+await click('[data-template="Wide"] input[type=radio]');
+const fromMixBefore = JSON.stringify(await page('From mix'));
+await click('[data-template="Desk"] [data-template-more]');
+await until(() => exists('.vd-template-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.vd-template-menu .tab-menu-item')].find((b) => b.textContent.startsWith('Delete')).click(); return true; })()`);
+r.deleteAsks = await until(() => exists('[data-template-delete]'));
+r.deleteAskText = await text('[data-template-delete]');
+await click('[data-template-delete-confirm]');
+r.deletedTemplate = await until(async () => (await templatesOnDisk()).every((t) => t.name !== 'Desk'));
+r.pageUnchanged = JSON.stringify(await page('From mix')) === fromMixBefore;
+await until(async () => !(await exists('[data-template="Desk"]')));
+await sleep(300);
+r.choiceKept = await inEditor("document.querySelector('[data-add-page] input[type=radio]:checked')?.closest('[data-template]')?.dataset.template ?? null");
+// Chosen again if it was lost, so the rest of the run goes on and the check above fails by name.
+if (r.choiceKept !== 'Wide') await click('[data-template="Wide"] input[type=radio]');
+await typeInto('[data-add-page] input[aria-label="New page name"]', 'Wide one');
+await sleep(100);
+await click('[data-add-page-submit]');
+r.widePage = await until(async () => (await page('Wide one')).panel?.size?.width === 2560);
+await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Wide one');
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+await until(inMode);
+r.madeFor = await until(() => exists('[data-made-for="2560x720"]'));
+r.madeForText = await text('[data-made-for]');
+r.layoutScreen = await inEditor(`(() => { const s = document.querySelector('[data-layout-screen]'); const c = document.querySelector('.layout-canvas'); if (!s || !c) return null; const a = s.getBoundingClientRect(); const b = c.getBoundingClientRect(); return { screen: s.dataset.layoutScreen, ratio: Math.round((a.width / a.height) * 100) / 100, centred: Math.abs((b.left - a.left) - (a.right - b.right)) < 2 && Math.abs((b.top - a.top) - (a.bottom - b.bottom)) < 2, dashed: getComputedStyle(c).outlineStyle }; })()`);
+await shot('11-made-for');
+await click('[data-done]');
+await until(async () => !(await inMode()));
+r.noChipOutside = !(await exists('[data-made-for]'));
+await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
+await until(async () => (await count('.well [data-key]')) === 24);
+// Many templates: New page stays inside the window, its list scrolling inside it — never the page, which
+// does not scroll — so the oldest template and the Add page button can both be reached and pressed.
+const MANY = Array.from({ length: 30 }, (_, i) => `Many ${i}`);
+for (const name of MANY) await inEditor(`window.deckhand.apply({ kind: 'saveTemplate', name: ${JSON.stringify(name)}, replace: false, panel: { size: { width: 1920, height: 720 }, preset: 'free', controls: [{ id: 'c1', x: 0, y: 0, w: 100, h: 100 }] } })`);
+await until(async () => (await templatesOnDisk()).length >= 30);
+await openNewPage();
+await until(async () => (await count('[data-add-page] [data-template]')) >= 30);
+r.manyTemplates = await inEditor(`(() => {
+  const inView = (el) => { const b = el.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth; };
+  const pressable = (el) => { const b = el.getBoundingClientRect(); const at = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return inView(el) && at !== null && (at === el || el.contains(at)); };
+  const rows = document.querySelectorAll('[data-add-page] [data-template]');
+  const oldest = rows[rows.length - 1].querySelector('input[type=radio]').closest('label');
+  let box = oldest.parentElement;
+  while (box && box !== document.body && !(['auto', 'scroll'].includes(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight)) box = box.parentElement;
+  const scrolls = box !== null && box !== document.body && box.closest('[data-add-page]') !== null;
+  if (scrolls) box.scrollTop = box.scrollHeight;
+  return { window: [innerWidth, innerHeight], submit: pressable(document.querySelector('[data-add-page-submit]')), oldest: pressable(oldest), scrolls, popupInWindow: inView(document.querySelector('.add-panel')) };
+})()`);
+await shot('12-many-templates');
+await inEditor("(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()");
+await until(async () => !(await exists('[data-add-page]')), 2000);
+for (const name of MANY) await inEditor(`window.deckhand.apply({ kind: 'deleteTemplate', name: ${JSON.stringify(name)} })`);
+await until(async () => (await templatesOnDisk()).every((t) => !t.name.startsWith('Many ')));
 
 // ---- BLANK FROM NEW PAGE ----
 await click('.tab-add');
@@ -372,6 +699,7 @@ r.startBlankLabel = await text('[data-add-page-submit]');
 await click('[data-add-page-submit]');
 r.blankMode = await until(async () => (await inMode()) && (await exists('.layout-empty')));
 r.blankOnDisk = await page('Pads');
+r.saveDimmedEmpty = await inEditor("document.querySelector('[data-save-template]')?.disabled ?? null");
 await shot('8-blank');
 await inEditor(`(() => { document.querySelector('[data-palette=button]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 5, clientX: 10, clientY: 10 })); window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 5, clientX: 10, clientY: 10 })); return true; })()`);
 r.blankFirst = await until(async () => (await controlsOf('Pads')).length === 1);
@@ -392,22 +720,14 @@ r.lastChoiceBlank = await (async () => {
   return checked;
 })();
 
-// ---- BLANK FROM CHANGE LAYOUT…, LEFT EMPTY ----
-await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) !== null);
-await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Big').click(); return true; })()`);
-await until(async () => (await count('.well [data-key]')) === 10);
-const bigBefore = await page('Big');
-await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
-await until(() => exists('[data-change-layout] [data-vd-size=blank] input'));
-await click('[data-change-layout] [data-vd-size=blank] input');
-r.blankWarning = await text('[data-change-loses-all]');
-await click('[data-change-layout-apply]');
-r.changeBlankMode = await until(async () => (await inMode()) && (await exists('.layout-empty')));
-r.changeBlankUntouched = JSON.stringify(await page('Big')) === JSON.stringify(bigBefore);
-// Left by a profile change: acts as Done; the page stays as it was.
+// ---- A PROFILE CHANGE ACTS AS DONE ---- on Pads, custom since its first control.
+await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Pads');
+const padsBefore = await page('Pads');
+await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+r.padsMode = await until(inMode);
 await daemon.profiles.switchTo('second', daemon.sessions);
 r.profileLeft = await until(async () => !(await inMode()), 5000);
-r.bigAfter = JSON.stringify(await page('Big')) === JSON.stringify(bigBefore);
+r.padsAfter = JSON.stringify(await page('Pads')) === JSON.stringify(padsBefore);
 
 // ---- A DECK KEY CHANGING PAGE ACTS AS DONE ----
 await daemon.profiles.switchTo('default', daemon.sessions);
@@ -420,25 +740,15 @@ await sleep(300);
 await daemon.sessions.get(KEY).goToPage('big');
 r.deckKeyLeft = await until(async () => !(await inMode()), 5000);
 
-// ---- CHANGE LAYOUT… FROM A CUSTOM PAGE TO A FIXED GRID ----
+// ---- CHANGE LAYOUT… FROM ONE GRID TO ANOTHER ----
 await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Big', 5000);
-// Small chosen for Big (a preset) first: the last choice on this deck, which a custom page's picker preselects.
 await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
 await until(() => exists('[data-change-layout] [data-vd-size=small] input'));
+r.gridPreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
 await click('[data-change-layout] [data-vd-size=small] input');
 await click('[data-change-layout-apply]');
 r.bigSmall = await until(async () => (await page('Big')).panel?.preset === 'small');
-await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
-await until(async () => (await inEditor("document.querySelector('.tab-selected')?.dataset.tab ?? null")) === 'Main');
-await click(`[data-deck-panel="${KEY}"] .deck-panel-change-layout`);
-await until(() => exists('[data-change-layout] [data-vd-size=medium] input'));
-await until(async () => (await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null")) === 'small', 3000);
-r.customPreselected = await inEditor("document.querySelector('[data-change-layout] [data-vd-size] input:checked')?.closest('[data-vd-size]').dataset.vdSize ?? null");
-await click('[data-change-layout] [data-vd-size=medium] input');
-r.customWarning = await text('[data-change-loses-all]');
-await click('[data-change-layout-apply]');
-r.backToGrid = await until(async () => (await page('Main')).panel?.preset === 'medium');
-r.backToGridKeys = (await page('Main')).buttons;
+r.bigSmallKeys = (await page('Big')).buttons;
 
 // ---- A STREAM DECK ----
 await click('.show-in-editor-trigger');
@@ -475,8 +785,10 @@ await sleep(1000);
 }
 const shapes = async () => (await pageOnDisk('Shapes')) ?? {};
 await until(async () => (await inEditor(`[...document.querySelectorAll('.tabs [data-tab]')].some((t) => t.dataset.tab === 'Shapes')`)) === true, 8000);
+// The daemon must have the page before the tab asks the deck to show it, or the deck stays on Narrow — also four keys — and the editor follows it back there.
+await until(() => daemon.state.config?.profiles.default.layouts[KEY].pages.shapes !== undefined, 8000);
 await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Shapes').click(); return true; })()`);
-await until(async () => (await count(`.grid[data-deck="${KEY}"] [data-key]`)) === 4);
+await until(async () => daemon.sessions.get(KEY)?.currentPage() === 'shapes' && (await exists(`.grid[data-deck="${KEY}"] [data-key="c4"]`)), 8000);
 const bulkMessage = () => text('.bulk-message');
 const clickKey = (deck, id) => inEditor(`(() => { document.querySelector('.grid[data-deck="${deck}"] [data-key="${id}"]').dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
 // Paste: onto the selected control.
@@ -509,6 +821,16 @@ const beforeCopyTo = JSON.stringify((await shapes()).buttons);
 r.copyToOffered = await inEditor(`(() => { const item = [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.trim() === 'Shapes'); if (!item) return false; item.click(); return true; })()`);
 await sleep(500);
 r.copyToRefused = [JSON.stringify((await shapes()).buttons) === beforeCopyTo, await bulkMessage()];
+// And from a custom page onto a grid: refused as well (either side, Ryan, 2026-11-20).
+const xlBefore = JSON.stringify((await onDisk()).profiles.default.layouts[XL]);
+await clickKey(KEY, 'c1');
+await inEditor(`(() => { const k = document.querySelector('.grid[data-deck="${KEY}"] [data-key="c1"]'); const b = k.getBoundingClientRect(); k.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 })); return true; })()`);
+await until(() => exists('.key-menu'));
+await inEditor(`(() => { [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.startsWith('Copy to device')).click(); return true; })()`);
+await sleep(200);
+r.copyFromOffered = await inEditor(`(() => { const item = [...document.querySelectorAll('.key-menu-item')].find((b) => b.textContent.trim() === 'Main'); if (!item) return false; item.click(); return true; })()`);
+await sleep(500);
+r.copyFromRefused = [JSON.stringify((await onDisk()).profiles.default.layouts[XL]) === xlBefore, await bulkMessage()];
 // A drag from the Stream Deck: onto c2, it lands there; onto the round control's empty corner, nothing.
 const dragKey = (fromDeck, fromId, target) =>
   inEditor(`(() => {
@@ -543,25 +865,34 @@ check('a virtual deck\'s page is drawn positioned: every key placed, at the pane
   assert.ok(Math.abs(r.placed.pitch - 240 / 1920) < 0.01, JSON.stringify(r.placed));
   assert.ok(Math.abs(r.placed.ratio - 1920 / 720) < 0.05, JSON.stringify(r.placed));
 });
-check('the header: columns × rows on a preset page, the screen\'s resolution on a custom page', () => {
-  assert.equal(r.sizePreset, '8 × 3');
+check('the header: columns × rows on a grid page, the screen\'s resolution on a custom page', () => {
+  assert.equal(r.sizePreset, '5 × 2');
+  assert.equal(r.sizeCustomPage, '1920 × 720');
   assert.equal(r.sizeCustom, '1920 × 720');
 });
-check('Edit layout on a preset asks once; Cancel changes nothing', () => {
-  assert.equal(r.editOnVirtual, true);
-  assert.equal(r.asked, true);
-  assert.match(r.askedText, /Make this page a custom layout\?.*Every key and its action is kept/);
-  assert.equal(r.cancelGone, true);
-  assert.equal(r.cancelNotMode, true);
-  assert.equal(r.cancelUnchanged, true);
-});
-check('Make it custom: the same controls in the same places, every key kept, then straight into the mode', () => {
-  assert.equal(r.madeCustom, true);
-  assert.deepEqual(r.madeCustomKept.panel.controls, medium);
-  assert.deepEqual(r.madeCustomKept.buttons, { k1: { label: 'Mic', action: { type: 'noop' } }, k2: { label: 'Two' } });
+check('a page\'s kind is fixed: Edit layout only on a custom page, Change layout… only on a grid page, offering only the fixed grids', () => {
+  assert.equal(r.editOnCustom, true);
+  assert.equal(r.noChangeOnCustom, true);
+  assert.deepEqual(r.tabMenuCustom, ['Delete page…']);
+  assert.equal(r.noEditOnGrid, true);
+  assert.deepEqual(r.tabMenuGrid, ['Change layout…', 'Delete page…']);
+  assert.deepEqual(r.changeChoices, ['small', 'medium', 'large', 'custom']);
+  assert.equal(r.changeNoTemplates, true);
   assert.equal(r.inMode, true);
 });
-check('the mode: the button lit, the mode bar for crumbs and tabs, the palette for the library, the Page ▾ and Change layout… dimmed', () => {
+check('Done is seen: on the deck\'s header beside the lit Edit layout and Discard changes, on screen at the normal window size, not covered, in the accent colour', () => {
+  assert.ok(r.done, 'no Done');
+  assert.deepEqual(r.done.window, [1400, 900], 'the window is not its normal size');
+  assert.ok(r.done.size[0] >= 40 && r.done.size[1] >= 20, JSON.stringify(r.done));
+  assert.equal(r.done.onScreen, true, JSON.stringify(r.done));
+  assert.equal(r.done.notCovered, true, JSON.stringify(r.done));
+  assert.equal(r.done.inDeckHeader, true, JSON.stringify(r.done));
+  assert.equal(r.done.besideLit, true, JSON.stringify(r.done));
+  assert.ok(r.done.aboveDeck >= 0 && r.done.aboveDeck < 48, `${r.done.aboveDeck} px above the deck`);
+  assert.equal(r.done.accent, true, JSON.stringify(r.done));
+  assert.equal(r.done.notInModeBar, true);
+});
+check('the mode: the button lit, the mode bar for crumbs and tabs, the palette for the library, the Page ▾ dimmed', () => {
   assert.equal(r.lit, 'true');
   assert.equal(r.palette, true);
   assert.equal(r.noLibrary, true);
@@ -649,7 +980,106 @@ check('every control deleted: shown empty, never saved empty — the page goes b
   assert.equal(r.lastPutBack, true);
   assert.equal(r.neverEmptyOnDisk, true);
   assert.equal(r.doneLeft, true);
-  assert.deepEqual(r.afterEmptyDone, r.madeCustomKept);
+  assert.deepEqual(r.afterEmptyDone, r.entryPage);
+});
+check('the grid and snapping: separate switches at the canvas\'s foot, the grid off and Snap on to start, 40 px', () => {
+  assert.deepEqual(r.guidesBar, [false, true, '40 px']);
+  assert.equal(r.noGridLines, true);
+});
+check('snap: a drag lands on another control\'s edge within reach, with a dashed guide naming it; Shift ignores it', () => {
+  assert.equal(r.snapped, true, JSON.stringify(r.snappedAt));
+  // k1 and k2 are the same width, so its left edge and its centre meet Key 2's at once: either names it.
+  assert.ok(r.snapGuides.some((g) => /^(left edge|centre) of Key (2|10)$/.test(g)), JSON.stringify(r.snapGuides));
+  assert.equal(r.shifted, true);
+  assert.deepEqual(r.shiftGuides, []);
+});
+check('the grid: lines drawn at its pitch, a drag lands on them, the pitch chosen from the dropdown and remembered', () => {
+  assert.equal(r.gridLines, true);
+  assert.equal(r.onGrid, true, JSON.stringify(r.onGridAt));
+  assert.equal(r.pitch60, true);
+  assert.deepEqual(r.pitchKept, { grid: true, pitch: 60, snap: false });
+});
+check('the arrow keys nudge one grid step with the grid on, 1 px with it off', () => {
+  assert.equal(r.nudgedGrid, true);
+  assert.equal(r.nudgedPixel, true);
+});
+check('several: a marquee takes what it touches, Ctrl-click adds and removes, Escape none; the inspector says how many', () => {
+  assert.equal(r.marqueeDrawn, true, JSON.stringify([r.marqueeDrawn, r.marqueeSelected, r.ctrlSelected, r.severalTitle, r.escapeNone]));
+  assert.deepEqual(r.marqueeSelected, ['k1', 'k2']);
+  assert.deepEqual(r.ctrlSelected, ['k1', 'k9']);
+  assert.equal(r.severalTitle, '3 controls'.replace('3', '2'));
+  assert.equal(r.escapeNone, true);
+});
+check('several move together, take a typed Y together, align, distribute with equal gaps, and match the first one\'s width', () => {
+  assert.equal(r.movedTogether, true, JSON.stringify([r.movedTogether, r.typedGroupY, r.alignedTop, r.alignedBottom, r.distributed, r.matched]));
+  assert.equal(r.typedGroupY, true, JSON.stringify([r.typedGroupY, r.alignedTop, r.alignedBottom, r.distributed, r.matched]));
+  assert.equal(r.alignedTop, true);
+  assert.equal(r.alignedBottom, true);
+  // k3 (150 wide, at 540) between k2 (255–466) and k4 (735–946): gaps of 74 and 45 become two of 59.5, in whole pixels.
+  assert.deepEqual([...r.distributed].sort(), [59, 60]);
+  assert.deepEqual(r.matched.map((c) => c.w), [211, 211, 211]);
+});
+check('Duplicate and Delete with several: a copy of each, selected; one warning naming every key lost', () => {
+  assert.equal(r.duplicatedSeveral, true);
+  assert.equal(r.copiesSelected, 3);
+  assert.equal(r.deleteSeveralAsked, true);
+  assert.match(r.deleteSeveralText, /Delete 3 controls\?.*Their keys go with them:.*Mic.*Two/);
+  assert.equal(r.precisionDiscarded, true);
+});
+check('Save as template: the layout only, saved under its name, the button saying so, the mode still open', () => {
+  assert.equal(r.templateSaved, true);
+  assert.equal(r.templateOnDisk.name, 'Mixer');
+  assert.equal(r.templateOnDisk.panel.preset, 'free');
+  assert.equal(r.templateOnDisk.panel.controls.length, 24);
+  assert.ok(r.templateOnDisk.panel.controls.every((c) => Object.keys(c).every((k) => ['id', 'x', 'y', 'w', 'h', 'shape', 'radius', 'keepRatio'].includes(k))), JSON.stringify(r.templateOnDisk));
+  assert.equal(r.templateOnDisk.buttons, undefined);
+  assert.equal(r.savedSays, true);
+  assert.equal(r.stillInMode, true);
+  assert.equal(r.saveDimmedEmpty, true, 'Save as template is dimmed with no controls');
+});
+check('a name in use offers to replace that template; Discard changes does not undo a save', () => {
+  assert.equal(r.clash, true);
+  assert.match(r.clashText, /There is already a template called Mixer\./);
+  assert.equal(r.replaceLabel, 'Replace it');
+  assert.equal(r.replaced, true);
+  assert.deepEqual(r.templateAfterDiscard, ['MIXER']);
+});
+check('New page lists templates after Blank, newest first, with a preview and their controls; one makes a custom page, every control empty, remembered as the last choice', () => {
+  assert.ok(r.pickerRow, 'no template row');
+  assert.match(r.pickerRow[0], /MIXER.*24 controls/);
+  assert.equal(r.pickerRow[1], true);
+  assert.deepEqual(r.pickerRow[2], ['small', 'medium', 'large', 'custom', 'blank', 'template:MIXER']);
+  assert.equal(r.useLabel, 'Use MIXER');
+  assert.equal(r.fromTemplate, true);
+  assert.equal(r.fromTemplatePage.panel.controls.length, 24);
+  assert.deepEqual(r.fromTemplatePage.buttons, {});
+  assert.equal(r.fromTemplateNotMode, true);
+  assert.equal(r.lastTemplate, 'MIXER');
+  assert.deepEqual(r.newestFirst, ['Wide', 'Desk']);
+});
+check('rename in place and Delete… from the picker; the page made from it unchanged', () => {
+  assert.equal(r.renamed, true);
+  assert.equal(r.deleteAsks, true);
+  assert.match(r.deleteAskText, /Delete Desk\? Pages made from it are not changed\./);
+  assert.equal(r.deletedTemplate, true);
+  assert.equal(r.pageUnchanged, true);
+});
+check('New page with 30 templates stays inside the window: its list scrolls, the oldest and the button can be pressed', () => {
+  assert.deepEqual(r.manyTemplates, { window: [1400, 900], submit: true, oldest: true, scrolls: true, popupInWindow: true });
+});
+check('a choice made in New page survives a save while it is open (deleting another template)', () => {
+  assert.equal(r.choiceKept, 'Wide');
+});
+check('a template from another screen size: "Made for", its own canvas kept, the mode drawing the screen whole with the layout dashed and centred, and the chip', () => {
+  assert.equal(r.wideSub, 'Made for 2560 × 720');
+  assert.equal(r.widePage, true);
+  assert.equal(r.madeFor, true);
+  assert.match(r.madeForText, /Made for 2560 × 720\s*shown at 75%, centred/);
+  assert.equal(r.layoutScreen?.screen, '1920x720', JSON.stringify(r.layoutScreen));
+  assert.ok(Math.abs(r.layoutScreen.ratio - 1920 / 720) < 0.05, JSON.stringify(r.layoutScreen));
+  assert.equal(r.layoutScreen.centred, true);
+  assert.equal(r.layoutScreen.dashed, 'dashed');
+  assert.equal(r.noChipOutside, true);
 });
 check('Blank from New page: the page made with the deck\'s default grid, shown empty in the mode; a first control saves it custom', () => {
   assert.equal(r.startBlankLabel, 'Start blank');
@@ -662,33 +1092,31 @@ check('Blank from New page: the page made with the deck\'s default grid, shown e
   assert.equal(r.litIsDone, true);
   assert.equal(r.lastChoiceBlank, 'blank');
 });
-check('Blank from Change layout… warns, then leaves the page exactly as it was while it is empty; a profile change acts as Done', () => {
-  assert.match(r.blankWarning, /starts again from Blank\. Every key on this page is lost/);
-  assert.equal(r.changeBlankMode, true);
-  assert.equal(r.changeBlankUntouched, true);
+check('a profile change while the mode is open acts as Done, the page as it was', () => {
+  assert.equal(r.padsMode, true);
   assert.equal(r.profileLeft, true);
-  assert.equal(r.bigAfter, true);
+  assert.equal(r.padsAfter, true);
 });
 check('a deck key changing the page while the mode is open acts as Done', () => {
   assert.equal(r.reentered, true);
   assert.equal(r.deckKeyLeft, true);
 });
-check('Change layout… from a custom page to a fixed grid: the deck\'s last choice preselected, warned, and every key is lost', () => {
-  // A custom page is none of the fixed grids: the last choice made on this deck is preselected (Ryan, 2026-11-20).
+check('Change layout… from one fixed grid to another: its own grid preselected, keys kept by row and column', () => {
+  assert.equal(r.gridPreselected, 'large');
   assert.equal(r.bigSmall, true);
-  assert.equal(r.customPreselected, 'small');
-  assert.match(r.customWarning, /becomes a grid of buttons\. Every key on this page is lost, buttons included/);
-  assert.equal(r.backToGrid, true);
-  assert.deepEqual(r.backToGridKeys, {});
+  assert.deepEqual(r.bigSmallKeys, { k1: { label: 'Large one' } });
 });
-check('keys onto a custom page land only on a control: pasted onto the one selected, none selected none, Copy to device refused, a drag onto the control dropped on, and onto no control nothing', () => {
+check('keys onto a custom page land only on a control: pasted onto the one selected, none selected none, Copy to device refused either way, a drag onto the control dropped on, and onto no control nothing', () => {
   assert.equal(r.pastedOnControl, true);
   assert.equal(r.pastedOnlyThere, '["c1","c3"]');
   assert.equal(r.noSelectionPaste[0], true);
   assert.match(r.noSelectionPaste[1] ?? '', /Nothing pasted: on a custom layout, select the controls to paste onto/);
   assert.equal(r.copyToOffered, true);
   assert.equal(r.copyToRefused[0], true);
-  assert.match(r.copyToRefused[1] ?? '', /Not copied: “Shapes” has a custom layout\. Drag or paste keys onto its controls instead/);
+  assert.match(r.copyToRefused[1] ?? '', /Not copied: “Shapes” has a custom layout\. Drag or paste keys one at a time instead/);
+  assert.equal(r.copyFromOffered, true);
+  assert.equal(r.copyFromRefused[0], true, 'copied from a custom page onto a grid');
+  assert.match(r.copyFromRefused[1] ?? '', /Not copied: “Shapes” has a custom layout/);
   assert.equal(r.draggedOnControl, true);
   assert.equal(r.notTheOneUnder, null, 'the control under it, at the same row and column, untouched');
   assert.equal(r.cornerUnder, null, 'the round control\'s box corner is not the control');

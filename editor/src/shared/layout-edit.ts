@@ -18,9 +18,9 @@ import type { ButtonDef, PageDef, PanelControlDef, PanelDef } from '../../../src
 export const MIN_SIDE = 8;
 
 /**
- * Duplicate's offset, in canvas pixels: one grid step (board 22h) — the grid
- * comes in round 2b, so this is its default pitch, 40 px. Claude's call
- * within the decisions (2026-11-18).
+ * Duplicate's offset, in canvas pixels, when none is given: one grid step
+ * (board 22h) at the grid's default pitch, 40 px. The mode passes the pitch
+ * chosen (round 2b).
  */
 export const DUPLICATE_OFFSET = 40;
 
@@ -142,7 +142,9 @@ export function freshControlId(panel: PanelDef, also: Iterable<string> = []): st
  * known yet, Medium's pixels for this canvas.
  */
 export function addButton(panel: PanelDef, at: { x: number; y: number }, screen: ScreenSize | null, also: Iterable<string> = []): { panel: PanelDef; id: string } {
-  const side = newButtonSide(screen ?? { width: panel.size.width, height: panel.size.height });
+  // About 30 mm on the screen; in a layout made for another size, shown smaller or larger, as many of its pixels as that takes.
+  const on = screen ?? { width: panel.size.width, height: panel.size.height };
+  const side = newButtonSide(on) / Math.min(on.width / panel.size.width, on.height / panel.size.height);
   const id = freshControlId(panel, also);
   const box = clampBox({ x: at.x - side / 2, y: at.y - side / 2, w: side, h: side }, panel.size);
   return { panel: { ...panel, controls: [...panel.controls, { id, ...box }] }, id };
@@ -153,21 +155,16 @@ export function blankPanel(size: { width: number; height: number }): PanelDef {
   return { size: { ...size }, controls: [], preset: CUSTOM_LAYOUT };
 }
 
-/** A fixed grid made custom (21e): the same controls in the same places, every key kept. */
-export function madeCustom(panel: PanelDef): PanelDef {
-  return { ...structuredClone(panel), preset: CUSTOM_LAYOUT };
-}
-
 /**
  * Duplicate (Ctrl+D): one new control on the page being edited, the same
  * size and shape, offset by one grid step and on top, carrying what the
  * selected one shows there — its whole key — as `button`.
  */
-export function duplicateControl(panel: PanelDef, page: PageDef, id: string, also: Iterable<string> = []): { panel: PanelDef; id: string; button: ButtonDef | null } | null {
+export function duplicateControl(panel: PanelDef, page: PageDef, id: string, also: Iterable<string> = [], offset = DUPLICATE_OFFSET): { panel: PanelDef; id: string; button: ButtonDef | null } | null {
   const source = panel.controls.find((c) => c.id === id);
   if (!source) return null;
   const copyId = freshControlId(panel, also);
-  const box = clampBox({ x: source.x + DUPLICATE_OFFSET, y: source.y + DUPLICATE_OFFSET, w: source.w, h: source.h }, panel.size);
+  const box = clampBox({ x: source.x + offset, y: source.y + offset, w: source.w, h: source.h }, panel.size);
   const copy: PanelControlDef = { ...structuredClone(source), id: copyId, ...box };
   const button = page.buttons[id];
   return { panel: { ...panel, controls: [...panel.controls, copy] }, id: copyId, button: button && Object.keys(button).length > 0 ? structuredClone(button) : null };
@@ -175,6 +172,29 @@ export function duplicateControl(panel: PanelDef, page: PageDef, id: string, als
 
 export function deleteControl(panel: PanelDef, id: string): PanelDef {
   return { ...panel, controls: panel.controls.filter((c) => c.id !== id) };
+}
+
+/**
+ * Duplicate with several selected: one copy of each, offset by one grid step,
+ * each carrying its key; the copies in the order of the originals, on top —
+ * the panel's order, never the order they were selected in, so overlapping
+ * copies stack, and take touches, as the originals do.
+ */
+export function duplicateControls(panel: PanelDef, page: PageDef, ids: ReadonlyArray<string>, also: Iterable<string> = [], offset = DUPLICATE_OFFSET): { panel: PanelDef; ids: string[]; buttons: Record<string, ButtonDef> } {
+  const taken = [...also];
+  let out = panel;
+  const made: string[] = [];
+  const buttons: Record<string, ButtonDef> = {};
+  const chosen = new Set(ids);
+  for (const id of panel.controls.filter((c) => chosen.has(c.id)).map((c) => c.id)) {
+    const copy = duplicateControl(out, page, id, taken, offset);
+    if (!copy) continue;
+    out = copy.panel;
+    made.push(copy.id);
+    taken.push(copy.id);
+    if (copy.button) buttons[copy.id] = copy.button;
+  }
+  return { panel: out, ids: made, buttons };
 }
 
 /** Bring to front: last in the panel's order, so on top of everything. */
@@ -241,9 +261,10 @@ export function controlNames(panel: PanelDef): Map<string, string> {
 
 /** The very-small warning's figure (22f): about how many mm the shorter side is, or null with no warning. */
 export function verySmallMm(screen: ScreenSize | null, panel: PanelDef, c: { w: number; h: number }): { mm: number | null } | null {
-  // Measured on the screen it is shown on: the panel's own canvas when the screen is not known.
+  // Measured on the screen it is shown on: the panel's own canvas when the screen is not known. A layout
+  // made for another size is shown at one scale, the largest that fits (24c).
   const on = screen ?? { width: panel.size.width, height: panel.size.height };
-  const scale = on.width / panel.size.width;
+  const scale = Math.min(on.width / panel.size.width, on.height / panel.size.height);
   const w = c.w * scale;
   const h = c.h * scale;
   if (!isVerySmall(on, w, h)) return null;

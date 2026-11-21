@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
-import type { Config, PanelDef } from '../../../src/types.js';
-import { defaultPanelOf } from '../../../src/panel-presets.js';
+import type { Config, PanelDef, TemplateDef } from '../../../src/types.js';
+import { pagePanelFromTemplate, sameName, templateNamed } from '../shared/templates.js';
+import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { choiceOf, GridPicker, gridStateOf, gridStateOfChoice, panelOf, useVirtualScreen, type GridState } from './GridPicker.js';
 import type { DaemonView } from '../shared/bridge.js';
 import { connectionPill, deckChoices, geometryFor, knownDecks, layoutFor, pageChoices, profileChoices, profileCoverage, type DeckChoice, type Selection } from './model.js';
@@ -164,7 +165,7 @@ export function Toolbar({ modeBar, onBlankPage, config, daemon, selection, editi
                 disabled={editingBlocked}
                 onSelect={() => onSelect({ page: p.id })}
                 onDelete={() => onDeletePage(p.id)}
-                onChangeLayout={virtualKey ? () => onChangeLayout(p.id) : undefined}
+                onChangeLayout={virtualKey && !isCustomLayout(pagePanelIn(config, selection.profile, virtualKey, p.id)) ? () => onChangeLayout(p.id) : undefined}
               />
               {/* One pencil, on the selected tab only: a control per tab would
                   multiply with every page created. */}
@@ -185,7 +186,7 @@ export function Toolbar({ modeBar, onBlankPage, config, daemon, selection, editi
           decks={knownDecks(config, daemon)}
           disabled={editingBlocked}
           onAddPage={onAddPage}
-          virtualDeck={virtualKey ? { key: virtualKey, defaultPanel: defaultPanelOf(config, virtualKey) } : null}
+          virtualDeck={virtualKey ? { key: virtualKey, defaultPanel: defaultPanelOf(config, virtualKey), templates: config.templates ?? [] } : null}
           onPageAdded={(page, blank) => (blank && onBlankPage ? onBlankPage(page) : onSelect({ page }))}
           onAddProfile={onAddProfile}
           onProfileAdded={onProfileAdded}
@@ -300,7 +301,8 @@ function AddPage({
   onAdded,
 }: {
   disabled: boolean;
-  virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
+  /** A virtual deck: its key, default grid, and the saved templates (config.json), offered after Blank (round 2b). */
+  virtualDeck: { key: string; defaultPanel: PanelDef | undefined; templates: TemplateDef[] } | null;
   onAdd: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
   /** `blank`: Blank was chosen, so Edit layout opens on the new page, empty. */
   onAdded: (page: string, blank: boolean) => void;
@@ -315,14 +317,26 @@ function AddPage({
   const [grid, setGrid] = useState<GridState | null>(null);
   // Blank: an empty custom layout, straight into Edit layout (20c).
   const [blank, setBlank] = useState(false);
+  // A template, by name: a custom layout, every control empty, not linked to it (20d).
+  const [templateName, setTemplate] = useState<string | null>(null);
+  const templates = virtualDeck?.templates ?? [];
+  const template = templateName === null ? undefined : templateNamed(templates, templateName);
+  const chosenTemplate = template?.name ?? null;
+  // The remembered choice is read once, as New page opens for this deck. Not on
+  // every change of defaultPanel: that is an object inside the config, new on
+  // every save, so a save while this is open (deleting a template from its own
+  // … menu) re-read it and put the old choice back over the one just made.
+  const defaultPanelNow = useRef(defaultPanel);
+  defaultPanelNow.current = defaultPanel;
   useEffect(() => {
     if (deckKey === null) return;
     let alive = true;
-    const fallback = gridStateOf(defaultPanel);
+    const fallback = gridStateOf(defaultPanelNow.current);
     void window.deckhand.lastGrid(deckKey).then(
       (last) => {
         if (!alive) return;
         if (last?.size === 'blank') setBlank(true);
+        if (last?.size === 'template' && last.name) setTemplate(last.name);
         setGrid((g) => g ?? (last ? gridStateOfChoice(last) : fallback));
       },
       () => alive && setGrid((g) => g ?? fallback),
@@ -330,21 +344,38 @@ function AddPage({
     return () => {
       alive = false;
     };
-  }, [deckKey, defaultPanel]);
+  }, [deckKey]);
+
+  // Bounded to the window (it opens below the tabs, and the page never scrolls):
+  // the templates list scrolls inside it, so the oldest one and the button are
+  // always in reach. Measured while open, again on a resize; nothing at rest.
+  const box = useRef<HTMLSpanElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (deckKey === null) return;
+    const fit = () => {
+      const el = box.current;
+      if (el) setMaxHeight(Math.max(200, window.innerHeight - el.getBoundingClientRect().top - 24));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [deckKey]);
 
   const submit = async () => {
     // Not yet known (the daemon has not said the screen's size): the deck's default, as for any page made without a choice.
     // Blank: the page is made with the deck's default grid — what it keeps if it is left empty, since a layout
     // with no controls is never saved — and Edit layout shows it empty until a control is added (2026-11-18).
-    const panel = deckKey !== null && screen && grid && !blank ? panelOf(screen, grid) : undefined;
+    const panel = deckKey !== null && template ? pagePanelFromTemplate(template) : deckKey !== null && screen && grid && !blank ? panelOf(screen, grid) : undefined;
     const result = await onAdd(name, panel);
     if (!result.ok) {
       setError(result.error); // e.g. a name this deck already has; the field stays open
       return;
     }
-    if (deckKey !== null && blank) void window.deckhand.setLastGrid(deckKey, { size: 'blank' });
+    if (deckKey !== null && template) void window.deckhand.setLastGrid(deckKey, { size: 'template', name: template.name });
+    else if (deckKey !== null && blank) void window.deckhand.setLastGrid(deckKey, { size: 'blank' });
     else if (deckKey !== null && panel && grid) void window.deckhand.setLastGrid(deckKey, choiceOf(grid));
-    onAdded(result.page, deckKey !== null && blank);
+    onAdded(result.page, deckKey !== null && blank && !template);
   };
 
   const field = (
@@ -373,7 +404,7 @@ function AddPage({
     );
   }
   return (
-    <span className="add-page add-page-virtual" data-add-page="virtual">
+    <span className="add-page add-page-virtual" data-add-page="virtual" ref={box} style={{ maxHeight }}>
       {field}
       {screen && grid ? (
         <GridPicker
@@ -383,9 +414,36 @@ function AddPage({
           columns={grid.columns}
           onChange={(next) => {
             setBlank(false);
+            setTemplate(null);
             setGrid((g) => ({ ...(g ?? gridStateOf(undefined)), ...next }));
           }}
-          blank={{ chosen: blank, onChoose: () => setBlank(true) }}
+          blank={{
+            chosen: blank && !template,
+            onChoose: () => {
+              setTemplate(null);
+              setBlank(true);
+            },
+          }}
+          templates={{
+            list: templates,
+            chosen: chosenTemplate,
+            onChoose: (n) => {
+              setBlank(false);
+              setTemplate(n);
+            },
+            onRename: async (from, to) => {
+              const result = await window.deckhand.apply({ kind: 'renameTemplate', name: from, to });
+              if (!result.ok) return result.error;
+              if (chosenTemplate !== null && sameName(chosenTemplate, from)) setTemplate(to.trim());
+              return null;
+            },
+            onDelete: async (n) => {
+              const result = await window.deckhand.apply({ kind: 'deleteTemplate', name: n });
+              if (!result.ok) return result.error;
+              if (chosenTemplate !== null && sameName(chosenTemplate, n)) setTemplate(null);
+              return null;
+            },
+          }}
         />
       ) : (
         <span className="muted small">Asking the daemon for the screen's size…</span>
@@ -393,7 +451,7 @@ function AddPage({
       {error && <span className="field-error">{error}</span>}
       <span className="button-row">
         <button className="primary" disabled={disabled || name.trim() === ''} onClick={() => void submit()} data-add-page-submit>
-          {blank ? 'Start blank' : 'Add page'}
+          {template ? `Use ${template.name}` : blank ? 'Start blank' : 'Add page'}
         </button>
       </span>
     </span>
@@ -420,7 +478,7 @@ function PageTab({
   disabled: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  /** A virtual deck's page only: its layout is its own. Absent on a Stream Deck, whose menu is as it was. */
+  /** A virtual deck's grid page only (a custom page is changed in Edit layout alone). Absent on a Stream Deck, whose menu is as it was. */
   onChangeLayout?: () => void;
 }) {
   const [menu, setMenu] = useState(false);
@@ -585,7 +643,7 @@ function AddMenu({
   disabled: boolean;
   onAddPage: (name: string, panel?: PanelDef) => Promise<AddPageResult>;
   /** The deck being edited, when it is a virtual deck: its new page gets a grid picked here. */
-  virtualDeck: { key: string; defaultPanel: PanelDef | undefined } | null;
+  virtualDeck: { key: string; defaultPanel: PanelDef | undefined; templates: TemplateDef[] } | null;
   onPageAdded: (page: string, blank: boolean) => void;
   onAddProfile: (name: string, serials: string[]) => Promise<AddProfileResult>;
   onProfileAdded: (profile: string) => void;

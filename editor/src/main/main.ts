@@ -16,6 +16,7 @@ import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResul
 import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { cleanGridChoice, readGridChoices, withGridChoice } from '../shared/grid-choice.js';
+import { cleanGuides } from '../shared/layout-arrange.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
@@ -1284,6 +1285,12 @@ function registerIpc(): void {
     if (!fromOurWindow(event) || !validSerial(serial) || clean === null) return;
     await preferences.set({ lastGrids: withGridChoice(readGridChoices((await preferences.read()).lastGrids), serial, clean) });
   });
+  // Edit layout's Grid, its pitch, and Snap (shared/layout-arrange): global, like the canvas's.
+  ipcMain.handle('layoutGuides', async (event) => cleanGuides(fromOurWindow(event) ? (await preferences.read()).layoutGuides : null));
+  ipcMain.handle('setLayoutGuides', async (event, guides: unknown) => {
+    if (!fromOurWindow(event)) return;
+    await preferences.set({ layoutGuides: cleanGuides(guides) });
+  });
   // The decks locked in place on the canvas, by serial; global, like the positions.
   ipcMain.handle('lockedDecks', async (event) => {
     if (!fromOurWindow(event)) return [];
@@ -1556,12 +1563,15 @@ function startTrayCheck(): void {
     // Run script in a window's page, as a person clicking there would, and report what it returns.
     else if (command === 'editor-js' || command === 'settings-js') {
       const target = command === 'editor-js' ? window : settingsWindow;
-      const script = rest.join(' ');
+      // Wrapped so a throw in the page reports its own message: executeJavaScript
+      // gives every page exception as "Script failed to execute", which hid which
+      // step of a run had stopped and why.
+      const script = `(async () => { try { return { value: await (${rest.join(' ')}) }; } catch (e) { return { thrown: String((e && e.message) || e) }; } })()`;
       if (!target || target.isDestroyed()) trayCheckReport(command, { error: 'no such window' });
       else
         void target.webContents
           .executeJavaScript(script)
-          .then((result: unknown) => trayCheckReport(command, { result }))
+          .then((r: { value?: unknown; thrown?: string }) => trayCheckReport(command, r.thrown !== undefined ? { error: r.thrown } : { result: r.value }))
           .catch((err: unknown) => trayCheckReport(command, { error: err instanceof Error ? err.message : String(err) }));
     }
     // The editor's window as a PNG, for looking at what a check drove (check:layout).

@@ -102,8 +102,8 @@ export type Edit =
    * Edit layout's save (round 2a): one page of a virtual deck given a custom
    * layout — its panel, and its keys whole, each by a control on that panel.
    * **Refused for a panel with no controls**: a layout with no controls is
-   * never saved (Ryan, 2026-11-18). Making a preset custom is this, with the
-   * same controls and keys.
+   * never saved (Ryan, 2026-11-18). A grid page with keys is never made custom
+   * (Ryan, 2026-11-20): only one with none, a new page started from Blank.
    */
   | { kind: 'setLayout'; profile: string; serial: string; page: string; panel: PanelDef; buttons: Record<string, ButtonDef> }
   /**
@@ -112,6 +112,16 @@ export type Edit =
    * controls (never saved empty: it goes back instead, 2026-11-18).
    */
   | { kind: 'restorePage'; profile: string; serial: string; page: string; panel: PanelDef; buttons: Record<string, ButtonDef> }
+  /**
+   * Save as template (round 2b): this layout — places, sizes and shapes only
+   * (shared/templates.ts) — under a name, newest last. A name in use is
+   * refused unless `replace`, which replaces that template.
+   */
+  | { kind: 'saveTemplate'; name: string; panel: PanelDef; replace: boolean }
+  /** A template renamed from the picker; refused onto another's name. */
+  | { kind: 'renameTemplate'; name: string; to: string }
+  /** A template deleted from the picker. Pages made from it are not changed: they were never linked. */
+  | { kind: 'deleteTemplate'; name: string }
   /**
    * Delete a page. Keys in the same
    * layout that navigated to it lose that action — a `page` action with a

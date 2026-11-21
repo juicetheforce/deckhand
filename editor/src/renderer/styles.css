@@ -2419,6 +2419,27 @@ button:disabled {
   width: auto;
 }
 
+/* Bounded to the window (AddPage sets max-height): only the templates list gives way, and scrolls. */
+.add-page.add-page-virtual {
+  min-height: 0;
+}
+
+.add-page-virtual > *,
+.add-page-virtual .vd-sizes > * {
+  flex-shrink: 0;
+}
+
+.add-page-virtual > .vd-sizes {
+  flex-shrink: 1;
+  min-height: 0;
+}
+
+.add-page-virtual .vd-sizes > .vd-templates {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .add-page-virtual .button-row {
   justify-content: flex-end;
 }
@@ -4149,13 +4170,10 @@ body.settings-body {
   stroke-dasharray: 6 5;
 }
 
-/* Edit layout, on a virtual deck's header: lit while the mode is open (19b). */
-.deck-panel-edit-wrap {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.deck-panel-edit-layout {
+/* Edit layout, on a virtual deck's header: lit while the mode is open (19b); Discard changes and Done beside it then. */
+.deck-panel-edit-layout,
+.deck-panel-discard,
+.deck-panel-done {
   flex-shrink: 0;
   color: var(--text);
   background: rgba(255, 255, 255, 0.06);
@@ -4165,7 +4183,8 @@ body.settings-body {
   white-space: nowrap;
 }
 
-.deck-panel-edit-layout:not(:disabled):hover {
+.deck-panel-edit-layout:not(:disabled):hover,
+.deck-panel-discard:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -4175,16 +4194,17 @@ body.settings-body {
   border-color: var(--accent);
 }
 
-/* The preset-to-custom question, under the button (21e). In the window: the deck's frame clips. */
-.edit-layout-confirm {
-  position: fixed;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 280px;
-  padding: 12px 14px;
-  border-radius: 12px;
+/* Done: the way out, the primary button in the accent colour (Ryan, 2026-11-20). */
+.deck-panel-done {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 5px 14px;
+}
+
+.deck-panel-done:hover {
+  filter: brightness(1.12);
 }
 
 /* ---- Edit layout (round 2a; boards 21–23) ---- */
@@ -4280,6 +4300,112 @@ body.settings-body {
 }
 
 /* Where a control is, or how big, while it is dragged (22a, 22b). */
+/* Several selected (22c): each one's frame, no handles. */
+.layout-selection-several {
+  outline-style: solid;
+  outline-width: 1.5px;
+}
+
+/* The grid's lines (22g), drawn only in the editor, behind the controls. */
+.layout-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-position: 0 0;
+}
+
+/* A snap guide while dragging (22a): dashed, across the whole panel, with what it is. */
+.layout-snap {
+  position: absolute;
+  pointer-events: none;
+}
+
+.layout-snap-x {
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed #ff8fb0;
+}
+
+.layout-snap-y {
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #ff8fb0;
+}
+
+.layout-snap-label {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(10, 10, 16, 0.85);
+  color: #ffc2d4;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* The marquee (22c). */
+.layout-marquee {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: rgba(91, 110, 232, 0.12);
+  pointer-events: none;
+}
+
+/* Grid and Snap at the foot of the canvas (22g), left of the zoom bar. */
+.layout-guides {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.layout-guides-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layout-guides-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.layout-guides-pitch {
+  width: 64px;
+}
+
+/* Align's six buttons (22d). */
+.layout-align {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.layout-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+}
+
+.layout-tool:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .layout-readout {
   position: absolute;
   margin: -22px 0 0 6px;
@@ -4367,4 +4493,170 @@ body.settings-body {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+/* ---- Templates (round 2b; boards 20a–20g, 21g, 24c) ---- */
+
+/* The picker's templates: after Blank, newest first. */
+.vd-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.vd-templates-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.vd-template {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.vd-template-choice {
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.vd-template-rename {
+  width: 150px;
+}
+
+/* The … menu: quiet until the row is hovered or the menu open (20f). */
+.vd-template-more {
+  padding: 0 7px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  opacity: 0;
+}
+
+.vd-template:hover .vd-template-more,
+.vd-template-more:focus-visible,
+.vd-template-more[aria-expanded='true'] {
+  opacity: 1;
+  border-color: var(--glass-border);
+}
+
+.vd-template-menu {
+  left: auto;
+  right: 0;
+}
+
+.vd-template-delete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(232, 90, 110, 0.08);
+}
+
+/* A template drawn small at this screen's proportions, controls plain (20g). */
+.template-preview {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+}
+
+.template-preview-control {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* Save as template, in the mode bar (21g). */
+.mode-bar-template,
+.mode-bar-template-form button {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.mode-bar-template[data-save-template='saved'] {
+  color: var(--green, #5fd38d);
+}
+
+.mode-bar-template-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-bar-template-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.mode-bar-template-field .sp-input {
+  width: 160px;
+}
+
+.mode-bar-template-clash {
+  color: var(--amber);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mode-bar-template-form .mode-bar-template-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* A layout made for another screen size (24c): the screen drawn whole, the layout's own area dashed inside it. */
+.layout-screen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.layout-canvas-other {
+  margin: 0;
+  outline: 1px dashed rgba(255, 255, 255, 0.45);
+}
+
+/* The chip at the canvas's top-left (24c). */
+.made-for {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.made-for b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

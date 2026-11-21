@@ -5,6 +5,7 @@ import { cornerRadius, fillsBox, innerRect, shapeName, shapePath } from '../../.
 import type { LiveFace } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
+import { positionedBox } from '../shared/templates.js';
 import { actionName } from './catalogue.js';
 import { keyUnder, type KeyRef } from './keyUnder.js';
 import { actionIncomplete, describeAction, integrationOf, INTEGRATIONS, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
@@ -46,6 +47,8 @@ interface Props {
    * scaled to fit and centred. Absent, it takes its frame's width.
    */
   box?: { width: number; height: number };
+  /** A virtual deck's screen, when known: a layout made for another size is fitted inside it, as on the deck and in Edit layout. */
+  screen?: { width: number; height: number } | null;
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
@@ -176,12 +179,12 @@ function scaled(scale: number): CSSProperties {
   return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box, screen }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   // A virtual deck: every page drawn as its panel places it (round 2a). A Stream Deck: its grid, as always.
   const canvas = geometry.units === 'pixels' && geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0 ? geometry.canvas : null;
   const gridStyle: CSSProperties = canvas
-    ? positionedBox(canvas, box)
+    ? positionedBox(canvas, box, screen)
     : {
         gridTemplateColumns: `repeat(${geometry.columns}, minmax(0, 1fr))`,
         gridTemplateRows: `repeat(${geometry.rows}, auto)`,
@@ -437,8 +440,3 @@ function iconBox(place: Place, scale: number): CSSProperties {
 }
 
 /** The panel drawn at its own proportions, as large as fits the room it has, centred. */
-function positionedBox(canvas: { width: number; height: number }, room: { width: number; height: number } | undefined): CSSProperties {
-  if (!room) return { width: '100%', aspectRatio: `${canvas.width} / ${canvas.height}` };
-  const scale = Math.min(room.width / canvas.width, room.height / canvas.height);
-  return { width: Math.floor(canvas.width * scale), height: Math.floor(canvas.height * scale) };
-}

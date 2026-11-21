@@ -17,6 +17,7 @@ import type { ApplyResult, ButtonLocation, Edit, IconChoice } from './edits.js';
 import type { PairIconField } from './icons.js';
 import type { DeckPositions } from './deck-positions.js';
 import type { GridChoice } from './grid-choice.js';
+import type { Guides } from './layout-arrange.js';
 
 /** config.json changed on disk while the editor had unsaved edits. */
 /** `defaults.sleep`, as stored. */
@@ -277,6 +278,9 @@ export interface DeckhandBridge {
    */
   lastGrid(serial: string): Promise<GridChoice | null>;
   setLastGrid(serial: string, choice: GridChoice): Promise<void>;
+  /** Edit layout's Grid, its pitch, and Snap (shared/layout-arrange): remembered for every deck. Editor preferences, never config.json. */
+  layoutGuides(): Promise<Guides>;
+  setLayoutGuides(guides: Guides): Promise<void>;
   /** The decks locked in place on the canvas, by serial: their headers start no drag. Global; never config.json. */
   lockedDecks(): Promise<string[]>;
   setLockedDecks(serials: string[]): Promise<void>;
