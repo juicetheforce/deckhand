@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { Placement } from './DeckCanvas.js';
 import { Dropdown } from './Dropdown.js';
 import { LockIcon } from './icons.js';
@@ -55,15 +55,32 @@ interface Props {
  * tabs stay for the focused deck, for quick switching. What exists only to
  * arrange several decks — the grip, the Editing marker, the lock — is drawn
  * only with two or more (`data-multideck`, which check:one-deck counts).
- * Clicking its name focuses the deck; dragging its header moves it on the
- * canvas (DeckCanvas.tsx).
+ * **Any click on the frame that is not a drag focuses the deck** — its header,
+ * its name, any empty part of the frame (Ryan, 2026-11-20); a key's own click
+ * focuses it as before, and what is a control of its own (a button, the Page
+ * ▾) does its own job. Dragging its header moves it on the canvas
+ * (DeckCanvas.tsx).
  */
+/** A press that moves this far is a drag, and its click focuses nothing (DeckCanvas.tsx DRAG_START_PX). */
+const CLICK_SLOP_PX = 4;
+/** What does its own job when clicked, so a click on it is not a click on the frame. */
+const OWN_CLICK = 'button, input, select, textarea, label, a, [data-dropdown], [role="listbox"], [role="option"], .key';
+
 /** A deck name gets this much of its own width at most when the frame is widened for the header; longer ones end in an ellipsis. */
 const NAME_ROOM_PX = 160;
 
 export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, onChangeLayout, editLayout, pageLocked = false, onHeaderNeed, children, placement }: Props) {
   const { arrange } = placement;
   const header = useRef<HTMLElement>(null);
+  /** Where the last press on the frame began, to tell a click from a drag. */
+  const pressedAt = useRef<{ x: number; y: number } | null>(null);
+  const clickFrame = (e: ReactMouseEvent<HTMLElement>) => {
+    const from = pressedAt.current;
+    pressedAt.current = null;
+    if (focused || e.button !== 0 || (e.target as Element).closest(OWN_CLICK)) return;
+    if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) >= CLICK_SLOP_PX) return;
+    onFocus();
+  };
   // The header's need, measured where layout is known: offsetWidth ignores the canvas's zoom.
   useLayoutEffect(() => {
     const el = header.current;
@@ -88,7 +105,15 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
     .filter(Boolean)
     .join(' ');
   return (
-    <section className={classes} data-deck-panel={serial} style={placement.style}>
+    <section
+      className={classes}
+      data-deck-panel={serial}
+      style={placement.style}
+      onPointerDownCapture={(e) => {
+        pressedAt.current = { x: e.clientX, y: e.clientY };
+      }}
+      onClick={clickFrame}
+    >
       <header ref={header} className="deck-panel-header" onPointerDown={arrange ? placement.onGrab : undefined} title={arrange && !placement.locked ? 'Drag to move' : undefined}>
         {arrange && !placement.locked && (
           <span className="deck-panel-grip" aria-hidden="true" data-multideck="">

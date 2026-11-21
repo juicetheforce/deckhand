@@ -892,8 +892,7 @@ function Editor({
               <DeckCanvas
                 decks={canvasDecks}
                 several={several}
-                zoomable={mode !== null}
-                fitKey={mode ? 'edit-layout' : ''}
+                editing={mode !== null}
                 positions={positions}
                 onMove={moveDecks}
                 locked={locked}

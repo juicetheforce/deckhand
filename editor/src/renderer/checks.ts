@@ -1847,7 +1847,69 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
     const narrow = placement();
     well.style.maxWidth = '';
     await until(() => Math.abs(zoom() - atRest.zoom) < 0.001, 3_000);
-    out.canvas = { atRest, afterDrag, narrow, restored: placement() };
+    const restored = placement();
+    // The zoom bar with one deck (Ryan, 2026-11-20): a zoom the person sets holds through a
+    // resize, the canvas scrolls to every part of the deck, and Fit brings Fit back.
+    const zoomButton = (label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>('.canvas-zoom button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent) === label) ?? null;
+    let zoomed: Record<string, unknown> | null = null;
+    if (zoomButton('Zoom in') && zoomButton('Fit')) {
+      zoomButton('Reset')!.click();
+      await until(() => zoom() === 1, 2_000);
+      zoomButton('Zoom in')!.click();
+      zoomButton('Zoom in')!.click();
+      await until(() => zoom() > 1.4, 2_000);
+      const set = zoom();
+      const viewport = document.querySelector<HTMLElement>('.canvas-viewport')!;
+      /**
+       * Resize the well and wait until the canvas has seen it: an observer of the
+       * check's own, registered after the canvas's, fires in the same step after
+       * it — in a window not on screen that can take a second, so a fixed sleep
+       * read the zoom before anything had run.
+       */
+      const resizeWell = async (width: string, height: string) => {
+        const before = `${viewport.clientWidth}x${viewport.clientHeight}`;
+        let seen = false;
+        const watch = new ResizeObserver(() => {
+          if (`${viewport.clientWidth}x${viewport.clientHeight}` !== before) seen = true;
+        });
+        watch.observe(viewport);
+        well.style.maxWidth = width;
+        well.style.maxHeight = height;
+        const observed = await until(() => seen, 5_000);
+        watch.disconnect();
+        await sleep(150);
+        return observed;
+      };
+      // A small canvas, as a small window makes it: the deck larger than it both ways.
+      const shrunk = await resizeWell('360px', '240px');
+      const afterResize = zoom();
+      const style = getComputedStyle(viewport);
+      // Scrollable by a person, not only by setting scrollLeft (which works on overflow: hidden too).
+      const scrollable = (overflow: string) => overflow === 'auto' || overflow === 'scroll';
+      const scrolls = {
+        across: viewport.scrollWidth > viewport.clientWidth && scrollable(style.overflowX),
+        down: viewport.scrollHeight > viewport.clientHeight && scrollable(style.overflowY),
+      };
+      // Scrolled to its far corner, the deck's far corner is in view; at the start, its near one.
+      viewport.scrollLeft = viewport.scrollWidth;
+      viewport.scrollTop = viewport.scrollHeight;
+      await sleep(50);
+      const v = viewport.getBoundingClientRect();
+      const f = panel()!.getBoundingClientRect();
+      const farCorner = f.right <= v.right + 1 && f.right >= v.left && f.bottom <= v.bottom + 1 && f.bottom >= v.top;
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+      await sleep(50);
+      const g = panel()!.getBoundingClientRect();
+      const nearCorner = g.left >= v.left - 1 && g.top >= v.top - 1;
+      const widened = await resizeWell('', '');
+      const afterWiden = zoom();
+      zoomButton('Fit')!.click();
+      await until(() => Math.abs(zoom() - atRest.zoom) < 0.001, 2_000);
+      zoomed = { set, resized: shrunk && widened, afterResize, afterWiden, scrolls, farCorner, nearCorner, fitAgain: zoom(), label: document.querySelector('.canvas-zoom-text')?.textContent ?? null };
+    }
+    out.canvas = { atRest, afterDrag, narrow, restored, zoomed };
   }
 
   // 2. A page tab switches the grid and the deck, and the header's Page ▾ follows it.
@@ -2316,6 +2378,8 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     }));
     const refused = panel(V2)!.classList.contains('deck-panel-refused');
     send('pointerup', grip.x + dx, grip.y + dy);
+    // A browser ends a press with a click, drag or not: a drag must not focus the deck by it.
+    header.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: grip.x + dx, clientY: grip.y + dy, button: 0 }));
     await sleep(120);
     return { guides, refused, guidesAfter: document.querySelectorAll('.canvas-guide').length };
   };
@@ -2351,6 +2415,48 @@ async function multiDeck(api: DeckhandBridge, out: Record<string, unknown>): Pro
     focused: layout().focused,
     configUnchanged: (await configNow()) === configBefore,
   };
+
+  // Clicking a deck selects it (Ryan, 2026-11-20): any click on its frame that is
+  // not a drag — the header bar, any empty part of the frame — focuses it; a
+  // control of its own, such as the Page ▾, does only its own job. A real click
+  // at a real point: a press, then the click on what is there.
+  const clickAt = (x: number, y: number) => {
+    const target = document.elementFromPoint(x, y) ?? document.body;
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 11, button: 0, isPrimary: true }));
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 11, button: 0, isPrimary: true }));
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
+    return target.className || target.tagName;
+  };
+  const focusBy = async (serial: string, at: () => { x: number; y: number }) => {
+    const p = at();
+    const target = clickAt(p.x, p.y);
+    const focused = await until(() => layout().focused === serial, 2_000);
+    return { target: String(target), focused };
+  };
+  const pageMenuOf = (serial: string) => panel(serial)!.querySelector<HTMLElement>('.deck-panel-page [data-dropdown]')!;
+  const v2PageMenu = centre(pageMenuOf(V2));
+  clickAt(v2PageMenu.x, v2PageMenu.y);
+  await sleep(150);
+  const pageMenuFocused = layout().focused;
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  await sleep(100);
+  const spacer = () => centre(panel(V2)!.querySelector('.deck-panel-header .toolbar-spacer')!);
+  out.frameClick = {
+    pageMenu: pageMenuFocused,
+    headerBar: await focusBy(V2, spacer),
+    // The frame's empty foot, below the grid: the panel's bottom edge, inside its border.
+    frameFoot: await focusBy(XL, () => {
+      const r = rectOf(panel(XL)!);
+      return { x: r.left + r.width / 2, y: r.bottom - 5 };
+    }),
+    size: await focusBy(V2, () => centre(panel(V2)!.querySelector('.deck-panel-size')!)),
+  };
+  // Back as the steps below expect it: the XL focused.
+  await focusBy(XL, () => {
+    const r = rectOf(panel(XL)!);
+    return { x: r.left + 6, y: r.top + r.height / 2 };
+  });
 
   // Dropped onto the XL: butted against the edge the pointer is nearest, a
   // gutter apart, its column kept — not the side it came from (a deck held

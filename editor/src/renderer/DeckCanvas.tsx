@@ -52,18 +52,15 @@ interface Props {
   onLock: (serial: string, locked: boolean, positions: DeckPositions) => void;
   panel: (serial: string, placement: Placement) => ReactNode;
   /**
-   * Two or more decks shown. With one, there is nothing to arrange: no
-   * dragging, no zoom bar, and it is kept at Fit as the window changes size.
+   * Two or more decks shown: there is something to arrange, so dragging and
+   * the lock. The zoom bar is shown either way (Ryan, 2026-11-20).
    */
   several: boolean;
   /**
-   * Edit layout is open: the zoom bar is shown even for one deck, so small
-   * controls can be placed closely, and nothing refits it under the person
-   * (Ryan, 2026-11-18). Leaving goes back to Fit.
+   * Edit layout is open. Entering fits the deck being edited; leaving puts back
+   * the zoom from before entering (Ryan, 2026-11-20), or Fit if there was none.
    */
-  zoomable?: boolean;
-  /** Changing this fits again, as the shown decks changing does: opening and leaving Edit layout. */
-  fitKey?: string;
+  editing?: boolean;
 }
 
 interface Drag {
@@ -101,13 +98,24 @@ const DRAG_START_PX = 4;
  * decks change, never above 100%, and not otherwise changed under the
  * person (never on a resize).
  *
- * One deck has nothing to arrange: it sits centred at Fit, never above 100%,
- * with no zoom bar, no dragging and no lock. With no zoom bar the person
- * cannot change its zoom, so it is fitted again when the window changes size.
+ * The zoom bar is shown one deck or several, in normal use and in Edit layout,
+ * with one set of rules (Ryan, 2026-11-20): the view opens at Fit, never
+ * above 100%; **a zoom the person sets holds through window resizes** until
+ * Fit brings Fit back, and while at Fit a resize fits again; leaving Edit
+ * layout returns to the zoom from before entering; zoomed in, the canvas
+ * scrolls to every part of a deck. Only dragging and the lock wait for two or
+ * more decks: a lone deck has nothing to arrange.
  */
-export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, several, zoomable = false, fitKey = '' }: Props) {
+export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, several, editing = false }: Props) {
   const viewport = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoomState] = useState(1);
+  /** The person set the zoom (−, +, Reset): it holds through resizes until Fit. */
+  const manual = useRef(false);
+  /** A zoom the person asks for. */
+  const setZoom = (next: number | ((z: number) => number)) => {
+    manual.current = true;
+    setZoomState(next);
+  };
   // The drag lives in a ref, read by the pointer handlers: a pointerup can
   // arrive before React has drawn the last move, and a handler reading state
   // would drop the deck a move behind. The state copy is only for drawing.
@@ -131,23 +139,47 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, se
   const fit = () => {
     const el = viewport.current;
     if (!el) return;
+    manual.current = false;
     const resting = union(decks.filter((d) => placed[d.serial]).map((d) => panelRect(placed[d.serial], d.size)));
-    setZoom(fitZoom(resting, { width: el.clientWidth, height: el.clientHeight }));
+    setZoomState(fitZoom(resting, { width: el.clientWidth, height: el.clientHeight }));
   };
-  // On opening and whenever the shown decks change — never on a resize,
-  // and not as a drag moves the bounds: nothing rescales under the person.
-  const shownKey = `${fitKey}|${decks.map((d) => `${d.serial}:${d.size.columns}x${d.size.rows}`).join(',')}`;
-  useLayoutEffect(fit, [shownKey]);
-  // One deck: kept at Fit as the window changes size. Never with several — a manual zoom holds there.
   const fitRef = useRef(fit);
   fitRef.current = fit;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  // Fit when the shown decks change and on opening; a deck changing size (another
+  // page's grid) fits again only while nobody has set a zoom. Edit layout fits the
+  // deck being edited on entering, and on leaving puts back the zoom from before.
+  const serialsKey = decks.map((d) => d.serial).join(',');
+  const sizesKey = decks.map((d) => `${d.size.columns}x${d.size.rows}`).join(',');
+  const before = useRef<{ serials: string; sizes: string; editing: boolean } | null>(null);
+  const beforeEditing = useRef<{ zoom: number; manual: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const last = before.current;
+    before.current = { serials: serialsKey, sizes: sizesKey, editing };
+    if (last && editing && !last.editing) {
+      beforeEditing.current = { zoom: zoomRef.current, manual: manual.current };
+      fit();
+    } else if (last && !editing && last.editing && beforeEditing.current) {
+      const kept = beforeEditing.current;
+      beforeEditing.current = null;
+      if (kept.manual) {
+        manual.current = true;
+        setZoomState(kept.zoom);
+      } else fit();
+    } else if (!last || last.serials !== serialsKey || !manual.current) fit();
+  }, [serialsKey, sizesKey, editing]);
+  // A resize fits again only while at Fit: a zoom the person set holds (never during a drag).
   useEffect(() => {
     const el = viewport.current;
-    if (several || zoomable || !el) return;
-    const observer = new ResizeObserver(() => fitRef.current());
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      if (!manual.current && !dragRef.current) fitRef.current();
+    });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [several, zoomable]);
+  }, []);
 
   if (!bounds) return null;
   const frame = drag?.frame ?? bounds;
@@ -253,25 +285,23 @@ export function DeckCanvas({ decks, positions, onMove, locked, onLock, panel, se
           </div>
         </div>
       </div>
-      {(several || zoomable) && (
-        <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom" data-multideck={several ? '' : undefined} data-zoom-bar="">
-          <button className="canvas-zoom-step" aria-label="Zoom out" onClick={() => setZoom(zoomOut)}>
-            −
-          </button>
-          <span className="canvas-zoom-level" aria-live="polite">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button className="canvas-zoom-step" aria-label="Zoom in" onClick={() => setZoom(zoomIn)}>
-            +
-          </button>
-          <button className="canvas-zoom-text" onClick={fit}>
-            {several ? 'Fit all' : 'Fit'}
-          </button>
-          <button className="canvas-zoom-text canvas-zoom-reset" title="Zoom to 100%" onClick={() => setZoom(1)}>
-            Reset
-          </button>
-        </div>
-      )}
+      <div className="canvas-zoom glass" role="toolbar" aria-label="Zoom" data-zoom-bar="">
+        <button className="canvas-zoom-step" aria-label="Zoom out" onClick={() => setZoom(zoomOut)}>
+          −
+        </button>
+        <span className="canvas-zoom-level" aria-live="polite">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button className="canvas-zoom-step" aria-label="Zoom in" onClick={() => setZoom(zoomIn)}>
+          +
+        </button>
+        <button className="canvas-zoom-text" onClick={fit}>
+          {several ? 'Fit all' : 'Fit'}
+        </button>
+        <button className="canvas-zoom-text canvas-zoom-reset" title="Zoom to 100%" onClick={() => setZoom(1)}>
+          Reset
+        </button>
+      </div>
     </div>
   );
 }
