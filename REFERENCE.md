@@ -1316,7 +1316,15 @@ Each has been hit more than once.
   one taken and let go (`freePort`) for "nothing listening".
 - **`inPage` sends a page script as one line**, so a `//` comment in it
   swallows everything after it; the script then "failed to execute" with no
-  message. Use `/* */`, or keep comments outside the string.
+  message. Use `/* */`, or keep comments outside the string. An exception
+  thrown by a script that runs is reported with its own message (`no
+  <selector>` from a click on nothing); Electron's `executeJavaScript` alone
+  gives every one as "Script failed to execute", so the check mode catches it
+  in the page first.
+- **`until` returns `false` when it times out; it does not throw.** A step
+  whose wait timed out goes on, and the run stops at a later step, on its
+  consequence. Record what each wait returns, and read the record ("recorded
+  so far") from the first `false`, not the step named.
 - **`elementFromPoint` finds nothing off-screen.** A pointer drag from a
   library row below the fold of its pane never starts, so "the drop placed
   nothing" passes whether or not the code blocked it. Scroll the row into
