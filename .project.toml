@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Open the round 2b pull request (round/precision-and-templates, refused in-session by a permission check), then Codex review and the 2b test list on the 10.3\" panel. Nothing released until v2 is done."
+next = "Ryan looks at test 5 on the 10.3\" panel (a page from the 2560 x 720 template); Codex reviews PR #9; then merge 2b. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -45,5 +45,5 @@ Release hold (2026-11-18): nothing released until editor v2 is complete; rounds 
 Frame round (PR #7, 2026-11-18): every deck always in its frame with its header, one deck or several; tested and merged, not released.
 Round 2 split (2026-11-18): 2a = shapes (rectangle, round, hexagon), overlap and Edit layout by hand, opened as PR #8; 2b = grid, snap, multi-select, align, templates.
 Round 2a merged 2026-11-20 (PR #8), not released: tested on the 10.3" panel, plus an outline on every virtual-deck button and keys landing only on existing controls on custom pages.
-Round 2b built 2026-11-20, branch pushed, PR to open: a page is a grid or custom for its whole life (no conversion); Done on the deck's header; grid, snap, Shift, nudging, multi-select with align/distribute/match; templates in config.json.
+Round 2b built 2026-11-20, PR #9: a page is a grid or custom for its whole life (no conversion); Done on the deck's header; grid, snap, Shift, nudging, multi-select with align/distribute/match; templates in config.json. Ryan's tests 1-4 passed on the 10.3" panel; all 15 calls accepted. The intermittent check:layout failure was a real New page bug (a save while it was open undid the choice), fixed.
 """
