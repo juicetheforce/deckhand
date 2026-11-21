@@ -2419,6 +2419,27 @@ button:disabled {
   width: auto;
 }
 
+/* Bounded to the window (AddPage sets max-height): only the templates list gives way, and scrolls. */
+.add-page.add-page-virtual {
+  min-height: 0;
+}
+
+.add-page-virtual > *,
+.add-page-virtual .vd-sizes > * {
+  flex-shrink: 0;
+}
+
+.add-page-virtual > .vd-sizes {
+  flex-shrink: 1;
+  min-height: 0;
+}
+
+.add-page-virtual .vd-sizes > .vd-templates {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .add-page-virtual .button-row {
   justify-content: flex-end;
 }

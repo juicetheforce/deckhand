@@ -7,7 +7,7 @@ import type { ButtonDef, Config, PageDef, PanelControlDef, PanelDef } from '../.
 import { bringToFront, controlNames, HANDLES, overlaps, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
 import { align, ALIGNMENTS, distribute, GRID_PITCHES, groupPosition, inMarquee, match, MAX_PITCH, MIN_PITCH, moveGroupTo, placeGroup, placeMoved, placeResized, SNAP_SCREEN_PX, snapTargets, type Alignment, type Guides, type Placing, type SnapGuide } from '../shared/layout-arrange.js';
 import { Dropdown } from './Dropdown.js';
-import { fitScale, madeForAnother } from '../shared/templates.js';
+import { layoutScale, madeForAnother } from '../shared/templates.js';
 import { Switch } from './settings-ui.js';
 import { describeAction, keyKind, type AppIcons } from './model.js';
 import { Key, placeOf } from './DeckGrid.js';
@@ -109,7 +109,7 @@ export function LayoutCanvas({
   const other = madeForAnother(size, screen) ? screen! : null;
   // On another screen size: the screen fitted to the room, then the layout at the one scale the deck uses.
   const screenScale = other ? Math.min(box.width / other.width, box.height / other.height) : 0;
-  const scale = other ? screenScale * fitScale(size, other) : Math.min(box.width / size.width, box.height / size.height);
+  const scale = layoutScale(size, box, screen);
   const style: CSSProperties = { width: Math.floor(size.width * scale), height: Math.floor(size.height * scale) };
   const geometry = geometryOfPanel(shown, '');
   const names = controlNames(shown);

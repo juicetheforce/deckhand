@@ -762,6 +762,7 @@ function Editor({
         }
         onKeyDragOver={setKeyDragOver}
         box={room}
+        screen={config.decks?.[serial]?.virtual ? screenOf(serial) : null}
         dropTarget={
           actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
         }

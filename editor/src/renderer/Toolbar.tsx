@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Dropdown } from './Dropdown.js';
 import { SettingsGlyph } from './SettingsWindow.js';
 import { UpdatePill } from './UpdatePill.js';
@@ -346,6 +346,22 @@ function AddPage({
     };
   }, [deckKey]);
 
+  // Bounded to the window (it opens below the tabs, and the page never scrolls):
+  // the templates list scrolls inside it, so the oldest one and the button are
+  // always in reach. Measured while open, again on a resize; nothing at rest.
+  const box = useRef<HTMLSpanElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (deckKey === null) return;
+    const fit = () => {
+      const el = box.current;
+      if (el) setMaxHeight(Math.max(200, window.innerHeight - el.getBoundingClientRect().top - 24));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [deckKey]);
+
   const submit = async () => {
     // Not yet known (the daemon has not said the screen's size): the deck's default, as for any page made without a choice.
     // Blank: the page is made with the deck's default grid — what it keeps if it is left empty, since a layout
@@ -388,7 +404,7 @@ function AddPage({
     );
   }
   return (
-    <span className="add-page add-page-virtual" data-add-page="virtual">
+    <span className="add-page add-page-virtual" data-add-page="virtual" ref={box} style={{ maxHeight }}>
       {field}
       {screen && grid ? (
         <GridPicker

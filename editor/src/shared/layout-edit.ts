@@ -176,14 +176,17 @@ export function deleteControl(panel: PanelDef, id: string): PanelDef {
 
 /**
  * Duplicate with several selected: one copy of each, offset by one grid step,
- * each carrying its key; the copies in the order of the originals, on top.
+ * each carrying its key; the copies in the order of the originals, on top —
+ * the panel's order, never the order they were selected in, so overlapping
+ * copies stack, and take touches, as the originals do.
  */
 export function duplicateControls(panel: PanelDef, page: PageDef, ids: ReadonlyArray<string>, also: Iterable<string> = [], offset = DUPLICATE_OFFSET): { panel: PanelDef; ids: string[]; buttons: Record<string, ButtonDef> } {
   const taken = [...also];
   let out = panel;
   const made: string[] = [];
   const buttons: Record<string, ButtonDef> = {};
-  for (const id of ids) {
+  const chosen = new Set(ids);
+  for (const id of panel.controls.filter((c) => chosen.has(c.id)).map((c) => c.id)) {
     const copy = duplicateControl(out, page, id, taken, offset);
     if (!copy) continue;
     out = copy.panel;

@@ -663,6 +663,29 @@ await until(async () => !(await inMode()));
 r.noChipOutside = !(await exists('[data-made-for]'));
 await inEditor(`(() => { [...document.querySelectorAll('.tabs [data-tab]')].find((t) => t.dataset.tab === 'Main').click(); return true; })()`);
 await until(async () => (await count('.well [data-key]')) === 24);
+// Many templates: New page stays inside the window, its list scrolling inside it — never the page, which
+// does not scroll — so the oldest template and the Add page button can both be reached and pressed.
+const MANY = Array.from({ length: 30 }, (_, i) => `Many ${i}`);
+for (const name of MANY) await inEditor(`window.deckhand.apply({ kind: 'saveTemplate', name: ${JSON.stringify(name)}, replace: false, panel: { size: { width: 1920, height: 720 }, preset: 'free', controls: [{ id: 'c1', x: 0, y: 0, w: 100, h: 100 }] } })`);
+await until(async () => (await templatesOnDisk()).length >= 30);
+await openNewPage();
+await until(async () => (await count('[data-add-page] [data-template]')) >= 30);
+r.manyTemplates = await inEditor(`(() => {
+  const inView = (el) => { const b = el.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth; };
+  const pressable = (el) => { const b = el.getBoundingClientRect(); const at = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return inView(el) && at !== null && (at === el || el.contains(at)); };
+  const rows = document.querySelectorAll('[data-add-page] [data-template]');
+  const oldest = rows[rows.length - 1].querySelector('input[type=radio]').closest('label');
+  let box = oldest.parentElement;
+  while (box && box !== document.body && !(['auto', 'scroll'].includes(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight)) box = box.parentElement;
+  const scrolls = box !== null && box !== document.body && box.closest('[data-add-page]') !== null;
+  if (scrolls) box.scrollTop = box.scrollHeight;
+  return { window: [innerWidth, innerHeight], submit: pressable(document.querySelector('[data-add-page-submit]')), oldest: pressable(oldest), scrolls, popupInWindow: inView(document.querySelector('.add-panel')) };
+})()`);
+await shot('12-many-templates');
+await inEditor("(() => { document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); return true; })()");
+await until(async () => !(await exists('[data-add-page]')), 2000);
+for (const name of MANY) await inEditor(`window.deckhand.apply({ kind: 'deleteTemplate', name: ${JSON.stringify(name)} })`);
+await until(async () => (await templatesOnDisk()).every((t) => !t.name.startsWith('Many ')));
 
 // ---- BLANK FROM NEW PAGE ----
 await click('.tab-add');
@@ -1040,6 +1063,9 @@ check('rename in place and Delete… from the picker; the page made from it unch
   assert.match(r.deleteAskText, /Delete Desk\? Pages made from it are not changed\./);
   assert.equal(r.deletedTemplate, true);
   assert.equal(r.pageUnchanged, true);
+});
+check('New page with 30 templates stays inside the window: its list scrolls, the oldest and the button can be pressed', () => {
+  assert.deepEqual(r.manyTemplates, { window: [1400, 900], submit: true, oldest: true, scrolls: true, popupInWindow: true });
 });
 check('a choice made in New page survives a save while it is open (deleting another template)', () => {
   assert.equal(r.choiceKept, 'Wide');

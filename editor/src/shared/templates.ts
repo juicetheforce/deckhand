@@ -96,3 +96,22 @@ export function fitScale(layout: { width: number; height: number }, screen: { wi
 export function madeForAnother(layout: { width: number; height: number }, screen: { width: number; height: number } | null | undefined): boolean {
   return !!screen && (layout.width !== screen.width || layout.height !== screen.height);
 }
+
+/**
+ * The scale a layout is drawn at in a room on the editor's canvas: fitted to
+ * the room — or, when it was made for another screen size, the screen fitted
+ * to the room and the layout inside the screen, the one scale the deck uses.
+ * Never the layout straight into the room: a frame its header widened is not
+ * the screen's shape. Shared by the grid (DeckGrid) and Edit layout.
+ */
+export function layoutScale(size: { width: number; height: number }, room: { width: number; height: number }, screen?: { width: number; height: number } | null): number {
+  if (!screen || !madeForAnother(size, screen)) return fitScale(size, room);
+  return fitScale(screen, room) * fitScale(size, screen);
+}
+
+/** A positioned page's box in its deck's frame (DeckGrid), in pixels; `screen` is the deck's screen, when known. */
+export function positionedBox(canvas: { width: number; height: number }, room: { width: number; height: number } | undefined, screen?: { width: number; height: number } | null): { width: number; height: number } | { width: string; aspectRatio: string } {
+  if (!room) return { width: '100%', aspectRatio: `${canvas.width} / ${canvas.height}` };
+  const scale = layoutScale(canvas, room, screen);
+  return { width: Math.floor(canvas.width * scale), height: Math.floor(canvas.height * scale) };
+}

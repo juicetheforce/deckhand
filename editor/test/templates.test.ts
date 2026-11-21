@@ -8,7 +8,7 @@ import { validateConfig } from '../../src/config.js';
 import { makePanel } from '../../src/panel-presets.js';
 import { applyEdit } from '../src/main/config-document.js';
 import type { Edit } from '../src/shared/edits.js';
-import { fitScale, madeForAnother, newestFirst, pagePanelFromTemplate, renamedTemplate, templateLayout, withoutTemplate, withTemplate } from '../src/shared/templates.js';
+import { fitScale, madeForAnother, newestFirst, positionedBox, pagePanelFromTemplate, renamedTemplate, templateLayout, withoutTemplate, withTemplate } from '../src/shared/templates.js';
 
 let failures = 0;
 function check(name: string, fn: () => void): void {
@@ -69,6 +69,16 @@ check('a page from a template is a copy at its own canvas; scaled to fit another
   assert.equal(madeForAnother(panel.size, SCREEN), true);
   assert.equal(madeForAnother(mix.size, SCREEN), false);
   assert.equal(fitScale(panel.size, SCREEN), 0.75);
+});
+check('outside Edit layout too, a layout from another screen is fitted inside the screen first, never straight into a frame its header widened', () => {
+  // A portrait screen, its frame widened by the header to 400 × 600; a landscape template on it.
+  const portrait = { width: 720, height: 1920 };
+  const room = { width: 400, height: 600 };
+  // The screen fills 225 × 600 of that room; the template is the screen's full width, as the deck shows it.
+  assert.deepEqual(positionedBox({ width: 2560, height: 720 }, room, portrait), { width: 225, height: 63 });
+  // A layout made for this screen, or no screen known: fitted to the room, as before.
+  assert.deepEqual(positionedBox(portrait, room, portrait), { width: 225, height: 600 });
+  assert.deepEqual(positionedBox({ width: 2560, height: 720 }, room, null), { width: 400, height: 112 });
 });
 
 console.log('The edits and the daemon\'s validation');

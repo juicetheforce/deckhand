@@ -9,6 +9,7 @@ import { makePanel, newButtonSide } from '../../src/panel-presets.js';
 import { applyEdit } from '../src/main/config-document.js';
 import type { Edit } from '../src/shared/edits.js';
 import { regridPage } from '../src/shared/panel-size.js';
+import { controlAt } from '../../src/hit-test.js';
 import {
   addButton,
   bringToFront,
@@ -17,6 +18,7 @@ import {
   controlNames,
   deleteControl,
   duplicateControl,
+  duplicateControls,
   DUPLICATE_OFFSET,
   freshControlId,
   layoutChanges,
@@ -118,6 +120,15 @@ check('Duplicate: one more control, the same size and shape, offset one grid ste
   assert.deepEqual(d.panel.controls[1], { id: 'c2', x: 100 + DUPLICATE_OFFSET, y: 100 + DUPLICATE_OFFSET, w: 200, h: 150, shape: 'hexagon' });
   assert.deepEqual(d.button, page.buttons.c1);
   assert.notEqual(d.button, page.buttons.c1);
+});
+check('Duplicate with several keeps their stacking: the copies in the panel\'s order, whatever order they were selected in', () => {
+  // A behind B, overlapping; B selected first, then A.
+  const p = free([{ id: 'a', x: 0, y: 0, w: 200, h: 200 }, { id: 'b', x: 100, y: 100, w: 200, h: 200 }]);
+  const d = duplicateControls(p, { buttons: { a: { label: 'A' }, b: { label: 'B' } } }, ['b', 'a']);
+  const [ca, cb] = d.panel.controls.slice(2);
+  assert.deepEqual([ca.x, cb.x], [DUPLICATE_OFFSET, 100 + DUPLICATE_OFFSET], 'the copy of A first, under the copy of B');
+  assert.equal(controlAt(p.controls, 150, 150), 'b');
+  assert.equal(controlAt(d.panel.controls, 150 + DUPLICATE_OFFSET, 150 + DUPLICATE_OFFSET), cb.id, 'the same point on the copies lands on B\'s copy, as on the originals');
 });
 check('Duplicate of an empty control carries no key', () => {
   assert.equal(duplicateControl(free([{ id: 'c1', x: 0, y: 0, w: 9, h: 9 }]), { buttons: {} }, 'c1')!.button, null);
