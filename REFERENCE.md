@@ -189,7 +189,12 @@ Open the editor from your desktop's application menu (**Deckhand**) or with
 decks to it; every change is saved as you make it and shows on the deck at
 once. Each deck is drawn in a frame, its top bar showing its name, its size
 and a **Page** menu; a deck shown alone sits in the middle, fitted to the
-window and never larger than full size. Closing the editor's window leaves it in the tray (a setting, on by
+window and never larger than full size. The zoom bar, at the canvas's foot, is
+there with one deck or several, and in Edit layout: −, +, **Fit** (or **Fit
+all**) and **Reset** (100%). A zoom you set stays as the window changes size,
+until Fit; at Fit, the view fits the window again as it changes. Leaving Edit
+layout goes back to the zoom from before it. Zoomed in, the canvas scrolls to
+every part of a deck. Closing the editor's window leaves it in the tray (a setting, on by
 default); quit it from the tray menu. Closing it changes nothing on the
 decks.
 
@@ -200,11 +205,11 @@ Hidden decks keep working; they just aren't drawn. Shown decks sit on a
 canvas: drag one by its top bar to match your desk. It snaps to the other
 decks' edges and key columns and rows, and a deck dropped onto another is
 placed against the edge nearest the pointer. The padlock in a deck's top bar
-fixes it in place. The zoom bar has Fit all, which the editor opens at, and
-Reset (100%). Which decks are shown, where they are and which are locked are
+fixes it in place. Which decks are shown, where they are and which are locked are
 remembered, by serial number, in
 `~/.local/state/deckhand/editor/preferences.json`, not in the config. Click a
-key on any deck to edit it; the page tabs are for that deck, and every deck,
+deck to edit it — a key, its top bar, or any empty part of its frame; a drag
+of its top bar moves it instead. The page tabs are for that deck, and every deck,
 that one included, has its own Page menu in its top bar. Drag a key onto another key of the same deck to
 move it (the two swap), or onto another deck to copy it there, replacing
 whatever that key held. A copied Go to page key whose page isn't on the other
@@ -285,7 +290,26 @@ size, shown scaled to fit and centred, as Edit layout's "Made for" chip says.
 Templates are kept in `config.json` (`templates`), so a backup and an export
 carry them. A virtual deck's top bar shows the
 grid's columns and rows on a grid page, and the screen's resolution on a custom
-one. **Tap again** pairs the
+one. **A page's background.** The picture icon in a virtual deck's top bar, on any
+page, opens the background of the page it shows, named in the panel: a
+**colour** (a swatch or its hex), an optional **image** — chosen from the same
+browser as icons, a PNG, JPEG, WebP, GIF or SVG of at most 10 MB and 4096 px
+on its longer side; one that isn't is dimmed there with the reason — shown as
+**Fill** (covering the screen, cropped) or **Fit** (all of it, the colour
+around it), and one **opacity** for the whole background, colour and image
+together, from 100% down to fully clear. Below 100%, whatever is on that screen
+behind the deck shows through, and can't be touched: a touch there does
+nothing. The buttons never fade, and the background never shows through one.
+The background covers the whole screen, also when a layout is shown scaled on
+a screen of another size. A new page starts black; Change layout… keeps a
+page's background. Brightness and Sleep all decks dim the background with
+everything else, so a sleeping see-through deck is black, not clear. The
+editor draws it behind the keys, with a checker where the real screen would
+show through, and in Edit layout behind the controls, where its icon is
+dimmed. Esc, or a click outside it, closes the panel. See-through needs the
+compositor's layer-shell, as on KDE Plasma; where the deck is a full-screen
+window instead, as on GNOME, the panel says it may not show through.
+**Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
 as a deck and takes away its touchscreen's access (your password again), and
@@ -464,7 +488,22 @@ whole shape and its icon is the square at the shorter side, centred; its label
 and failed mark sit in the largest rectangle inside the shape; nothing is drawn
 outside it. Where controls overlap, the later in `controls` is on top, on the
 screen and for touch. **Only a page whose `preset` is `free` is edited in Edit
-layout**; a page's `preset` never changes between a grid and `free`. On a screen of another size the canvas
+layout**; a page's `preset` never changes between a grid and `free`.
+A virtual deck's page can have a `background`:
+
+```jsonc
+"background": {
+  "color": "#102030",           // black unless set
+  "image": "~/Pictures/dusk.png", // optional, a path as an icon's; never copied
+  "fit": "fill",                // fill (the default: covers the screen, cropped) or fit
+  "opacity": 60                 // 0–100, of the whole background; 100 unless set
+}
+```
+
+With none — black, opaque — the screen is drawn as it always was. An image
+beyond the limits (PNG, JPEG, WebP, GIF or SVG, 10 MB, 4096 px on its longer
+side) is left out, the colour shown alone, and the log says why. An export
+carries a background's image as it carries icons. On a screen of another size the canvas
 is scaled to fit, centred. A page with no `panel`, or a `panel` with no
 controls, uses the deck's default; with none at all, a Medium grid for the
 screen, so a virtual deck never shows no keys. **Configs from
@@ -1204,7 +1243,10 @@ can plug and unplug while the daemon runs. For virtual decks,
 (`DECKHAND_PANEL_BIN`), `fake-sysfs.mjs` builds a scratch `/sys/class/drm`,
 `/sys/class/input` and udev database of screens and touchscreens, and
 `fake-logind.mjs` puts a session that can be locked on a private bus
-standing in for the system bus. `scripts/test/fake-sound-player.sh`
+standing in for the system bus. The fake panel logs a background frame by its
+colour, opacity, size and a few pixels, and with `FAKE_PANEL_SURFACE_FILE`
+reports the surface that file names when it says it is ready (a full-screen
+window, as on GNOME). `scripts/test/fake-sound-player.sh`
 stands in for `pw-play` and `paplay` (`scripts/smoke-sounds.mjs`): it plays
 nothing, for as many milliseconds as the file's text says, and exits on
 SIGTERM as each real one does. `scripts/smoke-panel.mjs` runs the real
@@ -1224,7 +1266,7 @@ The checks:
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
@@ -1232,9 +1274,10 @@ The checks:
   through `scripts/hooks/pre-commit`, once a clone has run `git config
   core.hooksPath scripts/hooks`. With one deck connected the editor must
   show that deck in its frame, with its top bar and Page menu, centred and
-  fitted, the plain Device dropdown, and nothing for arranging decks — no
-  zoom bar, padlock, dragging or Show in editor — and most people have one
-  deck. It checks the working
+  fitted, the zoom bar (a zoom set holding through a resize, scrolling, Fit),
+  the plain Device dropdown, and nothing for arranging decks — no padlock,
+  dragging or Show in editor, and for a Stream Deck no background — and most
+  people have one deck. It checks the working
   tree, so stage everything a change needs.
 - The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
   desktop entry and icon, against a scratch HOME), `preflight.test.sh`
@@ -1278,6 +1321,17 @@ window.
 
 Each has been hit more than once.
 
+- **A test that runs the virtual driver hears this machine's own GPU.** Its
+  watch reads the real `udevadm monitor`, and a laptop's GPU sends `drm`
+  change events every few seconds at rest; fake screens are plugged without
+  one, so the first real event after a plug reads as a change of screens and
+  asks for a scan. A check about scans the driver asks for itself must leave
+  those out (`smoke-virtual`'s `askedByHelpers`), or it fails only when a run
+  is long enough to catch one.
+- **A slider's key needs its release a moment later.** The settings slider
+  saves on key-up, from what the key-down moved it to; both sent in one go,
+  the key-up comes before React has drawn the move, and nothing is saved.
+  Send them apart, as a hand does (`check:background`'s `pressKey`).
 - **Judge a run by its exit code, never by the tail of its output.** Editor
   `npm test` runs several files; the last one printing "all checks passed" can
   hide failures in an earlier one. And **run `tsc` first**: it emits output

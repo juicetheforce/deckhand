@@ -101,9 +101,15 @@ touch panel.
   like, with a grid, snapping, and tools to align and space several at once.
   The touchscreen shows the layout as you build it, and a touch goes to the
   button's real shape.
+- **Every page has its own background**: a colour, an image filling the screen
+  or fitted inside it, and an opacity. Below 100% the screen is see-through,
+  so whatever is behind the deck on that screen shows between the buttons, and
+  can't be touched there; the buttons themselves always stay solid. A new page
+  starts black.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
-  other, and Sleep all decks dims it too. Turned off, it draws pure black, but
+  other, and Sleep all decks dims it too, background included, so a
+  see-through deck goes dark rather than clear. Turned off, it draws pure black, but
   an LCD's backlight still shows faintly. It doesn't sleep on a lock, since the
   lock screen and your monitor's power saving already cover it.
 - **Turn it off when you want the screen back**, for a screen that also
@@ -382,8 +388,8 @@ That's what shapes it.
 - Volume for individual devices, not just the default one.
 - Window actions on KDE Plasma.
 - Dials and the touch strip, if I ever have a Stream Deck+ to test on.
-- Custom layouts for virtual decks: keys of any size and shape, anywhere on
-  the screen, over a background image; then exporting a panel to share it.
+- Sharing a virtual deck's panel: exporting one, and importing it on another
+  screen.
 - More OBS keys (replay buffer, virtual camera, studio mode) when someone
   asks for them.
 - More Twitch keys (raids, ads, chat modes) when someone asks for them.
