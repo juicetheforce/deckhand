@@ -15,6 +15,10 @@
  * Buffers: two shared-memory buffers the size of the surface in pixels. The
  * canvas is drawn in memory of its own; presenting copies it into a buffer the
  * compositor has let go of, and commits only when the last frame was shown.
+ * They are XRGB8888, opaque, unless the page's background is see-through
+ * (platform_translucent): then ARGB8888, premultiplied, as Wayland's alpha
+ * formats are — and back to XRGB8888 once it is opaque again, so a fully
+ * opaque background costs the compositor exactly what it always did.
  *
  * The output can go away while its screen is still plugged in: KWin removes
  * a screen's output when it wakes from power saving, and adds it back a
@@ -240,13 +244,13 @@ static void free_buffers(void) {
   canvas = NULL;
 }
 
-static int make_buffers(int w, int h, char *err, size_t errlen) {
-  free_buffers();
+/* Whether the buffers carry alpha (ARGB8888) or not (XRGB8888). */
+static int translucent;
+
+/* The two buffers handed to the compositor, for the canvas as it is. */
+static int make_shm_buffers(int w, int h, char *err, size_t errlen) {
+  free_shm_buffers();
   size_t stride = (size_t)w * 4, size = stride * (size_t)h;
-  canvas = calloc((size_t)w * h, 4);
-  if (!canvas) { snprintf(err, errlen, "out of memory"); return 5; }
-  canvas_w = w;
-  canvas_h = h;
   for (int i = 0; i < 2; i++) {
     int fd = memfd_create("deckhand-panel", MFD_CLOEXEC);
     if (fd < 0 || ftruncate(fd, (off_t)size) < 0) {
@@ -257,7 +261,7 @@ static int make_buffers(int w, int h, char *err, size_t errlen) {
     void *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (px == MAP_FAILED) { close(fd); snprintf(err, errlen, "cannot map a buffer"); return 4; }
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)size);
-    buffers[i].wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride, WL_SHM_FORMAT_XRGB8888);
+    buffers[i].wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride, translucent ? WL_SHM_FORMAT_ARGB8888 : WL_SHM_FORMAT_XRGB8888);
     wl_buffer_add_listener(buffers[i].wl, &buffer_listener, &buffers[i]);
     wl_shm_pool_destroy(pool);
     close(fd);
@@ -265,6 +269,15 @@ static int make_buffers(int w, int h, char *err, size_t errlen) {
     buffers[i].size = size;
   }
   return 0;
+}
+
+static int make_buffers(int w, int h, char *err, size_t errlen) {
+  free_buffers();
+  canvas = calloc((size_t)w * h, 4);
+  if (!canvas) { snprintf(err, errlen, "out of memory"); return 5; }
+  canvas_w = w;
+  canvas_h = h;
+  return make_shm_buffers(w, h, err, errlen);
 }
 
 static int fit_surface(struct panel_output *info, char *err, size_t errlen) {
@@ -409,6 +422,17 @@ uint32_t *platform_canvas(int *width, int *height, int *stride) {
   *height = canvas_h;
   *stride = canvas_w;
   return canvas;
+}
+
+void platform_translucent(int on) {
+  on = on ? 1 : 0;
+  if (on == translucent) return;
+  translucent = on;
+  /* No buffers yet (no surface, or its output gone): made in this format when it is back. */
+  if (!buffers[0].wl || !canvas) return;
+  char err[128];
+  if (make_shm_buffers(canvas_w, canvas_h, err, sizeof err)) return;
+  platform_damage(0, 0, canvas_w, canvas_h);
 }
 
 void platform_damage(int x, int y, int w, int h) {

@@ -53,6 +53,7 @@ const bridge: DeckhandBridge = {
   onIconStamps: (callback) => subscribe<Record<string, string>>('iconStamps', callback),
   iconStartFolder: (currentIcon, kind) => ipcRenderer.invoke('iconStartFolder', currentIcon, kind),
   listIconFolder: (folder, kind) => ipcRenderer.invoke('listIconFolder', folder, kind),
+  checkImage: (path) => ipcRenderer.invoke('checkImage', path),
   stopIconWatch: () => ipcRenderer.invoke('stopIconWatch'),
   searchIcons: (folder, query, kind) => ipcRenderer.invoke('searchIcons', folder, query, kind),
   commitIcon: (at, icon, preview, slot) => ipcRenderer.invoke('commitIcon', at, icon, preview, slot),

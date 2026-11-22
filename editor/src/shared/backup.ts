@@ -17,13 +17,15 @@ export const MANIFEST_ENTRY = 'deckhand-export.json';
 export const CONFIG_ENTRY = 'config.json';
 
 /**
- * Every config field that holds an icon: a key's own `icon`, its active
- * state's (PAIR_ICON_FIELDS), and the fields of the old shape, one per state
+ * Every config field that holds an image path: a key's own `icon`, its active
+ * state's (PAIR_ICON_FIELDS), the fields of the old shape, one per state
  * (src/state-icons.ts) — a bundle made before the change still carries its
- * files, and the import's config is migrated when it is opened. An export
- * collects these wherever they appear, not only where the editor shows them.
+ * files, and the import's config is migrated when it is opened — and a
+ * virtual deck page's background `image` (types.ts PageBackgroundDef), which
+ * no other config field is called. An export collects these wherever they
+ * appear, not only where the editor shows them.
  */
-export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS, ...LEGACY_STATE_ICON_FIELDS] as const;
+export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS, ...LEGACY_STATE_ICON_FIELDS, 'image'] as const;
 
 /** One icon path, exactly as the config writes it. */
 export interface BundledIcon {

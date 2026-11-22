@@ -3,14 +3,15 @@ import { createPortal } from 'react-dom';
 import { geometryOfPanel } from '../../../src/geometry.js';
 import type { ScreenSize } from '../../../src/panel-presets.js';
 import { cornerRadius, shapeName, SHAPE_NAMES, type ShapeName } from '../../../src/shapes.js';
-import type { ButtonDef, Config, PageDef, PanelControlDef, PanelDef } from '../../../src/types.js';
+import type { ButtonDef, Config, PageBackgroundDef, PageDef, PanelControlDef, PanelDef } from '../../../src/types.js';
 import { bringToFront, controlNames, HANDLES, overlaps, sendToBack, setShape, typedSize, verySmallMm, withControl, type Handle } from '../shared/layout-edit.js';
 import { align, ALIGNMENTS, distribute, GRID_PITCHES, groupPosition, inMarquee, match, MAX_PITCH, MIN_PITCH, moveGroupTo, placeGroup, placeMoved, placeResized, SNAP_SCREEN_PX, snapTargets, type Alignment, type Guides, type Placing, type SnapGuide } from '../shared/layout-arrange.js';
 import { Dropdown } from './Dropdown.js';
 import { layoutScale, madeForAnother } from '../shared/templates.js';
 import { Switch } from './settings-ui.js';
 import { describeAction, keyKind, type AppIcons } from './model.js';
-import { Key, placeOf } from './DeckGrid.js';
+import { iconStampOf, Key, placeOf } from './DeckGrid.js';
+import { PageGround } from './PageGround.js';
 import { Checkbox, Row, Segmented } from './inspector/controls.js';
 
 /**
@@ -65,9 +66,12 @@ export function LayoutCanvas({
   appIcons,
   onSelect,
   onChange,
+  background,
 }: {
   config: Config;
   serial: string;
+  /** The page's background, kept visible behind the controls in the mode (21c, 24b), over the whole screen. */
+  background?: PageBackgroundDef;
   /** The layout as the mode holds it: empty while a Blank page has no control yet. */
   panel: PanelDef;
   page: PageDef;
@@ -247,6 +251,8 @@ export function LayoutCanvas({
         setLive(null);
       }}
     >
+      {/* The page's background behind everything: on the screen around a layout made for another size, else here. */}
+      {!other && <PageGround background={background} stamp={iconStampOf(iconStamps, background)} />}
       {/* The grid's lines, drawn only in the editor (22g): behind the controls. */}
       {guides.grid && (
         <div
@@ -327,6 +333,7 @@ export function LayoutCanvas({
   if (!other) return canvas;
   return (
     <div className="layout-screen" style={{ width: Math.floor(other.width * screenScale), height: Math.floor(other.height * screenScale) }} data-layout-screen={`${other.width}x${other.height}`}>
+      <PageGround background={background} stamp={iconStampOf(iconStamps, background)} />
       {canvas}
     </div>
   );

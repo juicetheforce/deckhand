@@ -16,6 +16,12 @@
  *                        ({"ev":"touch",…}, {"ev":"tap",…}, {"ev":"touch-gone",…})
  *   FAKE_PANEL_TOUCH     "open" (default): answers a touch frame with
  *                        "touch-open" for each device; "fail": "touch-failed"
+ *   FAKE_PANEL_SIZE_FILE file: read at each "ready" for the size it reports
+ *                        ("1280x720"), as a screen changing resolution; absent
+ *                        or empty, FAKE_PANEL_SIZE
+ *   FAKE_PANEL_SURFACE_FILE  file: read at each "ready" for the surface it
+ *                        reports ("fullscreen-window", as on GNOME); absent or
+ *                        empty, "layer-shell"
  *
  * SIGUSR1: report a resize (ready again). SIGUSR2: the output goes away
  * ("output-lost"), as KWin does when a screen wakes; SIGHUP: it is back
@@ -39,7 +45,20 @@ if (process.env.FAKE_PANEL_FAIL === 'no-output') {
   say({ ev: 'error', message: `no output named ${output}` });
   process.exit(2);
 }
-const ready = () => say({ ev: 'ready', output, width, height, scale: 1, transform: 0, surface: 'layer-shell' });
+const surface = () => {
+  const file = process.env.FAKE_PANEL_SURFACE_FILE;
+  const said = file ? (() => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } })() : '';
+  return said || 'layer-shell';
+};
+const size = () => {
+  const file = process.env.FAKE_PANEL_SIZE_FILE;
+  const said = file ? (() => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } })() : '';
+  return /^\d+x\d+$/.test(said) ? said.split('x').map(Number) : [width, height];
+};
+const ready = () => {
+  const [w, h] = size();
+  say({ ev: 'ready', output, width: w, height: h, scale: 1, transform: 0, surface: surface() });
+};
 ready();
 
 process.on('SIGUSR1', ready);
@@ -77,6 +96,17 @@ process.stdin.on('data', (chunk) => {
     buffer = buffer.subarray(4 + length);
     if (type === 'K') {
       record({ type, width: body.readUInt32LE(0), height: body.readUInt32LE(4), background: [body[8], body[9], body[10]] });
+    } else if (type === 'G') {
+      // A page's background: its colour and opacity, and of a picture its size and a few pixels
+      // (corners, and along the middle row: near each end, the quarters and the centre), not the megabytes themselves.
+      const w = body.readUInt32LE(4);
+      const h = body.readUInt32LE(8);
+      const pixels = body.subarray(12);
+      const at = (x, y) => [...pixels.subarray((y * w + x) * 4, (y * w + x) * 4 + 4)];
+      const samples = w > 0 && h > 0
+        ? Object.fromEntries([[0, 0], [w - 1, h - 1], [10, Math.floor(h / 2)], [Math.floor(w / 4), Math.floor(h / 2)], [Math.floor(w / 2), Math.floor(h / 2)], [Math.floor((3 * w) / 4), Math.floor(h / 2)], [w - 11, Math.floor(h / 2)]].map(([x, y]) => [`${x},${y}`, at(x, y)]))
+        : {};
+      record({ type, color: [body[0], body[1], body[2]], alpha: body[3], w, h, bytes: pixels.length, samples });
     } else if (type === 'I') {
       const w = body.readUInt32LE(8);
       const h = body.readUInt32LE(12);

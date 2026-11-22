@@ -36,7 +36,7 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { brightnessFrame, canvasFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { brightnessFrame, canvasFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
@@ -322,6 +322,114 @@ try {
     head[5] = 101;
     bad.proc.stdin.write(head);
     check('a level above 100 is refused', (await bad.exited) === 5 && bad.events.some((e) => e.ev === 'error'), JSON.stringify(bad.events));
+  }
+
+  console.log("a page's background: a colour, a picture, an opacity, over the whole screen");
+  {
+    const shots = path.join(TMP, 'ground.ppm');
+    /** Run a helper with the protocol traced, send frames, and read back its pixels, alpha, and the formats of the buffers it gave KWin. */
+    const run = async (send, waitDrawn) => {
+      const proc = spawn(HELPER, ['--output', 'Virtual-1', '--dump', shots], { env: { ...helperEnv, WAYLAND_DEBUG: 'client' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      const events = [];
+      let trace = '';
+      proc.stderr.on('data', (c) => (trace += c));
+      readline.createInterface({ input: proc.stdout }).on('line', (line) => events.push(JSON.parse(line)));
+      const exited = new Promise((resolve) => proc.on('exit', resolve));
+      await until(() => events.some((e) => e.ev === 'ready'));
+      send(proc.stdin);
+      await until(() => events.filter((e) => e.ev === 'drawn').length >= waitDrawn);
+      await sleep(200);
+      proc.stdin.write(quitFrame());
+      const code = await exited;
+      const ppm = await fs.readFile(shots);
+      const alpha = await fs.readFile(shots + '.alpha');
+      const off = ppm.subarray(0, 20).toString('latin1').match(/^P6\n(\d+) (\d+)\n255\n/)[0].length;
+      const aoff = alpha.subarray(0, 20).toString('latin1').match(/^P5\n(\d+) (\d+)\n255\n/)[0].length;
+      // wl_shm_pool.create_buffer(new id, offset, width, height, stride, format): 0 ARGB8888, 1 XRGB8888.
+      const formats = [...trace.matchAll(/wl_shm_pool#\d+\.create_buffer\(new id wl_buffer#\d+, \d+, \d+, \d+, \d+, (\d+)\)/g)].map((m) => Number(m[1]));
+      return {
+        code,
+        formats,
+        px: (x, y) => [...ppm.subarray(off + (y * 1920 + x) * 3, off + (y * 1920 + x) * 3 + 3), alpha[aoff + y * 1920 + x]],
+      };
+    };
+    const key = (x) => imageFrame(x, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([200, 100, 50, 255])));
+    const halfKey = (x) => imageFrame(x, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 0, 0, 128])));
+
+    // Fully opaque: today's buffer, XRGB8888 only; a colour at 255 changes nothing but the colour.
+    let g = await run((w) => {
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([20, 40, 60], 255));
+      w.write(key(10));
+    }, 1);
+    check('a background at 100%: its colour everywhere, opaque', g.code === 0 && JSON.stringify(g.px(5, 5)) === '[20,40,60,255]' && JSON.stringify(g.px(1900, 700)) === '[20,40,60,255]', JSON.stringify([g.px(5, 5), g.px(1900, 700)]));
+    check('…and the buffers KWin is given are XRGB8888 only, as before', g.formats.length >= 2 && g.formats.every((f) => f === 1), JSON.stringify(g.formats));
+
+    // 50%: see-through everywhere but the keys; the buffers become ARGB8888.
+    g = await run((w) => {
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([200, 100, 0], 128));
+      w.write(key(10));
+      w.write(halfKey(30));
+    }, 2);
+    check('a background at 50%: its colour premultiplied, alpha 128, over the whole screen', JSON.stringify(g.px(5, 5)) === '[100,50,0,128]' && JSON.stringify(g.px(1919, 719)) === '[100,50,0,128]', JSON.stringify([g.px(5, 5), g.px(1919, 719)]));
+    check('an opaque key on it stays fully opaque', JSON.stringify(g.px(24, 24)) === '[200,100,50,255]', JSON.stringify(g.px(24, 24)));
+    const half = g.px(64, 24);
+    check(`a half-transparent key over it: alpha ${half[3]} ≈ 191, colour ≈ 50,25,0`, Math.abs(half[3] - 191) <= 1 && Math.abs(half[0] - 50) <= 1 && Math.abs(half[1] - 25) <= 1 && half[2] === 0, JSON.stringify(half));
+    check('…and the buffers are made ARGB8888', g.formats.includes(0), JSON.stringify(g.formats));
+
+    // A picture, the screen's size, is the background under every key.
+    const pic = Buffer.alloc(1920 * 720 * 4);
+    for (let y = 0; y < 720; y++) for (let x = 0; x < 1920; x++) pic.set(x < 960 ? [255, 0, 0, 255] : [0, 0, 255, 255], (y * 1920 + x) * 4);
+    g = await run((w) => {
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([0, 0, 0], 255, { width: 1920, height: 720, rgba: pic }));
+      w.write(imageFrame(470, 10, 20, 4, Buffer.alloc(20 * 4 * 4)));
+    }, 1);
+    check('a picture: its left half red, right half blue, the whole screen', JSON.stringify(g.px(5, 5)) === '[255,0,0,255]' && JSON.stringify(g.px(1915, 715)) === '[0,0,255,255]', JSON.stringify([g.px(5, 5), g.px(1915, 715)]));
+    check('a clear key across its middle puts the picture back under it, both halves', JSON.stringify(g.px(950, 22)) === '[255,0,0,255]' && JSON.stringify(g.px(970, 22)) === '[0,0,255,255]', JSON.stringify([g.px(950, 22), g.px(970, 22)]));
+    // A smaller picture (the screen has changed size since it was drawn) is stretched over the screen.
+    g = await run((w) => {
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([0, 0, 0], 255, { width: 2, height: 1, rgba: Buffer.from([0, 255, 0, 255, 255, 255, 0, 255]) }));
+      w.write(key(10));
+    }, 1);
+    check('a picture of another size still covers the screen', JSON.stringify(g.px(100, 700)) === '[0,255,0,255]' && JSON.stringify(g.px(1900, 5)) === '[255,255,0,255]', JSON.stringify([g.px(100, 700), g.px(1900, 5)]));
+
+    // Brightness dims the whole deck, background included: at 50 what shows through darkens too; at 0, opaque black.
+    g = await run((w) => {
+      w.write(brightnessFrame(50));
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([200, 100, 0], 128));
+      w.write(key(10));
+    }, 1);
+    const dim = g.px(5, 5);
+    check(`at 50 on a 50% background: darker and less see-through (${dim} ≈ 50,25,0,191)`, Math.abs(dim[0] - 50) <= 1 && Math.abs(dim[1] - 25) <= 1 && Math.abs(dim[3] - 191) <= 1, JSON.stringify(dim));
+    check('…its key half as bright, still opaque', JSON.stringify(g.px(24, 24)) === '[100,50,25,255]', JSON.stringify(g.px(24, 24)));
+    g = await run((w) => {
+      w.write(brightnessFrame(0));
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([200, 100, 0], 0));
+      w.write(key(10));
+    }, 1);
+    check('asleep (0) on a fully clear background: opaque black, not clear', JSON.stringify(g.px(5, 5)) === '[0,0,0,255]' && JSON.stringify(g.px(24, 24)) === '[0,0,0,255]', JSON.stringify([g.px(5, 5), g.px(24, 24)]));
+
+    // A canvas frame after a see-through background: opaque again, and the buffers back to XRGB8888.
+    g = await run((w) => {
+      w.write(canvasFrame(960, 360));
+      w.write(groundFrame([200, 100, 0], 64));
+      w.write(canvasFrame(960, 360, [1, 2, 3]));
+      w.write(key(10));
+    }, 1);
+    check('a canvas frame after it: its colour, opaque, the buffers XRGB8888 again', JSON.stringify(g.px(5, 5)) === '[1,2,3,255]' && g.formats.at(-1) === 1, JSON.stringify({ px: g.px(5, 5), formats: g.formats }));
+
+    // A frame whose picture does not match its size is refused.
+    const bad = helper(['--output', 'Virtual-1']);
+    await until(() => bad.events.some((e) => e.ev === 'ready'));
+    const wrong = groundFrame([0, 0, 0], 255, { width: 2, height: 1, rgba: Buffer.alloc(8) });
+    wrong.writeUInt32LE(3, 9); // claims 3 × 1
+    bad.proc.stdin.write(wrong);
+    check('a background whose pixels do not match its size is refused', (await bad.exited) === 5 && bad.events.some((e) => e.ev === 'error'), JSON.stringify(bad.events));
   }
 
   console.log('idle notifications, from this compositor');

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { startPageOf } from '../../../src/config-common.js';
-import type { ButtonDef, Config, PageDef, PanelDef } from '../../../src/types.js';
+import type { ButtonDef, Config, PageBackgroundDef, PageDef, PanelDef } from '../../../src/types.js';
 import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { geometryOfPanel } from '../../../src/geometry.js';
 import { addButton, blankPanel, buttonsFor, controlNames, duplicateControls, layoutChanges } from '../shared/layout-edit.js';
@@ -9,6 +9,7 @@ import { DEFAULT_GUIDES, nudge, type Guides } from '../shared/layout-arrange.js'
 import { ControlsPalette, DeleteControl, DiscardChanges, GuidesBar, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
 import { useVirtualScreen } from './GridPicker.js';
 import { GAP_PX, PAD_X_PX, PITCH_PX, type DeckSize } from './canvas.js';
+import { BackgroundPanel } from './BackgroundPanel.js';
 import { ChangeLayout } from './ChangeLayout.js';
 import { MadeForChip, SaveAsTemplate } from './Templates.js';
 import { madeForAnother, templateNamed } from '../shared/templates.js';
@@ -507,6 +508,16 @@ function Editor({
     setSelection((s) => ({ ...s, key: keys.length === 0 ? null : keys[keys.length - 1], keys }));
   const bulk = useBulk({ config, daemon, selection, layout, page, geometry, editingBlocked, selectKeys });
   const [keyMenu, setKeyMenu] = useState<{ x: number; y: number } | null>(null);
+  /** The background panel (24a): which virtual deck's, for the page it shows, and where its icon was. */
+  const [backgroundOpen, setBackgroundOpen] = useState<{ serial: string; anchor: DOMRect } | null>(null);
+  /** A background being changed in its panel and not saved yet (the opacity while it moves): drawn on that page only. */
+  const [groundPreview, setGroundPreview] = useState<{ serial: string; page: string; background: PageBackgroundDef } | null>(null);
+  // A saved change arrives as a new config: the preview has done its job.
+  useEffect(() => setGroundPreview(null), [config]);
+  // Edit layout dims the icon (19b), and a deck no longer shown has nothing to open it on.
+  useEffect(() => {
+    if (backgroundOpen && (mode !== null || !shownDecks(config, daemon, selection).includes(backgroundOpen.serial))) setBackgroundOpen(null);
+  }, [mode, backgroundOpen, config, daemon, selection]);
   /** The key under the pointer while a key is dragged, on whichever deck: drawn by that deck's grid. */
   const [keyDragOver, setKeyDragOver] = useState<KeyRef | null>(null);
 
@@ -570,7 +581,10 @@ function Editor({
           const states = keyStates(b.action);
           return [faceIcon(b, null, appIcons), states ? faceIcon(b, { state: states.activeState, active: true }, appIcons) : null];
         })
-        .filter((i): i is string => i !== null),
+        .filter((i): i is string => i !== null)
+        // A virtual deck page's background image, watched as an icon is: a file put back or replaced gets a
+        // new stamp, so a verdict on it (image-check.ts, kept per stamp) is made again (Codex, PR #10).
+        .concat(shownPages.flatMap((p) => (p.background?.image ? [p.background.image] : []))),
     ),
   ];
   const iconsKey = pageIcons.join('\u0000');
@@ -763,6 +777,7 @@ function Editor({
         onKeyDragOver={setKeyDragOver}
         box={room}
         screen={config.decks?.[serial]?.virtual ? screenOf(serial) : null}
+        background={groundPreview?.serial === serial && groundPreview.page === pageId ? groundPreview.background : undefined}
         dropTarget={
           actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
         }
@@ -892,8 +907,7 @@ function Editor({
               <DeckCanvas
                 decks={canvasDecks}
                 several={several}
-                zoomable={mode !== null}
-                fitKey={mode ? 'edit-layout' : ''}
+                editing={mode !== null}
                 positions={positions}
                 onMove={moveDecks}
                 locked={locked}
@@ -926,6 +940,19 @@ function Editor({
                             }
                           : undefined
                       }
+                      background={
+                        virtual && pageDef
+                          ? {
+                              open: backgroundOpen?.serial === serial,
+                              dimmed: mode !== null,
+                              onToggle: (anchor) => {
+                                // As Change layout… does: a deck not being edited takes the focus first.
+                                if (!focused) setSelection((s) => focusDeck(s, serial));
+                                setBackgroundOpen((open) => (open?.serial === serial ? null : { serial, anchor }));
+                              },
+                            }
+                          : undefined
+                      }
                       pageLocked={mode !== null}
                       onHeaderNeed={virtual ? (px) => noteHeaderNeed(serial, px) : undefined}
                       focused={focused}
@@ -952,6 +979,7 @@ function Editor({
                           appIcons={appIcons}
                           onSelect={selectKeys}
                           onChange={(panel) => saveLayout(panel)}
+                          background={modeBlank ? undefined : modePage.background}
                         />
                       ) : (
                         (grid(serial, virtual ? room : undefined) ?? emptyCard(emptyState(config, daemon, { profile: selection.profile, serial }), serial))
@@ -969,6 +997,31 @@ function Editor({
             )}
             {mode && canvasDecks.length > 0 && <GuidesBar guides={guides} onChange={setGuides} />}
             {mode && modePanel && canvasDecks.length > 0 && madeForAnother(modePanel.size, screenOf(mode.serial)) && <MadeForChip layout={modePanel.size} screen={screenOf(mode.serial)!} />}
+            {backgroundOpen &&
+              (() => {
+                const serial = backgroundOpen.serial;
+                const pageId = pageOf(selection, serial) ?? '';
+                const def = layoutFor(config, selection.profile, serial)?.pages[pageId];
+                if (!def) return null;
+                return (
+                  <BackgroundPanel
+                    anchor={backgroundOpen.anchor}
+                    pageName={def.name ?? pageId}
+                    // The saved background, never the preview: the slider saves what it moved to only against
+                    // the value it started from, and the next change made here must not carry an unsaved one.
+                    background={def.background}
+                    iconStamps={iconStamps}
+                    fullscreenWindow={daemon.status?.decks.find((d) => d.serial === serial)?.surface === 'fullscreen-window'}
+                    disabled={editingBlocked}
+                    onPreview={(background) => setGroundPreview(background ? { serial, page: pageId, background } : null)}
+                    onChange={(background) => void window.deckhand.apply({ kind: 'setPageBackground', profile: selection.profile, serial, page: pageId, background })}
+                    onClose={() => {
+                      setBackgroundOpen(null);
+                      setGroundPreview(null);
+                    }}
+                  />
+                );
+              })()}
             {keyMenu && (
               <KeyMenu
                 x={keyMenu.x}

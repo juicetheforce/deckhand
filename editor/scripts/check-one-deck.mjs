@@ -1,8 +1,10 @@
 // With one deck connected, the editor shows that deck in its frame with its
 // header — name, size and Page dropdown — centred on the canvas at Fit, never
-// above 100%, and nothing for arranging decks: no dragging, lock, snapping,
-// zoom bar or Show in editor (the frame round, decided 2026-11-18; until then
-// a lone deck had no frame at all). Also the plain Device dropdown, the same
+// above 100%, and nothing for arranging decks: no dragging, lock, snapping or
+// Show in editor (the frame round, decided 2026-11-18; until then a lone deck
+// had no frame at all). The zoom bar is there with one deck too (Ryan,
+// 2026-11-20): a zoom set holds through a resize, the canvas scrolls to every
+// part of the deck, and Fit brings Fit back. Also the plain Device dropdown, the same
 // crumbs, tabs and pill, and the everyday operations working. Run by the
 // pre-commit hook (scripts/hooks/pre-commit) on every commit touching editor/
 // or src/, so a change that leaks the arranging controls into the one-deck
@@ -93,7 +95,7 @@ if (r && !r.error) {
     assert.equal(s.grids, 1);
     assert.equal(s.keys, 15);
   });
-  check('its header: the name, columns × rows, and the Page dropdown on the page shown; no Change layout… or Edit layout on a Stream Deck', () =>
+  check('its header: the name, columns × rows, and the Page dropdown on the page shown; no Change layout…, Edit layout or background on a Stream Deck', () =>
     assert.deepEqual(s.header, {
       name: 'Little deck',
       size: '5 × 3',
@@ -104,11 +106,13 @@ if (r && !r.error) {
       page: 'main',
       changeLayout: false,
       editLayout: false,
+      background: false,
+      pageGround: false,
     }));
   check('custom layouts are a virtual deck\'s only: today\'s grid, no Controls palette, no mode bar', () =>
     assert.deepEqual(s.layoutMode, { positioned: 0, palette: false, modeBar: false }));
-  check('nothing for arranging decks: no zoom bar, lock, grip, Editing marker or Show in editor', () =>
-    assert.deepEqual(s.arranging, { zoomBar: false, lock: false, grip: false, editingMarker: false, showInEditor: false }));
+  check('the zoom bar, and nothing for arranging decks: no lock, grip, Editing marker or Show in editor', () =>
+    assert.deepEqual(s.arranging, { zoomBar: true, lock: false, grip: false, editingMarker: false, showInEditor: false }));
   check('no element that exists only with several decks ([data-multideck])', () => assert.equal(s.multideck, 0));
   const near = (a, b, within, what) => assert.ok(Math.abs(a - b) <= within, `${what}: ${a} vs ${b}`);
   check('centred on the canvas at Fit, never above 100%', () => {
@@ -133,6 +137,19 @@ if (r && !r.error) {
     near(n.zoom, n.fit, 0.005, 'zoom is Fit when narrow');
     near(n.offCentre.x, 0, 1, 'centred across when narrow');
     near(r.canvas.restored.zoom, r.canvas.atRest.zoom, 0.001, 'zoom when widened again');
+  });
+  check('a zoom the person sets holds through a resize; zoomed in, the canvas scrolls to every part of the deck; Fit brings Fit back', () => {
+    const z = r.canvas?.zoomed;
+    assert.ok(z, 'no zoom bar to use');
+    assert.ok(z.set > 1.4, `zoom ${z.set} after Reset and Zoom in twice`);
+    assert.equal(z.resized, true, 'the canvas never saw the resize: nothing to judge');
+    assert.equal(z.afterResize, z.set, 'a narrower canvas kept the zoom set');
+    assert.equal(z.afterWiden, z.set, 'widened again, still the zoom set');
+    assert.deepEqual(z.scrolls, { across: true, down: true }, 'scrollable both ways');
+    assert.equal(z.farCorner, true, "scrolled to the end, the deck's far corner is in view");
+    assert.equal(z.nearCorner, true, "scrolled to the start, the deck's near corner is in view");
+    near(z.fitAgain, r.canvas.atRest.zoom, 0.001, 'Fit');
+    assert.equal(z.label, 'Fit', 'one deck: "Fit", not "Fit all"');
   });
   check('the Device control is the plain dropdown, with the one connected deck as its only option', () => {
     assert.equal(s.deviceIsDropdown, true, 'the plain Device dropdown');

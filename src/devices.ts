@@ -1,6 +1,6 @@
 import type { TouchState } from './control/protocol.js';
 import type { DeckGeometry } from './geometry.js';
-import type { LayoutDef } from './types.js';
+import type { LayoutDef, PageBackgroundDef } from './types.js';
 
 /**
  * What the daemon needs from a deck, whatever drives it — the seam between
@@ -43,6 +43,12 @@ export interface DeckDevice {
   layoutFrom?(layout: LayoutDef, page: string): DeckGeometry;
   /** With layoutFrom: the controls the session now uses. Its screen is cleared, and drawn again key by key. */
   showGeometry?(geometry: DeckGeometry): void;
+  /**
+   * Optional: the page's background behind its controls (types.ts
+   * PageBackgroundDef) — a virtual deck's, the whole screen. Called on every
+   * page shown; the same background again does nothing.
+   */
+  setBackground?(background: PageBackgroundDef | undefined): void;
   /** Optional: the device asks for every control to be drawn again (its screen was resized, say). */
   onRedraw?(listener: () => void): void;
   /**
@@ -55,6 +61,8 @@ export interface DeckDevice {
   onLetGo?(listener: (reason: string) => void): void;
   /** Optional: whether its touches work now, for the control socket (a virtual deck: TouchState). */
   touchState?(): TouchState;
+  /** Optional: how a virtual deck's screen is shown — a layer-shell surface, or a full-screen window (control/protocol.ts). */
+  surfaceKind?(): 'layer-shell' | 'fullscreen-window';
 }
 
 

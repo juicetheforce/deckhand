@@ -237,6 +237,14 @@ if (r && !r.error) {
     assert.equal(r.deckDrag.configUnchanged, true);
     assert.equal(r.deckDrag.focused, XL);
   });
+  check('a click on a deck\'s frame that is not a drag focuses it — its header bar, its size, the frame\'s empty edge; its Page ▾ does only its own job', () => {
+    assert.equal(r.frameClick.pageMenu, XL, 'a click on the V2\'s Page ▾ left the XL focused');
+    assert.equal(r.frameClick.headerBar.focused, true, 'the V2\'s header bar');
+    assert.match(r.frameClick.headerBar.target, /^(deck-panel-header|toolbar-spacer)$/, 'clicked on the header bar itself');
+    assert.equal(r.frameClick.frameFoot.focused, true, 'the XL\'s frame below its grid');
+    assert.match(r.frameClick.frameFoot.target, /deck-panel/, 'clicked on the frame itself');
+    assert.deepEqual(r.frameClick.size, { target: 'deck-panel-size muted', focused: true }, 'the V2\'s size');
+  });
   check('a drop onto another deck is butted against the edge the pointer is nearest — from below, pointer near its top: above', () => {
     near(r.overlapAbove.gap, 16, 0.6, 'gap above in px at 100%');
     near(r.overlapAbove.offset.x, 2, 0.005, 'x kept');

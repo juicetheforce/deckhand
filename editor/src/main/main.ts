@@ -31,6 +31,8 @@ import { buildExport, suggestedExportName, writeExport } from './export-bundle.j
 import { planImport, readImport, writePlannedIcons, type ImportPlan } from './import-bundle.js';
 import { existingFolders, FolderWatcher, listBuiltinFolder, listFolder, searchBuiltins, searchFolder, startFolder, type BrowseKind } from './icon-browser.js';
 import { IconFiles } from './icon-files.js';
+import { IconFileError, MAX_ICON_BYTES, readIconFile } from '../../../src/icon-file.js';
+import type { ImageRefusal } from '../../../src/image-limits.js';
 import { oneAtATime } from './one-at-a-time.js';
 import { editorVersion, openInBrowser, openReleases } from './about.js';
 import { LATEST_RELEASE_URL, UpdateChecker } from './updates.js';
@@ -338,6 +340,28 @@ const folderWatcher = new FolderWatcher((folder) => window?.webContents.send('ic
 const iconFiles = new IconFiles((stamps) => window?.webContents.send('iconStamps', stamps));
 /** Bumped by every search; a walk still running for an older number stops. */
 let searchGeneration = 0;
+
+/**
+ * The file half of the image limits (src/image-limits.ts) for an image the
+ * person chose — a page's background: read under the rule every icon is
+ * (src/icon-file.ts: a regular file, at most 10 MB, never in the state
+ * directory) and as an image in one of the five formats. Its pixel size is
+ * checked by the renderer, which loads it anyway. Null: it passes.
+ */
+async function checkImage(configPath: string): Promise<ImageRefusal | null> {
+  if (configPath.startsWith('builtin:')) return { kind: 'not-an-image' };
+  const filePath = expandPath(configPath);
+  try {
+    await readIconFile(filePath, { image: true });
+    return null;
+  } catch (err) {
+    if (!(err instanceof IconFileError)) return { kind: 'unreadable' };
+    if (err.reason === 'not found') return { kind: 'missing' };
+    if (err.reason === 'not an image') return { kind: 'not-an-image' };
+    if (err.reason === 'too large') return { kind: 'too-big', bytes: (await fs.stat(filePath).catch(() => null))?.size ?? MAX_ICON_BYTES + 1 };
+    return { kind: 'unreadable' };
+  }
+}
 
 async function listIconFolder(folder: string, kind: BrowseKind): Promise<IconFolderResult> {
   // The pinned Built-in section: listed from the checkout, nothing to watch. Icons only.
@@ -1232,6 +1256,9 @@ function registerIpc(): void {
   });
   ipcMain.handle('listIconFolder', (event, folder: unknown, kind: unknown) =>
     fromOurWindow(event) && typeof folder === 'string' ? listIconFolder(folder, kind === 'sound' ? 'sound' : 'icon') : { ok: false, error: 'not allowed' },
+  );
+  ipcMain.handle('checkImage', (event, filePath: unknown) =>
+    fromOurWindow(event) && typeof filePath === 'string' && filePath.length < 4096 ? checkImage(filePath) : ({ kind: 'unreadable' } satisfies ImageRefusal),
   );
   ipcMain.handle('stopIconWatch', (event) => {
     if (fromOurWindow(event)) folderWatcher.close();

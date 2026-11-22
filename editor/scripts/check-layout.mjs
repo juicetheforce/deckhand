@@ -237,6 +237,31 @@ await until(async () => !(await exists('[data-change-layout]')));
 await showTab('Main', 24);
 await shot('1-custom-page');
 
+// ---- ZOOM ACROSS THE MODE (Ryan, 2026-11-20): leaving returns the view to the zoom from before entering ----
+const zoomNow = () => inEditor(`Number(document.querySelector('.canvas')?.dataset.zoom)`);
+const enterAndLeave = async (inside) => {
+  await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+  await until(inMode);
+  await sleep(200);
+  const entered = await zoomNow();
+  if (inside) await click(`.canvas-zoom button[aria-label="${inside}"]`);
+  await sleep(100);
+  const zoomedInside = await zoomNow();
+  await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
+  await until(async () => !(await inMode()));
+  await sleep(200);
+  return { entered, zoomedInside, after: await zoomNow() };
+};
+const atFit = await zoomNow();
+r.zoomAcrossMode = { atFit, fromFit: await enterAndLeave('Zoom in') };
+await click('.canvas-zoom-reset');
+await click('.canvas-zoom button[aria-label="Zoom out"]');
+await sleep(100);
+r.zoomAcrossMode.set = await zoomNow();
+r.zoomAcrossMode.fromSet = await enterAndLeave('Zoom in');
+await click('.canvas-zoom-text:not(.canvas-zoom-reset)');
+await sleep(100);
+
 // ---- ENTERING ----
 r.entryPage = await page('Main');
 await click(`[data-deck-panel="${KEY}"] [data-edit-layout]`);
@@ -879,6 +904,16 @@ check('a page\'s kind is fixed: Edit layout only on a custom page, Change layout
   assert.deepEqual(r.changeChoices, ['small', 'medium', 'large', 'custom']);
   assert.equal(r.changeNoTemplates, true);
   assert.equal(r.inMode, true);
+});
+check('Edit layout has the zoom bar, and leaving returns to the zoom from before entering — a zoom set, or Fit', () => {
+  const z = r.zoomAcrossMode;
+  assert.ok(z.atFit > 0 && z.atFit <= 1, `at Fit: ${z.atFit}`);
+  assert.notEqual(z.fromFit.zoomedInside, z.fromFit.entered, 'Zoom in worked inside the mode');
+  assert.equal(z.fromFit.after, z.atFit, 'from Fit, back to Fit');
+  assert.equal(z.set, 0.9, 'Reset, then Zoom out');
+  assert.notEqual(z.fromSet.zoomedInside, z.fromSet.entered, 'Zoom in worked inside the mode');
+  assert.notEqual(z.fromSet.entered, z.set, 'entering fitted the deck being edited, so leaving has something to put back');
+  assert.equal(z.fromSet.after, 0.9, 'back to the zoom set before entering');
 });
 check('Done is seen: on the deck\'s header beside the lit Edit layout and Discard changes, on screen at the normal window size, not covered, in the accent colour', () => {
   assert.ok(r.done, 'no Done');

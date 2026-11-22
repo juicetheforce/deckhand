@@ -39,9 +39,15 @@ int platform_dispatch(int *resized, int *lost);
 /* Flush outgoing requests; call before poll(). */
 void platform_prepare(void);
 
-/* The pixel buffer to draw into, 0xAARRGGBB with alpha ignored (XRGB8888),
- * width × height, stride in pixels. Valid until the next resize. */
+/* The pixel buffer to draw into, 0xAARRGGBB, width × height, stride in
+ * pixels. Valid until the next resize. Shown as XRGB8888 — alpha ignored,
+ * opaque — unless platform_translucent(1), then as premultiplied ARGB8888. */
 uint32_t *platform_canvas(int *width, int *height, int *stride);
+
+/* Whether the canvas's alpha is shown (a see-through background) or ignored
+ * (opaque, the buffer as it always was). Changing it changes the format of
+ * the buffers handed to the compositor, and marks everything changed. */
+void platform_translucent(int on);
 
 /* Mark a rectangle as changed. Shown by the next platform_present(). */
 void platform_damage(int x, int y, int w, int h);

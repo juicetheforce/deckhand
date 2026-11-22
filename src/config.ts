@@ -100,6 +100,19 @@ function validatePanel(panel: unknown, where: string): void {
   if (panel.preset !== undefined && typeof panel.preset !== 'string') throw new Error(`${where}: "panel.preset" must be a string`);
 }
 
+/** A page's background (types.ts PageBackgroundDef). */
+function validateBackground(bg: unknown, where: string): void {
+  if (!isObject(bg)) throw new Error(`${where}: "background" must be an object`);
+  if (bg.color !== undefined && (typeof bg.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(bg.color))) {
+    throw new Error(`${where}: "background.color" must be a colour like "#1a2b3c"`);
+  }
+  if (bg.image !== undefined && (typeof bg.image !== 'string' || bg.image === '')) throw new Error(`${where}: "background.image" must be a path`);
+  if (bg.fit !== undefined && bg.fit !== 'fill' && bg.fit !== 'fit') throw new Error(`${where}: "background.fit" must be "fill" or "fit"`);
+  if (bg.opacity !== undefined && (typeof bg.opacity !== 'number' || !Number.isInteger(bg.opacity) || bg.opacity < 0 || bg.opacity > 100)) {
+    throw new Error(`${where}: "background.opacity" must be a whole number from 0 to 100`);
+  }
+}
+
 /** At most this many templates: a guard against a runaway file, not a limit anyone meets. */
 export const MAX_TEMPLATES = 200;
 /** A template's name: at most this many characters. */
@@ -138,6 +151,7 @@ function validateLayout(layout: unknown, where: string): void {
       }
     }
     if (page.panel !== undefined) validatePanel(page.panel, `page "${pageId}" in ${where}`);
+    if (page.background !== undefined) validateBackground(page.background, `page "${pageId}" in ${where}`);
   }
 
   if (layout.panel !== undefined) validatePanel(layout.panel, where);

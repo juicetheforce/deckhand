@@ -133,6 +133,13 @@ await check("a latching toggle's icons are relocated and rewritten like any othe
   assert.equal(action?.iconOff, '~/Pictures/dove.png');
 });
 
+await check("a page's background image is relocated and rewritten like an icon", async () => {
+  const withGround = { profiles: { ffxiv: { name: 'FFXIV', layouts: { SERIAL: { startPage: 'main', pages: { main: { name: 'Main', buttons: {}, background: { image: `${oldHome}/mic.png`, fit: 'fit' } } } } } } } };
+  const plan = await planImport(readImport(await exportFromOldHome(withGround)));
+  assert.deepEqual(plan.icons.map((i: { from: string; to: string }) => [i.from, i.to]), [[`${oldHome}/mic.png`, '~/mic.png']]);
+  assert.deepEqual(plan.config.profiles.ffxiv.layouts.SERIAL.pages.main.background, { image: '~/mic.png', fit: 'fit' });
+});
+
 await check('the review facts: built-ins this version lacks, other strings naming the old home, profiles, decks', async () => {
   const plan = await planImport(readImport(await exportFromOldHome(CONFIG)));
   assert.deepEqual(plan.builtinsMissing, ['not-drawn-yet']);

@@ -412,6 +412,11 @@ export class DeckSession implements DeckHandle {
     await this.releaseLatches(reason);
   }
 
+  /** How a virtual deck's screen is shown (DeckDevice.surfaceKind); undefined for a Stream Deck. */
+  surfaceKind(): 'layer-shell' | 'fullscreen-window' | undefined {
+    return this.device.surfaceKind?.();
+  }
+
   /** Whether a virtual deck's touches work now (DeckDevice.touchState); undefined for a Stream Deck. */
   touchState(): TouchState | undefined {
     return this.device.touchState?.();
@@ -622,6 +627,10 @@ export class DeckSession implements DeckHandle {
   }
 
   private async renderPage(force = false): Promise<void> {
+    // Every page shown — a start, a page change, a profile switch, a reload —
+    // is a forced render: a virtual deck takes the page's background first
+    // (the same again does nothing), then every key is sent over it.
+    if (force) this.device.setBackground?.(this.layout.pages[this.page]?.background);
     for (const i of this.screens.keys()) {
       await this.renderButtonAt(i, force);
     }

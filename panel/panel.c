@@ -19,10 +19,23 @@
  *                at its place on the canvas, straight alpha over the
  *                background — whatever was in its rectangle is replaced.
  *                Answered "drawn".
+ *   'G' ground   u8 r, g, b, a, u32 w, u32 h, then w × h RGBA pixels: the
+ *                page's background, covering the whole screen, not the canvas
+ *                — a colour with its opacity (a, 255 opaque), and with w × h
+ *                above 0 a picture of it at the screen's size, straight
+ *                alpha, already the colour and image combined at that opacity
+ *                (the daemon draws it). Replaces the canvas's colour until the
+ *                next 'K'; repaints everything, so every key is sent after
+ *                it. Below 255 the screen is shown see-through: whatever is
+ *                behind the panel on that screen shows where the background
+ *                does. Keys are drawn over it as they always are.
  *   'C' clear    the background everywhere.
  *   'B' brightness  u8 percent, 0-100: everything drawn from now on is that much
  *                darker, 0 being pure black; what is on the screen stays until
  *                drawn again, so the daemon sends the canvas and every key after it.
+ *                It dims the whole deck, a see-through background included: as
+ *                if black were laid over it at 100 − percent, so whatever shows
+ *                through darkens too, and at 0 the screen is opaque black.
  *   'T' touch    u8 mode, then entries of u8 role and a path ending in NUL.
  *                Closes the devices read before. Mode 1, a deck: every entry
  *                opened and grabbed; role 't' is the touchscreen, whose
@@ -89,7 +102,15 @@ static struct panel_output out;
 
 /* The canvas, in the daemon's units, and where it lands on the screen. */
 static unsigned canvas_w, canvas_h;
-static uint32_t background = 0xff000000;
+/*
+ * The background ('K' sets an opaque colour, 'G' a page's): one premultiplied
+ * ARGB pixel, or a picture of it at ground_w × ground_h (also premultiplied),
+ * stretched to the screen if the screen has since changed size. Below opaque,
+ * the buffers are shown with their alpha (platform_translucent).
+ */
+static uint32_t ground = 0xff000000;
+static uint32_t *ground_px;
+static unsigned ground_w, ground_h;
 /* The deck's brightness, a percent: 'B'. */
 static unsigned brightness = 100;
 static double scale = 1.0;
@@ -173,18 +194,77 @@ static inline unsigned dimmed(unsigned channel) {
   return brightness == 100 ? channel : channel * brightness / 100;
 }
 
-/* The background, at the brightness everything is drawn at. */
-static uint32_t background_pixel(void) {
-  return 0xff000000u | (uint32_t)dimmed((background >> 16) & 0xff) << 16 | (uint32_t)dimmed((background >> 8) & 0xff) << 8 | dimmed(background & 0xff);
+/* An alpha at the deck's brightness: the black laid over the deck adds its own. */
+static inline unsigned veiled(unsigned alpha) {
+  return brightness == 100 ? alpha : (alpha * brightness + 255 * (100 - brightness)) / 100;
+}
+
+static uint32_t argb(unsigned a, unsigned r, unsigned g, unsigned b) {
+  return (uint32_t)a << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | b;
+}
+
+/* A premultiplied pixel at the deck's brightness: darker, and as opaque as the veil makes it. */
+static uint32_t veil(uint32_t p) {
+  if (brightness == 100) return p;
+  return argb(veiled(p >> 24), dimmed((p >> 16) & 0xff), dimmed((p >> 8) & 0xff), dimmed(p & 0xff));
+}
+
+/* The background under a screen pixel, at the deck's brightness, premultiplied. */
+static uint32_t ground_at(int x, int y, int sw, int sh) {
+  if (!ground_px) return veil(ground);
+  unsigned gx = (unsigned)((uint64_t)x * ground_w / (unsigned)sw), gy = (unsigned)((uint64_t)y * ground_h / (unsigned)sh);
+  if (gx >= ground_w) gx = ground_w - 1;
+  if (gy >= ground_h) gy = ground_h - 1;
+  return veil(ground_px[(size_t)gy * ground_w + gx]);
+}
+
+/* Whether any of the background lets what is behind the screen through. */
+static int ground_see_through(void) {
+  return (ground >> 24) < 255;
+}
+
+/* A new background, replacing the last; its picture (or NULL) is now owned here. */
+static void set_ground(uint32_t colour, uint32_t *picture, unsigned w, unsigned h) {
+  free(ground_px);
+  ground = colour;
+  ground_px = picture;
+  ground_w = picture ? w : 0;
+  ground_h = picture ? h : 0;
+  platform_translucent(ground_see_through());
 }
 
 static void fill_background(void) {
   int w, h, stride;
   uint32_t *px = platform_canvas(&w, &h, &stride);
-  uint32_t fill = background_pixel();
-  for (int y = 0; y < h; y++)
-    for (int x = 0; x < w; x++) px[y * stride + x] = fill;
+  if (!px) return;
+  if (!ground_px) {
+    uint32_t fill = veil(ground);
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) px[y * stride + x] = fill;
+  } else {
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) px[y * stride + x] = ground_at(x, y, w, h);
+  }
   platform_damage(0, 0, w, h);
+}
+
+/* A 'G' frame's body: the colour, then the picture, straight alpha, made premultiplied. */
+static int take_ground(const unsigned char *body, size_t len) {
+  if (len < 12) { emit_error("bad background frame"); return 5; }
+  unsigned a = body[3];
+  uint32_t colour = argb(a, body[0] * a / 255, body[1] * a / 255, body[2] * a / 255);
+  uint32_t w = u32_at(body + 4), h = u32_at(body + 8);
+  if (w > MAX_IMAGE_COORD || h > MAX_IMAGE_COORD || (size_t)w * h * 4 != len - 12) { emit_error("bad background frame"); return 5; }
+  uint32_t *picture = NULL;
+  if (w > 0 && h > 0) {
+    picture = malloc((size_t)w * h * 4);
+    if (!picture) { emit_error("out of memory"); return 5; }
+    const unsigned char *p = body + 12;
+    for (size_t i = 0; i < (size_t)w * h; i++, p += 4) picture[i] = argb(p[3], p[0] * p[3] / 255, p[1] * p[3] / 255, p[2] * p[3] / 255);
+  }
+  set_ground(colour, picture, w, h);
+  fill_background();
+  return 0;
 }
 
 /* One key: RGBA, straight alpha, over the background. Scaled nearest-neighbour
@@ -196,13 +276,11 @@ static void fill_background(void) {
  * control — and the daemon combines overlapping controls into one image
  * (src/drivers/panel-compose.ts), so blending over the old pixels would build
  * a shape's soft edge up over its own last one. An opaque image is the same
- * either way. (Round 3's see-through background changes what is put back
- * here, not what the daemon sends.) */
+ * either way, and covers whatever the background lets through. */
 static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char *rgba) {
   int sw, sh, stride;
   uint32_t *px = platform_canvas(&sw, &sh, &stride);
-  const uint32_t under = background_pixel();
-  const unsigned ur = (under >> 16) & 0xff, ug = (under >> 8) & 0xff, ub = under & 0xff;
+  if (!px) return;
   int x0 = origin_x + (int)(x * scale), y0 = origin_y + (int)(y * scale);
   int x1 = origin_x + (int)((x + (int)w) * scale), y1 = origin_y + (int)((y + (int)h) * scale);
   if (x0 < 0) x0 = 0;
@@ -223,15 +301,19 @@ static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char
       unsigned a = s[3];
       if (a == 255) {
         *d = 0xff000000u | (uint32_t)dimmed(s[0]) << 16 | (uint32_t)dimmed(s[1]) << 8 | dimmed(s[2]);
-      } else if (a > 0) {
-        /* The background is already at this brightness. */
-        unsigned r = (dimmed(s[0]) * a + ur * (255 - a)) / 255;
-        unsigned g = (dimmed(s[1]) * a + ug * (255 - a)) / 255;
-        unsigned b = (dimmed(s[2]) * a + ub * (255 - a)) / 255;
-        *d = 0xff000000u | r << 16 | g << 8 | b;
-      } else {
-        *d = under;
+        continue;
       }
+      /* The background is already at this brightness, and premultiplied: the image over it. */
+      uint32_t under = ground_at(tx, ty, sw, sh);
+      if (a == 0) {
+        *d = under;
+        continue;
+      }
+      unsigned ua = under >> 24, ur = (under >> 16) & 0xff, ug = (under >> 8) & 0xff, ub = under & 0xff;
+      unsigned r = (dimmed(s[0]) * a + ur * (255 - a)) / 255;
+      unsigned g = (dimmed(s[1]) * a + ug * (255 - a)) / 255;
+      unsigned b = (dimmed(s[2]) * a + ub * (255 - a)) / 255;
+      *d = argb(a + ua * (255 - a) / 255, r, g, b);
     }
   }
   platform_damage(x0, y0, x1 - x0, y1 - y0);
@@ -335,10 +417,16 @@ static int handle_frames(void) {
         if (body_len != 11) { emit_error("bad canvas frame"); return 5; }
         canvas_w = u32_at(body);
         canvas_h = u32_at(body + 4);
-        background = 0xff000000u | (uint32_t)body[8] << 16 | (uint32_t)body[9] << 8 | body[10];
+        /* An opaque colour: the page's own background, if it has one, follows ('G'). */
+        set_ground(0xff000000u | (uint32_t)body[8] << 16 | (uint32_t)body[9] << 8 | body[10], NULL, 0, 0);
         place_canvas();
         fill_background();
         break;
+      case 'G': {
+        int c = take_ground(body, body_len);
+        if (c) return c;
+        break;
+      }
       case 'I': {
         if (body_len < 16) { emit_error("bad image frame"); return 5; }
         int x = (int)u32_at(body), y = (int)u32_at(body + 4);
@@ -405,9 +493,13 @@ static int read_input(void) {
   }
 }
 
+/* The screen's buffer as a binary PPM (premultiplied colour, as shown), and
+ * its alpha beside it as FILE.alpha, a binary PGM: 255 everywhere while the
+ * background is opaque. */
 static void write_dump(const char *path) {
   int w, h, stride;
   uint32_t *px = platform_canvas(&w, &h, &stride);
+  if (!px) return;
   FILE *f = fopen(path, "wb");
   if (!f) return;
   fprintf(f, "P6\n%d %d\n255\n", w, h);
@@ -417,6 +509,14 @@ static void write_dump(const char *path) {
       unsigned char rgb[3] = { (p >> 16) & 0xff, (p >> 8) & 0xff, p & 0xff };
       fwrite(rgb, 1, 3, f);
     }
+  fclose(f);
+  char alpha_path[4096];
+  snprintf(alpha_path, sizeof alpha_path, "%s.alpha", path);
+  f = fopen(alpha_path, "wb");
+  if (!f) return;
+  fprintf(f, "P5\n%d %d\n255\n", w, h);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++) fputc(ground_see_through() ? (int)(px[y * stride + x] >> 24) : 255, f);
   fclose(f);
 }
 

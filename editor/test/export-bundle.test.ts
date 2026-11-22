@@ -80,6 +80,15 @@ await check("a latching toggle's two icons are found and bundled", async () => {
   assert.deepEqual(Buffer.from(unzipSync(zip)[bundled.entry]), svg);
 });
 
+await check("a page's background image is found and bundled like an icon", async () => {
+  const withGround = { profiles: { default: { name: 'Default', layouts: { SERIAL: { startPage: 'main', pages: { main: { name: 'Main', buttons: {}, background: { image: '~/mic.svg', opacity: 50 } } } } } } } };
+  assert.deepEqual(iconReferences(withGround), ['~/mic.svg']);
+  const { zip } = await buildExport(JSON.stringify(withGround, null, 2) + '\n', true);
+  const manifest = JSON.parse(strFromU8(unzipSync(zip)[MANIFEST_ENTRY]));
+  const bundled = manifest.icons.find((i: { path: string }) => i.path === '~/mic.svg');
+  assert.ok(bundled?.entry, `the background image not bundled: ${JSON.stringify(manifest.icons)}`);
+});
+
 await check('never bundled: credentials.json or anything else in the state directory, a device, or a file that is not an image', async () => {
   await fs.writeFile(path.join(stateDir, 'credentials.json'), '{"twitch":{"refreshToken":"SECRET-REFRESH"}}', { mode: 0o600 });
   await fs.writeFile(path.join(home, 'notes.txt'), 'not an image');

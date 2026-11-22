@@ -40,6 +40,28 @@ export interface PageDef {
    * controls are its own (src/panel-presets.ts pagePanelIn).
    */
   panel?: PanelDef;
+  /**
+   * A virtual deck page's background (round 3): the whole screen behind its
+   * controls. Absent — every page before it, and a new page — is black and
+   * opaque. Ignored on a Stream Deck's pages.
+   */
+  background?: PageBackgroundDef;
+}
+
+/**
+ * A page's background on a virtual deck: a colour, an optional image over it,
+ * and one opacity for the whole layer. Controls are never faded, and the
+ * background never shows through one.
+ */
+export interface PageBackgroundDef {
+  /** "#rrggbb". Black unless set. */
+  color?: string;
+  /** An image file, a path as an icon's is (never copied); it covers the whole screen. */
+  image?: string;
+  /** "fill" (the default): covers the screen, cropped. "fit": the whole image, the colour around it. */
+  fit?: 'fill' | 'fit';
+  /** 0–100, of the whole layer, colour and image together; 100 unless set. Below 100, what is behind the screen shows through. */
+  opacity?: number;
 }
 
 /**
