@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Round 3 (PR #10): Codex review and Ryan's test list on the 10.3\" panel, then merge. Nothing released until v2 is done."
+next = "Round 4: appearance for every deck (icon scale, key colour, label font, image limits for icons, touch feedback). Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -47,4 +47,5 @@ Round 2 split (2026-11-18): 2a = shapes (rectangle, round, hexagon), overlap and
 Round 2a merged 2026-11-20 (PR #8), not released: tested on the 10.3" panel, plus an outline on every virtual-deck button and keys landing only on existing controls on custom pages.
 Round 2b merged 2026-11-20 (PR #9), not released: a page is a grid or custom for its whole life; Done on the deck's header; grid, snap, multi-select, align/distribute/match; templates in config.json. All five tests passed on the 10.3" panel; Codex's three findings fixed. Round 3 starts with two UI decisions: a click on a deck's frame selects it, and the zoom bar is always shown.
 Round 3 built 2026-11-21 (PR #10), not merged: click-to-focus, zoom always shown, a background per page on virtual decks (colour, image Fill/Fit, opacity; see-through on KDE). Idle: see-through costs nothing at rest; KWin composites whatever changes behind it.
+Round 3 merged 2026-11-21 (PR #10, f881ae5), not released: test list passed on the 10.3" panel and the V2; Codex's three findings fixed. On the real GPU desktop see-through cost KWin nothing extra even with a video behind it. GNOME parked, unchecked.
 """
