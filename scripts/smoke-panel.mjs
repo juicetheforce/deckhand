@@ -562,6 +562,9 @@ try {
   await sleep(150);
   check('a contact not followed: its movement says nothing, as always', touches(t, mark).length === 0, JSON.stringify(touches(t, mark)));
   t.proc.stdin.write(followFrame(4));
+  // The helper reads its touchscreens before its stdin when both are ready, so a move sent in the same
+  // instant as the follow can come first and go unreported — as a real finger's first move might, harmlessly.
+  await sleep(150);
   // Two changes in one frame are one move: x then y, then the report.
   send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 700), ev(EV.ABS, C.MT_Y, 600), syn());
   await until(() => touches(t, mark).length >= 1);

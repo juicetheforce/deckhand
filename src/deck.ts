@@ -491,7 +491,11 @@ export class DeckSession implements DeckHandle {
       const value = this.valueFraction(index, action) ?? 0;
       const drag: ValueDrag = { last: at, value, angle: angleAround(at, this.artBox(index, key)), wrote: false };
       this.drags.set(index, drag);
-      this.writes.set(index, { inFlight: false, next: null, stopped: false });
+      // A write of the last drag still in flight is this drag's too: one at a time, whichever drag it came from.
+      const writes = this.writes.get(index) ?? { inFlight: false, next: null, stopped: false };
+      writes.next = null;
+      writes.stopped = false;
+      this.writes.set(index, writes);
       this.shownValue.set(index, value);
       // Jump to touch: the level goes to the finger at once.
       if (key.kind === 'slider' && key.touch === 'jump') this.moveTo(index, drag, valueAtPoint(at, this.artBox(index, key), key.direction, this.travelOf(index, key)));
@@ -534,9 +538,10 @@ export class DeckSession implements DeckHandle {
     const action = this.currentButtons()[index]?.action;
     const handler = valueOf(action);
     if (!action || !handler) return;
-    // Only a change the action's units can show: a step smaller than one unit writes nothing.
+    // Only a change the action's units can show: a step smaller than one unit writes nothing
+    // (the fraction still moves, so small steps add up to a write).
     const range = handler.range(action);
-    const changed = valueOfFraction(next, range) !== valueOfFraction(drag.value, range) || !drag.wrote;
+    const changed = valueOfFraction(next, range) !== valueOfFraction(drag.value, range);
     drag.value = next;
     this.shownValue.set(index, next);
     void this.drawValue(index, true);
