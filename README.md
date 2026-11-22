@@ -35,7 +35,7 @@ It's one person's project, used every day.
 - **Icons are just files on disk.** Point a key at any image. Nothing is
   copied or imported; edit the file and the key updates. A key without an
   icon draws a built-in one for its action, as large as you like (Settings ›
-  General › Icon size). A key that shows a state — muted, live, playing —
+  General › Icon size), and every key can scale its own icon. A key that shows a state — muted, live, playing —
   takes a default icon of yours and one for that state. A label can stack its words on more than
   one line.
 

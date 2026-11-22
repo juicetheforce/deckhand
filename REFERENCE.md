@@ -336,10 +336,38 @@ deck, in the editor, or from a script: `deckhand profile <name>`.
 **Icons** are image files wherever you keep them (PNG, JPEG, WebP, GIF, SVG).
 Nothing is copied or imported: the config holds the path, and editing the
 file updates the key. A key with an action and no icon draws that action's
-built-in icon. An icon file must be a regular file of at most 10 MB, and
-nothing in `~/.local/state/deckhand/` is ever read as one — that is where
-the OBS password and the Twitch link are kept, so they can't reach an
-export.
+built-in icon. An icon file must be a regular file, a PNG, JPEG, WebP, GIF or
+SVG of at most 10 MB and 4096 px on its longer side, and nothing in
+`~/.local/state/deckhand/` is ever read as one — that is where the OBS
+password and the Twitch link are kept, so they can't reach an export. An icon
+outside those limits is dimmed in the editor's icon picker with the reason and
+can't be chosen; one already in the config is drawn as the "missing" icon, on
+the deck and in the editor's grid, and the editor's Icon tab and the log say
+why.
+
+**Icon scale.** Every key, on every deck, has its own scale in the Icon tab,
+from 20 to 200% in steps of 5. At 100% the whole image fits inside the key,
+centred — a square image on a wide button is as tall as the button, with
+space either side; above 100% it zooms in and is cut to the key's shape;
+below, it shrinks. The scale is relative to the key, never to the image. A
+green mark on the slider shows where the whole image becomes visible: 100 on
+a square key, lower on a round or hexagonal control, which can cut the
+corners of an image that fits its box. A built-in icon follows **Settings ›
+General › Icon size** until its key's slider is moved; **Clear icon** returns
+it to following.
+
+**Appearance** (Settings › General): **Icon size**, the size of built-in
+icons on every key that doesn't set its own; **Touch feedback**, on unless
+turned off, draws a touched button on a virtual deck pressed — a lighter face
+at 95% of its size, inside its own shape — until the finger lifts (Stream
+Decks are never affected); **Label font**, one font for every label on every
+deck, from the fonts installed on the machine, each listed in its own face —
+a font that is no longer installed keeps its name there, says "Not installed.
+Using the default." and labels use the default until it is back; and **Key
+colour**, the default colour of every button on every deck. A key's own
+colour is the Key tab's **Background**: Default (following Key colour), a
+swatch, or a colour typed as hex. Every button has a solid colour, with its
+icon drawn on top.
 
 **Your configuration** is `~/.config/deckhand/config.json`. The editor writes
 it, and it is plain JSON you can edit by hand ([Configuration](#configuration)).
@@ -407,8 +435,9 @@ scripts. `config.example.json` shows a complete file — its serials and audio
 
 ```jsonc
 {
-  "defaults": { /* background, labelColor, labelSize, labelPosition,
-                   iconFit, brightness, refreshMs, builtinIconSize, sleep */ },
+  "version": 2,                                // the format: see "Icon scale" below
+  "defaults": { /* background, labelColor, labelSize, labelPosition, labelFont,
+                   builtinIconSize, touchFeedback, brightness, refreshMs, sleep */ },
 
   "decks": {                                   // per deck, optional for a Stream Deck
     "<serial>": { "name": "XL", "brightness": 70 },
@@ -455,7 +484,7 @@ its layout's start page.
 
 **Buttons** are keyed by control ID. On a Stream Deck that is the key's
 index as a string: 0 is top-left, counting across rows. On a virtual deck it
-is the ID of one of its panel's controls (below). A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
+is the ID of one of its panel's controls (below). A button takes `icon`, `iconScale` (20–200), `label`,
 `labelColor`, `labelSize`, `labelPosition`, `background`, `action`,
 `onRelease` and `refreshMs`. `\n` in a label starts a new line (Enter, in
 the editor's label field); blank lines are dropped. A line
@@ -527,15 +556,33 @@ stays blank), `null` for no icon, a path to an image file, or
 `"builtin:<name>"` for one of the icons in `assets/icons/`. An icon that
 can't be drawn shows a dashed "missing" icon.
 
+**`iconScale`** is the key's icon scale in percent, 20–200 (Icon scale,
+above): at 100 the whole image fits the key's box, centred. Without one, an
+image file is drawn at 100 and a built-in at `defaults.builtinIconSize`.
+
 **Built-in icons are drawn smaller than the key**, centred, at
-`defaults.builtinIconSize` percent of it: 45.5 unless set, from 28 to 70 —
-what **Settings › General › Icon size** sets. The slider shows it relative
-to the largest size, 70% of the key as 100%: from 40 to 100% in steps of 5,
-65% by default. It applies to every
-built-in — an action's own, one chosen by name, the "missing" icon — and
-never to an image file you chose, which fills the key as `iconFit` says. The
-decks and the editor redraw when the slider is let go, or when `config.json`
-is saved.
+`defaults.builtinIconSize` percent of it, on the same rule: 45.5 unless set,
+from 25 to 70 — what **Settings › General › Icon size** sets, showing the
+same figure (45.5 as 46%). It applies to every built-in — an action's own,
+one chosen by name, the "missing" icon — on a key without an `iconScale` of
+its own, and never to an image file. The decks and the editor redraw when the
+slider is let go, or when `config.json` is saved.
+
+**`defaults.labelFont`** names an installed font family for every label
+(Deckhand's own, `sans-serif`, unless set); a family that isn't installed
+falls back to it. **`defaults.touchFeedback: false`** turns Touch feedback
+off. **`defaults.background`** is Key colour, every button's colour unless it
+sets its own `background` (`#101014` unless set). A font or colour change
+redraws each key once.
+
+**`"version": 2`** marks a config written since icons had a scale. A config
+without it is from before, when an image file was cropped to fill the key
+(`iconFit: "cover"`, the default) or fitted whole (`"contain"`). The daemon
+draws such a config as it was, without writing anything; the editor converts
+it when it opens the file, and saves: where the crop applied to an image that
+isn't square, the key gets the `iconScale` that keeps its look (up to 200),
+`contain` becomes 100 — written as nothing — and `iconFit` is dropped.
+Now playing's album art is always drawn as the crop was.
 
 ## Actions
 
@@ -1272,10 +1319,13 @@ The checks:
 
 - Root: `npm run smoke`, which includes `smoke-first-run.mjs`: the daemon
   started with no config and two decks, and the starter key it writes.
+  Its `smoke-appearance.mjs` drives a session on a device of its own with
+  the fake input helper set before anything is imported: a key there sends
+  its hotkey, and the real helper would type it into the desktop.
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
