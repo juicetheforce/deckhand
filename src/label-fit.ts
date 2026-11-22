@@ -1,4 +1,7 @@
 import sharp from 'sharp';
+import { fontFamily } from './config-common.js';
+
+export { fontFamily };
 
 /**
  * Fitting a label line to a key: a line wider than the key is cut and ends in
@@ -19,11 +22,11 @@ import sharp from 'sharp';
  */
 
 /** The label's text style, shared by the key and by measurement so the two cannot drift. */
-export function labelStyle(fontSize: number, color: string): string {
+export function labelStyle(fontSize: number, color: string, font?: string): string {
   // paint-order:stroke draws a dark outline behind the glyphs so light text
   // stays readable over a bright icon.
   return `.lbl {
-      font-family: sans-serif;
+      font-family: ${fontFamily(font)};
       font-size: ${fontSize}px;
       font-weight: 600;
       fill: ${color};
@@ -53,8 +56,9 @@ const MAX_WIDTHS = 1024;
 let measureCount = 0;
 
 /** The drawn width of one line, in pixels, including its outline. 0 for a line with no ink. */
-export async function measureLine(text: string, fontSize: number): Promise<number> {
-  const key = `${fontSize}|${text}`;
+export async function measureLine(text: string, fontSize: number, font?: string): Promise<number> {
+  // Keyed by font too: a font change measures again rather than reusing another face's widths.
+  const key = `${font ?? ''}|${fontSize}|${text}`;
   const hit = widths.get(key);
   if (hit !== undefined) return hit;
 
@@ -64,7 +68,7 @@ export async function measureLine(text: string, fontSize: number): Promise<numbe
   const width = Math.ceil(Array.from(text).length * fontSize * 1.5) + pad * 2;
   const height = fontSize * 2;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-  <style>${labelStyle(fontSize, '#fff')}</style>
+  <style>${labelStyle(fontSize, '#fff', font)}</style>
   <text x="${pad}" y="${Math.round(fontSize * 1.4)}" class="lbl">${escapeXml(text)}</text>
 </svg>`;
 
@@ -109,19 +113,19 @@ function cut(chars: string[], n: number): string {
  * character at a time. About two measurements on a real title, against five
  * or six for a binary search.
  */
-export async function fitLine(text: string, fontSize: number, keySize: number): Promise<string> {
+export async function fitLine(text: string, fontSize: number, keySize: number, font?: string): Promise<string> {
   const room = keySize - SIDE_MARGIN * 2;
-  const full = await measureLine(text, fontSize);
+  const full = await measureLine(text, fontSize, font);
   if (full <= room) return text;
 
   // Code points, so a cut never splits a surrogate pair. No check holds this:
   // a split pair draws as U+FFFD, wider than the room it would have to fit, so
   // measuring rejects it anyway (tried at every key width from 30 to 200 px).
   const chars = Array.from(text);
-  const fits = async (n: number) => (await measureLine(cut(chars, n), fontSize)) <= room;
+  const fits = async (n: number) => (await measureLine(cut(chars, n), fontSize, font)) <= room;
 
-  // The ellipsis's own width is measured once for the life of the process.
-  const ellipsis = await measureLine(ELLIPSIS, fontSize);
+  // The ellipsis's own width is measured once per font for the life of the process.
+  const ellipsis = await measureLine(ELLIPSIS, fontSize, font);
   const estimate = Math.floor((chars.length * (room - ellipsis)) / full);
   let n = Math.min(chars.length - 1, Math.max(1, estimate));
   if (await fits(n)) {

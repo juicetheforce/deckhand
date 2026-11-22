@@ -1,3 +1,4 @@
+import { CONFIG_VERSION } from './icon-fit.js';
 import { ConfigBackups } from './backups.js';
 import { CONFIG_PATH, configMissing, loadConfig, retryConfigWatch, watchConfig, writeNewConfig } from './config.js';
 import { createHandlers, eventNotifiers, type ControlDeps } from './control/commands.js';
@@ -251,6 +252,8 @@ async function bootstrapConfig(): Promise<boolean> {
   }
 
   const starter: Config = {
+    // Written in today's format: nothing for the editor to convert (icon-fit.ts).
+    version: CONFIG_VERSION,
     decks,
     profiles: { default: { name: 'Default', layouts } },
     startProfile: 'default',

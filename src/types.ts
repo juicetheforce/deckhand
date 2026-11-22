@@ -14,7 +14,18 @@ export interface ButtonDef {
    * or `builtin:<name>`, one of the icons shipped with the app.
    */
   icon?: string | null;
-  /** 'cover' crops to fill the square, 'contain' letterboxes. */
+  /**
+   * The icon's scale, in percent of the control (src/icon-scale.ts): at 100
+   * the whole image fits the control's box, centred; above, it zooms in and is
+   * cut to the shape. 20–200. Absent: a built-in follows
+   * `defaults.builtinIconSize`, a file is drawn at 100.
+   */
+  iconScale?: number;
+  /**
+   * Retired (src/icon-fit.ts): 'cover' cropped to fill the square, 'contain'
+   * letterboxed. Read only in a config from before `"version": 2`, which the
+   * editor converts to `iconScale` when it opens it.
+   */
   iconFit?: 'cover' | 'contain';
   label?: string;
   labelColor?: string;
@@ -175,14 +186,27 @@ export interface Defaults {
   labelColor?: string;
   labelSize?: number;
   labelPosition?: 'top' | 'bottom' | 'center';
+  /** Retired, as ButtonDef.iconFit: read only in a config from before `"version": 2`. */
   iconFit?: 'cover' | 'contain';
   /**
-   * How big a built-in icon is drawn, in percent of the key, centred (28–70;
-   * 45.5 unless set): what Settings › General › Icon size writes, though it
-   * shows it relative to its largest (70 as 100%). An icon file chosen for a
-   * key is never resized by it.
+   * How big a built-in icon is drawn, in percent of the control, on the one
+   * rule of a key's `iconScale` (src/icon-scale.ts), 25–70, 45.5 unless set:
+   * Settings › General › Icon size, which shows the same figure. A key with
+   * its own `iconScale` does not follow it, and neither does an icon file.
    */
   builtinIconSize?: number;
+  /**
+   * The label font for every key on every deck: an installed font family's
+   * name (Settings › General › Label font). Absent: Deckhand's default,
+   * `sans-serif`. A font that is not installed falls back to the default.
+   */
+  labelFont?: string;
+  /**
+   * Touch feedback on virtual decks: a touched button drawn pressed (a lighter
+   * face at 95%) until it is let go. On unless false. Stream Decks are never
+   * affected.
+   */
+  touchFeedback?: boolean;
   brightness?: number;
   /** Default refresh interval for buttons that render live state. */
   refreshMs?: number;
@@ -195,6 +219,11 @@ export interface Defaults {
 }
 
 export interface Config {
+  /**
+   * The config's format: absent in every config from before round 4's icon
+   * scale, `2` once the editor has converted `iconFit` (src/icon-fit.ts).
+   */
+  version?: number;
   defaults?: Defaults;
   /** Keyed by device serial number. Use `npm run decks` to discover yours. */
   decks?: Record<string, DeckDef>;
@@ -237,9 +266,17 @@ export interface TemplateDef {
 /** What a button should look like right now, after dynamic state is applied. */
 export interface Display {
   icon?: string;
-  iconFit: 'cover' | 'contain';
-  /** Percent of the key a built-in icon is drawn at (Defaults.builtinIconSize); files ignore it. */
+  /**
+   * The icon's scale (src/icon-scale.ts), percent of the control. Absent: a
+   * built-in at `builtinIconSize`, a file at 100. 'cover': the old crop, kept
+   * by drawing the image at coverScale() of its own proportions — an older
+   * config's keys until the editor converts it, and Now playing's album art.
+   */
+  iconScale?: number | 'cover';
+  /** Percent of the control a built-in icon is drawn at without the key's own scale (Defaults.builtinIconSize). */
   builtinIconSize: number;
+  /** The label's font family; absent, Deckhand's default (sans-serif). */
+  labelFont?: string;
   label?: string;
   labelColor: string;
   labelSize: number;
@@ -261,6 +298,8 @@ export interface Display {
    * like app-launch-unset, with the not-set-up badge instead of the failed one.
    */
   unset?: boolean;
+  /** Being touched on a virtual deck with Touch feedback on: drawn lighter, at 95%, inside its own shape. */
+  pressed?: boolean;
 }
 
 /** Partial display override returned by an action's describe(). */

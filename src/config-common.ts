@@ -16,30 +16,31 @@ import type { Config, Defaults, LayoutDef } from './types.js';
 export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
 /**
- * Icon size (Settings › General). `defaults.builtinIconSize` is stored as a
- * percent of the key, 28–70; **the slider shows it relative to its largest
- * size** — 70% of the key shown as 100% — from 40 to 100% in steps of 5,
- * 65% (45.5% of the key) by default (Ryan, 2026-10-23, revising Claude
- * Design's 16c). Converted for display only.
+ * Icon size (Settings › General): `defaults.builtinIconSize`, a percent of the
+ * control on the one rule of a key's icon scale (src/icon-scale.ts), **shown as
+ * that same figure** (Ryan, 2026-11-22; until then the slider showed 70 as
+ * 100%). 25–70 in steps of 5; 45.5 by default, shown rounded as 46%, as is any
+ * in-between value the old slider stored, until the slider is moved.
  */
-export const BUILTIN_ICON_SIZE = {
-  /** The largest, as a percent of the key: shown as 100%. */
-  largest: 70,
-  /** What the slider shows. */
-  shown: { min: 40, max: 100, step: 5 },
-  /** What `defaults.builtinIconSize` may be: the shown range in percent of the key. */
-  min: 28,
-  max: 70,
-} as const;
+export const BUILTIN_ICON_SIZE = { min: 25, max: 70, step: 5 } as const;
 
-/** A stored size (percent of the key) as the slider shows it. */
-export function shownIconSize(stored: number): number {
-  return Math.round((stored / BUILTIN_ICON_SIZE.largest) * 100);
+/**
+ * A label font's name: what goes into the key's SVG style as a quoted CSS
+ * string, so nothing that could end the string, the style or the element.
+ * Family names do not use them.
+ */
+export function validFontName(name: unknown): name is string {
+  return typeof name === 'string' && name.trim() !== '' && name.length <= 100 && !/[\x00-\x1f\x7f"'\\<>&;{}]/.test(name);
 }
 
-/** A size the slider shows, stored as a percent of the key (to a tenth: 65 → 45.5). */
-export function storedIconSize(shown: number): number {
-  return Math.round(shown * BUILTIN_ICON_SIZE.largest) / 100;
+/**
+ * The CSS font-family for a label: the chosen family first, then Deckhand's
+ * default, so a font that is not installed falls back to it (fontconfig
+ * skips a family it does not have). The name is validated (config-common.ts
+ * validFontName): nothing in it can end the quoted string.
+ */
+export function fontFamily(font: string | undefined): string {
+  return font ? `'${font}', sans-serif` : 'sans-serif';
 }
 
 /** Label size (Settings › General): the slider over `defaults.labelSize`. A key's own size is not limited to it. */
@@ -48,16 +49,21 @@ export const LABEL_SIZE = { min: 8, max: 28, step: 1 } as const;
 /** Dim to (Settings › General): the slider over `defaults.sleep.dimTo`. */
 export const DIM_TO = { min: 5, max: 50, step: 5, default: 20 } as const;
 
-export const DEFAULTS: Required<Defaults> = {
+/** Every default resolved; the label font alone may stay unset, meaning Deckhand's own (LABEL_FONT_DEFAULT). `iconFit` is retired (src/icon-fit.ts). */
+export type ResolvedDefaults = Required<Omit<Defaults, 'iconFit' | 'labelFont'>> & Pick<Defaults, 'labelFont'>;
+
+/** Deckhand's own label font, used when none is chosen and when the chosen one is not installed. */
+export const LABEL_FONT_DEFAULT = 'sans-serif';
+
+export const DEFAULTS: ResolvedDefaults = {
   background: '#101014',
   labelColor: '#ffffff',
   labelSize: 14,
   labelPosition: 'bottom',
-  iconFit: 'cover',
-  // A built-in's drawing, as a percent of the key: Settings › General › Icon
-  // size, which shows it as 65% (BUILTIN_ICON_SIZE). The editor's grid
-  // follows it too.
+  // A built-in's drawing, as a percent of the control: Settings › General ›
+  // Icon size (BUILTIN_ICON_SIZE). The editor's grid follows it too.
   builtinIconSize: 45.5,
+  touchFeedback: true,
   brightness: 70,
   refreshMs: 1000,
   sleep: { onLock: true },

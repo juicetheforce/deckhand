@@ -1,10 +1,10 @@
 {
+  "version": 2,
   "defaults": {
     "background": "#101014",
     "labelColor": "#ffffff",
     "labelSize": 14,
     "labelPosition": "bottom",
-    "iconFit": "cover",
     "brightness": 70,
     "refreshMs": 1000
   },
