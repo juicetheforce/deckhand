@@ -19,6 +19,8 @@ import { useImageCheck } from './image-check.js';
 import { ICON_SCALE, wholeImageMark } from '../../../src/icon-scale.js';
 import type { ShapeBox } from '../../../src/shapes.js';
 import { BUILTIN_PREFIX } from '../shared/icons.js';
+import { ValueInspector } from './inspector/ValueInspector.js';
+import type { Config } from '../../../src/types.js';
 
 interface Props {
   /** How many keys are selected. With more than one, the inspector offers the bulk operations instead of one key's fields. */
@@ -60,6 +62,9 @@ interface Props {
   /** The daemon's installed applications, for the App form. */
   apps: AppListing[] | null | undefined;
   apply: (edit: Edit) => Promise<string | null>;
+  /** The selected control is a slider or dial (round 5): its own inspector (inspector/ValueInspector.tsx). */
+  controlKind?: 'slider' | 'dial';
+  config: Config;
 }
 
 type Tab = 'key' | 'icon';
@@ -80,7 +85,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, keyColorDefault, builtinIconSize, keyBox, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, keyColorDefault, builtinIconSize, keyBox, canPreview, audio, apps, apply, controlKind, config }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -100,6 +105,27 @@ export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure,
         <p className="muted">Select a key to see what it does.</p>
         <p className="muted small">{SELECTING_SEVERAL}</p>
       </aside>
+    );
+  }
+  if (controlKind) {
+    return (
+      <ValueInspector
+        key={`${at.profile}/${at.serial}/${at.page}/${at.key}`}
+        kind={controlKind}
+        at={at}
+        keyNumber={keyNumber}
+        button={button}
+        failure={failure}
+        editingBlocked={editingBlocked}
+        config={config}
+        labelDefaults={labelDefaults}
+        audio={audio}
+        decks={decks}
+        canPreview={canPreview}
+        place={place}
+        onPlace={setPlace}
+        apply={apply}
+      />
     );
   }
   // Keyed by location so every piece of state resets when another key is selected.
@@ -173,7 +199,7 @@ function SeveralKeys({ count, bulk, editingBlocked }: { count: number; bulk: Bul
   );
 }
 
-interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
+interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk' | 'config' | 'controlKind'> {
   at: ButtonLocation;
   tab: Tab;
   onTab: (tab: Tab) => void;

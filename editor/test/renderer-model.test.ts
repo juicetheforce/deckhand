@@ -984,14 +984,14 @@ await check('a paste message names what was skipped and what lost its navigation
   const combat = { rowOffset: 0, columnOffset: 0, sourceKey: '0', sourceNumber: '1', button: { label: 'Combat', action: { type: 'page', to: 'pg_c' } } };
   const message = placementMessage(
     'Copied',
-    { writes: [{ key: '0', button: { label: 'Combat' } }], skipped: [wide], lostNavigation: [{ key: '0', clip: combat }] },
+    { writes: [{ key: '0', button: { label: 'Combat' } }], skipped: [wide], lostNavigation: [{ key: '0', clip: combat }], wrongKind: [] },
     'Little deck › Main',
   );
   assert.equal(
     message,
     'Copied 1 key to Little deck › Main. Skipped “Wide” (key 7): it has no place on that deck. “Combat” (key 1) lost its Go to page: that page is not on this deck, so it needs a new target.',
   );
-  assert.match(placementMessage('Pasted', { writes: [], skipped: [wide], lostNavigation: [] }, '“Main”'), /^Nothing pasted: no copied key has a place on “Main”\.$/);
+  assert.match(placementMessage('Pasted', { writes: [], skipped: [wide], lostNavigation: [], wrongKind: [] }, '“Main”'), /^Nothing pasted: no copied key has a place on “Main”\.$/);
 });
 
 await check('Copy to device offers the other connected decks this profile covers, with their pages', () => {

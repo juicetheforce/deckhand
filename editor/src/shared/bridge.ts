@@ -1,3 +1,4 @@
+import type { LayerName } from '../../../src/value-controls.js';
 import type { AppearancePatch } from './edits.js';
 /**
  * The API the preload script exposes to the renderer as `window.deckhand`,
@@ -322,7 +323,8 @@ export interface DeckhandBridge {
    * reloaded, clear the preview on that key — so the key shows the saved icon
    * and responds to presses again.
    */
-  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: string } | null, slot: PairIconField | null): Promise<ApplyResult>;
+  /** `slot`: the key's own icon (null), one of its state pair, or a slider's or dial's layer (`layer:thumb`). */
+  commitIcon(at: ButtonLocation, icon: IconChoice, preview: { serial: string; key: string } | null, slot: PairIconField | `layer:${LayerName}` | null): Promise<ApplyResult>;
   onIconFolderChanged(callback: (folder: string) => void): () => void;
   /**
    * App settings, in the editor's preferences file. Both

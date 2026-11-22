@@ -89,6 +89,19 @@ await check("a page's background image is found and bundled like an icon", async
   assert.ok(bundled?.entry, `the background image not bundled: ${JSON.stringify(manifest.icons)}`);
 });
 
+await check("a slider's and a dial's layer images are found and bundled like icons; None and an action's own fields are not", async () => {
+  const withLayers = configWith({
+    s1: { layers: { track: '~/mic.svg', fill: null, thumb: 'builtin:switch-on' }, action: { type: 'audio.volume', node: 'alsa_output.x', label: 'Fill' } },
+    d1: { layers: { knob: '~/mic.svg', ring: '~/gone.png' }, angles: { start: -90, end: 90 } },
+  });
+  assert.deepEqual(iconReferences(withLayers), ['~/mic.svg', 'builtin:switch-on', '~/gone.png']);
+  const { zip } = await buildExport(JSON.stringify(withLayers, null, 2) + '\n', true);
+  const manifest = JSON.parse(strFromU8(unzipSync(zip)[MANIFEST_ENTRY]));
+  const bundled = manifest.icons.find((i: { path: string }) => i.path === '~/mic.svg');
+  assert.ok(bundled?.entry, `the layer image not bundled: ${JSON.stringify(manifest.icons)}`);
+  assert.deepEqual(Buffer.from(unzipSync(zip)[bundled.entry]), svg);
+});
+
 await check('never bundled: credentials.json or anything else in the state directory, a device, or a file that is not an image', async () => {
   await fs.writeFile(path.join(stateDir, 'credentials.json'), '{"twitch":{"refreshToken":"SECRET-REFRESH"}}', { mode: 0o600 });
   await fs.writeFile(path.join(home, 'notes.txt'), 'not an image');

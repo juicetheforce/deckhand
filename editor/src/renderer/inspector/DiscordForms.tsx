@@ -26,7 +26,7 @@ const ABOUT: Record<string, { heading: string; text: string }> = {
 };
 
 /** The note every Discord form ends with: where Discord is set up, and that it can be slow to answer. */
-function Needs() {
+export function Needs() {
   return (
     <p className="muted small">
       Needs the Discord app running, and Discord connected in Deckhand's{' '}
@@ -54,7 +54,7 @@ export function DiscordForm({ type, button, disabled, onChooseIcon }: { type: st
 }
 
 /** Discord's list for a picker, asked when the form opens, when its server changes, and on Ask again. Null while asking. */
-function useDiscordList(kind: 'guilds' | 'channels' | 'users', guild: string | null, ask: number): DiscordList | null {
+export function useDiscordList(kind: 'guilds' | 'channels' | 'users', guild: string | null, ask: number): DiscordList | null {
   const [list, setList] = useState<DiscordList | null>(null);
   useEffect(() => {
     let alive = true;
@@ -75,7 +75,7 @@ const text = (value: unknown) => (typeof value === 'string' && value !== '' ? va
  * kept, shown first by its saved name and marked; with Discord not
  * reachable, the saved one is still shown, and nothing else can be picked.
  */
-function IdPicker({
+export function IdPicker({
   list,
   stored,
   storedName,

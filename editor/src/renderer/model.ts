@@ -513,11 +513,17 @@ function joinNames(names: string[]): string {
 export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string, skippedWhy = 'no place on that deck'): string {
   const written = placement.writes.length;
   const parts: string[] = [];
-  if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
+  if (written === 0 && placement.wrongKind.length > 0 && placement.skipped.length === 0) parts.push(`Nothing ${verb.toLowerCase()} to ${destination}.`);
+  else if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
   else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
   if (written > 0 && placement.skipped.length > 0) {
     const names = joinNames(placement.skipped.map((k) => keyNamed(k.button, k.sourceNumber)));
     parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} ${skippedWhy}.`);
+  }
+  if (placement.wrongKind.length > 0) {
+    const names = joinNames(placement.wrongKind.map((k) => keyNamed(k.button, k.sourceNumber)));
+    const one = placement.wrongKind.length === 1;
+    parts.push(`Skipped ${names}: a slider's or dial's key goes only on a slider or dial, and a button's only on a button, so ${one ? 'it has' : 'they have'} nowhere to land there.`);
   }
   if (placement.lostNavigation.length > 0) {
     const names = joinNames(placement.lostNavigation.map((l) => keyNamed(l.clip.button, l.clip.sourceNumber)));
@@ -661,6 +667,13 @@ export function liveFacesOn(daemon: DaemonView, selection: Pick<Selection, 'prof
   return deck.live ?? {};
 }
 
+/** Each slider's and dial's value on the deck now, whole percent of its range, by control id: only while the deck shows this page. */
+export function valuesOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<string, number> {
+  const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
+  if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return {};
+  return deck.values ?? {};
+}
+
 /**
  * An approximation of the key face; the deck is the truth. Live faces — clock
  * time, track, active output — are not drawn; default icons are (faceIcon).
@@ -711,7 +724,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   editor: [],
   app: ['app'],
   brightness: ['delta', 'value', 'showLevel', 'deck'],
-  'audio.volume': ['delta', 'showLevel'],
+  // On a slider or dial, its device (inspector/ValueForms.tsx): node, label, and input for an input.
+  'audio.volume': ['delta', 'showLevel', 'node', 'label', 'input'],
   'audio.micMute': ['iconActive', 'labelMuted', 'labelUnmuted'],
   'audio.mute': ['iconActive', 'labelMuted', 'labelUnmuted'],
   'media.control': ['method', 'iconActive'],

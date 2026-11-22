@@ -24,6 +24,7 @@ export function Library({
   onDragStart,
   notSetUp,
   onSetUp,
+  dimmed = () => null,
 }: {
   onPick: (type: string) => void;
   /** A press on a row that may become a drag onto a key (useActionDrag); null while editing is blocked. */
@@ -36,6 +37,12 @@ export function Library({
    */
   notSetUp: (type: string) => string | null;
   onSetUp: (type: string) => void;
+  /**
+   * Why an action cannot go on the control selected now, or null: with a
+   * slider or dial selected, every action that carries no value (26d). Such a
+   * row is dimmed and neither drags nor picks.
+   */
+  dimmed?: (type: string) => string | null;
 }) {
   // Starts expanded and stays that way until the saved state arrives, so a
   // slow read can never flash sections shut.
@@ -81,7 +88,7 @@ export function Library({
             {matches.map(({ group, entry }) => (
               <li key={entry.type}>
                 {/* Matches come from every section, so each says where it lives. */}
-                <Entry entry={entry} group={group.name} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
+                <Entry entry={entry} group={group.name} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} dimmed={dimmed(entry.type)} onSetUp={onSetUp} />
               </li>
             ))}
           </ul>
@@ -110,7 +117,7 @@ export function Library({
               <ul>
                 {group.entries.map((entry) => (
                   <li key={entry.type}>
-                    <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} onSetUp={onSetUp} />
+                    <Entry entry={entry} onPick={onPick} onDragStart={onDragStart} blocked={notSetUp(entry.type)} dimmed={dimmed(entry.type)} onSetUp={onSetUp} />
                   </li>
                 ))}
               </ul>
@@ -129,6 +136,7 @@ function Entry({
   onPick,
   onDragStart,
   blocked,
+  dimmed = null,
   onSetUp,
 }: {
   entry: CatalogueEntry;
@@ -138,18 +146,21 @@ function Entry({
   onDragStart: ((type: string, e: ReactPointerEvent) => void) | null;
   /** Why it cannot be placed yet, or null. */
   blocked: string | null;
+  /** Why it cannot go on the selected slider or dial, or null (26d): dimmed, no drag, no pick. */
+  dimmed?: string | null;
   onSetUp: (type: string) => void;
 }) {
   const icon = libraryIcon(entry.type);
   return (
     <button
-      className={blocked ? 'library-entry library-entry-unset' : 'library-entry'}
-      title={blocked ?? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
-      aria-disabled={blocked ? true : undefined}
+      className={dimmed ? 'library-entry library-entry-dimmed' : blocked ? 'library-entry library-entry-unset' : 'library-entry'}
+      title={dimmed ?? blocked ?? `${entry.description} — select a key, then click; or drag it onto a key to make a new button there`}
+      aria-disabled={blocked || dimmed ? true : undefined}
       data-action-type={entry.type}
       data-not-set-up={blocked ? true : undefined}
-      onPointerDown={(e) => !blocked && onDragStart?.(entry.type, e)}
-      onClick={() => (blocked ? onSetUp(entry.type) : onPick(entry.type))}
+      data-dimmed={dimmed ? true : undefined}
+      onPointerDown={(e) => !blocked && !dimmed && onDragStart?.(entry.type, e)}
+      onClick={() => (dimmed ? undefined : blocked ? onSetUp(entry.type) : onPick(entry.type))}
     >
       {/* The same built-in the deck draws for a key with no icon of its own. */}
       {icon === null ? (

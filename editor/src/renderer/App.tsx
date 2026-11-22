@@ -4,7 +4,8 @@ import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import type { ButtonDef, Config, PageBackgroundDef, PageDef, PanelDef } from '../../../src/types.js';
 import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { geometryOfPanel } from '../../../src/geometry.js';
-import { addButton, blankPanel, buttonsFor, controlNames, duplicateControls, layoutChanges } from '../shared/layout-edit.js';
+import { addControl, blankPanel, buttonsFor, controlNames, duplicateControls, layoutChanges } from '../shared/layout-edit.js';
+import { NEEDS_VALUE, takesValue, type ControlKind } from '../../../src/value-controls.js';
 import { DEFAULT_GUIDES, nudge, type Guides } from '../shared/layout-arrange.js';
 import { ControlsPalette, DeleteControl, DiscardChanges, GuidesBar, LayoutCanvas, LayoutInspector, ModeBar } from './LayoutEditor.js';
 import { useVirtualScreen } from './GridPicker.js';
@@ -40,6 +41,7 @@ import {
   settingsSectionOf,
   latchedKeysOn,
   liveFacesOn,
+  valuesOn,
   focusDeck,
   followDeck,
   othersToStartPages,
@@ -386,20 +388,20 @@ function Editor({
 
   /** The controls selected in the mode, in the order they were selected (22c): Ctrl-click and the marquee add to it. */
   const selectedControls = mode && modePanel ? selection.keys.filter((id) => modePanel.controls.some((c) => c.id === id)) : [];
-  const addControlAt = (clientX: number, clientY: number) => {
+  const addControlAt = (kind: ControlKind, clientX: number, clientY: number) => {
     if (!mode || !modePanel) return;
     const el = document.querySelector(`[data-layout-box="${CSS.escape(mode.serial)}"]`);
     if (!el) return;
     const r = el.getBoundingClientRect();
     if (clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) return;
     const at = { x: ((clientX - r.left) / r.width) * modePanel.size.width, y: ((clientY - r.top) / r.height) * modePanel.size.height };
-    const added = addButton(modePanel, at, modeScreen, entryIds);
+    const added = addControl(modePanel, kind, at, modeScreen, entryIds);
     saveLayout(added.panel);
     selectKeys([added.id]);
   };
-  const addControlInMiddle = () => {
+  const addControlInMiddle = (kind: ControlKind) => {
     if (!mode || !modePanel) return;
-    const added = addButton(modePanel, { x: modePanel.size.width / 2, y: modePanel.size.height / 2 }, modeScreen, entryIds);
+    const added = addControl(modePanel, kind, { x: modePanel.size.width / 2, y: modePanel.size.height / 2 }, modeScreen, entryIds);
     saveLayout(added.panel);
     selectKeys([added.id]);
   };
@@ -520,15 +522,27 @@ function Editor({
     if (backgroundOpen && (mode !== null || !shownDecks(config, daemon, selection).includes(backgroundOpen.serial))) setBackgroundOpen(null);
   }, [mode, backgroundOpen, config, daemon, selection]);
   /** The key under the pointer while a key is dragged, on whichever deck: drawn by that deck's grid. */
-  const [keyDragOver, setKeyDragOver] = useState<KeyRef | null>(null);
+  const [keyDragOver, setKeyDragOver] = useState<(KeyRef & { refused?: string | null }) | null>(null);
 
   // An action dragged from the library onto a key: a new button there.
   // Written first, then the key is selected and its form shown — the
   // pick comes after the write so the inspector sees the new action.
   // On another shown deck, the drop focuses it and the new button is made there.
+  /** A control's kind on the page a deck shows: a slider or dial takes only an action carrying a value (round 5). */
+  const kindAt = (serial: string, key: string): ControlKind | undefined => {
+    const pageId = pageOf(selection, serial);
+    return pageId === null ? undefined : (pageGeometry(config, daemon, serial, selection.profile, pageId)?.keys.find((k) => k.id === key)?.kind ?? 'button');
+  };
+  /** Whether an action may be dropped on a control: never a button-only one on a slider or dial (26e). */
+  const refusesAction = (type: string, serial: string, key: string) => {
+    const kind = kindAt(serial, key);
+    return (kind === 'slider' || kind === 'dial') && !takesValue(type);
+  };
   const actionDrag = useActionDrag((type, { serial, key }) => {
     const pageId = pageOf(selection, serial);
     if (editingBlocked || pageId === null || !layoutFor(config, selection.profile, serial)?.pages[pageId]) return;
+    // Refused while still in the air (26e): letting go drops nothing and changes nothing.
+    if (refusesAction(type, serial, key)) return;
     const at = { profile: selection.profile, serial, page: pageId, key };
     if (serial === selection.serial) selectKeys([key]);
     else focusKey(serial, key);
@@ -749,6 +763,7 @@ function Editor({
         failedKeys={failedKeysOn(daemon, at)}
         latchedKeys={latchedKeysOn(daemon, at)}
         liveFaces={liveFacesOn(daemon, at)}
+        values={valuesOn(daemon, at)}
         notSetUp={(type) => notSetUp(daemon, type)}
         selectedKeys={focused ? selection.keys : []}
         onClickKey={(key, modifiers) =>
@@ -781,6 +796,13 @@ function Editor({
         background={groundPreview?.serial === serial && groundPreview.page === pageId ? groundPreview.background : undefined}
         dropTarget={
           actionDrag.drag?.over?.serial === serial ? actionDrag.drag.over.key : keyDragOver?.serial === serial ? keyDragOver.key : null
+        }
+        dropRefused={
+          actionDrag.drag?.over?.serial === serial && refusesAction(actionDrag.drag.type, serial, actionDrag.drag.over.key)
+            ? NEEDS_VALUE
+            : keyDragOver?.serial === serial && keyDragOver.refused
+              ? keyDragOver.refused
+              : null
         }
         onKeyMenu={(key, x, y) => {
           // Right-clicking a key outside the selection acts on that key alone, as a file manager does.
@@ -884,7 +906,20 @@ function Editor({
         <Library
           onPick={(type) => {
             if (actionDrag.takeSuppressedClick()) return;
-            if (selection.keys.length === 1) setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: true }));
+            if (selection.keys.length !== 1) return;
+            const kind = selection.key === null ? undefined : geometry?.keys.find((k) => k.id === selection.key)?.kind;
+            // A slider or dial: a click on an action with a value puts it there at once, keeping the art and the label.
+            if ((kind === 'slider' || kind === 'dial') && selection.key !== null && page) {
+              if (!takesValue(type) || editingBlocked) return;
+              const at = { profile: selection.profile, serial: selection.serial, page: selection.page, key: selection.key };
+              void window.deckhand.apply({ kind: 'setAction', at, action: { type } }).then((result) => setSwitchError(result.ok ? null : `Could not set the ${kind}: ${result.error}`));
+              return;
+            }
+            setPick((current) => ({ type, token: (current?.token ?? 0) + 1, click: true }));
+          }}
+          dimmed={(type) => {
+            const kind = selection.keys.length === 1 && selection.key !== null ? geometry?.keys.find((k) => k.id === selection.key)?.kind : undefined;
+            return (kind === 'slider' || kind === 'dial') && !takesValue(type) ? `${NEEDS_VALUE}: a ${kind} takes Volume, Brightness or User volume` : null;
           }}
           onDragStart={editingBlocked || !page || !geometry ? null : actionDrag.start}
           notSetUp={(type) => {
@@ -1132,6 +1167,8 @@ function Editor({
           canPreview={canSwitchDeck(daemon, selection.serial)}
           audio={daemon.audio}
           apps={daemon.apps}
+          controlKind={selection.key === null ? undefined : geometry?.keys.find((k) => k.id === selection.key)?.kind}
+          config={config}
           apply={async (edit) => {
             const result = await window.deckhand.apply(edit);
             return result.ok ? null : result.error;

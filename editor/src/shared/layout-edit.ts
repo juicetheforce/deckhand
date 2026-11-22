@@ -10,7 +10,8 @@
  * in `controls` is on top.
  */
 import { geometryOfPanel } from '../../../src/geometry.js';
-import { CUSTOM_LAYOUT, isVerySmall, newButtonSide, sideMm, type ScreenSize } from '../../../src/panel-presets.js';
+import { CUSTOM_LAYOUT, isVerySmall, mmToPx, newButtonSide, sideMm, type ScreenSize } from '../../../src/panel-presets.js';
+import { DIAL_MM, SLIDER_MAX_OF_SHORTER, SLIDER_MM, type ControlKind } from '../../../src/value-controls.js';
 import { cornerRadius, insideShape, shapeName, type ShapeName } from '../../../src/shapes.js';
 import type { ButtonDef, PageDef, PanelControlDef, PanelDef } from '../../../src/types.js';
 
@@ -150,6 +151,32 @@ export function addButton(panel: PanelDef, at: { x: number; y: number }, screen:
   return { panel: { ...panel, controls: [...panel.controls, { id, ...box }] }, id };
 }
 
+/**
+ * A new Slider or Dial (round 5), centred where it was dropped, at its
+ * physical size so it fits any screen: a slider about 14 × 60 mm — upright,
+ * its long side never more than three-quarters of the panel's shorter side —
+ * and a dial about 25 mm across. On top of the rest. A Button is addButton().
+ */
+export function addControl(panel: PanelDef, kind: ControlKind, at: { x: number; y: number }, screen: ScreenSize | null, also: Iterable<string> = []): { panel: PanelDef; id: string } {
+  if (kind === 'button') return addButton(panel, at, screen, also);
+  const on = screen ?? { width: panel.size.width, height: panel.size.height };
+  // Screen pixels to this layout's pixels, for a layout made for another size.
+  const k = 1 / Math.min(on.width / panel.size.width, on.height / panel.size.height);
+  let w: number;
+  let h: number;
+  if (kind === 'slider') {
+    const shorter = Math.min(panel.size.width, panel.size.height);
+    h = Math.min(mmToPx(on, SLIDER_MM.along) * k, shorter * SLIDER_MAX_OF_SHORTER);
+    w = Math.min(mmToPx(on, SLIDER_MM.across) * k, h);
+  } else {
+    w = h = mmToPx(on, DIAL_MM) * k;
+  }
+  const id = freshControlId(panel, also);
+  const box = clampBox({ x: at.x - w / 2, y: at.y - h / 2, w, h }, panel.size);
+  const control: PanelControlDef = kind === 'slider' ? { id, ...box, kind } : { id, ...box, kind, shape: 'round', keepRatio: true };
+  return { panel: { ...panel, controls: [...panel.controls, control] }, id };
+}
+
 /** An empty custom layout for this canvas: where Blank starts, in the editor only — it is never saved empty. */
 export function blankPanel(size: { width: number; height: number }): PanelDef {
   return { size: { ...size }, controls: [], preset: CUSTOM_LAYOUT };
@@ -282,7 +309,7 @@ export function layoutChanges(before: PanelDef | undefined, after: PanelDef): { 
   for (const [id, c] of now) {
     const old = was.get(id);
     if (!old) added++;
-    else if (old.x !== c.x || old.y !== c.y || old.w !== c.w || old.h !== c.h || shapeName(old.shape) !== shapeName(c.shape) || (old.radius ?? 0) !== (c.radius ?? 0) || !!old.keepRatio !== !!c.keepRatio) moved++;
+    else if (old.x !== c.x || old.y !== c.y || old.w !== c.w || old.h !== c.h || shapeName(old.shape) !== shapeName(c.shape) || (old.radius ?? 0) !== (c.radius ?? 0) || !!old.keepRatio !== !!c.keepRatio || old.direction !== c.direction || old.touch !== c.touch) moved++;
   }
   for (const id of was.keys()) if (!now.has(id)) deleted++;
   const order = (p: PanelDef | undefined) => (p?.controls ?? []).filter((c) => was.has(c.id) && now.has(c.id)).map((c) => c.id).join();

@@ -7,6 +7,7 @@ import { BUILTIN_FOLDER, iconUrl, type PairIconField } from '../shared/icons.js'
 import { FolderBar, useFolderBrowser, type PickerPlace } from './FolderBrowser.js';
 import { moveCursor, parentFolder, type GridKey } from './picker-model.js';
 import { checkImage } from './image-check.js';
+import { LAYER_LABELS, LAYERS_THAT_MAY_BE_NONE, type LayerName } from '../../../src/value-controls.js';
 
 export { EMPTY_PLACE, type PickerPlace } from './FolderBrowser.js';
 
@@ -18,6 +19,13 @@ interface Props {
    * state pair, written with setActionIcon.
    */
   slot: PairIconField | null;
+  /**
+   * A slider's or dial's layer (round 5), picked exactly as an icon is, in
+   * place of the key's icon: written with setLayer, never previewed on the
+   * deck (the editor checks the limits), and with "Use built-in" and, where
+   * the layer may have none, "None" in place of Clear icon (26f).
+   */
+  layer?: LayerName;
   editingBlocked: boolean;
   /** The daemon is connected and this deck is attached, so previews can show. */
   canPreview: boolean;
@@ -40,10 +48,12 @@ const GRID_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
  * at once, so the deck and the grid never disagree. The only action is Clear
  * icon.
  */
-export function IconPicker({ at, button, slot, editingBlocked, canPreview, place, onPlace }: Props) {
+export function IconPicker({ at, button, slot, layer, editingBlocked, canPreview: deckPreview, place, onPlace }: Props) {
   // The icon this picker is choosing, as it is stored now.
   const slotValue = slot === null ? undefined : button?.action?.[slot];
-  const currentIcon: string | null | undefined = slot === null ? button?.icon : typeof slotValue === 'string' ? slotValue : undefined;
+  const currentIcon: string | null | undefined = layer ? button?.layers?.[layer] : slot === null ? button?.icon : typeof slotValue === 'string' ? slotValue : undefined;
+  // A layer is never previewed on the deck: the editor checks the limits itself, as with no deck.
+  const canPreview = deckPreview && !layer;
   const [cursor, setCursor] = useState<string | null>(null);
   // Opens on the Built-in section for a built-in, as a file opens on its folder (main decides).
   const browser = useFolderBrowser('icon', currentIcon ?? null, place, onPlace, () => setCursor(null));
@@ -154,7 +164,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           }
           if (wanted.current !== null) continue; // replaced while it was being shown
         }
-        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.key } : null, slot);
+        const result = await window.deckhand.commitIcon(at, choice, previewing.current ? { serial: at.serial, key: at.key } : null, layer ? `layer:${layer}` : slot);
         previewing.current = false;
         if (!result.ok) setMessage(result.error);
       }
@@ -289,7 +299,38 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
                   : 'Opening…'}
         </p>
         {message && <p className="field-error">{message}</p>}
-        {!canPreview && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
+        {!canPreview && !layer && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
+        {layer && (
+          <div className="button-row picker-actions" data-layer-actions={layer}>
+            <button
+              disabled={editingBlocked || currentIcon === undefined}
+              title={`Draw the built-in ${LAYER_LABELS[layer].toLowerCase()}`}
+              data-layer-builtin={layer}
+              onClick={() => {
+                setCursor(null);
+                latest.current = null;
+                choose({ kind: 'default' });
+              }}
+            >
+              Use built-in {LAYER_LABELS[layer].toLowerCase()}
+            </button>
+            {LAYERS_THAT_MAY_BE_NONE.includes(layer) && (
+              <button
+                disabled={editingBlocked || currentIcon === null}
+                title={`No ${LAYER_LABELS[layer].toLowerCase()} at all`}
+                data-layer-none={layer}
+                onClick={() => {
+                  setCursor(null);
+                  latest.current = null;
+                  choose({ kind: 'none' });
+                }}
+              >
+                None
+              </button>
+            )}
+          </div>
+        )}
+        {!layer && (
         <div className="button-row picker-actions">
           {/* The one action. It removes the icon path, so the action's built-in
               default renders — it is not "no icon": a deliberately blank,
@@ -311,6 +352,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );

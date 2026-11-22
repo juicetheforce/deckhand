@@ -27,6 +27,18 @@ export const CONFIG_ENTRY = 'config.json';
  */
 export const ICON_FIELDS = ['icon', ...PAIR_ICON_FIELDS, ...LEGACY_STATE_ICON_FIELDS, 'image'] as const;
 
+/**
+ * A slider's or dial's art (types.ts ButtonDef.layers): every string in an
+ * object under this key is an image path too — `track`, `fill`, `thumb`,
+ * `base`, `ring` and `knob`, names too ordinary to look for anywhere else.
+ */
+export const LAYERS_FIELD = 'layers';
+
+/** Whether a config field holds an image path: one of ICON_FIELDS, or any field of a `layers` object. */
+export function holdsIcon(key: string, parent: string | null): boolean {
+  return (ICON_FIELDS as readonly string[]).includes(key) || parent === LAYERS_FIELD;
+}
+
 /** One icon path, exactly as the config writes it. */
 export interface BundledIcon {
   path: string;

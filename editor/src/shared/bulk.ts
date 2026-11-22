@@ -16,10 +16,17 @@
  */
 import type { ActionDef, ButtonDef, LayoutDef, PageDef } from '../../../src/types.js';
 import { keepResolvableNavigation } from './links.js';
+import { NEEDS_VALUE, takesValue } from '../../../src/value-controls.js';
 
 /** The part of a deck's geometry (the socket's `decks`) placement needs. */
 export interface KeyGrid {
-  keys: ReadonlyArray<{ id: string; row: number; column: number }>;
+  keys: ReadonlyArray<{ id: string; row: number; column: number; kind?: 'slider' | 'dial' }>;
+}
+
+/** Whether a key copied from a control of one kind may land on another: a slider's or dial's only on a slider or dial, a button's only on a button (round 5). */
+export function sameKindFamily(a: string | undefined, b: string | undefined): boolean {
+  const value = (k: string | undefined) => k === 'slider' || k === 'dial';
+  return value(a) === value(b);
 }
 
 /** One slot to write. `null` empties it. */
@@ -38,6 +45,8 @@ export interface ClipKey {
   sourceKey: string;
   sourceNumber: string;
   button: ButtonDef;
+  /** The control it was copied from, a slider or dial; absent for a button. */
+  kind?: 'slider' | 'dial';
 }
 
 /**
@@ -56,6 +65,8 @@ export interface Placement {
   skipped: ClipKey[];
   /** Keys that were written but lost a Go to page whose target is not in the target layout. */
   lostNavigation: Array<{ key: string; clip: ClipKey }>;
+  /** Keys not written because they would land on a control of the other family: a slider's on a button, a button's on a slider or dial. */
+  wrongKind: ClipKey[];
 }
 
 function positionOf(grid: KeyGrid, key: string): { row: number; column: number } | null {
@@ -95,12 +106,13 @@ export function rangeSelection(grid: KeyGrid, from: string, to: string): string[
  * selected holds a button.
  */
 export function copyKeys(page: PageDef, grid: KeyGrid, keys: Iterable<string>): Clipboard | null {
-  const found: Array<{ key: string; row: number; column: number; button: ButtonDef }> = [];
+  const found: Array<{ key: string; row: number; column: number; button: ButtonDef; kind?: 'slider' | 'dial' }> = [];
   for (const key of readingOrder(grid, keys)) {
     const button = page.buttons[key];
     const at = positionOf(grid, key);
     if (!button || Object.keys(button).length === 0 || !at) continue;
-    found.push({ key, ...at, button });
+    const kind = grid.keys.find((k) => k.id === key)?.kind;
+    found.push({ key, ...at, button, ...(kind ? { kind } : {}) });
   }
   if (found.length === 0) return null;
   const origin = { row: Math.min(...found.map((f) => f.row)), column: Math.min(...found.map((f) => f.column)) };
@@ -112,6 +124,7 @@ export function copyKeys(page: PageDef, grid: KeyGrid, keys: Iterable<string>): 
       sourceKey: f.key,
       sourceNumber: keyNumber(f.key, grid),
       button: structuredClone(f.button),
+      ...(f.kind ? { kind: f.kind } : {}),
     })),
   };
 }
@@ -124,10 +137,11 @@ export function copyKeys(page: PageDef, grid: KeyGrid, keys: Iterable<string>): 
  * of the key.
  */
 export function placeClipboard(clip: Clipboard, anchor: { row: number; column: number }, grid: KeyGrid, layout: LayoutDef): Placement {
-  const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
+  const placement: Placement = { writes: [], skipped: [], lostNavigation: [], wrongKind: [] };
   for (const clipped of clip.keys) {
     const key = keyAt(grid, anchor.row + clipped.rowOffset, anchor.column + clipped.columnOffset);
     if (key === null) placement.skipped.push(clipped);
+    else if (!sameKindFamily(clipped.kind, grid.keys.find((k) => k.id === key)?.kind)) placement.wrongKind.push(clipped);
     else placeOne(placement, clipped, key, layout);
   }
   return placement;
@@ -141,11 +155,12 @@ export function placeClipboard(clip: Clipboard, anchor: { row: number; column: n
  * dropped on for a drag. Copied keys left over have nowhere to go and are
  * skipped; with no target, nothing lands.
  */
-export function placeOnControls(clip: Clipboard, targets: ReadonlyArray<string>, layout: LayoutDef): Placement {
-  const placement: Placement = { writes: [], skipped: [], lostNavigation: [] };
+export function placeOnControls(clip: Clipboard, targets: ReadonlyArray<string>, layout: LayoutDef, grid?: KeyGrid): Placement {
+  const placement: Placement = { writes: [], skipped: [], lostNavigation: [], wrongKind: [] };
   clip.keys.forEach((clipped, i) => {
-    if (i < targets.length) placeOne(placement, clipped, targets[i], layout);
-    else placement.skipped.push(clipped);
+    if (i >= targets.length) placement.skipped.push(clipped);
+    else if (!sameKindFamily(clipped.kind, grid?.keys.find((k) => k.id === targets[i])?.kind)) placement.wrongKind.push(clipped);
+    else placeOne(placement, clipped, targets[i], layout);
   });
   return placement;
 }
@@ -267,4 +282,13 @@ export function keyName(button: ButtonDef | undefined, key: string, grid?: KeyGr
 export function keyNamed(button: ButtonDef | undefined, number: string): string {
   const where = `key ${number}`;
   return button?.label ? `“${button.label}” (${where})` : where;
+}
+
+/** Why a key's contents may not land on another control (round 5, 26e): a slider's or dial's only on a slider or dial, a button's only on a button. */
+export function keyDropRefused(fromKind: string | undefined, fromAction: string | undefined, toKind: string | undefined): string | null {
+  const fromValue = fromKind === 'slider' || fromKind === 'dial';
+  const toValue = toKind === 'slider' || toKind === 'dial';
+  if (fromValue === toValue) return null;
+  if (toValue) return takesValue(fromAction) ? 'A button\'s key goes only on a button' : NEEDS_VALUE;
+  return 'A slider\'s or dial\'s key goes only on a slider or dial';
 }

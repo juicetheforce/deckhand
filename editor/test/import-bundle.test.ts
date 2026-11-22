@@ -121,6 +121,19 @@ await check('round trip to a new home: remapped to ~/, relocated from outside ho
   assert.equal(buttons[3].icon, 'builtin:play');
 });
 
+await check("a slider's layer images are relocated and rewritten like icons; None stays none", async () => {
+  const slider = configWith({ 0: { layers: { thumb: `${oldHome}/mic.png`, fill: null, track: '~/Pictures/dove.png' } } });
+  const plan = await planImport(readImport(await exportFromOldHome(slider)));
+  assert.deepEqual(
+    plan.icons.map((i: { from: string; to: string }) => [i.from, i.to]),
+    [[`${oldHome}/mic.png`, '~/mic.png'], ['~/Pictures/dove.png', '~/Pictures/dove.png']],
+  );
+  const layers = plan.config.profiles.ffxiv.layouts.SERIAL.pages.main.buttons[0].layers;
+  assert.equal(layers?.thumb, '~/mic.png', 'the thumb not rewritten to the new home');
+  assert.equal(layers?.track, '~/Pictures/dove.png');
+  assert.equal(layers?.fill, null);
+});
+
 await check("a latching toggle's icons are relocated and rewritten like any other", async () => {
   const toggle = configWith({ 0: { action: { type: 'toggle', keys: 'shift', iconOn: `${oldHome}/mic.png`, iconOff: '~/Pictures/dove.png' } } });
   const plan = await planImport(readImport(await exportFromOldHome(toggle)));

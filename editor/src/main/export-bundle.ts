@@ -5,7 +5,7 @@ import path from 'node:path';
 import { strToU8, zipSync, type Zippable } from 'fflate';
 import { expandPath, validateConfig } from '../../../src/config.js';
 import { IconFileError, readIconFile } from '../../../src/icon-file.js';
-import { BUNDLE_FORMAT, BUNDLE_VERSION, CONFIG_ENTRY, ICON_FIELDS, MANIFEST_ENTRY, type BundledIcon, type ExportManifest } from '../shared/backup.js';
+import { BUNDLE_FORMAT, BUNDLE_VERSION, CONFIG_ENTRY, holdsIcon, MANIFEST_ENTRY, type BundledIcon, type ExportManifest } from '../shared/backup.js';
 import { BUILTIN_PREFIX } from '../shared/icons.js';
 
 /**
@@ -20,21 +20,20 @@ import { BUILTIN_PREFIX } from '../shared/icons.js';
  */
 export function iconReferences(config: unknown): string[] {
   const found = new Set<string>();
-  const fields: readonly string[] = ICON_FIELDS;
-  const walk = (value: unknown): void => {
+  const walk = (value: unknown, parent: string | null): void => {
     if (Array.isArray(value)) {
-      value.forEach(walk);
+      value.forEach((v) => walk(v, null));
     } else if (typeof value === 'object' && value !== null) {
       for (const [key, child] of Object.entries(value)) {
-        if (fields.includes(key) && typeof child === 'string') {
+        if (holdsIcon(key, parent) && typeof child === 'string') {
           if (child !== '') found.add(child);
         } else {
-          walk(child);
+          walk(child, key);
         }
       }
     }
   };
-  walk(config);
+  walk(config, null);
   return [...found];
 }
 

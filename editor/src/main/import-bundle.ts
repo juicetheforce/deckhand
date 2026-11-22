@@ -11,7 +11,7 @@ import {
   BUNDLE_FORMAT,
   BUNDLE_VERSION,
   CONFIG_ENTRY,
-  ICON_FIELDS,
+  holdsIcon,
   IMPORT_LIMITS,
   MANIFEST_ENTRY,
   RESTORED_FOLDER,
@@ -173,33 +173,31 @@ async function probe(file: string, expected: string | null): Promise<'none' | 's
 /** Every string outside the icon fields that contains `needle`, each once. */
 function stringsNaming(config: unknown, needle: string): string[] {
   const found = new Set<string>();
-  const fields: readonly string[] = ICON_FIELDS;
-  const walk = (value: unknown): void => {
+  const walk = (value: unknown, parent: string | null): void => {
     if (typeof value === 'string') {
       if (value.includes(needle)) found.add(value);
     } else if (Array.isArray(value)) {
-      value.forEach(walk);
+      value.forEach((v) => walk(v, null));
     } else if (typeof value === 'object' && value !== null) {
-      for (const [key, child] of Object.entries(value)) if (!fields.includes(key)) walk(child);
+      for (const [key, child] of Object.entries(value)) if (!holdsIcon(key, parent)) walk(child, key);
     }
   };
-  walk(config);
+  walk(config, null);
   return [...found];
 }
 
 /** A copy of the config with icon paths replaced by `to` wherever they appear. */
 function rewriteIcons(config: Config, mapping: Map<string, string>): Config {
-  const fields: readonly string[] = ICON_FIELDS;
-  const walk = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(walk);
+  const walk = (value: unknown, parent: string | null): unknown => {
+    if (Array.isArray(value)) return value.map((v) => walk(v, null));
     if (typeof value !== 'object' || value === null) return value;
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
-      out[key] = fields.includes(key) && typeof child === 'string' && mapping.has(child) ? mapping.get(child) : walk(child);
+      out[key] = holdsIcon(key, parent) && typeof child === 'string' && mapping.has(child) ? mapping.get(child) : walk(child, key);
     }
     return out;
   };
-  return walk(config) as Config;
+  return walk(config, null) as Config;
 }
 
 export interface ImportPlan {

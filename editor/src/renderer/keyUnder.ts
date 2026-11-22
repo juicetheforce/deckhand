@@ -2,6 +2,8 @@
 export interface KeyRef {
   serial: string;
   key: string;
+  /** A slider or dial (DeckGrid's `data-control-kind`); absent for a button. */
+  kind?: 'slider' | 'dial';
 }
 
 /**
@@ -13,5 +15,6 @@ export interface KeyRef {
 export function keyUnder(x: number, y: number): KeyRef | null {
   const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-key]');
   if (!el || el.dataset.deck === undefined || el.dataset.key === undefined) return null;
-  return { serial: el.dataset.deck, key: el.dataset.key };
+  const kind = el.dataset.controlKind;
+  return { serial: el.dataset.deck, key: el.dataset.key, ...(kind === 'slider' || kind === 'dial' ? { kind } : {}) };
 }
