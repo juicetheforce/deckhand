@@ -562,8 +562,10 @@ image file is drawn at 100 and a built-in at `defaults.builtinIconSize`.
 
 **Built-in icons are drawn smaller than the key**, centred, at
 `defaults.builtinIconSize` percent of it, on the same rule: 45.5 unless set,
-from 25 to 70 — what **Settings › General › Icon size** sets, showing the
-same figure (45.5 as 46%). It applies to every built-in — an action's own,
+from 25 to 100 — what **Settings › General › Icon size** sets, showing the
+same figure (45.5 as 46%); at 100 a built-in fills the key, and a label
+over it stays as readable as over a smaller one, drawn over the icon with its
+dark outline. It applies to every built-in — an action's own,
 one chosen by name, the "missing" icon — on a key without an `iconScale` of
 its own, and never to an image file. The decks and the editor redraw when the
 slider is let go, or when `config.json` is saved.
