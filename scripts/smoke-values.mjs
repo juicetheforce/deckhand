@@ -3,13 +3,19 @@
  * src/value-face.ts, DeckSession's value path, the virtual driver following
  * a finger):
  *
- * - **the model**: a control's kind, direction and touch, a key's layers and
- *   angles, validated; a template keeps the kind;
+ * - **the model**: a control's kind, direction and touch, a key's layers,
+ *   level and angles, validated; a template keeps the kind; an old config's
+ *   fill or ring image becomes the drawn level, and a round dial a rectangle
+ *   (migrateValueControls);
  * - **the built-in art**: the generator at board 26a's sizes is exactly the
  *   files in assets/art/; the toggle switch pair is among the built-in icons;
- * - **the face**: the thumb at the level, the fill shown up to it, the ring
- *   swept from the start angle, the knob turned, the held look, None layers,
- *   a label's band, a refused image drawn as the built-in and said once;
+ * - **the face**: the thumb at the level, the fill shown up to it in its
+ *   colour or switched off, the ring swept from the start angle (past −180°
+ *   too) and drawn over a knob image, the knob turned, the held look, a base
+ *   set to None, a label's band, rounded corners; chosen images in their
+ *   areas — a thumb, knob or base keeping its proportions, a track stretched
+ *   to the art, a background to the whole box; a refused image drawn as the
+ *   built-in and said once;
  * - **touch, through the real driver and a session** (fake helper, fake
  *   pactl, fake logind): a finger on a slider or dial is followed and a
  *   button's is not; Drag only moves by how far the finger moves and a tap
@@ -18,10 +24,11 @@
  *   a burst of moves is a few pactl calls; the last write re-reads the cache;
  *   **a change made outside Deckhand moves the fill**, from pactl subscribe's
  *   event, never a poll; nothing at rest; **a lock or a page change ends a
- *   drag with the value where it is**; a brightness slider sets its own deck
- *   to 0 and touch still turns it back up; a device not there fails once per
- *   drag, marked and notified, and writes nothing more; the status reports
- *   each value.
+ *   drag with the value where it is**; a brightness slider dragged to the
+ *   bottom stops at 5, and goes back up; Default input sets and reads the
+ *   default source; a device not there fails once per drag, marked and
+ *   notified, writes nothing more, and the face stops following the finger;
+ *   the status reports each value.
  *
  * Nothing here touches the real desktop: pactl is the fake (its state in a
  * scratch file), the input helper is the fake (set before any import, so no
@@ -273,7 +280,9 @@ await settle('the face', async () => {
   check('a chosen knob keeps its proportions on a wide dial: square, centred, inside the ring', kEx && Math.abs(kEx.w - kEx.h) <= 1 && kEx.w < 120 * 0.85 && Math.abs(kEx.x0 + kEx.w / 2 - 80) <= 1, JSON.stringify(kEx));
   // The ring over an opaque knob image: the knob can never hide the level (it did, on Ryan's test).
   const fullKnob = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { knob: square }, angles: { start: -135, end: 135 } });
-  check('the level ring is drawn over a knob image: lit at the level, never hidden', ringAt(composeValue(fullKnob, 1, false), -90)[0] < 160 && ringAt(composeValue(fullKnob, 1, false), -90)[3] > 200, JSON.stringify(ringAt(composeValue(fullKnob, 1, false), -90)));
+  // At 50% the knob is unturned, and at −45° its square corner reaches past the ring: the ring is drawn over it.
+  const corner = (face) => px(face, 120, Math.round(60 - 33.44 * (120 / 76) * Math.SQRT1_2), Math.round(60 - 33.44 * (120 / 76) * Math.SQRT1_2));
+  check('the level ring is drawn over a knob image: lit at the level where the knob\'s corner reaches it, never hidden', isGreen(corner(composeValue(await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { knob: square }, level: { show: false, color: '#8f9cf0' } }), 0.5, false))) && corner(composeValue(fullKnob, 0.5, false))[0] < 160 && corner(composeValue(fullKnob, 0.5, false))[2] > 200 && corner(composeValue(fullKnob, 0.5, false))[3] > 200, JSON.stringify(corner(composeValue(fullKnob, 0.5, false))));
   // A track image is drawn (on Ryan's test the built-in fill over it looked like the built-in track): stretched to the art's area.
   const blueTrack = await solid('track.png', 10, 10, '#0000ff');
   const tracked = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { track: blueTrack }, level: { show: false, color: '#8f9cf0' } });
