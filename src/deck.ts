@@ -622,6 +622,10 @@ export class DeckSession implements DeckHandle {
   }
 
   private async renderPage(force = false): Promise<void> {
+    // Every page shown — a start, a page change, a profile switch, a reload —
+    // is a forced render: a virtual deck takes the page's background first
+    // (the same again does nothing), then every key is sent over it.
+    if (force) this.device.setBackground?.(this.layout.pages[this.page]?.background);
     for (const i of this.screens.keys()) {
       await this.renderButtonAt(i, force);
     }

@@ -27,6 +27,26 @@ export function canvasFrame(width: number, height: number, background: [number, 
   return frame('K', body);
 }
 
+/**
+ * A page's background, over the whole screen (panel.c's 'G'): a colour and the
+ * layer's opacity (0–255), and optionally a picture of it at the screen's size,
+ * RGBA, the colour and image already combined at that opacity. Repaints the
+ * screen, so every key is sent after it; replaced by the next canvas frame.
+ */
+export function groundFrame(color: [number, number, number], alpha: number, picture?: { width: number; height: number; rgba: Buffer }): Buffer {
+  const head = Buffer.alloc(12);
+  head[0] = color[0];
+  head[1] = color[1];
+  head[2] = color[2];
+  head[3] = Math.max(0, Math.min(255, Math.round(alpha)));
+  if (picture && picture.rgba.length !== picture.width * picture.height * 4) {
+    throw new Error(`a background of ${picture.width}×${picture.height} needs ${picture.width * picture.height * 4} bytes, not ${picture.rgba.length}`);
+  }
+  head.writeUInt32LE(picture?.width ?? 0, 4);
+  head.writeUInt32LE(picture?.height ?? 0, 8);
+  return picture ? Buffer.concat([frameHead('G', head.length + picture.rgba.length), head, picture.rgba]) : frame('G', head);
+}
+
 /** One key's image, RGBA, at its place on the canvas. */
 export function imageFrame(x: number, y: number, width: number, height: number, rgba: Buffer): Buffer {
   return Buffer.concat(imageFrameParts(x, y, width, height, rgba));

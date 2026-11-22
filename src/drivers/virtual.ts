@@ -13,9 +13,10 @@ import { watchScreensAndTouch } from '../services/hotplug.js';
 import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
 import { defaultPanelOf, makePanel, pagePanelOf, showable } from '../panel-presets.js';
-import type { Config, LayoutDef, PanelDef, TouchDeviceDef } from '../types.js';
+import type { Config, LayoutDef, PageBackgroundDef, PanelDef, TouchDeviceDef } from '../types.js';
+import { colorGround, isPlainBlack, renderGround, type Ground } from '../page-background.js';
 import { boxesOverlap, composeBox, type PlacedFace } from './panel-compose.js';
-import { brightnessFrame, canvasFrame, clearFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
+import { brightnessFrame, canvasFrame, clearFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
  * Virtual decks: a screen the config names as one — `decks["<screen key>"]`
@@ -118,6 +119,21 @@ class PanelDevice implements DeckDevice {
   private refusedLogged = false;
   /** What the helper was last told (panel/panel.c's 'B'); it starts at 100. */
   private brightness = 100;
+  /**
+   * The page's background (panel.c's 'G'): the one asked for, as JSON, and
+   * its frame for the screen as it is — null for plain black, which the
+   * canvas frame already is, so an opaque black page sends what it always
+   * did. Sent after every canvas frame, which resets the helper's.
+   */
+  private background: PageBackgroundDef | undefined;
+  private backgroundKey = 'null';
+  private ground: Buffer | null = null;
+  /** The screen size the ground was drawn for. */
+  private groundSize = '';
+  /** Bumped by each new background: a picture drawn for an older one is dropped. */
+  private groundToken = 0;
+  /** Refusals already logged, so a refused image is said once, not on every redraw. */
+  private refusalsSaid = new Set<string>();
 
   constructor(
     readonly id: string,
@@ -175,8 +191,10 @@ class PanelDevice implements DeckDevice {
         this.ready = event as unknown as Ready;
         this.pending.clear();
         this.inFlight = false;
-        if (this.canvas) this.write(this.canvas);
+        this.writeCanvas();
         for (const listener of this.redrawListeners) listener();
+        // A picture is drawn for the screen's size: a new size, a new picture.
+        if (this.groundSize !== `${this.ready.width}x${this.ready.height}` && this.background?.image) void this.drawGround(this.groundToken);
         break;
       case 'touch':
         this.onTouch(event);
@@ -384,7 +402,64 @@ class PanelDevice implements DeckDevice {
     this.pending.clear();
     const size = geometry.canvas ?? { width: 0, height: 0 };
     this.canvas = canvasFrame(size.width, size.height);
-    this.write(this.canvas);
+    this.writeCanvas();
+  }
+
+  /** The canvas frame, which clears the screen to opaque black, then the page's background if it has one. */
+  private writeCanvas(): void {
+    if (this.canvas) this.write(this.canvas);
+    if (this.ground) this.write(this.ground);
+  }
+
+  /**
+   * The page's background, on every page shown. The same again does nothing;
+   * another repaints the screen: a colour at once, an image once it is drawn
+   * (the old background stays until then), then every key again from its last
+   * face. Plain black is the canvas frame itself.
+   */
+  setBackground(background: PageBackgroundDef | undefined): void {
+    const key = JSON.stringify(isPlainBlack(background) ? null : background);
+    if (key === this.backgroundKey) return;
+    this.backgroundKey = key;
+    this.background = isPlainBlack(background) ? undefined : background;
+    const token = ++this.groundToken;
+    if (!this.background?.image) {
+      this.ground = this.background ? this.groundFrameOf(colorGround(this.background)) : null;
+      this.groundSize = '';
+      this.repaintAll();
+      return;
+    }
+    void this.drawGround(token);
+  }
+
+  /** Draw the background's picture for the screen as it is, then show it; dropped if another background came since. */
+  private async drawGround(token: number): Promise<void> {
+    const size = { width: this.ready.width, height: this.ready.height };
+    const ground = await renderGround(this.background, size.width, size.height);
+    if (token !== this.groundToken || this.exited) return;
+    if (ground.refused && !this.refusalsSaid.has(ground.refused)) {
+      this.refusalsSaid.add(ground.refused);
+      console.error(`[virtual] ${this.id}: the page's background image is refused, so its colour alone is shown: ${ground.refused}`);
+    }
+    this.ground = this.groundFrameOf(ground);
+    this.groundSize = `${size.width}x${size.height}`;
+    this.repaintAll();
+  }
+
+  private groundFrameOf(ground: Ground): Buffer {
+    return groundFrame(ground.color, ground.alpha, ground.picture);
+  }
+
+  /**
+   * The background again, then every key from its last face: what a background
+   * change needs. The background frame repaints the whole screen itself; going
+   * back to plain black is the canvas frame, which is that.
+   */
+  private repaintAll(): void {
+    if (!this.canvas) return;
+    this.write(this.ground ?? this.canvas);
+    for (const id of this.faces.keys()) this.pending.add(id);
+    this.sendNext();
   }
 
   async draw(control: string, rgba: Buffer): Promise<void> {
@@ -428,7 +503,7 @@ class PanelDevice implements DeckDevice {
     this.write(brightnessFrame(percent));
     // What is on the screen stays until drawn again.
     this.pending.clear();
-    if (this.canvas) this.write(this.canvas);
+    this.writeCanvas();
     for (const listener of this.redrawListeners) listener();
   }
 

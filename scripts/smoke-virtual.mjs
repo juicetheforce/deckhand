@@ -166,6 +166,15 @@ let config = validateConfig({
   },
 });
 const asked = [];
+/**
+ * The scans this driver asked for itself — a helper stopping, a pairing — not
+ * those for a display event. The watch listens to the real udev, and this
+ * machine's GPU sends drm change events every few seconds (7 in 30 s on the
+ * laptop, 2026-11-21); the fake screens are plugged without one, so the first
+ * real event after a plug reads as a change of screens and asks for a scan.
+ * Which check that lands in depends on timing alone.
+ */
+const askedByHelpers = () => asked.filter((why) => !/^(add|remove|change) card\d/.test(why));
 const driver = createVirtualDriver(() => config);
 driver.watch((why) => asked.push(why));
 check('no such connector: not listed', (await driver.list()).length === 0 && listScreens(DRM).length === 0);
@@ -260,6 +269,143 @@ await settle('relayout', async () => {
   check('the deck takes the other panel\'s two keys', session.keyCount === 2 && session.hasKey('t2') && !session.hasKey('k1'));
   check('a new canvas, then its keys at their places', after[0]?.type === 'K' && after.filter((f) => f.type === 'I').every((f) => f.w === 336) && after.some((f) => f.type === 'I' && f.x === 372), JSON.stringify(after.slice(0, 4)));
   check('the socket\'s geometry is the new one', session.geometry.keys.map((k) => k.id).join() === 't1,t2');
+});
+
+console.log("a page's background (round 3)");
+await settle('background', async () => {
+  const { createRequire } = await import('node:module');
+  const sharp = createRequire(import.meta.url)('sharp');
+  // A 40 × 20 picture: red on the left, blue on the right.
+  const half = Buffer.alloc(40 * 20 * 3);
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) half.set(x < 20 ? [255, 0, 0] : [0, 0, 255], (y * 40 + x) * 3);
+  const picture = path.join(TMP, 'dusk.png');
+  await sharp(half, { raw: { width: 40, height: 20, channels: 3 } }).png().toFile(picture);
+  const huge = path.join(TMP, 'mural.png');
+  await sharp({ create: { width: 5000, height: 10, channels: 3, background: '#808080' } }).png().toFile(huge);
+  const tiff = path.join(TMP, 'cover.tiff');
+  await sharp({ create: { width: 10, height: 10, channels: 3, background: '#808080' } }).tiff().toFile(tiff);
+  const page = (background, label) => ({ buttons: { b1: { label } }, ...(background ? { background } : {}) });
+  const withBackground = (background) => ({ profiles: { p: { layouts: { X: { pages: { main: { buttons: {}, background } } } } } } });
+  const refusedBg = (background) => {
+    try {
+      validateConfig(withBackground(background));
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  check('a background validates: colour, image, fit, opacity — each optional', !refusedBg({}) && !refusedBg({ color: '#A0b1C2', image: '~/x.png', fit: 'fit', opacity: 0 }) && !refusedBg({ opacity: 100, fit: 'fill' }));
+  check('…and refuses a colour not #rrggbb, an empty image, another fit, an opacity outside 0–100 or not whole',
+    [{ color: 'red' }, { color: '#abc' }, { image: '' }, { fit: 'stretch' }, { opacity: 101 }, { opacity: -1 }, { opacity: 50.5 }, 'black'].every(refusedBg));
+  const layout = validateConfig({
+    decks: { 'output-DP-4': { virtual: { output: 'DP-4' } } },
+    profiles: {
+      bg: {
+        layouts: {
+          'output-DP-4': {
+            panel: grid('b', 1, 2, 360),
+            pages: {
+              plain: page(undefined, 'plain'),
+              tinted: page({ color: '#102030', opacity: 50 }, 'tinted'),
+              black: page({ color: '#000000', opacity: 100, fit: 'fill' }, 'black'),
+              clear: page({ opacity: 0 }, 'clear'),
+              fill: page({ image: picture }, 'fill'),
+              fit: page({ image: picture, fit: 'fit', color: '#00ff00', opacity: 80 }, 'fit'),
+              huge: page({ image: huge, color: '#123456' }, 'huge'),
+              tiff: page({ image: tiff }, 'tiff'),
+              gone: page({ image: path.join(TMP, 'nowhere.png') }, 'gone'),
+            },
+          },
+        },
+      },
+    },
+  }).profiles.bg.layouts['output-DP-4'];
+  const errors = [];
+  const error = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const since = async (from) => (await frames()).slice(from);
+    /** Go to a page; wait for its keys, and with `ground` for its background, which an image draws after them. */
+    const visit = async (id, ground = false) => {
+      const from = (await frames()).length;
+      await session.goToPage(id);
+      await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2 && (!ground || (await since(from)).some((f) => f.type === 'G')));
+      await sleep(100);
+      return since(from);
+    };
+    let from = (await frames()).length;
+    await session.setLayout(layout);
+    await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
+    let sent = await since(from);
+    check('a page with no background: the canvas, its keys, and no background frame — as before', sent[0]?.type === 'K' && !sent.some((f) => f.type === 'G'), JSON.stringify(sent.map((f) => f.type)));
+
+    sent = await visit('tinted');
+    const g = sent.find((f) => f.type === 'G');
+    check('another page, the same controls, a colour at 50%: no canvas, the background, then its keys over it', !sent.some((f) => f.type === 'K') && g?.color.join() === '16,32,48' && g.alpha === 128 && g.w === 0 && sent.findIndex((f) => f.type === 'I') > sent.indexOf(g), JSON.stringify(sent.map((f) => [f.type, f.color, f.alpha])));
+
+    sent = await visit('black');
+    check('back to plain black (written out in full): the canvas frame resets it, no background frame', sent[0]?.type === 'K' && !sent.some((f) => f.type === 'G'), JSON.stringify(sent.map((f) => f.type)));
+    sent = await visit('plain');
+    check('…and plain black again changes nothing: no canvas, no background, only its keys', !sent.some((f) => f.type === 'K' || f.type === 'G'), JSON.stringify(sent.map((f) => f.type)));
+
+    sent = await visit('clear');
+    check('fully clear: alpha 0, black', sent.find((f) => f.type === 'G')?.alpha === 0);
+
+    sent = await visit('fill', true);
+    let ground = sent.find((f) => f.type === 'G');
+    check('an image as Fill: a picture the screen\'s size, red at the left edge, blue at the right', ground?.w === 1920 && ground.h === 720 && ground.samples['0,0'].join() === '255,0,0,255' && ground.samples['1919,719'].join() === '0,0,255,255', JSON.stringify(ground?.samples));
+    sent = await visit('fit', true);
+    ground = sent.find((f) => f.type === 'G');
+    check('an image as Fit, at 80%: the colour either side of it, the whole image between (1440 wide, centred), every pixel at 204',
+      ground?.samples['10,360'].join() === '0,255,0,204' && ground.samples['480,360'].join() === '255,0,0,204' && ground.samples['1440,360'].join() === '0,0,255,204' && ground.alpha === 204 && ground.samples['1909,360'].join() === '0,255,0,204',
+      JSON.stringify(ground?.samples));
+
+    errors.length = 0;
+    sent = await visit('huge', true);
+    ground = sent.find((f) => f.type === 'G');
+    check('an image over 4096 px: refused, its colour alone shown', ground?.color.join() === '18,52,86' && ground.w === 0, JSON.stringify(ground));
+    check('…and the log says why, with its numbers', errors.some((e) => /mural\.png is too large: 5000 × 10 px\. The limit is 4096 px on the longer side\./.test(e)), JSON.stringify(errors));
+    await visit('tiff', true);
+    check('a TIFF: refused, "isn\'t a PNG, JPEG, WebP, GIF or SVG"', errors.some((e) => /cover\.tiff isn't a PNG, JPEG, WebP, GIF or SVG\./.test(e)), JSON.stringify(errors));
+    await visit('gone', true);
+    check('an image that is not there: refused, saying so', errors.some((e) => /nowhere\.png isn't there any more\./.test(e)), JSON.stringify(errors));
+    const said = errors.length;
+    await visit('tiff');
+    check('a refusal is said once, not on every visit', errors.length === said, JSON.stringify(errors));
+
+    // The deck's brightness: the level, the canvas, the page's background, then every key.
+    await visit('tinted');
+    from = (await frames()).length;
+    await session.setBrightness(40);
+    await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
+    sent = await since(from);
+    check('a brightness change on a see-through page: level, canvas, background, then the keys', sent.slice(0, 3).map((f) => f.type).join() === 'B,K,G' && sent[3]?.type === 'I', JSON.stringify(sent.map((f) => f.type)));
+    await session.setBrightness(100);
+    await sleep(200);
+
+    // The output back (KWin, waking): the canvas, the background, then every key.
+    from = (await frames()).length;
+    const pid = (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').at(-1).pid;
+    process.kill(pid, 'SIGHUP');
+    await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
+    sent = await since(from);
+    check('the output back: canvas, background, keys', sent[0]?.type === 'K' && sent[1]?.type === 'G' && sent[1].alpha === 128 && sent[2]?.type === 'I', JSON.stringify(sent.map((f) => f.type)));
+
+    // An edit to the page's background reaches the deck on the reload; the same again sends nothing.
+    from = (await frames()).length;
+    const edited = structuredClone(layout);
+    edited.pages.tinted.background = { color: '#ff0000', opacity: 25 };
+    await session.reconfigure(config.decks['output-DP-4'], edited, {}, true);
+    await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
+    sent = await since(from);
+    check('an edited background, on the reload: the new one', sent.find((f) => f.type === 'G')?.color.join() === '255,0,0' && sent.find((f) => f.type === 'G').alpha === 64, JSON.stringify(sent.map((f) => [f.type, f.color])));
+    from = (await frames()).length;
+    await session.reconfigure(config.decks['output-DP-4'], edited, {}, true);
+    await sleep(300);
+    check('…and the same again: no background frame', !(await since(from)).some((f) => f.type === 'G' || f.type === 'K'));
+  } finally {
+    console.error = error;
+  }
 });
 
 console.log('overlapping controls (custom layouts)');
@@ -397,7 +543,7 @@ await settle('output lost and back', async () => {
   const start = (await frames()).find((f) => f.type === 'start' && f.output === 'DP-4');
   process.kill(start.pid, 'SIGUSR2');
   await sleep(300);
-  check('the output going, the screen still plugged in (a wake): no scan asked, the deck stays', asked.length === 0 && (await driver.list()).length === 1);
+  check('the output going, the screen still plugged in (a wake): no scan asked, the deck stays', askedByHelpers().length === 0 && (await driver.list()).length === 1, JSON.stringify(asked));
   const before = (await frames()).length;
   process.kill(start.pid, 'SIGHUP');
   check('…and when it is back, the canvas again and every key drawn again', await until(async () => {
@@ -410,7 +556,7 @@ await settle('screen unplugged', async () => {
   check('a scan finds the screen gone', (await driver.list()).length === 0);
   const before = (await frames()).length;
   await session.close();
-  check('…the session closing quits the helper, which is not a failure: no scan asked', (await frames()).slice(before).some((f) => f.type === 'Q') && asked.length === 0);
+  check('…the session closing quits the helper, which is not a failure: no scan asked', (await frames()).slice(before).some((f) => f.type === 'Q') && askedByHelpers().length === 0, JSON.stringify(asked));
   await plug('DP-4', 'connected');
   check('plugged back in: listed again at once', (await driver.list()).length === 1);
 });
@@ -430,10 +576,10 @@ await settle('stopped', async () => {
   await plug('HDMI-A-2', 'connected');
   const [d] = await driver.list();
   const dev = await d.open();
-  const askedBefore = asked.length;
+  const askedBefore = askedByHelpers().length;
   const start = (await frames()).findLast((f) => f.type === 'start' && f.output === 'HDMI-A-2');
   process.kill(start.pid, 'SIGKILL');
-  check('a scan is asked', await until(async () => asked.length === askedBefore + 1));
+  check('a scan is asked', await until(async () => askedByHelpers().length === askedBefore + 1));
   check('…which leaves the deck out, so its session closes rather than keep a helper that is gone', (await driver.list()).length === 0);
   check('…and not straight back either, so a broken helper cannot loop', (await driver.list()).length === 0);
   void dev;
@@ -446,11 +592,11 @@ await settle('quit', async () => {
   const [d] = await driver.list();
   const dev = await d.open();
   const before = (await frames()).length;
-  const askedBefore = asked.length;
+  const askedBefore = askedByHelpers().length;
   await dev.close();
   check('closing sends quit and the helper exits', (await frames()).slice(before).some((f) => f.type === 'Q'));
   await sleep(200);
-  check('a close the daemon asked for is not a failure: no scan asked', asked.length === askedBefore);
+  check('a close the daemon asked for is not a failure: no scan asked', askedByHelpers().length === askedBefore);
 });
 
 console.log('Virtual deck on/off: its own icon for each state');

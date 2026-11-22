@@ -77,6 +77,17 @@ process.stdin.on('data', (chunk) => {
     buffer = buffer.subarray(4 + length);
     if (type === 'K') {
       record({ type, width: body.readUInt32LE(0), height: body.readUInt32LE(4), background: [body[8], body[9], body[10]] });
+    } else if (type === 'G') {
+      // A page's background: its colour and opacity, and of a picture its size and a few pixels
+      // (corners, and along the middle row: near each end, the quarters and the centre), not the megabytes themselves.
+      const w = body.readUInt32LE(4);
+      const h = body.readUInt32LE(8);
+      const pixels = body.subarray(12);
+      const at = (x, y) => [...pixels.subarray((y * w + x) * 4, (y * w + x) * 4 + 4)];
+      const samples = w > 0 && h > 0
+        ? Object.fromEntries([[0, 0], [w - 1, h - 1], [10, Math.floor(h / 2)], [Math.floor(w / 4), Math.floor(h / 2)], [Math.floor(w / 2), Math.floor(h / 2)], [Math.floor((3 * w) / 4), Math.floor(h / 2)], [w - 11, Math.floor(h / 2)]].map(([x, y]) => [`${x},${y}`, at(x, y)]))
+        : {};
+      record({ type, color: [body[0], body[1], body[2]], alpha: body[3], w, h, bytes: pixels.length, samples });
     } else if (type === 'I') {
       const w = body.readUInt32LE(8);
       const h = body.readUInt32LE(12);
