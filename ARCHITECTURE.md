@@ -429,14 +429,17 @@ buffers; below 100% it hands the compositor premultiplied `ARGB8888`, and what
 is on that screen behind the deck shows through — and cannot be touched, since
 the touchscreen stays grabbed. Brightness is black laid over the whole deck,
 so a sleeping see-through deck is black, not clear. **What it costs is the
-compositor's, and only while something behind the deck changes** (measured,
-cgroup CPU over 600 s, a headless KWin): with nothing changing, KWin spends
-the same at 50% as opaque (0.023% and 0.024% of a core); with one change a
-second behind it, 1.1% against 0.1%; with a 30 fps video behind it,
-29–30% against 3–5% (two runs each), because an opaque deck hides the video and a
-see-through one makes KWin composite every frame. That KWin renders in
-software, so those are upper bounds. Deckhand itself spends the same in every
-case (about 0.06%), and nothing of it runs on a clock. Where the compositor
+compositor's** (cgroup CPU over 600 s). **At rest, nothing**: on KDE Plasma with
+a GPU, KWin spent the same at 50% as opaque (16.3% and 16.2% of a core on a
+busy desktop); on a headless KWin, 0.023% and 0.024%. **With something moving
+behind the deck, it depends on how the compositor draws**: on the GPU desktop a
+30 fps video behind the panel cost KWin about the same see-through or opaque
+(22.6% and 24.2%) — it went on drawing the covered video either way — while a
+headless, software-rendered KWin skipped it behind an opaque deck and spent
+29–30% against 3–5% with a see-through one. So on a desktop drawing without a
+GPU, see-through belongs on screens where nothing moves behind the deck.
+Deckhand itself spends the same in every case, and nothing of it runs on a
+clock. Where the compositor
 has no layer-shell (GNOME) the deck is a full-screen window, which may not
 show through; the editor says so there.
 

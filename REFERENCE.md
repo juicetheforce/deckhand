@@ -306,7 +306,16 @@ page's background. Brightness and Sleep all decks dim the background with
 everything else, so a sleeping see-through deck is black, not clear. The
 editor draws it behind the keys, with a checker where the real screen would
 show through, and in Edit layout behind the controls, where its icon is
-dimmed. Esc, or a click outside it, closes the panel. See-through needs the
+dimmed. Esc, or a click outside it, closes the panel. **What see-through costs** is the desktop's,
+not Deckhand's: at rest it costs nothing (measured on KDE Plasma with a GPU,
+KWin's CPU the same at 50% as opaque, 16.3% and 16.2% of a core on a busy
+desktop). Whatever moves behind the panel is redrawn by the desktop: there, a
+video playing behind it cost KWin about 6–8% of a core whether the deck was
+see-through or opaque (22.6% and 24.2%). A desktop that draws without a GPU is
+different — there see-through made a video behind it about ten times dearer
+for the compositor than an opaque deck — so on such a machine, keep
+see-through backgrounds to screens where nothing moves behind the deck.
+Deckhand's own share is the same either way. See-through needs the
 compositor's layer-shell, as on KDE Plasma; where the deck is a full-screen
 window instead, as on GNOME, the panel says it may not show through.
 **Tap again** pairs the
