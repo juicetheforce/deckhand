@@ -11,7 +11,9 @@
  * - **touch, from recorded evdev frames** (FIFOs, read with
  *   --touch-test-range): multitouch contacts reported down at their place on
  *   the canvas — through its scale and, letterboxed, its origin — and up when
- *   lifted; a lift never seen down, and movement, report nothing; after
+ *   lifted; a lift never seen down, and movement, report nothing, until the
+ *   daemon follows a contact (M): then it is reported moved, once per frame,
+ *   until it lifts; after
  *   SYN_DROPPED every contact is lifted and a slot needs a new contact; a
  *   sibling is read and says nothing; pairing names the first touchscreen
  *   touched, single-touch, once; a device going away says so; a path that is
@@ -36,7 +38,7 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { brightnessFrame, canvasFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { brightnessFrame, canvasFrame, followFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
@@ -553,6 +555,32 @@ try {
   await until(() => touches(t, mark).length >= 1);
   seen = touches(t, mark);
   check('letterboxed (1000 × 360 on 1920 × 720: scale 1.92, 14 px down): the middle of the screen is 500, 180.2', seen[0]?.x === 500 && seen[0]?.y === 180.2, JSON.stringify(seen));
+
+  // Following a contact (a slider's or dial's, round 5): only once asked, once per frame, until it lifts.
+  mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 600), syn());
+  await sleep(150);
+  check('a contact not followed: its movement says nothing, as always', touches(t, mark).length === 0, JSON.stringify(touches(t, mark)));
+  t.proc.stdin.write(followFrame(4));
+  // Two changes in one frame are one move: x then y, then the report.
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 700), ev(EV.ABS, C.MT_Y, 600), syn());
+  await until(() => touches(t, mark).length >= 1);
+  await sleep(100);
+  seen = touches(t, mark);
+  check('followed (M): its movement reported once per frame, in canvas units (0.7,0.6 → 700, 217.7)', seen.length === 1 && seen[0].edge === 'move' && seen[0].contact === 4 && seen[0].x === 700 && seen[0].y === 217.7, JSON.stringify(seen));
+  mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, -1), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, 12), ev(EV.ABS, C.MT_X, 100), ev(EV.ABS, C.MT_Y, 100), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 200), syn());
+  await until(() => touches(t, mark).length >= 2);
+  await sleep(150);
+  seen = touches(t, mark);
+  check('…until it lifts: a new contact in the same slot is not followed', seen.length === 2 && seen[0].edge === 'up' && seen[1].edge === 'down', JSON.stringify(seen));
+  mark = t.events.length;
+  t.proc.stdin.write(followFrame(77));
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 300), syn());
+  await sleep(150);
+  check('a follow for a contact not down is ignored', touches(t, mark).length === 0 && t.proc.exitCode === null, JSON.stringify(touches(t, mark)));
 
   mark = t.events.length;
   closeSync(touch.fd);

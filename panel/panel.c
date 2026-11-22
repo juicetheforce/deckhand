@@ -44,6 +44,11 @@
  *                so the desktop does not see it. Mode 2, pairing: every 't'
  *                read without a grab, and the first to be touched is named.
  *                Mode 0: none.
+ *   'M' follow   u32 contact: report this contact's movement ("move") until it
+ *                lifts — a slider's or dial's, which the daemon hit-tested on
+ *                its way down. Ignored for a contact not down. Movement of any
+ *                other contact is never reported, so a button's touch is
+ *                exactly what it always was.
  *   'Q' quit
  *
  * stdout, to the daemon — one JSON object per line:
@@ -60,6 +65,8 @@
  *   {"ev":"touch-failed","device":…,"message":…}  it could not be opened or grabbed
  *   {"ev":"touch-gone","device":…}             it went away (unplugged)
  *   {"ev":"touch","contact":…,"edge":"down","x":…,"y":…}  in canvas units
+ *   {"ev":"touch","contact":…,"edge":"move","x":…,"y":…}  a followed contact
+ *        moved, in canvas units: at most once per frame of the touchscreen
  *   {"ev":"touch","contact":…,"edge":"up"}
  *   {"ev":"tap","device":…}   pairing: the first touchscreen touched
  *   {"ev":"error","message":…}  before a non-zero exit
@@ -319,6 +326,8 @@ static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char
   platform_damage(x0, y0, x1 - x0, y1 - y0);
 }
 
+
+
 /* ---- touch ---- */
 
 /* 0 none, 1 a deck (grabbed, contacts reported), 2 pairing (not grabbed, the first touched named). */
@@ -327,6 +336,17 @@ static int touch_mode;
 static char touch_role[MAX_TOUCH_SOURCES];
 static int touch_test_max;
 static int tapped;
+
+/* The contacts down (as reported: source × 100 + contact), and whether the daemon follows each ('M'). */
+#define MAX_CONTACTS (MAX_TOUCH_SOURCES * 16)
+static struct { int id; int followed; } contacts_down[MAX_CONTACTS];
+static int contacts_down_n;
+
+static int contact_slot(int id) {
+  for (int i = 0; i < contacts_down_n; i++)
+    if (contacts_down[i].id == id) return i;
+  return -1;
+}
 
 /*
  * A point on the device, 0..1 in its own orientation, to the surface's
@@ -359,17 +379,25 @@ static void on_contact(int source, int contact, int down, double u, double v) {
   char line[200];
   /* Unique across sources: the daemon tracks contacts by this alone. */
   int id = source * 100 + contact;
+  int at = contact_slot(id);
   if (!down) {
+    if (at >= 0) contacts_down[at] = contacts_down[--contacts_down_n];
     snprintf(line, sizeof line, "{\"ev\":\"touch\",\"contact\":%d,\"edge\":\"up\"}", id);
     emit(line);
     return;
+  }
+  /* A move is reported only for a contact the daemon follows. */
+  if (down == 2 && (at < 0 || !contacts_down[at].followed)) return;
+  if (down == 1) {
+    if (at < 0 && contacts_down_n < MAX_CONTACTS) at = contacts_down_n++;
+    if (at >= 0) contacts_down[at].id = id, contacts_down[at].followed = 0;
   }
   double lu, lv;
   untransform(u, v, &lu, &lv);
   int w, h, stride;
   platform_canvas(&w, &h, &stride);
   double x = (lu * w - origin_x) / scale, y = (lv * h - origin_y) / scale;
-  snprintf(line, sizeof line, "{\"ev\":\"touch\",\"contact\":%d,\"edge\":\"down\",\"x\":%.1f,\"y\":%.1f}", id, x, y);
+  snprintf(line, sizeof line, "{\"ev\":\"touch\",\"contact\":%d,\"edge\":\"%s\",\"x\":%.1f,\"y\":%.1f}", id, down == 2 ? "move" : "down", x, y);
   emit(line);
 }
 
@@ -377,6 +405,7 @@ static void on_contact(int source, int contact, int down, double u, double v) {
 static int set_touch(const unsigned char *body, size_t len) {
   if (len < 1 || body[0] > 2) { emit_error("bad touch frame"); return 5; }
   touch_close_all();
+  contacts_down_n = 0;
   touch_mode = body[0];
   tapped = 0;
   size_t at = 1;
@@ -452,6 +481,12 @@ static int handle_frames(void) {
       case 'T': {
         int c = set_touch(body, body_len);
         if (c) return c;
+        break;
+      }
+      case 'M': {
+        if (body_len != 4) { emit_error("bad follow frame"); return 5; }
+        int at = contact_slot((int)u32_at(body));
+        if (at >= 0) contacts_down[at].followed = 1;
         break;
       }
       case 'Q':

@@ -58,6 +58,11 @@ export interface KeyPosition {
   z?: number;
   /** 'lcd' keys have a screen; 'rgb' and 'none' do not. */
   feedback: string;
+  /** A virtual deck's slider or dial (src/value-controls.ts); absent on a button, and on every Stream Deck key. */
+  kind?: 'slider' | 'dial';
+  /** A slider's direction and touch, as its panel says; absent: vertical, Drag only. */
+  direction?: 'vertical' | 'horizontal';
+  touch?: 'drag' | 'jump';
   /** An 'lcd' key's screen in pixels, as the library gives it — not always square (a Studio's are 144×112). */
   width?: number;
   height?: number;
@@ -161,7 +166,7 @@ export function geometryOf(source: GeometrySource): DeckGeometry {
  */
 export interface PanelSource {
   size: { width: number; height: number };
-  controls: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number; shape?: ControlShape; radius?: number }>;
+  controls: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number; shape?: ControlShape; radius?: number; kind?: 'slider' | 'dial'; direction?: 'vertical' | 'horizontal'; touch?: 'drag' | 'jump' }>;
 }
 
 export function geometryOfPanel(panel: PanelSource | undefined, productName: string): DeckGeometry {
@@ -181,6 +186,9 @@ export function geometryOfPanel(panel: PanelSource | undefined, productName: str
     ...(c.radius ? { radius: c.radius } : {}),
     z,
     feedback: 'lcd',
+    ...(c.kind ? { kind: c.kind } : {}),
+    ...(c.kind === 'slider' && c.direction ? { direction: c.direction } : {}),
+    ...(c.kind === 'slider' && c.touch ? { touch: c.touch } : {}),
     width: Math.max(1, Math.round(c.w)),
     height: Math.max(1, Math.round(c.h)),
   }));

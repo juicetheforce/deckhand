@@ -35,8 +35,31 @@ export interface ButtonDef {
   action?: ActionDef;
   /** Fired on release instead of press. Useful for hold-to-talk style keys. */
   onRelease?: ActionDef;
+  /**
+   * A slider's or dial's art (src/value-controls.ts), each layer picked like an
+   * icon and belonging to the page: absent, the built-in art; a path (or
+   * `builtin:<name>`), that image drawn to the control's box; **null, None** —
+   * only Fill, Base and Level ring may be none. A button has no layers.
+   */
+  layers?: ValueLayersDef;
+  /**
+   * A dial's knob turns from `start` to `end`, in degrees from straight up,
+   * clockwise (−135 and 135 unless set). Kept with the knob's art, since where
+   * its pointer rests depends on the image.
+   */
+  angles?: { start: number; end: number };
   /** Override the automatic refresh interval for dynamic buttons, in ms. */
   refreshMs?: number;
+}
+
+/** A slider's layers (track, fill, thumb) or a dial's (base, ring, knob): see ButtonDef.layers. */
+export interface ValueLayersDef {
+  track?: string;
+  fill?: string | null;
+  thumb?: string;
+  base?: string | null;
+  ring?: string | null;
+  knob?: string;
 }
 
 /** An entry under a layout's "pages", keyed by page ID. */
@@ -138,6 +161,16 @@ export interface PanelControlDef {
   radius?: number;
   /** Edit layout's Lock proportions: resizing keeps the box's proportions. The editor's only; the daemon ignores it. */
   keepRatio?: boolean;
+  /**
+   * What the control is (src/value-controls.ts): a button unless set; a
+   * **slider** or a **dial** takes only an action that carries a value, and is
+   * dragged rather than pressed. Part of the layout, so a template keeps it.
+   */
+  kind?: 'slider' | 'dial';
+  /** A slider's direction: "vertical" (the default, lowest at the bottom) or "horizontal" (lowest at the left). */
+  direction?: 'vertical' | 'horizontal';
+  /** A slider's touch: "drag" (the default: a tap changes nothing, the level moves by how far the finger moves) or "jump" (the level goes to the finger, then follows it). */
+  touch?: 'drag' | 'jump';
 }
 
 /** A virtual deck's controls on one page. */
@@ -300,6 +333,12 @@ export interface Display {
   unset?: boolean;
   /** Being touched on a virtual deck with Touch feedback on: drawn lighter, at 95%, inside its own shape. */
   pressed?: boolean;
+  /**
+   * A slider's or dial's value, 0–1 of its range (src/value-controls.ts), as
+   * its action reads it from a cache — or, while a finger drags it, where the
+   * finger has put it. Absent: not known yet (drawn at the bottom).
+   */
+  value?: number;
 }
 
 /** Partial display override returned by an action's describe(). */
@@ -318,7 +357,13 @@ export interface DeckHandle {
   /** Return to the previously shown page. */
   goBack(): Promise<void>;
   setBrightness(value: number): Promise<void>;
-  /** The brightness this deck was last set to, 5-100. */
+  /**
+   * A slider's or dial's brightness: 0–100, down to 0 (dark), which a key's
+   * setBrightness() never goes below 5. Touch still works at 0, so the control
+   * can turn it back up.
+   */
+  setBrightnessLevel(value: number): Promise<void>;
+  /** The brightness this deck was last set to, 0-100 (5-100 unless a slider or dial set it). */
   currentBrightness(): number;
   /** The ID of the page currently shown. */
   currentPage(): string;
@@ -402,4 +447,27 @@ export interface ActionHandler {
    * the press left it — the press's own failure must not be cleared by it.
    */
   release?(ctx: ActionContext, params: ActionDef, heldMs: number): Promise<boolean>;
+  /**
+   * Optional: the action carries a value, so a slider or dial can take it
+   * (src/value-controls.ts). Only these: Volume, Brightness and Discord's
+   * User volume. A button keeps execute(); a slider or dial uses this alone.
+   */
+  value?: ValueHandler;
+}
+
+/**
+ * An action's value, for a slider or dial: read from a cache its service's
+ * events keep current — **never asked for in a render, never polled** — and
+ * written when a finger moves it.
+ */
+export interface ValueHandler {
+  /** The range the control spans, in the action's own units (a percent; Discord's 0–200). */
+  range(params: ActionDef): { min: number; max: number };
+  /** The value now, from the cache; null when it is not known (the device absent, Discord not connected). */
+  read(params: ActionDef, ctx: ActionContext): number | null;
+  /**
+   * Set it. `final` is the last write of a drag: a service that skips its own
+   * re-read while a drag is moving re-reads then. Throws to fail, as execute().
+   */
+  write(ctx: ActionContext, params: ActionDef, value: number, final: boolean): Promise<void>;
 }

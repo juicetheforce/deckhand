@@ -18,6 +18,13 @@
  * @DEFAULT_SOURCE@ toggle` flip `muted[node]`, which the lists report. Without
  * the variable nothing is remembered.
  *
+ * **Volumes** (round 5's sliders): `set-sink-volume` and `set-source-volume`
+ * with a node or `@DEFAULT_SINK@`/`@DEFAULT_SOURCE@` and a percent record
+ * `volumes[node]`, which the lists report (an unknown node fails as pactl
+ * does). With FAKE_PACTL_STATE set, `subscribe` prints a sink change event
+ * whenever the state file changes — another program changing a volume, as
+ * the desktop's own volume control does.
+ *
  * **Recording streams** (`list source-outputs`) are two fixed entries, so
  * audio.cycleSource's stream moving can be checked: `move-source-output
  * <index> <node>` records the destination in `movedSourceOutputs[index]`, and
@@ -33,7 +40,7 @@
  * The JSON shape follows real `pactl -f json` output (pactl 17.0); the device
  * names are invented, not anyone's hardware.
  */
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, watch, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 if (process.env.FAKE_PACTL_LOG) appendFileSync(process.env.FAKE_PACTL_LOG, args.join(' ') + '\n');
@@ -83,7 +90,11 @@ const sourceOutputs = [
 
 const absent = new Set(state.absent ?? []);
 const muted = state.muted ?? {};
-const withMute = (d) => (d.name in muted ? { ...d, mute: muted[d.name] } : d);
+const volumes = state.volumes ?? {};
+const withMute = (d) => {
+  const out = d.name in muted ? { ...d, mute: muted[d.name] } : d;
+  return d.name in volumes ? { ...out, volume: { 'front-left': { value_percent: `${volumes[d.name]}%` }, 'front-right': { value_percent: `${volumes[d.name]}%` } } } : out;
+};
 const presentSinks = sinks.filter((s) => !absent.has(s.name)).map(withMute);
 const presentSources = sources.filter((s) => !absent.has(s.name)).map(withMute);
 
@@ -102,7 +113,16 @@ else if (joined === '-f json list sinks') process.stdout.write(JSON.stringify(pr
 else if (joined === '-f json list sources') process.stdout.write(JSON.stringify(presentSources));
 else if (joined === '-f json list sink-inputs') process.stdout.write('[]');
 else if (joined === '-f json list source-outputs') process.stdout.write(JSON.stringify(sourceOutputs));
-else if (joined === 'subscribe') setInterval(() => undefined, 1 << 30);
+else if (joined === 'subscribe') {
+  setInterval(() => undefined, 1 << 30);
+  if (statePath) {
+    try {
+      watch(statePath, () => process.stdout.write("Event 'change' on sink #1\n"));
+    } catch {
+      // No state file yet: silent, as before.
+    }
+  }
+}
 else if (joined === 'get-default-sink') process.stdout.write(info.default_sink_name + '\n');
 else if (joined === 'get-default-source') process.stdout.write(info.default_source_name + '\n');
 else if (statePath && args[0] === 'move-source-output' && args.length === 3) {
@@ -127,6 +147,15 @@ else if (statePath && (args[0] === 'set-default-sink' || args[0] === 'set-defaul
     else state.defaultSource = target.name;
     save();
   }
+} else if (statePath && (args[0] === 'set-sink-volume' || args[0] === 'set-source-volume') && args.length === 3 && /^\d+%$/.test(args[2])) {
+  const isSink = args[0] === 'set-sink-volume';
+  const name = args[1] === '@DEFAULT_SINK@' ? info.default_sink_name : args[1] === '@DEFAULT_SOURCE@' ? info.default_source_name : args[1];
+  if (!(isSink ? presentSinks : presentSources).some((d) => d.name === name)) {
+    process.stderr.write('Failure: No such entity\n');
+    process.exit(1);
+  }
+  state.volumes = { ...volumes, [name]: Number(args[2].slice(0, -1)) };
+  save();
 } else if (statePath && (joined === 'set-sink-mute @DEFAULT_SINK@ toggle' || joined === 'set-source-mute @DEFAULT_SOURCE@ toggle')) {
   const isSink = args[0] === 'set-sink-mute';
   const name = isSink ? info.default_sink_name : info.default_source_name;

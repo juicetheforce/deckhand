@@ -12,8 +12,9 @@
 
 #define MAX_TOUCH_SOURCES 8
 
-/* A contact went down (down = 1, at u, v: 0..1 across and down the device)
- * or came up (down = 0; u and v are 0). contact is unique within its source. */
+/* A contact went down (down = 1, at u, v: 0..1 across and down the device),
+ * moved while down (down = 2, to u, v: at most once per device frame), or
+ * came up (down = 0; u and v are 0). contact is unique within its source. */
 typedef void (*touch_contact_fn)(int source, int contact, int down, double u, double v);
 
 /* Open a device. grab: take it for this process alone (EVIOCGRAB).

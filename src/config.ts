@@ -8,6 +8,7 @@ import { Recovery } from './recovery.js';
 import { migrateStateIcons } from './state-icons.js';
 import { migratePagePanels } from './panel-presets.js';
 import type { Config, LayoutDef } from './types.js';
+import { LAYERS, LAYERS_THAT_MAY_BE_NONE, validAngles, type LayerName } from './value-controls.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
@@ -98,8 +99,35 @@ function validatePanel(panel: unknown, where: string): void {
     if (control.keepRatio !== undefined && typeof control.keepRatio !== 'boolean') {
       throw new Error(`${where}: panel control "${control.id}": "keepRatio" must be true or false`);
     }
+    if (control.kind !== undefined && control.kind !== 'slider' && control.kind !== 'dial') {
+      throw new Error(`${where}: panel control "${control.id}": "kind" must be "slider" or "dial", or absent for a button`);
+    }
+    if (control.direction !== undefined && (control.kind !== 'slider' || (control.direction !== 'vertical' && control.direction !== 'horizontal'))) {
+      throw new Error(`${where}: panel control "${control.id}": "direction" is a slider's, "vertical" or "horizontal"`);
+    }
+    if (control.touch !== undefined && (control.kind !== 'slider' || (control.touch !== 'drag' && control.touch !== 'jump'))) {
+      throw new Error(`${where}: panel control "${control.id}": "touch" is a slider's, "drag" or "jump"`);
+    }
   }
   if (panel.preset !== undefined && typeof panel.preset !== 'string') throw new Error(`${where}: "panel.preset" must be a string`);
+}
+
+/** A slider's or dial's art and angles on its key (types.ts ButtonDef.layers, .angles). */
+function validateValueArt(button: Record<string, unknown>, where: string): void {
+  if (button.layers !== undefined) {
+    if (!isObject(button.layers)) throw new Error(`${where}: "layers" must be an object`);
+    const known = new Set<string>([...LAYERS.slider, ...LAYERS.dial]);
+    for (const [name, value] of Object.entries(button.layers)) {
+      if (!known.has(name)) throw new Error(`${where}: "layers.${name}" is not a layer: a slider has track, fill and thumb, a dial base, ring and knob`);
+      if (value === null && LAYERS_THAT_MAY_BE_NONE.includes(name as LayerName)) continue;
+      if (typeof value !== 'string' || value === '') {
+        throw new Error(`${where}: "layers.${name}" must be an image's path${LAYERS_THAT_MAY_BE_NONE.includes(name as LayerName) ? ', or null for none' : ''}`);
+      }
+    }
+  }
+  if (button.angles !== undefined && !validAngles(button.angles)) {
+    throw new Error(`${where}: "angles" must be { "start", "end" }, degrees from straight up between −360 and 360, the end at least 10° and at most one turn after the start`);
+  }
 }
 
 /** A page's background (types.ts PageBackgroundDef). */
@@ -151,6 +179,7 @@ function validateLayout(layout: unknown, where: string): void {
       if (!CONTROL_ID.test(key)) {
         throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a key id: a Stream Deck's key index ("0", "1", …), or up to 32 letters, digits, "-" and "_"`);
       }
+      if (isObject(button)) validateValueArt(button, `button "${key}" on page "${pageId}" in ${where}`);
       const scale = isObject(button) ? button.iconScale : undefined;
       if (scale !== undefined && !validIconScale(scale)) {
         throw new Error(`button "${key}" on page "${pageId}" in ${where}: "iconScale" must be a number from ${ICON_SCALE.min} to ${ICON_SCALE.max}, the icon's scale in percent of the key`);

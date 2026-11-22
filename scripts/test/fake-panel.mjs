@@ -19,6 +19,8 @@
  *   FAKE_PANEL_SIZE_FILE file: read at each "ready" for the size it reports
  *                        ("1280x720"), as a screen changing resolution; absent
  *                        or empty, FAKE_PANEL_SIZE
+ *   FAKE_PANEL_RGBA_MAX  bytes: an image this small or smaller is logged whole
+ *                        (base64), 64 × 64 RGBA unless set
  *   FAKE_PANEL_SURFACE_FILE  file: read at each "ready" for the surface it
  *                        reports ("fullscreen-window", as on GNOME); absent or
  *                        empty, "layer-shell"
@@ -113,7 +115,7 @@ process.stdin.on('data', (chunk) => {
       const px = body.subarray(16);
       // The first pixel, for checking what was drawn without logging megabytes.
       // A small image whole (base64), so a test can read any of its pixels.
-      record({ type, x: body.readInt32LE(0), y: body.readInt32LE(4), w, h, bytes: px.length, first: [...px.subarray(0, 4)], ...(px.length <= 64 * 64 * 4 ? { rgba: px.toString('base64') } : {}) });
+      record({ type, x: body.readInt32LE(0), y: body.readInt32LE(4), w, h, bytes: px.length, first: [...px.subarray(0, 4)], ...(px.length <= Number(process.env.FAKE_PANEL_RGBA_MAX ?? 64 * 64 * 4) ? { rgba: px.toString('base64') } : {}) });
       acks = acks.then(() => new Promise((resolve) => setTimeout(resolve, ackMs))).then(() => say({ ev: 'drawn' }));
     } else if (type === 'B') {
       record({ type, percent: body[0] });
@@ -132,6 +134,9 @@ process.stdin.on('data', (chunk) => {
         if (process.env.FAKE_PANEL_TOUCH === 'fail') say({ ev: 'touch-failed', device, message: `cannot open ${device}: Permission denied` });
         else say({ ev: 'touch-open', device });
       }
+    } else if (type === 'M') {
+      // Follow a contact: the real helper reports its moves from then on; a test says them itself.
+      record({ type, contact: body.readUInt32LE(0) });
     } else if (type === 'C') {
       record({ type });
     } else if (type === 'Q') {

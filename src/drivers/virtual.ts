@@ -16,7 +16,7 @@ import { defaultPanelOf, makePanel, pagePanelOf, showable } from '../panel-prese
 import type { Config, LayoutDef, PageBackgroundDef, PanelDef, TouchDeviceDef } from '../types.js';
 import { colorGround, isPlainBlack, renderGround, type Ground } from '../page-background.js';
 import { boxesOverlap, composeBox, type PlacedFace } from './panel-compose.js';
-import { brightnessFrame, canvasFrame, clearFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
+import { brightnessFrame, canvasFrame, clearFrame, followFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } from './panel-frames.js';
 
 /**
  * Virtual decks: a screen the config names as one — `decks["<screen key>"]`
@@ -111,6 +111,10 @@ class PanelDevice implements DeckDevice {
   private contacts = new Map<number, string | null>();
   /** How many contacts are down on each control: it goes up when the last lifts. */
   private pressedBy = new Map<string, number>();
+  /** The sliders and dials on the panel: a touch on one is followed (panel.c's 'M'), and its movement passed on. */
+  private valueControls = new Set<string>();
+  /** The contact moving each slider or dial: the first finger on it, until it lifts. */
+  private driving = new Map<string, number>();
   /** The touch devices last sent to the helper, as one string, so an unchanged scan sends nothing. */
   private touchSent = '';
   private touchscreen = '';
@@ -239,11 +243,21 @@ class PanelDevice implements DeckDevice {
   /** A contact down or up: hit-tested on its way down, and belonging to that control until it lifts. */
   private onTouch(event: Record<string, unknown>): void {
     const contact = Number(event.contact);
+    if (event.edge === 'move') {
+      // Only a contact this driver followed, still on its control, and the one driving it.
+      const control = this.contacts.get(contact);
+      if (control === undefined || control === null || this.driving.get(control) !== contact) return;
+      const rect = this.rects.get(control);
+      if (!rect) return;
+      this.emit({ control, edge: 'move', at: { x: Number(event.x) - rect.x, y: Number(event.y) - rect.y } });
+      return;
+    }
     if (event.edge === 'up') {
       if (!this.contacts.has(contact)) return; // never seen down, or let go already
       const control = this.contacts.get(contact) ?? null;
       this.contacts.delete(contact);
       if (control === null) return;
+      if (this.driving.get(control) === contact) this.driving.delete(control);
       const count = (this.pressedBy.get(control) ?? 1) - 1;
       if (count > 0) {
         this.pressedBy.set(control, count);
@@ -266,7 +280,16 @@ class PanelDevice implements DeckDevice {
     if (control === null) return;
     const count = (this.pressedBy.get(control) ?? 0) + 1;
     this.pressedBy.set(control, count);
-    if (count === 1) this.emit({ control, edge: 'down' });
+    if (count !== 1) return;
+    if (!this.valueControls.has(control)) {
+      this.emit({ control, edge: 'down' });
+      return;
+    }
+    // A slider or dial: its finger's movement is what moves it, so the helper follows this contact.
+    const rect = this.rects.get(control)!;
+    this.driving.set(control, contact);
+    this.write(followFrame(contact));
+    this.emit({ control, edge: 'down', at: { x: Number(event.x) - rect.x, y: Number(event.y) - rect.y } });
   }
 
   private emit(event: ControlInput): void {
@@ -277,11 +300,13 @@ class PanelDevice implements DeckDevice {
   private letGoAll(reason: string): void {
     this.contacts.clear();
     this.pressedBy.clear();
+    this.driving.clear();
     for (const listener of this.letGoListeners) listener(reason);
   }
 
   private write(chunk: Buffer): void {
-    if (!this.exited) this.proc.stdin.write(chunk);
+    // Not after close(): a draw still on its way when the deck closed has nowhere to go.
+    if (!this.exited && !this.proc.stdin.writableEnded) this.proc.stdin.write(chunk);
   }
 
   private sendNext(): void {
@@ -395,11 +420,13 @@ class PanelDevice implements DeckDevice {
     this.controls = [...geometry.keys]
       .sort((a, b) => (a.z ?? a.index) - (b.z ?? b.index))
       .map((k) => ({ id: k.id, x: k.x, y: k.y, w: k.w, h: k.h, shape: k.shape, radius: k.radius }));
+    this.valueControls = new Set(geometry.keys.filter((k) => k.kind === 'slider' || k.kind === 'dial').map((k) => k.id));
     this.faces.clear();
     // A touch that started on the old controls belongs to none of the new
     // ones; the session lets go of what was held on a panel change.
     this.contacts.clear();
     this.pressedBy.clear();
+    this.driving.clear();
     this.pending.clear();
     const size = geometry.canvas ?? { width: 0, height: 0 };
     this.canvas = canvasFrame(size.width, size.height);

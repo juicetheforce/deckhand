@@ -1,13 +1,15 @@
 import { sleep } from './sleep.js';
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import type { ResolvedDefaults } from './config-common.js';
-import { activeOf, attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
+import { activeOf, attempt, attemptValue, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, valueOf, type ActionFailure } from './actions/index.js';
+import { anglesOf, angleAround, alongAxis, clamp01, fractionOf, takesValue, travelLength, turnBetween, valueAtPoint, valueOfFraction } from './value-controls.js';
+import { composeValue, valueArt, type ValueArt } from './value-face.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
 import type { KeyFailure, LiveFace } from './control/protocol.js';
 import type { KeyFailures } from './key-failures.js';
 import type { DeckDevice, TouchState } from './devices.js';
-import type { DeckGeometry } from './geometry.js';
+import type { DeckGeometry, KeyPosition } from './geometry.js';
 import { input } from './input.js';
 import { parseCombo } from './keymap.js';
 import { fillScreen, renderButton, renderFace } from './render.js';
@@ -50,6 +52,32 @@ export interface DeckSessionOptions {
   page?: string;
   /** A key's failure mark was cleared (a press that worked, the editor's Clear): its next failure notifies as a first one. */
   onFailureCleared?: (slot: string) => void;
+}
+
+/**
+ * A finger on a slider or dial (src/value-controls.ts): where it was last, the
+ * value it has put the control at (0–1), and on a dial the finger's last
+ * angle round the centre.
+ */
+interface ValueDrag {
+  last: { x: number; y: number };
+  value: number;
+  angle: number;
+  /** Whether it has written anything yet: a tap that moved nothing writes nothing. */
+  wrote: boolean;
+}
+
+/**
+ * A slider's or dial's writes: **one at a time**, the newest value waiting for
+ * the one in flight — so however fast a finger moves, the service sees at most
+ * one change outstanding, and never a queue. No timer: the next write starts
+ * when the last one ends.
+ */
+interface ValueWrites {
+  inFlight: boolean;
+  next: { value: number; final: boolean } | null;
+  /** Set when a write fails: the drag writes nothing more, and its face goes back to the real value. */
+  stopped: boolean;
 }
 
 /** Brightness is kept between 5 and 100 so a deck can never be set fully dark. */
@@ -123,6 +151,22 @@ export class DeckSession implements DeckHandle {
    * not false. Drawn on the touch and on its lift — nothing on a clock.
    */
   private pressed = new Set<string>();
+  /** The sliders and dials on the deck, by id: their box, kind, direction and touch. */
+  private valueKeys = new Map<string, KeyPosition>();
+  /** A finger on each slider or dial being moved (ValueDrag). */
+  private drags = new Map<string, ValueDrag>();
+  /** Each slider's or dial's writes (ValueWrites). */
+  private writes = new Map<string, ValueWrites>();
+  /**
+   * The value a slider or dial shows instead of its action's cache: while a
+   * finger is on it, and after, until its last write has landed — so the face
+   * never jumps back to a cache that has not caught up yet.
+   */
+  private shownValue = new Map<string, number>();
+  /** Each slider's or dial's art for its last face, for its travel when a finger moves it. */
+  private valueArts = new Map<string, ValueArt>();
+  /** Each slider's or dial's value as the control socket last reported it (whole percent of its range). */
+  private reportedValues = new Map<string, number>();
   /** Unsubscribe from input's keyboard-lost notice. */
   private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
@@ -156,7 +200,10 @@ export class DeckSession implements DeckHandle {
   }
 
   async start(): Promise<void> {
-    this.device.onInput((event) => this.onKey(event.control, event.edge));
+    this.device.onInput((event) => {
+      if (this.valueKeys.has(event.control)) this.onValue(event.control, event.edge, event.at);
+      else if (event.edge !== 'move') this.onKey(event.control, event.edge);
+    });
     this.device.onRedraw?.(() => void this.repaint());
     this.device.onLetGo?.((reason) => void this.letGo(reason));
     this.device.onError((err: unknown) => {
@@ -198,6 +245,9 @@ export class DeckSession implements DeckHandle {
     );
     for (const id of [...this.previews.keys()]) if (!this.order.has(id)) this.previews.delete(id);
     for (const id of [...this.pressed]) if (!this.order.has(id)) this.pressed.delete(id);
+    this.valueKeys = new Map(geometry.keys.filter((k) => k.kind === 'slider' || k.kind === 'dial').map((k) => [k.id, k]));
+    this.valueArts.clear();
+    this.reportedValues.clear();
     this.lastSent.clear();
     this.lastRenderAt.clear();
     this.stale.clear();
@@ -420,6 +470,256 @@ export class DeckSession implements DeckHandle {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Sliders and dials (src/value-controls.ts)
+  // -------------------------------------------------------------------------
+
+  /**
+   * A finger on a slider or dial: down, moving, or lifted. The rules a key's
+   * press has hold here too — a touch that only wakes the deck does nothing, a
+   * previewed control does nothing — and **every way off the page ends a
+   * drag with the value left where it is** (endDrags).
+   */
+  private onValue(index: string, edge: 'down' | 'up' | 'move', at: { x: number; y: number } | undefined): void {
+    if (this.closed || !this.order.has(index)) return;
+    const key = this.valueKeys.get(index)!;
+    if (edge === 'down') {
+      const woke = sleep.press(this);
+      if (woke === 'swallow') return;
+      const action = this.currentButtons()[index]?.action;
+      if (this.previews.has(index) || !action || !valueOf(action) || !at) return;
+      const value = this.valueFraction(index, action) ?? 0;
+      const drag: ValueDrag = { last: at, value, angle: angleAround(at, this.artBox(index, key)), wrote: false };
+      this.drags.set(index, drag);
+      this.writes.set(index, { inFlight: false, next: null, stopped: false });
+      this.shownValue.set(index, value);
+      // Jump to touch: the level goes to the finger at once.
+      if (key.kind === 'slider' && key.touch === 'jump') this.moveTo(index, drag, valueAtPoint(at, this.artBox(index, key), key.direction, this.travelOf(index, key)));
+      void this.drawValue(index, true);
+      return;
+    }
+    const drag = this.drags.get(index);
+    if (!drag) return;
+    if (edge === 'move' && at) {
+      let next = drag.value;
+      if (key.kind === 'dial') {
+        const box = this.artBox(index, key);
+        const angle = angleAround(at, box);
+        const angles = anglesOf(this.currentButtons()[index]);
+        // The knob follows the finger's turn round the centre, not its distance: a tap moves nothing.
+        next = drag.value + turnBetween(drag.angle, angle) / (angles.end - angles.start);
+        drag.angle = angle;
+      } else if (key.touch === 'jump') {
+        next = valueAtPoint(at, this.artBox(index, key), key.direction, this.travelOf(index, key));
+      } else {
+        const box = this.artBox(index, key);
+        next = drag.value + (alongAxis(at, box, key.direction) - alongAxis(drag.last, box, key.direction)) / travelLength(this.travelOf(index, key));
+      }
+      drag.last = at;
+      this.moveTo(index, drag, next);
+      return;
+    }
+    if (edge === 'up') {
+      this.drags.delete(index);
+      // The last write of a drag is final: a service that skipped re-reading while it moved re-reads now.
+      if (drag.wrote) this.queueWrite(index, drag.value, true);
+      else this.settleValue(index);
+      void this.drawValue(index, true);
+    }
+  }
+
+  /** A drag's new value: drawn at once, and written — the newest replacing any not yet started. */
+  private moveTo(index: string, drag: ValueDrag, value: number): void {
+    const next = clamp01(value);
+    const action = this.currentButtons()[index]?.action;
+    const handler = valueOf(action);
+    if (!action || !handler) return;
+    // Only a change the action's units can show: a step smaller than one unit writes nothing.
+    const range = handler.range(action);
+    const changed = valueOfFraction(next, range) !== valueOfFraction(drag.value, range) || !drag.wrote;
+    drag.value = next;
+    this.shownValue.set(index, next);
+    void this.drawValue(index, true);
+    if (changed && !this.writes.get(index)?.stopped) {
+      drag.wrote = true;
+      this.queueWrite(index, next, false);
+    }
+  }
+
+  private queueWrite(index: string, value: number, final: boolean): void {
+    const writes = this.writes.get(index);
+    if (!writes || writes.stopped) return this.settleValue(index);
+    writes.next = { value, final };
+    void this.pumpWrites(index, writes);
+  }
+
+  /** Start the waiting write if none is in flight; when the last has landed, the face goes back to the action's own value. */
+  private async pumpWrites(index: string, writes: ValueWrites): Promise<void> {
+    if (writes.inFlight || !writes.next) return;
+    const { value, final } = writes.next;
+    writes.next = null;
+    writes.inFlight = true;
+    const profile = this.profileOf();
+    const page = this.page;
+    const button = this.currentButtons()[index];
+    const action = button?.action;
+    const handler = valueOf(action);
+    let failure: ActionFailure | null = null;
+    if (action && handler) failure = await attemptValue(this.context(index), action, valueOfFraction(value, handler.range(action)), final);
+    writes.inFlight = false;
+    if (this.writes.get(index) !== writes) return; // ended meanwhile (endDrags): nothing more for this drag
+    if (failure) {
+      // One failure per drag: the rest of it writes nothing, and the face shows the real value.
+      writes.stopped = true;
+      writes.next = null;
+    }
+    this.judgeValue(index, profile, page, button, failure);
+    if (writes.next) return void this.pumpWrites(index, writes);
+    if (!this.drags.has(index)) this.settleValue(index);
+  }
+
+  /** A slider's or dial's write judged as a press is: a failure marks it (and notifies if it says what to do), success clears a mark. */
+  private judgeValue(index: string, profile: string, page: string, button: ButtonDef | undefined, failure: ActionFailure | null): void {
+    const slot = this.slotOf(profile, page, index);
+    if (failure?.notSetUp) {
+      this.onActionNeeded({ slot, key: index, keyName: this.keyName(index), label: button?.label, message: failure.message, notSetUp: true });
+      return;
+    }
+    const cleared = failure === null && this.failures.clear(this.serial, profile, page, index);
+    const changed = cleared || (failure !== null && this.failures.mark(this.serial, { profile, page, key: index, error: failure.message }, button));
+    if (changed) this.onStateChange();
+    if (cleared) this.onFailureCleared(slot);
+    if (failure?.actionNeeded) this.onActionNeeded({ slot, key: index, keyName: this.keyName(index), label: button?.label, message: failure.message });
+    if (changed) void this.drawValue(index, true);
+  }
+
+  /** No finger and no write left: the face follows the action's own value again. */
+  private settleValue(index: string): void {
+    if (this.drags.has(index)) return;
+    const writes = this.writes.get(index);
+    if (writes?.inFlight || writes?.next) return;
+    this.writes.delete(index);
+    this.shownValue.delete(index);
+    void this.drawValue(index, true);
+  }
+
+  /**
+   * Every finger off every slider and dial, at once: a lock, a page or panel
+   * change, the deck closing. **The value is left where it is**: what has been
+   * written stays, a write not started is dropped, and the face goes back to
+   * the action's own value once the one in flight lands.
+   */
+  private endDrags(): void {
+    if (this.drags.size === 0 && this.writes.size === 0) return;
+    const was = [...new Set([...this.drags.keys(), ...this.writes.keys()])];
+    this.drags.clear();
+    for (const index of was) {
+      const writes = this.writes.get(index);
+      this.writes.delete(index);
+      this.shownValue.delete(index);
+      if (writes) writes.next = null;
+      if (this.screens.has(index) && this.valueKeys.has(index)) void this.drawValue(index, true);
+    }
+  }
+
+  /** The control's value now, 0–1: where a finger has put it, else its action's cache; null when not known. */
+  private valueFraction(index: string, action: ActionDef | undefined): number | null {
+    const shown = this.shownValue.get(index);
+    if (shown !== undefined) return shown;
+    const handler = valueOf(action);
+    if (!action || !handler) return null;
+    const value = handler.read(action, this.context(index));
+    return value === null ? null : fractionOf(value, handler.range(action));
+  }
+
+  /** The art's area of a slider or dial: its box less the label's band, from its last drawn art; the box until it has one. */
+  private artBox(index: string, key: KeyPosition): { w: number; h: number } {
+    const art = this.valueArts.get(index);
+    return art ? { w: art.width, h: art.artH } : { w: key.width ?? key.w, h: key.height ?? key.h };
+  }
+
+  private travelOf(index: string, key: KeyPosition) {
+    const art = this.valueArts.get(index);
+    const box = this.artBox(index, key);
+    return art?.travel ?? { start: 0, end: key.direction === 'horizontal' ? box.w : box.h, thumb: 0 };
+  }
+
+  /**
+   * Draw a slider or dial: its art (drawn once per change of art, label or
+   * badge), put together at its value (value-face.ts). While a finger drags
+   * it, this is all a step costs: no describe(), no icon lookup.
+   */
+  private async drawValue(index: string, force: boolean): Promise<void> {
+    if (this.closed) return;
+    const key = this.valueKeys.get(index);
+    const screen = this.screens.get(index);
+    if (!key || !screen) return;
+    this.stale.delete(index);
+    const page = this.page;
+    const button = this.buttonAt(index);
+    const action = button?.action && takesValue(button.action.type) ? button.action : undefined;
+    const patch = action ? await describeAction(this.context(index), action) : null;
+    const display = this.baseDisplay(button);
+    let art: ValueArt;
+    try {
+      art = await valueArt({
+        kind: key.kind!,
+        width: screen.width,
+        height: screen.height,
+        shape: screen.shape,
+        radius: screen.radius,
+        ...(key.direction ? { direction: key.direction } : {}),
+        angles: anglesOf(button),
+        ...(button?.layers ? { layers: button.layers } : {}),
+        ...(action ? { type: action.type } : {}),
+        ...(display.label ? { label: display.label } : {}),
+        labelColor: display.labelColor,
+        labelSize: display.labelSize,
+        ...(display.labelFont ? { labelFont: display.labelFont } : {}),
+        background: button?.background ?? null,
+        failed: !this.previews.has(index) && this.failures.has(this.serial, this.profileOf(), this.page, index),
+        unset: patch?.unset === true,
+        connecting: patch?.connecting === true,
+      });
+    } catch (err) {
+      console.error(`[${this.label()}] render of ${this.keyName(index)} failed: ${(err as Error).message}`);
+      return;
+    }
+    if (this.closed || this.page !== page || this.valueKeys.get(index) !== key) return;
+    this.valueArts.set(index, art);
+    const value = this.valueFraction(index, action) ?? 0;
+    const held = this.drags.has(index) && this.touchFeedback();
+    const buffer = composeValue(art, value, held);
+    this.lastRenderAt.set(index, Date.now());
+    // The editor's grid draws the level too: told when it settles on another whole percent, never per step of a drag.
+    if (!this.drags.has(index)) {
+      const percent = Math.round(value * 100);
+      if (this.reportedValues.get(index) !== percent) {
+        this.reportedValues.set(index, percent);
+        this.onStateChange();
+      }
+    }
+    if (!force && this.lastSent.get(index) === buffer) return;
+    if (force && this.lastSent.get(index) === buffer && this.drags.has(index)) return;
+    try {
+      await this.device.draw(index, buffer);
+      this.lastSent.set(index, buffer);
+    } catch (err) {
+      console.error(`[${this.label()}] write to ${this.keyName(index)} failed: ${(err as Error).message}`);
+      this.lastSent.delete(index);
+    }
+  }
+
+  /** The sliders and dials on the page shown, and each one's value as a whole percent of its range, for the control socket's status. */
+  values(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const index of this.sorted(this.valueKeys.keys())) {
+      const value = this.reportedValues.get(index);
+      if (value !== undefined) out[index] = value;
+    }
+    return out;
+  }
+
   /** Whether a touch draws its control pressed: a virtual deck's, with Touch feedback on (the default). Never a Stream Deck's. */
   private touchFeedback(): boolean {
     return this.geometry.units === 'pixels' && this.defaults.touchFeedback !== false;
@@ -436,6 +736,7 @@ export class DeckSession implements DeckHandle {
   private async letGo(reason: string): Promise<void> {
     if (this.closed) return;
     this.unpressAll();
+    this.endDrags();
     await this.fireHeldReleases(reason);
     await this.releaseLatches(reason);
   }
@@ -599,6 +900,7 @@ export class DeckSession implements DeckHandle {
     if (this.closed) return;
     const screen = this.screens.get(index);
     if (!screen) return;
+    if (this.valueKeys.has(index)) return this.drawValue(index, force);
     // Drawn now, from the state as it is now: anything that changes it after this marks it again.
     this.stale.delete(index);
     // Drawn square at the shorter side, then filled out to the screen in the
@@ -874,6 +1176,7 @@ export class DeckSession implements DeckHandle {
     this.relayoutFor(this.layout, id);
     // A key under a finger on the page left is not pressed on the new one.
     this.pressed.clear();
+    this.endDrags();
     this.page = id;
     this.onStateChange();
     await this.renderPage(true);
@@ -887,6 +1190,7 @@ export class DeckSession implements DeckHandle {
     this.relayoutFor(this.layout, previous);
     // A key under a finger on the page left is not pressed on the new one.
     this.pressed.clear();
+    this.endDrags();
     this.page = previous;
     this.onStateChange();
     await this.renderPage(true);
@@ -895,6 +1199,18 @@ export class DeckSession implements DeckHandle {
   async setBrightness(value: number): Promise<void> {
     const level = clampBrightness(value);
     // A device without a backlight keeps the number, so the socket still reports what was asked.
+    await this.device.setBrightness?.(this.sleepLevel === null ? level : Math.min(this.sleepLevel, level));
+    this.brightness = level;
+    this.onStateChange();
+  }
+
+  /**
+   * A slider's or dial's brightness: 0–100, dark included — the one way
+   * besides src/sleep.ts below clampBrightness's 5. Touch still works at 0,
+   * so the control that set it can turn it back up.
+   */
+  async setBrightnessLevel(value: number): Promise<void> {
+    const level = Math.max(0, Math.min(100, Math.round(value)));
     await this.device.setBrightness?.(this.sleepLevel === null ? level : Math.min(this.sleepLevel, level));
     this.brightness = level;
     this.onStateChange();
@@ -934,6 +1250,7 @@ export class DeckSession implements DeckHandle {
   async setLayout(layout: LayoutDef): Promise<void> {
     await this.fireHeldReleases('a profile switch');
     await this.releaseLatches('a profile switch');
+    this.endDrags();
     this.layout = layout;
     this.page = startPageOf(layout);
     this.relayoutFor(layout, this.page);
@@ -967,11 +1284,13 @@ export class DeckSession implements DeckHandle {
     if (next && !sameControls(next, this.geometry)) {
       await this.fireHeldReleases('a panel change');
       await this.releaseLatches('a panel change');
+      this.endDrags();
       this.useGeometry(next);
     }
     if (!stays) {
       await this.fireHeldReleases('a config reload');
       await this.releaseLatches('a config reload');
+      this.endDrags();
       // A key under a finger on the page left is not pressed on the new one.
       this.pressed.clear();
       this.page = page;
@@ -990,6 +1309,7 @@ export class DeckSession implements DeckHandle {
     // left down when the deck goes (unplugged, or the daemon shutting down).
     await this.fireHeldReleases('the deck closing');
     await this.releaseLatches('the deck closing');
+    this.endDrags();
     sleep.remove(this);
     this.stopWatchingKeyboard?.();
     this.stopWatchingKeyboard = null;

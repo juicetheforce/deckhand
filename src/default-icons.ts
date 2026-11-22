@@ -100,6 +100,9 @@ export const BUILTIN_ICONS = [
   // The latching toggle's two faces: down and up.
   'toggle',
   'toggle-off',
+  // A switch, off and on, for a tall button with two states (board 26a): chosen by name, never a default.
+  'switch-off',
+  'switch-on',
   // Twitch, in its section colour, apricot #f59a66: one-shot actions, so one
   // face each and no active state. Only the first wave's; the second wave's
   // (ad, raid, chat mode) are added when those actions exist.

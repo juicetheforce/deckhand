@@ -39,6 +39,8 @@ export interface Sleeper {
   /** Whether a lock or the desktop going idle darkens it: not a virtual deck, whose monitor has its own power saving. */
   followsDesktop(): boolean;
   setBrightness(value: number): Promise<void>;
+  /** A slider's or dial's brightness, 0–100 (types.ts DeckHandle). */
+  setBrightnessLevel(value: number): Promise<void>;
   currentBrightness(): number;
   /** The level to show, or null for its own brightness. */
   applySleep(level: number | null): void;
