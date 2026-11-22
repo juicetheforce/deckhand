@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ButtonDef, Config } from '../../../../src/types.js';
-import { anglesOf, ANGLE_LIMIT, builtinLayerSvg, DEFAULT_ANGLES, LAYER_LABELS, LAYERS, MIN_SWEEP, takesValue, type LayerName } from '../../../../src/value-controls.js';
+import { anglesOf, ANGLE_LIMIT, artColour, builtinLayerSvg, DEFAULT_ANGLES, LAYER_LABELS, LAYERS, LAYERS_WITHOUT_BUILTIN, LEVEL_LABELS, levelOf, levelSvg, MIN_SWEEP, takesValue, type LayerName } from '../../../../src/value-controls.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import { iconUrl } from '../../shared/icons.js';
 import { actionName } from '../catalogue.js';
@@ -8,6 +8,7 @@ import { ColourPicker } from '../ColourPicker.js';
 import { IconPicker, type PickerPlace } from '../IconPicker.js';
 import { describeAction, keyKind } from '../model.js';
 import type { AudioLists } from './DeviceForms.js';
+import { Checkbox } from './controls.js';
 import { LabelField, LabelStyle } from './LabelFields.js';
 import { ValueActionForm } from './ValueForms.js';
 
@@ -15,8 +16,18 @@ import { ValueActionForm } from './ValueForms.js';
  * The inspector for a slider or dial (round 5; boards 26d, 26f): the Key tab
  * names what it sets and on what, its label, and its background, which is
  * None unless set — the page shows around its art; the Icon tab picks each
- * of its image layers like an icon. One Clear empties it.
+ * of its image layers like an icon, in a chip each (26f), and the level — a
+ * slider's fill, a dial's ring, drawn by Deckhand — has a chip of its own:
+ * shown or not, and its colour. One Clear empties it.
  */
+type Chip = LayerName | 'level';
+
+/** The chips in drawing order: background, track or base, the level, thumb or knob. */
+function chipsOf(kind: 'slider' | 'dial'): Chip[] {
+  const [back, still, moving] = LAYERS[kind];
+  return [back, still, 'level', moving];
+}
+
 export function ValueInspector({
   kind,
   at,
@@ -49,7 +60,7 @@ export function ValueInspector({
   apply: (edit: Edit) => Promise<string | null>;
 }) {
   const [tab, setTab] = useState<'key' | 'icon'>('key');
-  const [layer, setLayer] = useState<LayerName>(LAYERS[kind][2]);
+  const [layer, setLayer] = useState<Chip>(LAYERS[kind][2]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setLayer(LAYERS[kind][2]), [kind]);
   const run = async (edit: Edit) => {
@@ -131,13 +142,21 @@ export function ValueInspector({
         <>
           {/* One chip per layer (26f): the open one tinted, each with its image and name, "Built-in" or "None". */}
           <div className="layer-chips" role="group" aria-label="Layers">
-            {LAYERS[kind].map((name) => (
-              <LayerChip key={name} name={name} kind={kind} button={button} config={config} open={name === layer} onOpen={() => setLayer(name)} />
-            ))}
+            {chipsOf(kind).map((name) =>
+              name === 'level' ? (
+                <LevelChip key={name} kind={kind} button={button} open={layer === 'level'} onOpen={() => setLayer('level')} />
+              ) : (
+                <LayerChip key={name} name={name} kind={kind} button={button} config={config} open={name === layer} onOpen={() => setLayer(name)} />
+              ),
+            )}
           </div>
-          <IconPicker key={layer} at={at} button={button} slot={null} layer={layer} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
+          {layer === 'level' ? (
+            <LevelForm kind={kind} at={at} button={button} disabled={editingBlocked} run={run} />
+          ) : (
+            <IconPicker key={layer} at={at} button={button} slot={null} layer={layer} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
+          )}
           {layer === 'knob' && <KnobAngles at={at} button={button} disabled={editingBlocked} run={run} />}
-          <p className="muted small">Each layer is drawn to the control's box. Icon scale is a button's alone.</p>
+          {layer !== 'level' && <p className="muted small">{LAYER_NOTES[layer]}</p>}
         </>
       )}
 
@@ -154,17 +173,71 @@ export function ValueInspector({
   );
 }
 
+/** How each image layer is drawn, said under its picker. */
+const LAYER_NOTES: Record<LayerName, string> = {
+  background: 'Behind everything, stretched to fill the whole control — a scale along a slider, for example.',
+  track: 'Stretched to fill the slider.',
+  thumb: 'Keeps its proportions, fitted across the slider.',
+  base: 'Keeps its proportions, fitted in the dial.',
+  knob: 'Keeps its proportions, fitted inside the level ring.',
+};
+
+/** The level's chip: its drawing in its colour, and whether it is shown. */
+function LevelChip({ kind, button, open, onOpen }: { kind: 'slider' | 'dial'; button: ButtonDef | undefined; open: boolean; onOpen: () => void }) {
+  const level = levelOf(button, button?.action?.type);
+  const box = kind === 'slider' ? { w: 46, h: 130 } : { w: 76, h: 76 };
+  return (
+    <button className={`layer-chip${open ? ' layer-chip-open' : ''}`} aria-pressed={open} onClick={onOpen} data-layer-chip="level">
+      <span className="layer-chip-picture" aria-hidden="true">
+        {level.show ? (
+          <span dangerouslySetInnerHTML={{ __html: levelSvg(kind, box, { angles: anglesOf(button), color: level.color }).replace('<svg ', '<svg style="width:100%;height:100%" ') }} />
+        ) : (
+          <span className="layer-chip-none">∅</span>
+        )}
+      </span>
+      <span className="layer-chip-text">
+        <span className="layer-chip-name">{LEVEL_LABELS[kind]}</span>
+        <span className="layer-chip-file muted small">{level.show ? 'Drawn' : 'Off'}</span>
+      </span>
+    </button>
+  );
+}
+
+/** The level (Ryan, 2026-11-22): drawn by Deckhand, never an image, so no art hides it — on or off, and its colour. */
+function LevelForm({ kind, at, button, disabled, run }: { kind: 'slider' | 'dial'; at: ButtonLocation; button: ButtonDef | undefined; disabled: boolean; run: (edit: Edit) => Promise<boolean> }) {
+  const level = levelOf(button, button?.action?.type);
+  const chosen = typeof button?.level?.color === 'string' ? button.level.color : null;
+  const name = LEVEL_LABELS[kind];
+  return (
+    <section className="inspector-section" data-level-form={kind}>
+      <h3 className="section-heading">{name}</h3>
+      <Checkbox label={`Show the ${name.toLowerCase()}`} checked={level.show} disabled={disabled} onChange={(show) => void run({ kind: 'setLevel', at, show, color: chosen })} />
+      <ColourPicker
+        name="level-colour"
+        label={`${name} colour`}
+        value={chosen}
+        defaultColor={artColour(button?.action?.type)}
+        defaultName="Action's"
+        defaultTitle="the colour of the action's own art"
+        disabled={disabled || !level.show}
+        onChange={(color) => void run({ kind: 'setLevel', at, show: level.show, color })}
+      />
+      <p className="muted small">{kind === 'slider' ? 'Drawn up to the level, under the thumb.' : 'Drawn round to the level, over the knob.'} Deckhand draws it, so no image can hide it.</p>
+    </section>
+  );
+}
+
 /** A layer's chip: its picture and what it is — a file's name, Built-in, or None. */
 function LayerChip({ name, kind, button, config: _config, open, onOpen }: { name: LayerName; kind: 'slider' | 'dial'; button: ButtonDef | undefined; config: Config; open: boolean; onOpen: () => void }) {
   const ref = button?.layers?.[name];
-  const said = ref === null ? 'None' : typeof ref === 'string' ? (ref.split('/').pop() ?? ref) : 'Built-in';
+  const said = ref === null ? 'None' : typeof ref === 'string' ? (ref.split('/').pop() ?? ref) : LAYERS_WITHOUT_BUILTIN.includes(name) ? 'None' : 'Built-in';
   const box = kind === 'slider' ? { w: 46, h: 130 } : { w: 76, h: 76 };
   return (
     <button className={`layer-chip${open ? ' layer-chip-open' : ''}`} aria-pressed={open} onClick={onOpen} data-layer-chip={name} title={typeof ref === 'string' ? ref : said}>
       <span className="layer-chip-picture" aria-hidden="true">
         {typeof ref === 'string' ? (
           <img src={iconUrl(ref)} alt="" draggable={false} />
-        ) : ref === null ? (
+        ) : ref === null || LAYERS_WITHOUT_BUILTIN.includes(name) ? (
           <span className="layer-chip-none">∅</span>
         ) : (
           <span dangerouslySetInnerHTML={{ __html: builtinLayerSvg(name, box, { type: button?.action?.type, angles: anglesOf(button) }).replace('<svg ', '<svg style="width:100%;height:100%" ') }} />

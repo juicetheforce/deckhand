@@ -8,7 +8,7 @@ import { Recovery } from './recovery.js';
 import { migrateStateIcons } from './state-icons.js';
 import { migratePagePanels } from './panel-presets.js';
 import type { Config, LayoutDef } from './types.js';
-import { LAYERS, LAYERS_THAT_MAY_BE_NONE, validAngles, type LayerName } from './value-controls.js';
+import { LAYERS, LAYERS_THAT_MAY_BE_NONE, migrateValueControls, validAngles, type LayerName } from './value-controls.js';
 
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
@@ -118,12 +118,23 @@ function validateValueArt(button: Record<string, unknown>, where: string): void 
     if (!isObject(button.layers)) throw new Error(`${where}: "layers" must be an object`);
     const known = new Set<string>([...LAYERS.slider, ...LAYERS.dial]);
     for (const [name, value] of Object.entries(button.layers)) {
-      if (!known.has(name)) throw new Error(`${where}: "layers.${name}" is not a layer: a slider has track, fill and thumb, a dial base, ring and knob`);
+      // A fill or ring from before the level was drawn (never released): migrateValueControls turns it into "level".
+      if (name === 'fill' || name === 'ring') {
+        if (value === null || (typeof value === 'string' && value !== '')) continue;
+        throw new Error(`${where}: "layers.${name}" must be an image's path, or null`);
+      }
+      if (!known.has(name)) throw new Error(`${where}: "layers.${name}" is not a layer: a slider has background, track and thumb, a dial background, base and knob`);
       if (value === null && LAYERS_THAT_MAY_BE_NONE.includes(name as LayerName)) continue;
       if (typeof value !== 'string' || value === '') {
         throw new Error(`${where}: "layers.${name}" must be an image's path${LAYERS_THAT_MAY_BE_NONE.includes(name as LayerName) ? ', or null for none' : ''}`);
       }
     }
+  }
+  if (button.level !== undefined) {
+    const level = button.level;
+    if (!isObject(level)) throw new Error(`${where}: "level" must be an object`);
+    if (level.show !== undefined && typeof level.show !== 'boolean') throw new Error(`${where}: "level.show" must be true or false`);
+    if (level.color !== undefined && (typeof level.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(level.color))) throw new Error(`${where}: "level.color" must be a colour like "#1a2b3c"`);
   }
   if (button.angles !== undefined && !validAngles(button.angles)) {
     throw new Error(`${where}: "angles" must be { "start", "end" }, degrees from straight up between −360 and 360, the end at least 10° and at most one turn after the start`);
@@ -307,6 +318,8 @@ export async function loadConfig(): Promise<{ config: Config; text: string }> {
   // A key's icons in the old shape, one field per state, drawn as before (state-icons.ts).
   // In memory only: the daemon never writes config.json; the editor saves it.
   migrateStateIcons(config);
+  // Sliders and dials before Ryan's 2026-11-22 decisions: a fill or ring image is the drawn level, and no round or hexagon one.
+  migrateValueControls(config);
   // A virtual deck's panel moved from each profile onto each page (panel-presets.ts), the same way.
   migratePagePanels(config);
   // An older config's icons drawn as they were, until the editor converts it (icon-fit.ts), the same way.

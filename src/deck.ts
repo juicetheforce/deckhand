@@ -2,7 +2,7 @@ import { sleep } from './sleep.js';
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
 import type { ResolvedDefaults } from './config-common.js';
 import { activeOf, attempt, attemptValue, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, valueOf, type ActionFailure } from './actions/index.js';
-import { anglesOf, angleAround, alongAxis, clamp01, fractionOf, takesValue, travelLength, turnBetween, valueAtPoint, valueOfFraction } from './value-controls.js';
+import { anglesOf, angleAround, levelOf, alongAxis, clamp01, fractionOf, takesValue, travelLength, turnBetween, valueAtPoint, valueOfFraction } from './value-controls.js';
 import { composeValue, valueArt, type ValueArt } from './value-face.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
@@ -680,6 +680,7 @@ export class DeckSession implements DeckHandle {
         ...(key.direction ? { direction: key.direction } : {}),
         angles: anglesOf(button),
         ...(button?.layers ? { layers: button.layers } : {}),
+        level: levelOf(button, action?.type),
         ...(action ? { type: action.type } : {}),
         ...(display.label ? { label: display.label } : {}),
         labelColor: display.labelColor,
@@ -1208,18 +1209,6 @@ export class DeckSession implements DeckHandle {
   async setBrightness(value: number): Promise<void> {
     const level = clampBrightness(value);
     // A device without a backlight keeps the number, so the socket still reports what was asked.
-    await this.device.setBrightness?.(this.sleepLevel === null ? level : Math.min(this.sleepLevel, level));
-    this.brightness = level;
-    this.onStateChange();
-  }
-
-  /**
-   * A slider's or dial's brightness: 0–100, dark included — the one way
-   * besides src/sleep.ts below clampBrightness's 5. Touch still works at 0,
-   * so the control that set it can turn it back up.
-   */
-  async setBrightnessLevel(value: number): Promise<void> {
-    const level = Math.max(0, Math.min(100, Math.round(value)));
     await this.device.setBrightness?.(this.sleepLevel === null ? level : Math.min(this.sleepLevel, level));
     this.brightness = level;
     this.onStateChange();

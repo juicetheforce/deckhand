@@ -173,7 +173,8 @@ export function addControl(panel: PanelDef, kind: ControlKind, at: { x: number; 
   }
   const id = freshControlId(panel, also);
   const box = clampBox({ x: at.x - w / 2, y: at.y - h / 2, w, h }, panel.size);
-  const control: PanelControlDef = kind === 'slider' ? { id, ...box, kind } : { id, ...box, kind, shape: 'round', keepRatio: true };
+  // A rectangle, as every slider and dial is (Ryan, 2026-11-22); a dial square, with Lock proportions on.
+  const control: PanelControlDef = kind === 'slider' ? { id, ...box, kind } : { id, ...box, kind, keepRatio: true };
   return { panel: { ...panel, controls: [...panel.controls, control] }, id };
 }
 
@@ -239,7 +240,8 @@ export function sendToBack(panel: PanelDef, id: string): PanelDef {
 /** A control's shape changed: a rectangle's radius kept within its box; the other shapes need none. */
 export function setShape(panel: PanelDef, id: string, shape: ShapeName): PanelDef {
   const c = panel.controls.find((k) => k.id === id);
-  if (!c) return panel;
+  // A slider or dial is a rectangle (Ryan, 2026-11-22).
+  if (!c || (c.kind !== undefined && shape !== 'rectangle')) return panel;
   const { radius, ...rest } = c;
   const next: PanelControlDef = shape === 'rectangle' && radius ? { ...rest, shape, radius } : { ...rest, shape };
   return { ...panel, controls: panel.controls.map((k) => (k.id === id ? next : k)) };

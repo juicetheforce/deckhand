@@ -19,30 +19,35 @@ export function ValueActionForm({ type, ...props }: FormProps & { type: string; 
 }
 
 const DEFAULT_OUTPUT = '';
+const DEFAULT_INPUT = 'in:';
 
 /**
- * Volume: which device — Default output (whichever is the default, following
- * it), or any local output or input, as the daemon lists them (Ryan,
- * 2026-11-18, answer 5). Stored as the node and its label, `input` for an
- * input; Default output stores nothing.
+ * Volume: which device — Default output or Default input (whichever is the
+ * default, following it), or any local output or input, as the daemon lists
+ * them (Ryan, 2026-11-18, answer 5; Default input 2026-11-22). Stored as the
+ * node and its label, `input` for an input; Default output stores nothing,
+ * Default input only `input`.
  */
 function VolumeDeviceForm({ at, button, disabled, run, audio }: FormProps & { audio: AudioLists }) {
   const action = actionOf('audio.volume', button);
   const node = typeof action?.node === 'string' ? action.node : DEFAULT_OUTPUT;
   const input = action?.input === true;
-  const stored = node === DEFAULT_OUTPUT ? DEFAULT_OUTPUT : `${input ? 'in' : 'out'}:${node}`;
+  const stored = node === DEFAULT_OUTPUT ? (input ? DEFAULT_INPUT : DEFAULT_OUTPUT) : `${input ? 'in' : 'out'}:${node}`;
   const outputs = audio?.sinks.devices ?? [];
   const inputs = audio?.sources.devices ?? [];
-  const listed = stored === DEFAULT_OUTPUT || (input ? inputs : outputs).some((d) => d.node === node);
+  const listed = node === DEFAULT_OUTPUT || (input ? inputs : outputs).some((d) => d.node === node);
   const label = typeof action?.label === 'string' && action.label !== '' ? action.label : node;
   const options = [
     { value: DEFAULT_OUTPUT, label: 'Default output', note: 'follows the default' },
+    { value: DEFAULT_INPUT, label: 'Default input', note: 'follows the default' },
     ...outputs.map((d) => ({ value: `out:${d.node}`, label: d.label, note: d.available === 'no' ? 'output · unplugged' : 'output' })),
     ...inputs.map((d) => ({ value: `in:${d.node}`, label: d.label, note: d.available === 'no' ? 'input · unplugged' : 'input' })),
     ...(listed ? [] : [{ value: stored, label, note: 'not connected' }]),
   ];
   const choose = (value: string) => {
-    if (value === DEFAULT_OUTPUT) return void run({ kind: 'setAction', at, action: nextAction('audio.volume', button, { node: undefined, label: undefined, input: undefined, delta: undefined, showLevel: undefined }) });
+    if (value === DEFAULT_OUTPUT || value === DEFAULT_INPUT) {
+      return void run({ kind: 'setAction', at, action: nextAction('audio.volume', button, { node: undefined, label: undefined, input: value === DEFAULT_INPUT ? true : undefined, delta: undefined, showLevel: undefined }) });
+    }
     const isInput = value.startsWith('in:');
     const chosen = value.slice(value.indexOf(':') + 1);
     const device = (isInput ? inputs : outputs).find((d) => d.node === chosen);
@@ -62,7 +67,7 @@ function VolumeDeviceForm({ at, button, disabled, run, audio }: FormProps & { au
   );
 }
 
-/** Brightness: which deck — this one, or any connected deck, with the target picker Brightness keys have (answer 6). Down to 0. */
+/** Brightness: which deck — this one, or any connected deck, with the target picker Brightness keys have (answer 6). 5 to 100, as a key's. */
 function BrightnessTargetForm({ at, button, disabled, run, decks }: FormProps & { decks: ReadonlyArray<{ id: string; label: string }> }) {
   const action = actionOf('brightness', button);
   const target = typeof action?.deck === 'string' && action.deck !== '' ? action.deck : null;
@@ -70,7 +75,7 @@ function BrightnessTargetForm({ at, button, disabled, run, decks }: FormProps & 
   return (
     <section className="inspector-section" data-value-form="brightness">
       <h3 className="section-heading">{actionName('brightness')}</h3>
-      <p className="muted small">Sets a level: the deck's brightness, from 0 to 100 %. At 0 it is dark, and touch still works, so it can be turned back up.</p>
+      <p className="muted small">Sets a level: the deck's brightness, from 5 to 100 %, as a Brightness key's — never dark.</p>
       <h4 className="form-subheading">Deck</h4>
       <ul className="target-list" data-brightness-target>
         <li>

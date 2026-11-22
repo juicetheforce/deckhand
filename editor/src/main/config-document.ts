@@ -339,6 +339,18 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       buttonFor(page, edit.at.key).angles = { start: Math.round(edit.angles.start), end: Math.round(edit.angles.end) };
       return {};
     }
+    case 'setLevel': {
+      const page = pageAt(config, edit.at);
+      if (controlKind(page.panel?.controls.find((c) => c.id === edit.at.key)) === 'button') throw new EditError('only a slider or dial shows a level');
+      if (edit.color !== null && !/^#[0-9a-fA-F]{6}$/.test(edit.color)) throw new EditError('a colour is "#rrggbb"');
+      // Shown in the action's colour is the default, and stored as nothing.
+      if (edit.show && edit.color === null) {
+        removeField(page, edit.at.key, 'level');
+        return {};
+      }
+      buttonFor(page, edit.at.key).level = { ...(edit.show ? {} : { show: false }), ...(edit.color !== null ? { color: edit.color.toLowerCase() } : {}) };
+      return {};
+    }
     case 'setLabel': {
       const page = pageAt(config, edit.at);
       if (edit.label === null || edit.label === '') removeField(page, edit.at.key, 'label');

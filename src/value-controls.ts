@@ -12,13 +12,23 @@
  *   angle round to the level, and a knob that rotates between a start and an
  *   end angle (−135° and 135° unless set: degrees from straight up,
  *   clockwise). It turns by dragging around its centre.
+ * - **Both are rectangles** (Ryan, 2026-11-22): a dial draws its round base
+ *   and knob inside its box.
  * - **Both take only an action that carries a value** (VALUE_ACTIONS): a
  *   button keeps every action it has.
  *
- * Every layer is drawn to the control's box. A slider's thumb image covers the
- * whole box too, with the thumb drawn at its middle, so what moves is the whole
- * layer, by `thumbOffset`.
+ * **The level — a slider's fill, a dial's ring — is drawn by Deckhand, never
+ * an image** (Ryan, 2026-11-22), so no art can hide it: shown or not, in a
+ * colour the person picks (`level`). **Every other layer is an image, or the
+ * built-in art**: the background (none unless chosen) stretched to the whole
+ * box; the track stretched to the art's area; the base, the knob and the
+ * thumb keeping their own proportions, fitted inside their areas (layerArea).
  */
+
+/** The board's dial, 76 across: a base and level ring on one arc, and a knob pointing straight up. */
+const DIAL = { size: 76, arc: { r: 33.44, w: 4.56 }, knob: { r: 22.04, w: 1.6, from: 30.4, to: 20.52, line: 3.04 } };
+/** A chosen knob's square, as a share of the dial's shorter side: inside the level ring's inner edge, less a little room. */
+const KNOB_OF_SIDE = (2 * (DIAL.arc.r - DIAL.arc.w / 2 - 1)) / DIAL.size;
 
 /** What a control on a virtual deck's panel is. */
 export type ControlKind = 'button' | 'slider' | 'dial';
@@ -38,13 +48,56 @@ export function takesValue(type: string | undefined): boolean {
 /** What a drop of a button-only action on a slider or dial says (board 26e). */
 export const NEEDS_VALUE = 'Needs an action with a value';
 
-/** Each kind's layers, bottom first. */
-export const LAYERS = { slider: ['track', 'fill', 'thumb'], dial: ['base', 'ring', 'knob'] } as const;
+/**
+ * Each kind's image layers, bottom first. The level (fill or ring) is not one
+ * of them: Deckhand draws it, between the still layers and the moving one.
+ */
+export const LAYERS = { slider: ['background', 'track', 'thumb'], dial: ['background', 'base', 'knob'] } as const;
 export type LayerName = (typeof LAYERS)[ValueKind][number];
-/** The layers that may be None (board 26f): the rest always have art, built-in until something is chosen. */
-export const LAYERS_THAT_MAY_BE_NONE: ReadonlyArray<LayerName> = ['fill', 'base', 'ring'];
+/** The layers that may be None while the rest have built-in art (board 26f): a dial's base. */
+export const LAYERS_THAT_MAY_BE_NONE: ReadonlyArray<LayerName> = ['base'];
+/** The layers with no built-in art: none until an image is chosen. */
+export const LAYERS_WITHOUT_BUILTIN: ReadonlyArray<LayerName> = ['background'];
 
-export const LAYER_LABELS: Record<LayerName, string> = { track: 'Track', fill: 'Fill', thumb: 'Thumb', base: 'Base', ring: 'Level ring', knob: 'Knob' };
+export const LAYER_LABELS: Record<LayerName, string> = { background: 'Background', track: 'Track', thumb: 'Thumb', base: 'Base', knob: 'Knob' };
+/** What the drawn level is called on each kind. */
+export const LEVEL_LABELS: Record<ValueKind, string> = { slider: 'Fill', dial: 'Level ring' };
+
+/** The level as drawn: shown unless switched off, in its own colour or the action's. */
+export function levelOf(button: { level?: { show?: boolean; color?: string } } | undefined, type: string | undefined): { show: boolean; color: string } {
+  const color = button?.level?.color;
+  return { show: button?.level?.show !== false, color: typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : artColour(type) };
+}
+
+/**
+ * Where each image layer is drawn in the art's area (the box less the label's
+ * band) — the background alone covers the whole box. `stretch`: the image is
+ * drawn to the area; otherwise it keeps its proportions, fitted inside and
+ * centred, so a round knob never becomes an oval (Ryan, 2026-11-22).
+ *
+ * - a slider's **track**: the whole area, stretched;
+ * - a slider's **thumb**: the slider's width across, and as long as it is wide
+ *   — never more than a third of the slider — at the middle; it moves along
+ *   the axis from there;
+ * - a dial's **base**: the square of its shorter side, centred;
+ * - a dial's **knob**: the square inside the level ring, centred, so the ring
+ *   is never under it.
+ */
+export function layerArea(layer: LayerName, box: { w: number; h: number }, direction?: string): { x: number; y: number; w: number; h: number; stretch: boolean } {
+  if (layer === 'background' || layer === 'track') return { x: 0, y: 0, w: box.w, h: box.h, stretch: true };
+  if (layer === 'thumb') {
+    const horizontal = direction === 'horizontal';
+    const across = horizontal ? box.h : box.w;
+    const along = horizontal ? box.w : box.h;
+    const length = Math.max(1, Math.min(across, along / 3));
+    return horizontal
+      ? { x: (box.w - length) / 2, y: 0, w: length, h: box.h, stretch: false }
+      : { x: 0, y: (box.h - length) / 2, w: box.w, h: length, stretch: false };
+  }
+  const side = Math.min(box.w, box.h);
+  const s = layer === 'knob' ? side * KNOB_OF_SIDE : side;
+  return { x: (box.w - s) / 2, y: (box.h - s) / 2, w: s, h: s, stretch: false };
+}
 
 /** A dial's knob turns from start to end, degrees from straight up, clockwise. */
 export const DEFAULT_ANGLES = { start: -135, end: 135 } as const;
@@ -242,8 +295,6 @@ export function builtinSliderTravel(box: { w: number; h: number }, direction: st
   return { start: edge, end: along - edge, thumb: (SLIDER.thumb.h + 1) * k };
 }
 
-/** The board's dial, 76 across: a base and level ring on one arc, and a knob pointing straight up. */
-const DIAL = { size: 76, arc: { r: 33.44, w: 4.56 }, knob: { r: 22.04, w: 1.6, from: 30.4, to: 20.52, line: 3.04 } };
 
 function arcPath(cx: number, cy: number, r: number, start: number, end: number): string {
   const at = (a: number) => [cx + r * Math.sin((a * Math.PI) / 180), cy - r * Math.cos((a * Math.PI) / 180)];
@@ -272,11 +323,69 @@ export function dialLayerSvg(layer: 'base' | 'ring' | 'knob', box: { w: number; 
   return svg(box.w, box.h, body);
 }
 
-/** The built-in art for one layer of a control. */
+/** The built-in art for one image layer of a control; a background has none (an empty drawing). */
 export function builtinLayerSvg(layer: LayerName, box: { w: number; h: number }, how: { direction?: string; angles?: { start: number; end: number }; type?: string; held?: boolean }): string {
   const colour = artColour(how.type);
-  if (layer === 'track' || layer === 'fill' || layer === 'thumb') return sliderLayerSvg(layer, box, how.direction, colour, how.held);
+  if (layer === 'background') return svg(box.w, box.h, '');
+  if (layer === 'track' || layer === 'thumb') return sliderLayerSvg(layer, box, how.direction, colour, how.held);
   return dialLayerSvg(layer, box, how.angles ?? DEFAULT_ANGLES, colour, how.held);
+}
+
+/**
+ * The level, drawn by Deckhand: a slider's fill (the built-in track's bar,
+ * the whole length) or a dial's ring (start to end); shown up to the level by
+ * the face, in its colour.
+ */
+export function levelSvg(kind: ValueKind, box: { w: number; h: number }, how: { direction?: string; angles?: { start: number; end: number }; color: string }): string {
+  return kind === 'slider' ? sliderLayerSvg('fill', box, how.direction, how.color) : dialLayerSvg('ring', box, how.angles ?? DEFAULT_ANGLES, how.color);
+}
+
+/**
+ * A config's sliders and dials in the shape Ryan decided on 2026-11-22, in
+ * place; returns whether anything changed. Run on every load by the daemon (in
+ * memory) and saved by the editor, as the other migrations are:
+ * - **a fill or ring image becomes the drawn level** (the image dropped, the
+ *   level shown); **None** becomes the level switched off;
+ * - **a slider or dial is a rectangle**: a round or hexagon shape dropped.
+ * Never released in the old shape; this keeps a developer build's config.
+ */
+export function migrateValueControls(config: {
+  profiles?: Record<string, { layouts?: Record<string, { panel?: { controls?: unknown[] }; pages?: Record<string, { panel?: { controls?: unknown[] }; buttons?: Record<string, unknown> }> }> }>;
+  templates?: Array<{ panel?: { controls?: unknown[] } }>;
+}): boolean {
+  let changed = false;
+  const panel = (p: { controls?: unknown[] } | undefined) => {
+    for (const c of p?.controls ?? []) {
+      const control = c as { kind?: string; shape?: string };
+      if ((control.kind === 'slider' || control.kind === 'dial') && (control.shape === 'round' || control.shape === 'hexagon')) {
+        delete control.shape;
+        changed = true;
+      }
+    }
+  };
+  for (const t of config.templates ?? []) panel(t.panel);
+  for (const profile of Object.values(config.profiles ?? {})) {
+    for (const layout of Object.values(profile.layouts ?? {})) {
+      panel(layout.panel);
+      for (const page of Object.values(layout.pages ?? {})) {
+        panel(page.panel);
+        for (const [key, b] of Object.entries(page.buttons ?? {})) {
+          const button = b as { layers?: Record<string, unknown>; level?: { show?: boolean; color?: string } };
+          if (!button.layers) continue;
+          for (const old of ['fill', 'ring']) {
+            if (!(old in button.layers)) continue;
+            if (button.layers[old] === null && button.level?.show === undefined) button.level = { ...(button.level ?? {}), show: false };
+            delete button.layers[old];
+            changed = true;
+          }
+          if (Object.keys(button.layers).length === 0) delete button.layers;
+          // A key that held only a fill image is no key, as an edit leaves it.
+          if (Object.keys(button).length === 0) delete page.buttons![key];
+        }
+      }
+    }
+  }
+  return changed;
 }
 
 /** The reference sizes board 26a draws the art at: what assets/art/ holds, and what the generator is tested against. */

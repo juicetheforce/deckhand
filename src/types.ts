@@ -37,11 +37,16 @@ export interface ButtonDef {
   onRelease?: ActionDef;
   /**
    * A slider's or dial's art (src/value-controls.ts), each layer picked like an
-   * icon and belonging to the page: absent, the built-in art; a path (or
-   * `builtin:<name>`), that image drawn to the control's box; **null, None** —
-   * only Fill, Base and Level ring may be none. A button has no layers.
+   * icon and belonging to the page: absent, the built-in art (a background,
+   * none); a path (or `builtin:<name>`), that image; **null, None** — only a
+   * dial's base. A button has no layers.
    */
   layers?: ValueLayersDef;
+  /**
+   * A slider's fill or a dial's level ring, drawn by Deckhand, never an image:
+   * shown unless `show` is false, in `color` or the action's own colour.
+   */
+  level?: ValueLevelDef;
   /**
    * A dial's knob turns from `start` to `end`, in degrees from straight up,
    * clockwise (−135 and 135 unless set). Kept with the knob's art, since where
@@ -52,14 +57,20 @@ export interface ButtonDef {
   refreshMs?: number;
 }
 
-/** A slider's layers (track, fill, thumb) or a dial's (base, ring, knob): see ButtonDef.layers. */
+/** A slider's layers (background, track, thumb) or a dial's (background, base, knob): see ButtonDef.layers. */
 export interface ValueLayersDef {
+  background?: string;
   track?: string;
-  fill?: string | null;
   thumb?: string;
   base?: string | null;
-  ring?: string | null;
   knob?: string;
+}
+
+/** See ButtonDef.level. */
+export interface ValueLevelDef {
+  show?: boolean;
+  /** "#rrggbb". */
+  color?: string;
 }
 
 /** An entry under a layout's "pages", keyed by page ID. */
@@ -357,13 +368,7 @@ export interface DeckHandle {
   /** Return to the previously shown page. */
   goBack(): Promise<void>;
   setBrightness(value: number): Promise<void>;
-  /**
-   * A slider's or dial's brightness: 0–100, down to 0 (dark), which a key's
-   * setBrightness() never goes below 5. Touch still works at 0, so the control
-   * can turn it back up.
-   */
-  setBrightnessLevel(value: number): Promise<void>;
-  /** The brightness this deck was last set to, 0-100 (5-100 unless a slider or dial set it). */
+  /** The brightness this deck was last set to, 5-100. */
   currentBrightness(): number;
   /** The ID of the page currently shown. */
   currentPage(): string;

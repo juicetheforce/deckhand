@@ -124,8 +124,21 @@ const withPage = (page) => ({ profiles: { p: { layouts: { 'GRA-6e4e': { pages: {
 check('a slider and a dial with direction and touch are valid', !throws(() => validateConfig(withPage({ panel: panelWith([{ id: 's', x: 0, y: 0, w: 60, h: 240, kind: 'slider', direction: 'horizontal', touch: 'jump' }, { id: 'd', x: 100, y: 0, w: 100, h: 100, kind: 'dial' }]), buttons: {} }))));
 check('an unknown kind is refused', /"kind" must be/.test(throws(() => validateConfig(withPage({ panel: panelWith([{ id: 's', x: 0, y: 0, w: 60, h: 60, kind: 'fader' }]), buttons: {} }))) ?? ''));
 check('a direction on a button, or a touch on a dial, is refused', /"direction" is a slider's/.test(throws(() => validateConfig(withPage({ panel: panelWith([{ id: 's', x: 0, y: 0, w: 60, h: 60, direction: 'vertical' }]), buttons: {} }))) ?? '') && /"touch" is a slider's/.test(throws(() => validateConfig(withPage({ panel: panelWith([{ id: 'd', x: 0, y: 0, w: 60, h: 60, kind: 'dial', touch: 'jump' }]), buttons: {} }))) ?? ''));
-check('layers: paths, and None only for fill, base and ring', !throws(() => validateConfig(withPage({ buttons: { s: { layers: { track: '~/a.png', fill: null, thumb: 'builtin:switch-on', base: null, ring: null, knob: '/k.png' } } } }))));
-check('…None for a thumb, track or knob is refused, and so is an unknown layer', /"layers.thumb"/.test(throws(() => validateConfig(withPage({ buttons: { s: { layers: { thumb: null } } } }))) ?? '') && /not a layer/.test(throws(() => validateConfig(withPage({ buttons: { s: { layers: { meter: 'x.png' } } } }))) ?? ''));
+check('layers: paths for background, track, thumb, base and knob, and None only for a base', !throws(() => validateConfig(withPage({ buttons: { s: { layers: { background: '~/scale.png', track: '~/a.png', thumb: 'builtin:switch-on', base: null, knob: '/k.png' } } } }))));
+check('…None for a thumb, track, knob or background is refused, and so is an unknown layer', /"layers.thumb"/.test(throws(() => validateConfig(withPage({ buttons: { s: { layers: { thumb: null } } } }))) ?? '') && /"layers.background"/.test(throws(() => validateConfig(withPage({ buttons: { s: { layers: { background: null } } } }))) ?? '') && /not a layer/.test(throws(() => validateConfig(withPage({ buttons: { s: { layers: { meter: 'x.png' } } } }))) ?? ''));
+check('the level: shown or not, in a colour; anything else refused', !throws(() => validateConfig(withPage({ buttons: { s: { level: { show: false, color: '#ff8800' } } } }))) && /"level.color"/.test(throws(() => validateConfig(withPage({ buttons: { s: { level: { color: 'red' } } } }))) ?? '') && /"level.show"/.test(throws(() => validateConfig(withPage({ buttons: { s: { level: { show: 'no' } } } }))) ?? ''));
+check('the level\'s colour is the action\'s unless chosen, and it is shown unless switched off', vc.levelOf({}, 'brightness').color === '#e8b45a' && vc.levelOf({}, 'brightness').show && vc.levelOf({ level: { color: '#123456', show: false } }, 'brightness').color === '#123456' && !vc.levelOf({ level: { show: false } }, undefined).show);
+{
+  // A config from before 2026-11-22's decisions (never released): a fill image, a ring set to None, a round dial and a hexagon slider in a template.
+  const old = withPage({ panel: panelWith([{ id: 'd', x: 0, y: 0, w: 100, h: 100, kind: 'dial', shape: 'round', keepRatio: true }, { id: 'b', x: 200, y: 0, w: 100, h: 100, shape: 'round' }]), buttons: { s: { layers: { fill: '~/fill.png', thumb: '~/t.png' } }, d: { layers: { ring: null } } } });
+  old.templates = [{ name: 'Old', panel: panelWith([{ id: 'h', x: 0, y: 0, w: 60, h: 240, kind: 'slider', shape: 'hexagon' }]) }];
+  const valid = validateConfig(old);
+  const changed = vc.migrateValueControls(valid);
+  const page = valid.profiles.p.layouts['GRA-6e4e'].pages.a;
+  check('an old config loads, and its fill image becomes the drawn fill (shown), its ring set to None the level switched off', changed && JSON.stringify(page.buttons.s) === JSON.stringify({ layers: { thumb: '~/t.png' } }) && JSON.stringify(page.buttons.d) === JSON.stringify({ level: { show: false } }), JSON.stringify(page.buttons));
+  check('…a round dial and a hexagon slider become rectangles; a round button keeps its shape', page.panel.controls[0].shape === undefined && page.panel.controls[1].shape === 'round' && valid.templates[0].panel.controls[0].shape === undefined, JSON.stringify([page.panel.controls, valid.templates[0].panel.controls]));
+  check('…and migrating again changes nothing', !vc.migrateValueControls(valid));
+}
 check('angles: −135 to 135 valid; a sweep under 10° or over a turn refused', !throws(() => validateConfig(withPage({ buttons: { s: { angles: { start: -135, end: 135 } } } }))) && /"angles"/.test(throws(() => validateConfig(withPage({ buttons: { s: { angles: { start: 0, end: 5 } } } }))) ?? '') && /"angles"/.test(throws(() => validateConfig(withPage({ buttons: { s: { angles: { start: -200, end: 200 } } } }))) ?? ''));
 check('a template keeps a slider and its direction', !throws(() => validateConfig({ ...withPage({ buttons: {} }), templates: [{ name: 'Mixer', panel: panelWith([{ id: 's', x: 0, y: 0, w: 60, h: 240, kind: 'slider', direction: 'vertical', touch: 'drag' }]) }] })));
 check('only Volume, Brightness and User volume take a value', vc.VALUE_ACTIONS.join() === 'audio.volume,brightness,discord.userVolume' && vc.takesValue('brightness') && !vc.takesValue('hotkey') && !vc.takesValue(undefined));
@@ -167,7 +180,7 @@ function thumbRow(buf, w, h, held = false) {
   }
   return rows.length === 0 ? -1 : rows.reduce((s, y) => s + y, 0) / rows.length;
 }
-const base = { labelColor: '#ffffff', labelSize: 14, angles: { start: -135, end: 135 }, type: 'audio.volume' };
+const base = { labelColor: '#ffffff', labelSize: 14, angles: { start: -135, end: 135 }, type: 'audio.volume', level: { show: true, color: '#8f9cf0' } };
 await settle('the face', async () => {
   const s = await valueArt({ ...base, kind: 'slider', width: 60, height: 240 });
   const travel = vc.builtinSliderTravel({ w: 60, h: 240 }, 'vertical');
@@ -183,8 +196,10 @@ await settle('the face', async () => {
   check('the same value again is the same Buffer (the session skips the write)', composeValue(s, 0.5, false) === half);
   const held = composeValue(s, 0.5, true);
   check('held: the thumb drawn lighter, with its halo past the thumb\'s edge', held !== half && px(held, 60, 30, Math.round(240 - vc.levelAt(0.5, s.travel)) + 9)[0] > px(half, 60, 30, Math.round(240 - vc.levelAt(0.5, s.travel)) + 9)[0], JSON.stringify([px(held, 60, 30, 130), px(half, 60, 30, 130)]));
-  const none = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { fill: null } });
-  check('Fill set to None: nothing below the level but the track\'s faint fill', px(composeValue(none, 0.5, false), 60, 30, 200)[3] < 100);
+  const none = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, level: { show: false, color: '#8f9cf0' } });
+  check('the fill switched off: nothing below the level but the track\'s faint fill', px(composeValue(none, 0.5, false), 60, 30, 200)[3] < 100);
+  const red = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, level: { show: true, color: '#ff0000' } });
+  check('the fill in the colour chosen', px(composeValue(red, 0.5, false), 60, 30, 200)[0] > 220 && px(composeValue(red, 0.5, false), 60, 30, 200)[2] < 60, JSON.stringify(px(composeValue(red, 0.5, false), 60, 30, 200)));
   const hz = await valueArt({ ...base, kind: 'slider', width: 240, height: 60, direction: 'horizontal' });
   const hface = composeValue(hz, 0.25, false);
   let col = -1;
@@ -217,10 +232,10 @@ await settle('the face', async () => {
   // Angles past −180°: the ring's pixels are counted on from the start angle both ways, not only upwards.
   const wide = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, angles: { start: -270, end: 0 } });
   check('a dial from −270° to 0°: at half, the ring is lit at −225° (drawn where 135° is) and not at −45°', ringAt(composeValue(wide, 0.5, false), 135)[0] < 160 && ringAt(composeValue(wide, 0.5, false), 135)[3] > 200 && ringAt(composeValue(wide, 0.5, false), -45)[0] > 200, JSON.stringify([ringAt(composeValue(wide, 0.5, false), 135), ringAt(composeValue(wide, 0.5, false), -45)]));
-  const noBase = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { base: null, ring: null } });
-  check('Base and Level ring set to None: no arc at all', ringAt(composeValue(noBase, 1, false), -90)[3] === 0 && ringAt(composeValue(noBase, 1, false), 120)[3] === 0);
-  const round = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, shape: 'round', background: '#203040' });
-  check('a background colour fills the shape, and outside a round shape is clear', px(composeValue(round, 0, false), 120, 60, 3)[3] === 255 && px(composeValue(round, 0, false), 120, 1, 1)[3] === 0);
+  const noBase = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { base: null }, level: { show: false, color: '#8f9cf0' } });
+  check('Base set to None and the ring switched off: no arc at all', ringAt(composeValue(noBase, 1, false), -90)[3] === 0 && ringAt(composeValue(noBase, 1, false), 120)[3] === 0);
+  const cornered = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, radius: 20, background: '#203040' });
+  check('a background colour fills the rectangle, its rounded corners clear', px(composeValue(cornered, 0, false), 120, 60, 1)[3] === 255 && px(composeValue(cornered, 0, false), 120, 1, 1)[3] === 0);
 
   const big = path.join(TMP, 'big.png');
   await (await import('sharp')).default({ create: { width: 5000, height: 10, channels: 4, background: '#ff0000' } }).png().toFile(big);
@@ -230,18 +245,49 @@ await settle('the face', async () => {
   const again = await valueArt({ ...base, kind: 'slider', width: 61, height: 240, layers: { thumb: big } });
   check('a layer image the limits refuse is drawn as the built-in layer', thumbRow(composeValue(refused, 0.5, false), 60, 240) > 0 && again !== null);
   check('…and the reason said once, in the limits\' words', errors.filter((l) => l.includes('thumb layer') && l.includes('4096')).length === 1, JSON.stringify(errors));
-  const custom = path.join(TMP, 'cap.png');
-  await (await import('sharp')).default({ create: { width: 60, height: 240, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-    .composite([{ input: { create: { width: 50, height: 20, channels: 4, background: '#00ff00' } }, top: 110, left: 5 }])
-    .png()
-    .toFile(custom);
-  const capped = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { thumb: custom } });
-  const green = (face) => {
-    const rows = [];
-    for (let y = 0; y < 240; y++) if (px(face, 60, 30, y)[1] > 200 && px(face, 60, 30, y)[0] < 60) rows.push(y);
-    return rows.length ? (rows[0] + rows.at(-1) + 1) / 2 : -1;
+  const sharp = (await import('sharp')).default;
+  const solid = async (name, w, h, colour) => {
+    const file = path.join(TMP, name);
+    await sharp({ create: { width: w, height: h, channels: 4, background: colour } }).png().toFile(file);
+    return file;
   };
-  check('a chosen thumb image is drawn to the box and travels as drawn: its centre at the level', Math.abs(green(composeValue(capped, 1, false)) - (240 - vc.levelAt(1, capped.travel))) <= 1.5 && capped.travel.thumb === 20, `${green(composeValue(capped, 1, false))} / ${JSON.stringify(capped.travel)}`);
+  const extentOf = (face, w, h, want) => {
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (want(px(face, w, x, y))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    return x1 < 0 ? null : { w: x1 - x0 + 1, h: y1 - y0 + 1, x0, y0 };
+  };
+  const isGreen = ([r, g, b, a]) => a > 200 && g > 200 && r < 60 && b < 60;
+  // A round knob or square thumb keeps its proportions, fitted inside its area: never an oval (Ryan, 2026-11-22).
+  const square = await solid('square.png', 100, 100, '#00ff00');
+  const thumbed = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { thumb: square } });
+  const tEx = extentOf(composeValue(thumbed, 0.5, false), 60, 240, isGreen);
+  check('a chosen thumb keeps its proportions: a square image drawn square, the slider\'s width across', tEx && tEx.w === 60 && tEx.h === 60, JSON.stringify(tEx));
+  const greenRow = (face) => { const e = extentOf(face, 60, 240, isGreen); return e ? e.y0 + e.h / 2 : -1; };
+  check('…and travels as drawn: its centre at the level', Math.abs(greenRow(composeValue(thumbed, 1, false)) - (240 - vc.levelAt(1, thumbed.travel))) <= 1.5 && thumbed.travel.thumb === 60, `${greenRow(composeValue(thumbed, 1, false))} / ${JSON.stringify(thumbed.travel)}`);
+  const wideImage = await solid('wide.png', 200, 50, '#00ff00');
+  const capped = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { thumb: wideImage } });
+  const cEx = extentOf(composeValue(capped, 0.5, false), 60, 240, isGreen);
+  check('…a wide thumb is fitted, not stretched: 4 to 1 stays 4 to 1', cEx && cEx.w === 60 && cEx.h === 15, JSON.stringify(cEx));
+  const knobbed = await valueArt({ ...base, kind: 'dial', width: 160, height: 120, layers: { knob: square } });
+  const kEx = extentOf(composeValue(knobbed, 0.5, false), 160, 120, isGreen);
+  check('a chosen knob keeps its proportions on a wide dial: square, centred, inside the ring', kEx && Math.abs(kEx.w - kEx.h) <= 1 && kEx.w < 120 * 0.85 && Math.abs(kEx.x0 + kEx.w / 2 - 80) <= 1, JSON.stringify(kEx));
+  // The ring over an opaque knob image: the knob can never hide the level (it did, on Ryan's test).
+  const fullKnob = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { knob: square }, angles: { start: -135, end: 135 } });
+  check('the level ring is drawn over a knob image: lit at the level, never hidden', ringAt(composeValue(fullKnob, 1, false), -90)[0] < 160 && ringAt(composeValue(fullKnob, 1, false), -90)[3] > 200, JSON.stringify(ringAt(composeValue(fullKnob, 1, false), -90)));
+  // A track image is drawn (on Ryan's test the built-in fill over it looked like the built-in track): stretched to the art's area.
+  const blueTrack = await solid('track.png', 10, 10, '#0000ff');
+  const tracked = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { track: blueTrack }, level: { show: false, color: '#8f9cf0' } });
+  const tFace = composeValue(tracked, 0, false);
+  check('a chosen track is drawn, stretched to the whole art area', [px(tFace, 60, 2, 2), px(tFace, 60, 57, 120), px(tFace, 60, 30, 100)].every(([r, g, b, a]) => a === 255 && b > 220 && r < 40), JSON.stringify([px(tFace, 60, 2, 2), px(tFace, 60, 57, 120)]));
+  // A background image fills the whole box, the label's band included, behind everything.
+  const redBack = await solid('back.png', 10, 30, '#ff0000');
+  const backed = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, label: 'MIC', layers: { background: redBack } });
+  const bFace = composeValue(backed, 0.5, false);
+  check('a background image fills the whole control, its label band too, behind the art', [px(bFace, 60, 1, 1), px(bFace, 60, 58, 238)].every(([r, g, b, a]) => a === 255 && r > 220 && g < 40) && px(bFace, 60, 30, 200)[0] < 200, JSON.stringify([px(bFace, 60, 1, 1), px(bFace, 60, 58, 238), px(bFace, 60, 30, 200)]));
+  // A base image keeps its proportions in the dial's square.
+  const based = await valueArt({ ...base, kind: 'dial', width: 160, height: 120, layers: { base: square }, level: { show: false, color: '#8f9cf0' } });
+  const bEx = extentOf(composeValue(based, 0, false), 160, 120, isGreen);
+  check('a chosen base fills the dial\'s square, centred, never stretched to the box', bEx && bEx.w === 120 && bEx.h === 120 && bEx.x0 === 20, JSON.stringify(bEx));
 });
 
 // ---------------------------------------------------------------------------
@@ -261,6 +307,7 @@ const controls = [
   { id: 'b1', x: 800, y: 100, w: 100, h: 100 },
   { id: 'br', x: 1000, y: 100, w: 60, h: 240, kind: 'slider' },
   { id: 'ab', x: 1200, y: 100, w: 60, h: 240, kind: 'slider' },
+  { id: 'di', x: 1400, y: 100, w: 60, h: 240, kind: 'slider', touch: 'jump' },
 ];
 const config = validateConfig({
   decks: { 'GRA-6e4e': { name: 'Panel', virtual: { output: 'DP-4', touch: ILITEK } } },
@@ -279,6 +326,7 @@ const config = validateConfig({
                 b1: { action: { type: 'noop' } },
                 br: { action: { type: 'brightness' } },
                 ab: { action: { type: 'audio.volume', node: 'alsa_output.gone', label: 'Gone' } },
+                di: { action: { type: 'audio.volume', input: true } },
               },
             },
             other: { panel: panelWith([{ id: 'k1', x: 0, y: 0, w: 200, h: 200 }]), buttons: {} },
@@ -459,13 +507,25 @@ await settle('the session', async () => {
   check('…to a page with the same controls too: the finger still there writes nothing to the new page\'s action', !(await pactlCalls()).slice(sameAt).some((l) => l.startsWith('set-source-volume') || l.startsWith('set-sink-volume')), (await pactlCalls()).slice(sameAt).join(' | '));
   await session.goToPage('mix');
 
-  // Brightness to 0 on its own deck, and back up by touch.
+  // Brightness dragged all the way down on its own deck: it stops at 5, as a Brightness key does, never dark (Ryan, 2026-11-22).
   const bFrom = (await frames()).length;
   await helperSays(down(10, 'br', 30, 20), move(10, 'br', 30, 400), up(10));
-  check('a brightness slider sets its own deck to 0', await until(async () => (await frames()).slice(bFrom).some((f) => f.type === 'B' && f.percent === 0)) && session.currentBrightness() === 0, `${session.currentBrightness()}`);
+  await until(async () => (await frames()).slice(bFrom).some((f) => f.type === 'B' && f.percent <= 5));
+  await sleep(200);
+  const bLevels = (await frames()).slice(bFrom).filter((f) => f.type === 'B').map((f) => f.percent);
+  check('a brightness slider dragged to the bottom stops at 5, never 0', bLevels.at(-1) === 5 && !bLevels.includes(0) && session.currentBrightness() === 5, `${bLevels.join(',')} / ${session.currentBrightness()}`);
   const upFrom = (await frames()).length;
   await helperSays(down(11, 'br', 30, 220), move(11, 'br', 30, -200), up(11));
-  check('…and touch still works at 0: turned back up to 100', await until(async () => (await frames()).slice(upFrom).some((f) => f.type === 'B' && f.percent === 100)) && session.currentBrightness() === 100, `${session.currentBrightness()}`);
+  check('…and turned back up to 100', await until(async () => (await frames()).slice(upFrom).some((f) => f.type === 'B' && f.percent === 100)) && session.currentBrightness() === 100, `${session.currentBrightness()}`);
+
+  // Default input: whichever input is the default, its volume read from the cache and set by the default's name.
+  const diArt = await valueArt({ ...base, kind: 'slider', width: 60, height: 240 });
+  const at60 = 240 - (diArt.travel.start + diArt.travel.thumb / 2 + 0.6 * vc.travelLength(diArt.travel));
+  await helperSays(down(14, 'di', 30, at60), up(14));
+  check('Default input: a tap at 60% sets the default source', await until(async () => (await sets('set-source-volume')).at(-1) === 'set-source-volume @DEFAULT_SOURCE@ 60%'), (await sets('set-source-volume')).slice(-2).join(' | '));
+  const defaultSource = JSON.parse(execFileSync('pactl', ['-f', 'json', 'info']).toString()).default_source_name;
+  check('…its level read from the cache: the default input\'s own volume', await until(() => audio.cachedVolume({ input: true }) === 60 && audio.cachedVolume({ node: defaultSource, input: true }) === 60), `${audio.cachedVolume({ input: true })} (${defaultSource})`);
+  check('…and the status reports it', await until(() => session.values().di === 60), JSON.stringify(session.values()));
 
   // A device not there: fails once per drag, marked and notified, and nothing more is tried.
   notified.length = 0;

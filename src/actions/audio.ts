@@ -42,7 +42,9 @@ function nodeOf(params: ActionDef): string | null {
 /** A Volume slider's device (services/audio.ts VolumeTarget). */
 function volumeTarget(params: ActionDef): audio.VolumeTarget {
   const node = nodeOf(params);
-  return node ? { node, input: params.input === true } : {};
+  const input = params.input === true;
+  // No node: the default output, or with `input` the default input.
+  return node ? { node, input } : input ? { input } : {};
 }
 
 /** How to name a device in a message: its stored label, else the node. */

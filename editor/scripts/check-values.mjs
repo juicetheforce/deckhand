@@ -5,19 +5,23 @@
 // What is checked from outside the page: config.json on disk.
 //
 // - Edit layout's palette: Button, Slider, Dial. A slider added at about
-//   14 × 60 mm, a dial at about 25 mm, round; the layout inspector's Direction
-//   (turning the box) and Touch for a slider; Save as template keeps them.
+//   14 × 60 mm, a dial at about 25 mm, a rectangle with no shape choice (its
+//   Corners only); the layout inspector's Direction (turning the box) and
+//   Touch for a slider; Save as template keeps them.
 // - Normal use, a slider selected: its own inspector; the library dims every
 //   action that sets no level, and a click on one writes nothing; Volume
 //   clicked is written at once. A Hotkey dragged over the slider is refused
 //   in the air, "Needs an action with a value", and dropping it changes
 //   nothing; over a button it is the usual drop target.
-// - Volume's Device: Default output, every output and every input; an input
-//   chosen is stored with `input`. Brightness on the dial: the deck targets.
+// - Volume's Device: Default output, Default input, every output and every
+//   input; Default input stored as `input` alone, an input chosen with its
+//   node. Brightness on the dial: the deck targets, 5 to 100.
 // - The grid draws each control at the deck's level (status `values`, from
 //   the fake pactl's 40%).
-// - The Icon tab: one chip per layer; Fill set to None, then built-in again;
-//   a thumb image chosen; a 5000 px image refused with its reason and not
+// - The Icon tab: chips for Background, Track, Fill and Thumb; the fill
+//   switched off and on, and its colour; a background image chosen and None
+//   again; a track image chosen; a thumb image chosen, drawn in the grid
+//   keeping its proportions; a 5000 px image refused with its reason and not
 //   saved; the knob's angles.
 // - A slider's key dragged onto a button is refused; onto the dial it moves.
 // - One Clear empties a slider; the Stream Deck shows none of it.
@@ -248,7 +252,9 @@ check('Touch: Jump to touch is the control\'s own', (await controlOnDisk(slider.
 await paletteClick('dial');
 await mustSee('a dial on disk', async () => (await pageOnDisk()).panel.controls.some((c) => c.kind === 'dial'));
 const dial = (await pageOnDisk()).panel.controls.find((c) => c.kind === 'dial');
-check('a dial is added at about 25 mm, round', Math.abs(dial.w - mm(25)) <= 1 && dial.w === dial.h && dial.shape === 'round', JSON.stringify(dial));
+check('a dial is added at about 25 mm, a square rectangle', Math.abs(dial.w - mm(25)) <= 1 && dial.w === dial.h && dial.shape === undefined && dial.keepRatio === true, JSON.stringify(dial));
+r.dialShape = await inEditor(`({ shape: !!document.querySelector('[data-layout-inspector] [aria-label=Shape]') || [...document.querySelectorAll('[data-layout-inspector] button')].some((b) => b.textContent === 'Round' || b.textContent === 'Hexagon'), corners: !!document.querySelector('[data-layout-inspector] [aria-label=Corners]') })`);
+check('…and offers no shape, only its corners', !r.dialShape.shape && r.dialShape.corners, JSON.stringify(r.dialShape));
 // Move the dial off the slider, so each is its own target.
 await inEditor(`(() => { const i = document.querySelector('[data-layout-field=X]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '300'); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
 await mustSee('the dial moved', async () => (await controlOnDisk(dial.id))?.x === 300);
@@ -294,7 +300,13 @@ await mustSee('the Device dropdown', () => exists('[data-value-form="audio.volum
 await click('[data-value-form="audio.volume"] [data-dropdown]');
 await mustSee('the device list', () => exists('[role=listbox] [role=option]'));
 r.devices = await inEditor(`[...document.querySelectorAll('[role=listbox] [role=option]')].map((o) => o.textContent)`);
-check('Device: Default output first, then outputs and inputs', /^Default output/.test(r.devices[0] ?? '') && r.devices.some((d) => /Headset Mono Mic/.test(d) && /input/.test(d)) && r.devices.some((d) => /Example Headset Analog Stereo/.test(d) && /output/.test(d)), JSON.stringify(r.devices));
+check('Device: Default output and Default input first, then outputs and inputs', /^Default output/.test(r.devices[0] ?? '') && /^Default input/.test(r.devices[1] ?? '') && r.devices.some((d) => /Headset Mono Mic/.test(d) && /input/.test(d)) && r.devices.some((d) => /Example Headset Analog Stereo/.test(d) && /output/.test(d)), JSON.stringify(r.devices));
+await inEditor(`(() => { [...document.querySelectorAll('[role=listbox] [role=option]')].find((o) => /^Default input/.test(o.textContent)).click(); return true; })()`);
+await mustSee('Default input on disk', async () => (await keyOnDisk(slider.id))?.action?.input === true);
+r.defaultInput = (await keyOnDisk(slider.id))?.action;
+check('Default input is stored as input alone: no node, following the default', r.defaultInput?.input === true && r.defaultInput?.node === undefined, JSON.stringify(r.defaultInput));
+await click('[data-value-form="audio.volume"] [data-dropdown]');
+await mustSee('the device list again', () => exists('[role=listbox] [role=option]'));
 await inEditor(`(() => { [...document.querySelectorAll('[role=listbox] [role=option]')].find((o) => /Headset Mono Mic/.test(o.textContent)).click(); return true; })()`);
 await mustSee('the input on disk', async () => (await keyOnDisk(slider.id))?.action?.node === HEADSET_MIC);
 check('an input chosen is stored by its node, with input', (await keyOnDisk(slider.id))?.action?.input === true, JSON.stringify(await keyOnDisk(slider.id)));
@@ -319,17 +331,42 @@ if (process.env.DECKHAND_VALUES_SHOT) {
 await inEditor(`(() => { [...document.querySelectorAll('[data-value-inspector] .inspector-tab')].find((t) => t.textContent === 'Icon').click(); return true; })()`);
 await mustSee('the layer chips', () => exists('[data-layer-chip=thumb]'));
 r.chips = await inEditor(`[...document.querySelectorAll('[data-layer-chip]')].map((c) => c.dataset.layerChip + ':' + c.querySelector('.layer-chip-file').textContent)`);
-check('one chip per layer, each Built-in to start', JSON.stringify(r.chips) === JSON.stringify(['track:Built-in', 'fill:Built-in', 'thumb:Built-in']), JSON.stringify(r.chips));
-await click('[data-layer-chip=fill]');
-await mustSee('None for the fill', () => exists('[data-layer-none=fill]'));
-check('Track has no None; Fill has', !(await inEditor(`(() => { document.querySelector('[data-layer-chip=track]').click(); return !!document.querySelector('[data-layer-none=track]'); })()`)) && (await inEditor(`(() => { document.querySelector('[data-layer-chip=fill]').click(); return true; })()`)));
-await mustSee('None for the fill again', () => exists('[data-layer-none=fill]'));
-await click('[data-layer-none=fill]');
-await mustSee('Fill None on disk', async () => (await keyOnDisk(slider.id))?.layers?.fill === null);
-check('Fill set to None is stored as null', (await keyOnDisk(slider.id))?.layers?.fill === null);
-await click('[data-layer-builtin=fill]');
-await mustSee('the built-in fill again', async () => (await keyOnDisk(slider.id))?.layers === undefined);
-check('Use built-in fill: nothing stored', (await keyOnDisk(slider.id))?.layers === undefined);
+check('chips for the background, the track, the fill and the thumb: no background image, built-in art, the fill drawn', JSON.stringify(r.chips) === JSON.stringify(['background:None', 'track:Built-in', 'level:Drawn', 'thumb:Built-in']), JSON.stringify(r.chips));
+// The fill: drawn by Deckhand, switched off and on, and its colour.
+await click('[data-layer-chip=level]');
+await mustSee('the fill\'s form', () => exists('[data-level-form=slider] input[type=checkbox]'));
+check('the fill offers no image: a switch and a colour', !(await exists('[data-layer-actions]')) && (await exists('[data-level-form=slider] [data-colour-picker=level-colour]')));
+await click('[data-level-form=slider] input[type=checkbox]');
+await mustSee('the fill off on disk', async () => (await keyOnDisk(slider.id))?.level?.show === false);
+check('the fill switched off is stored, and the grid draws no fill', (await keyOnDisk(slider.id))?.level?.show === false && !(await exists(`.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=level]`)));
+await click('[data-level-form=slider] input[type=checkbox]');
+await mustSee('the fill on again', async () => (await keyOnDisk(slider.id))?.level === undefined);
+await inEditor(`(() => { const i = document.querySelector('[data-colour-picker=level-colour] [data-colour-hex]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '#ff8800'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+await mustSee('the fill\'s colour on disk', async () => (await keyOnDisk(slider.id))?.level?.color === '#ff8800');
+r.levelFill = await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=level]')?.innerHTML ?? ''`);
+check('a colour chosen is stored, and the grid draws the fill in it', (await keyOnDisk(slider.id))?.level?.color === '#ff8800' && /#ff8800/i.test(r.levelFill), r.levelFill.slice(0, 200));
+// The background: no built-in, an image, and None again.
+await click('[data-layer-chip=background]');
+await mustSee('the background\'s picker', () => exists('[data-layer-none=background]'));
+check('the background offers None, and no built-in', !(await exists('[data-layer-builtin=background]')));
+await mustSee('the picker on Pictures (background)', () => exists(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`), 10000);
+await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
+await mustSee('the background on disk', async () => (await keyOnDisk(slider.id))?.layers?.background === '~/Pictures/cap.png');
+r.backImg = await inEditor(`(() => { const face = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]').getBoundingClientRect(); const i = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=background] img'); if (!i) return null; const b = i.getBoundingClientRect(); return { fit: getComputedStyle(i).objectFit, w: Math.round(b.width - face.width), h: Math.round(b.height - face.height) }; })()`);
+check('a background image chosen is stored, and drawn stretched over the whole control', r.backImg?.fit === 'fill' && r.backImg.w === 0 && r.backImg.h === 0, JSON.stringify(r.backImg));
+await click('[data-layer-none=background]');
+await mustSee('no background on disk', async () => (await keyOnDisk(slider.id))?.layers?.background === undefined);
+check('None: no background image stored', (await keyOnDisk(slider.id))?.layers?.background === undefined);
+// The track: an image, as the thumb (on the first test only the thumb could be seen to change).
+await click('[data-layer-chip=track]');
+await mustSee('the track\'s picker', () => exists('[data-layer-builtin=track]'));
+check('the track has no None', !(await exists('[data-layer-none=track]')));
+await mustSee('the picker on Pictures (track)', () => exists(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`), 10000);
+await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
+await mustSee('the track on disk', async () => (await keyOnDisk(slider.id))?.layers?.track === '~/Pictures/cap.png');
+check('a track image chosen is stored, and the grid draws it', (await keyOnDisk(slider.id))?.layers?.track === '~/Pictures/cap.png' && (await exists(`.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=track] img`)));
+await click('[data-layer-builtin=track]');
+await mustSee('the built-in track again', async () => (await keyOnDisk(slider.id))?.layers?.track === undefined);
 await click('[data-layer-chip=thumb]');
 await mustSee('the picker on Pictures', () => exists(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`), 10000);
 await click(`.picker-item[data-path="${path.join(pictures, 'mural.png')}"]`);
@@ -339,6 +376,9 @@ check('a 5000 px image is refused with its reason, and not saved', /4096/.test(r
 await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
 await mustSee('the thumb on disk', async () => (await keyOnDisk(slider.id))?.layers?.thumb === '~/Pictures/cap.png');
 check('a thumb image chosen is stored as a path', (await keyOnDisk(slider.id))?.layers?.thumb === '~/Pictures/cap.png');
+// cap.png is 60 × 240: in the thumb's area (the slider's width, as long as it is wide) it is fitted, never stretched.
+r.thumbImg = await inEditor(`(() => { const s = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=thumb]'); const i = s?.querySelector('img'); if (!i) return null; const b = i.getBoundingClientRect(); const f = s.getBoundingClientRect(); return { fit: getComputedStyle(i).objectFit, across: Math.round(b.width - f.width), along: Math.round(b.height - f.height) }; })()`);
+check('the grid draws a chosen thumb keeping its proportions (contain), across the slider\'s width, not its length', r.thumbImg?.fit === 'contain' && r.thumbImg.across === 0 && r.thumbImg.along < 0, JSON.stringify(r.thumbImg));
 
 // ---- THE DIAL: BRIGHTNESS AND ITS ANGLES ----
 await selectKey(dial.id);
@@ -347,6 +387,8 @@ await click('.library [data-action-type="brightness"]');
 await mustSee('Brightness on the dial', async () => (await keyOnDisk(dial.id))?.action?.type === 'brightness');
 r.targets = await inEditor(`[...document.querySelectorAll('[data-value-form=brightness] [data-brightness-target] [data-deck]')].map((b) => b.dataset.deck)`);
 check('Brightness on a dial: This deck and every connected deck', r.targets[0] === '' && r.targets.includes(XL) && r.targets.includes(KEY), JSON.stringify(r.targets));
+r.brightnessSays = await text('[data-value-form=brightness] p');
+check('…from 5 to 100, never dark', /from 5 to 100/.test(r.brightnessSays ?? '') && !/At 0/.test(r.brightnessSays ?? ''), r.brightnessSays);
 await inEditor(`(() => { [...document.querySelectorAll('[data-value-inspector] .inspector-tab')].find((t) => t.textContent === 'Icon').click(); return true; })()`);
 await mustSee('the knob chip', () => exists('[data-layer-chip=knob]'));
 await click('[data-layer-chip=knob]');

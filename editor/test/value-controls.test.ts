@@ -44,25 +44,27 @@ check('…never longer than three-quarters of the panel\'s shorter side (an 800 
   const c = panel.controls.find((k) => k.id === id)!;
   assert.ok(c.h <= 480 * 0.75 + 0.5, `height ${c.h}`);
 });
-check('a dial is about 25 mm across, round, keeping its proportions', () => {
+check('a dial is about 25 mm across, a square rectangle, keeping its proportions', () => {
   const { panel, id } = addControl(free([]), 'dial', { x: 900, y: 360 }, SCREEN);
   const c = panel.controls.find((k) => k.id === id)!;
   assert.equal(c.kind, 'dial');
-  assert.equal(c.shape, 'round');
+  assert.equal(c.shape, undefined, 'a rectangle (Ryan, 2026-11-22): no round dial');
   assert.equal(c.keepRatio, true);
   assert.ok(Math.abs(c.w - mmToPx(SCREEN, DIAL_MM)) <= 1 && c.w === c.h, `${c.w} × ${c.h}`);
 });
-check('a slider keeps its kind through a shape change and a duplicate; turning it is a change Discard counts', () => {
+check('a slider is never made round or hexagon; it keeps its kind through a duplicate; turning it is a change Discard counts', () => {
   const { panel, id } = addControl(free([]), 'slider', { x: 400, y: 360 }, SCREEN);
-  assert.equal(setShape(panel, id, 'round').controls[0].kind, 'slider');
+  assert.equal(setShape(panel, id, 'round'), panel, 'round refused: the same panel');
+  assert.equal(setShape(panel, id, 'hexagon'), panel, 'hexagon refused');
+  assert.equal(setShape(free([{ id: 'b', x: 0, y: 0, w: 50, h: 50 }]), 'b', 'round').controls[0].shape, 'round', 'a button still can');
   assert.equal(duplicateControl(panel, { buttons: {} }, id)!.panel.controls[1].kind, 'slider');
   const turned = { ...panel, controls: panel.controls.map((c) => ({ ...c, direction: 'horizontal' as const })) };
   assert.equal(layoutChanges(panel, turned).moved, 1);
 });
 check('a template keeps a slider, its direction and touch, and a dial', () => {
-  const t = templateLayout(free([{ id: 's', x: 0, y: 0, w: 60, h: 240, kind: 'slider', direction: 'horizontal', touch: 'jump' }, { id: 'd', x: 100, y: 0, w: 100, h: 100, kind: 'dial', shape: 'round' }]));
+  const t = templateLayout(free([{ id: 's', x: 0, y: 0, w: 60, h: 240, kind: 'slider', direction: 'horizontal', touch: 'jump' }, { id: 'd', x: 100, y: 0, w: 100, h: 100, kind: 'dial', radius: 12 }]));
   assert.deepEqual(t.controls[0], { id: 's', x: 0, y: 0, w: 60, h: 240, kind: 'slider', direction: 'horizontal', touch: 'jump' });
-  assert.deepEqual(t.controls[1], { id: 'd', x: 100, y: 0, w: 100, h: 100, shape: 'round', kind: 'dial' });
+  assert.deepEqual(t.controls[1], { id: 'd', x: 100, y: 0, w: 100, h: 100, radius: 12, kind: 'dial' });
 });
 
 console.log('keys land only on their own family');
@@ -123,15 +125,29 @@ check('a layer set to a file, to None, and back to built-in', () => {
   const c = config();
   apply(c, { kind: 'setLayer', at: at('s'), layer: 'thumb', icon: { kind: 'file', path: '/home/test/cap.png' } });
   assert.equal(buttons(c).s.layers?.thumb, '~/cap.png');
-  apply(c, { kind: 'setLayer', at: at('s'), layer: 'fill', icon: { kind: 'none' } });
-  assert.equal(buttons(c).s.layers?.fill, null);
+  apply(c, { kind: 'setLayer', at: at('s'), layer: 'background', icon: { kind: 'file', path: '/home/test/scale.png' } });
+  assert.equal(buttons(c).s.layers?.background, '~/scale.png');
   apply(c, { kind: 'setLayer', at: at('s'), layer: 'thumb', icon: { kind: 'default' } });
-  apply(c, { kind: 'setLayer', at: at('s'), layer: 'fill', icon: { kind: 'default' } });
+  apply(c, { kind: 'setLayer', at: at('s'), layer: 'background', icon: { kind: 'default' } });
   assert.equal(buttons(c).s, undefined, 'nothing left: no key at all');
+  apply(c, { kind: 'setLayer', at: at('d'), layer: 'base', icon: { kind: 'none' } });
+  assert.equal(buttons(c).d.layers?.base, null, "a dial's base may be None");
+});
+check('the level: off, a colour, back to shown in the action\'s colour stores nothing; never on a button', () => {
+  const c = config();
+  apply(c, { kind: 'setLevel', at: at('s'), show: false, color: null });
+  assert.deepEqual(buttons(c).s.level, { show: false });
+  apply(c, { kind: 'setLevel', at: at('s'), show: true, color: '#FF8800' });
+  assert.deepEqual(buttons(c).s.level, { color: '#ff8800' });
+  apply(c, { kind: 'setLevel', at: at('s'), show: true, color: null });
+  assert.equal(buttons(c).s, undefined, 'the default level is no field, and no key');
+  assert.throws(() => apply(c, { kind: 'setLevel', at: at('b'), show: false, color: null }), /only a slider or dial/);
+  assert.throws(() => apply(c, { kind: 'setLevel', at: at('s'), show: true, color: 'red' }), /#rrggbb/);
 });
 check('None only where the board allows it; no layer a button or the other kind lacks', () => {
   const c = config();
   assert.throws(() => apply(c, { kind: 'setLayer', at: at('s'), layer: 'thumb', icon: { kind: 'none' } }), /cannot be none/);
+  assert.throws(() => apply(c, { kind: 'setLayer', at: at('s'), layer: 'background', icon: { kind: 'none' } }), /cannot be none/, 'no image is the default, not None');
   assert.throws(() => apply(c, { kind: 'setLayer', at: at('s'), layer: 'knob', icon: { kind: 'default' } }), /no knob layer/);
   assert.throws(() => apply(c, { kind: 'setLayer', at: at('b'), layer: 'thumb', icon: { kind: 'default' } }), /no thumb layer/);
 });

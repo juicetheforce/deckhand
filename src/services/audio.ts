@@ -309,8 +309,9 @@ export async function toggleMicMute(): Promise<void> {
 }
 
 /**
- * A Volume slider's or dial's device: the default output (`node` absent), or
- * an output or input by its exact node name — no fallback, as everywhere.
+ * A Volume slider's or dial's device: the default output (`node` absent), the
+ * default input (`node` absent, `input`), or an output or input by its exact
+ * node name — no fallback, as everywhere.
  */
 export interface VolumeTarget {
   node?: string;
@@ -321,7 +322,7 @@ export interface VolumeTarget {
 export function cachedVolume(target: VolumeTarget): number | null {
   const state = cache;
   if (!state) return null;
-  if (!target.node) return state.defaultSinkVolume;
+  if (!target.node) return target.input ? (state.sourceDevices.find((d) => d.name === state.defaultSource)?.volume ?? null) : state.defaultSinkVolume;
   const list = target.input ? state.sourceDevices : state.sinkDevices;
   return list.find((d) => d.name === target.node)?.volume ?? null;
 }

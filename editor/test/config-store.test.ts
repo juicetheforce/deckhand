@@ -266,6 +266,29 @@ await check('a virtual deck\'s panel per profile is moved onto each of its pages
   again.close();
 });
 
+await check("a slider's fill image and a dial's ring set to None become the drawn level, and a round dial a rectangle, when the editor opens config.json, and saved", async () => {
+  const old = JSON.parse(EXAMPLE) as { decks?: Record<string, unknown>; profiles: Record<string, { layouts: Record<string, unknown> }> };
+  old.decks = { ...old.decks, 'GRA-6e4e': { virtual: { output: 'DP-4' } } };
+  const controls = [
+    { id: 's', x: 10, y: 10, w: 60, h: 240, kind: 'slider' },
+    { id: 'd', x: 100, y: 10, w: 120, h: 120, kind: 'dial', shape: 'round', keepRatio: true },
+  ];
+  old.profiles.default.layouts['GRA-6e4e'] = { startPage: 'a', pages: { a: { panel: { size: { width: 1920, height: 720 }, controls, preset: 'free' }, buttons: { s: { layers: { fill: '~/fill.png' } }, d: { layers: { ring: null, knob: '~/k.png' } } } } } };
+  const file = await configFile(JSON.stringify(old, null, 2) + '\n');
+  const store = await openStore(file);
+  const page = (c: Config) => c.profiles.default.layouts['GRA-6e4e'].pages.a;
+  assert.deepEqual(page(store.state().config).buttons, { d: { layers: { knob: '~/k.png' }, level: { show: false } } }, 'the fill image dropped (the drawn fill shown), the ring None as the level off');
+  assert.equal(page(store.state().config).panel?.controls[1].shape, undefined, 'the dial a rectangle');
+  let saved: Config | null = null;
+  for (let i = 0; i < 100 && saved === null; i++) {
+    const text = JSON.parse(await fs.readFile(file, 'utf8')) as Config;
+    if (page(text).buttons.s === undefined) saved = text;
+    else await sleep(20);
+  }
+  assert.ok(saved, 'the file was not migrated on disk');
+  store.close();
+});
+
 await check('an imported config from before pages had their own panels is migrated as it is adopted (Codex, PR #6)', async () => {
   const file = await configFile(EXAMPLE);
   const store = await openStore(file);

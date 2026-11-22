@@ -8,27 +8,31 @@ import { IMAGE_FORMATS, refusalText, sideRefusal } from './image-limits.js';
 import { escapeXml, fitLine, labelStyle } from './label-fit.js';
 import { fillsBox, innerPixels, shapePath } from './shapes.js';
 import type { ValueLayersDef } from './types.js';
-import { boxTravel, builtinLayerSvg, clamp01, knobAngle, LAYERS, levelAt, thumbOffset, type LayerName, type Travel } from './value-controls.js';
+import { boxTravel, builtinLayerSvg, clamp01, knobAngle, layerArea, LAYERS, LAYERS_WITHOUT_BUILTIN, levelAt, levelSvg, thumbOffset, type LayerName, type Travel } from './value-controls.js';
 
 /**
  * A slider's or dial's face on a virtual deck (src/value-controls.ts): its
  * layers drawn once for its box — the built-in art or the images chosen, each
- * drawn to the box — and then put together for each value in plain
+ * in its own area (layerArea) — and then put together for each value in plain
  * JavaScript, so a finger's drag costs one composition and one image to the
  * helper per step, never a rasterisation.
  *
  * - **The art** is everything that does not move: the background colour, if
  *   the control has one (none unless set: the page shows around the art); the
- *   track or base; the label, in a band at the foot of the box (26b, 26c); the
- *   failed, not-set-up or connecting badge. Drawn by sharp, once per change.
- * - **The fill** (a slider's) is shown from the lowest end up to the level;
- *   **the level ring** (a dial's) from the start angle round to the level.
+ *   background image, stretched to the whole box; the track or base; the
+ *   label, in a band at the foot of the box (26b, 26c); the failed,
+ *   not-set-up or connecting badge. Drawn by sharp, once per change.
+ * - **The level, drawn by Deckhand in its colour, never an image**: a
+ *   slider's fill, shown from the lowest end up to the level, under the
+ *   thumb; a dial's ring, from the start angle round to the level, **over the
+ *   knob**, so no knob image can hide it.
  * - **The thumb** moves along the axis, the whole layer shifted; **the knob**
  *   rotates about the centre of the art's area.
  * - **Held** (Touch feedback): the thumb or knob lightened, and the built-in
  *   one with a soft halo in its colour.
  *
- * Everything outside the control's shape is alpha 0, as every face's is.
+ * Everything outside the control's rounded corners is alpha 0, as every
+ * face's is.
  */
 
 export interface ValueFaceSpec {
@@ -40,6 +44,8 @@ export interface ValueFaceSpec {
   direction?: 'vertical' | 'horizontal';
   angles: { start: number; end: number };
   layers?: ValueLayersDef;
+  /** The level as drawn (value-controls.ts levelOf). */
+  level: { show: boolean; color: string };
   /** The action's type, for the built-in art's colour. */
   type?: string;
   label?: string;
@@ -144,9 +150,11 @@ async function svgPixels(svg: string, width: number, height: number): Promise<Bu
 }
 
 /**
- * One layer, drawn to the art's area: the image chosen, stretched to it, or
- * the built-in. An image the limits refuse, or that cannot be read, is drawn
- * as the built-in layer, said once in the log — a control stays usable.
+ * One image layer, RGBA at `w` × `h`, drawn in its area (layerArea): the image
+ * chosen — stretched to the area, or fitted inside it keeping its proportions —
+ * or the built-in. Null for None, and for a background with no image. An
+ * image the limits refuse, or that cannot be read, is drawn as the built-in
+ * layer, said once in the log — a control stays usable.
  */
 async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: number, held = false): Promise<Buffer | null> {
   const ref = spec.layers?.[name];
@@ -161,7 +169,15 @@ async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: n
         const side = sideRefusal(meta.width ?? 0, meta.height ?? 0);
         if (side) throw new Error(refusalText(file, side));
       }
-      return await sharp(data, { animated: false }).resize(w, h, { fit: 'fill' }).ensureAlpha().raw().toBuffer();
+      const area = layerArea(name, { w, h }, spec.direction);
+      const aw = Math.max(1, Math.round(area.w));
+      const ah = Math.max(1, Math.round(area.h));
+      const clear = { r: 0, g: 0, b: 0, alpha: 0 };
+      const image = await sharp(data, { animated: false }).resize(aw, ah, { fit: area.stretch ? 'fill' : 'contain', background: clear }).ensureAlpha().png().toBuffer();
+      return await sharp({ create: { width: w, height: h, channels: 4, background: clear } })
+        .composite([{ input: image, left: Math.round(area.x), top: Math.round(area.y) }])
+        .raw()
+        .toBuffer();
     } catch (err) {
       if (!warned.has(file)) {
         warned.add(file);
@@ -169,6 +185,7 @@ async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: n
       }
     }
   }
+  if (LAYERS_WITHOUT_BUILTIN.includes(name)) return null;
   return svgPixels(builtinLayerSvg(name, { w, h }, { direction: spec.direction, angles: spec.angles, type: spec.type, held }), w, h);
 }
 
@@ -207,19 +224,17 @@ async function drawArt(spec: ValueFaceSpec): Promise<ValueArt> {
   const { width: w, height: h } = spec;
   const band = bandHeight(spec);
   const artH = Math.max(1, h - band);
-  const [stillName, fillName, movingName] = LAYERS[spec.kind];
-  const [still, fill, moving] = await Promise.all([
-    layerPixels(spec, stillName, w, artH),
-    layerPixels(spec, fillName, w, artH),
-    layerPixels(spec, movingName, w, artH),
-  ]);
+  const [backName, stillName, movingName] = LAYERS[spec.kind];
+  const [back, still, moving] = await Promise.all([layerPixels(spec, backName, w, h), layerPixels(spec, stillName, w, artH), layerPixels(spec, movingName, w, artH)]);
+  const fill = spec.level.show ? await svgPixels(levelSvg(spec.kind, { w, h: artH }, { direction: spec.direction, angles: spec.angles, color: spec.level.color }), w, artH) : null;
   const movingPx = moving ?? Buffer.alloc(w * artH * 4);
   // Held: the built-in drawn with its halo, then lightened; a chosen image lightened.
   const builtinMoving = !layerFile(spec.layers?.[movingName]);
   const heldPx = lightened(builtinMoving ? ((await layerPixels(spec, movingName, w, artH, true)) ?? movingPx) : movingPx);
 
-  // The still part: background, track or base, label.
+  // The still part: background image, track or base, label.
   const parts: OverlayOptions[] = [];
+  if (back) parts.push({ input: back, raw: { width: w, height: h, channels: 4 }, top: 0, left: 0 });
   if (still) parts.push({ input: still, raw: { width: w, height: artH, channels: 4 }, top: 0, left: 0 });
   if (band > 0) {
     const lines = await Promise.all((spec.label ?? '').split('\n').filter((l) => l.length > 0).map((l) => fitLine(l, spec.labelSize, w, spec.labelFont)));
@@ -352,9 +367,9 @@ export function composeValue(art: ValueArt, value: number, held: boolean): Buffe
     }
   } else {
     const angle = knobAngle(v, spec.angles);
-    // The ring from the start angle round to the knob's.
-    if (art.fill && art.reveal) revealUpTo(out, art.fill.rgba, art.reveal, angle);
     rotateOver(out, moving, w, artH, angle);
+    // The ring from the start angle round to the knob's, over the knob: no knob image can hide it.
+    if (art.fill && art.reveal) revealUpTo(out, art.fill.rgba, art.reveal, angle);
   }
   if (art.over) for (let i = 0; i < out.length; i += 4) blendAt(out, i, art.over, i);
   if (art.mask) for (let p = 0, i = 3; p < art.mask.length; p++, i += 4) out[i] = Math.round((out[i] * art.mask[p]) / 255);

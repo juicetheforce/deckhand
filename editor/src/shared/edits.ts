@@ -60,6 +60,8 @@ export type Edit =
   | { kind: 'setLayer'; at: ButtonLocation; layer: LayerName; icon: IconChoice }
   /** A dial's start and end angles, degrees from straight up; null: the defaults again (−135°, 135°). */
   | { kind: 'setAngles'; at: ButtonLocation; angles: { start: number; end: number } | null }
+  /** A slider's fill or a dial's ring, drawn by Deckhand: shown or not, and its colour (null: the action's). */
+  | { kind: 'setLevel'; at: ButtonLocation; show: boolean; color: string | null }
   /** Set or (null or "") remove the label. */
   | { kind: 'setLabel'; at: ButtonLocation; label: string | null }
   /**

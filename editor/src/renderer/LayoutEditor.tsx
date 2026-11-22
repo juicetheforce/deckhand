@@ -556,14 +556,17 @@ export function LayoutInspector({
       </section>
 
       <section className="inspector-section">
-        <h3 className="section-heading">Shape</h3>
-        <Segmented
-          label="Shape"
-          options={SHAPE_NAMES.map((s) => ({ value: s, label: SHAPE_LABELS[s] }))}
-          value={shape}
-          disabled={false}
-          onChoose={(s) => onChange(setShape(panel, c.id, s))}
-        />
+        <h3 className="section-heading">{kind === 'button' ? 'Shape' : 'Corners'}</h3>
+        {/* A slider or dial is a rectangle (Ryan, 2026-11-22): round and hexagon cut off a dial's ring and label. Its corners stay. */}
+        {kind === 'button' && (
+          <Segmented
+            label="Shape"
+            options={SHAPE_NAMES.map((s) => ({ value: s, label: SHAPE_LABELS[s] }))}
+            value={shape}
+            disabled={false}
+            onChoose={(s) => onChange(setShape(panel, c.id, s))}
+          />
+        )}
         {shape === 'rectangle' && (
           <Row name="Corners">
             <span className="layout-corners">

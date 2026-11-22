@@ -7,7 +7,7 @@ import { BUILTIN_FOLDER, iconUrl, type PairIconField } from '../shared/icons.js'
 import { FolderBar, useFolderBrowser, type PickerPlace } from './FolderBrowser.js';
 import { moveCursor, parentFolder, type GridKey } from './picker-model.js';
 import { checkImage } from './image-check.js';
-import { LAYER_LABELS, LAYERS_THAT_MAY_BE_NONE, type LayerName } from '../../../src/value-controls.js';
+import { LAYER_LABELS, LAYERS_THAT_MAY_BE_NONE, LAYERS_WITHOUT_BUILTIN, type LayerName } from '../../../src/value-controls.js';
 
 export { EMPTY_PLACE, type PickerPlace } from './FolderBrowser.js';
 
@@ -300,7 +300,24 @@ export function IconPicker({ at, button, slot, layer, editingBlocked, canPreview
         </p>
         {message && <p className="field-error">{message}</p>}
         {!canPreview && !layer && <p className="muted small">The deck is not connected, so icons are not shown on it while browsing.</p>}
-        {layer && (
+        {layer && LAYERS_WITHOUT_BUILTIN.includes(layer) && (
+          // A background has no built-in art: None is no image, the colour (or the page) showing.
+          <div className="button-row picker-actions" data-layer-actions={layer}>
+            <button
+              disabled={editingBlocked || currentIcon === undefined}
+              title={`No ${LAYER_LABELS[layer].toLowerCase()} image`}
+              data-layer-none={layer}
+              onClick={() => {
+                setCursor(null);
+                latest.current = null;
+                choose({ kind: 'default' });
+              }}
+            >
+              None
+            </button>
+          </div>
+        )}
+        {layer && !LAYERS_WITHOUT_BUILTIN.includes(layer) && (
           <div className="button-row picker-actions" data-layer-actions={layer}>
             <button
               disabled={editingBlocked || currentIcon === undefined}
