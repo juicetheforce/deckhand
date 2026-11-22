@@ -19,10 +19,12 @@ export const CONTROL_ID = /^[A-Za-z0-9_-]{1,32}$/;
  * Icon size (Settings › General): `defaults.builtinIconSize`, a percent of the
  * control on the one rule of a key's icon scale (src/icon-scale.ts), **shown as
  * that same figure** (Ryan, 2026-11-22; until then the slider showed 70 as
- * 100%). 25–70 in steps of 5; 45.5 by default, shown rounded as 46%, as is any
- * in-between value the old slider stored, until the slider is moved.
+ * 100%). 25–100 in steps of 5 — 100 is a built-in filling the key, settable
+ * for every key at once, not only per key (Ryan, 2026-11-22); 45.5 by default,
+ * shown rounded as 46%, as is any in-between value the old slider stored,
+ * until the slider is moved.
  */
-export const BUILTIN_ICON_SIZE = { min: 25, max: 70, step: 5 } as const;
+export const BUILTIN_ICON_SIZE = { min: 25, max: 100, step: 5 } as const;
 
 /**
  * A label font's name: what goes into the key's SVG style as a quoted CSS

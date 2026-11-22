@@ -278,11 +278,11 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
       return err.message.includes('builtinIconSize');
     }
   };
-  check('the config refuses a builtinIconSize outside 25–70, or not a number', refusedSize(24.9) && refusedSize(70.5) && refusedSize('45'));
-  check('...and takes one within it, an old slider\'s in-between step (28, 31.5, 45.5) too', !refusedSize(25) && !refusedSize(28) && !refusedSize(31.5) && !refusedSize(70) && !refusedSize(45.5) && !refusedSize(53));
+  check('the config refuses a builtinIconSize outside 25–100, or not a number', refusedSize(24.9) && refusedSize(100.5) && refusedSize('45'));
+  check('...and takes one within it, an old slider\'s in-between step (28, 31.5, 45.5) too', !refusedSize(25) && !refusedSize(28) && !refusedSize(31.5) && !refusedSize(70) && !refusedSize(100) && !refusedSize(45.5) && !refusedSize(53));
 {
   const { BUILTIN_ICON_SIZE } = await import(path.join(REPO, 'dist/config.js'));
-  check('the slider shows the true figure: 25–70% in steps of 5 (Ryan, 2026-11-22), with no conversion', BUILTIN_ICON_SIZE.min === 25 && BUILTIN_ICON_SIZE.max === 70 && BUILTIN_ICON_SIZE.step === 5 && Object.keys(BUILTIN_ICON_SIZE).length === 3);
+  check('the slider shows the true figure: 25–100% in steps of 5 (Ryan, 2026-11-22), with no conversion', BUILTIN_ICON_SIZE.min === 25 && BUILTIN_ICON_SIZE.max === 100 && BUILTIN_ICON_SIZE.step === 5 && Object.keys(BUILTIN_ICON_SIZE).length === 3);
 }
 }
 

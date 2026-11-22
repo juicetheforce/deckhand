@@ -190,7 +190,7 @@ export interface Defaults {
   iconFit?: 'cover' | 'contain';
   /**
    * How big a built-in icon is drawn, in percent of the control, on the one
-   * rule of a key's `iconScale` (src/icon-scale.ts), 25–70, 45.5 unless set:
+   * rule of a key's `iconScale` (src/icon-scale.ts), 25–100, 45.5 unless set:
    * Settings › General › Icon size, which shows the same figure. A key with
    * its own `iconScale` does not follow it, and neither does an icon file.
    */

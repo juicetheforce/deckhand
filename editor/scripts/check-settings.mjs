@@ -361,7 +361,7 @@ await inPage(editor, 'settings', key('keyup', 'ArrowRight'));
 r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 55);
 await inPage(editor, 'settings', key('keydown', 'End'));
 await inPage(editor, 'settings', key('keyup', 'End'));
-r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 70);
+r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 100);
 // A drag, by pointer: down at the left end, move to the middle, up.
 const pointer = (type, fraction) => `(() => { const s = ${slider}; const r = s.getBoundingClientRect(); s.dispatchEvent(new PointerEvent('${type}', { bubbles: true, pointerId: 1, button: 0, clientX: r.left + r.width * ${fraction}, clientY: r.top + 12 })); return true; })()`;
 await inPage(editor, 'settings', pointer('pointerdown', 0.02));
@@ -369,7 +369,7 @@ await inPage(editor, 'settings', pointer('pointermove', 0.5));
 await sleep(900);
 r.iconSizeWhileDragging = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
 await inPage(editor, 'settings', pointer('pointerup', 0.5));
-r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 50);
+r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 65);
 
 // Round 4's rows in Appearance: Touch feedback, Label font and Key colour, in config.json.
 r.appearanceRows = await inPage(editor, 'settings', "(() => { const t = [...document.querySelectorAll('[data-settings-section=general] .sp-row-title')].map((e) => e.textContent); return t.slice(t.indexOf('Accent color')); })()");
@@ -652,19 +652,19 @@ check('Reset to defaults is a button, without an ellipsis, and asks first: one c
   assert.equal(r.keepKeeps, true);
 });
 check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
-check('Icon size: a slider in Appearance showing the true figure (Ryan, 2026-11-22) — 25–70% in steps of 5, 10 ticks, the default 45.5 shown as 46% — its sample a 56 px key\'s icon at 45.5% of it', () => {
-  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '45.5', text: '46%', min: '25', max: '70', value: '46%', ticks: 10, sample: '25', row: undefined });
+check('Icon size: a slider in Appearance showing the true figure (Ryan, 2026-11-22) — 25–100% in steps of 5, no ticks (more than 12 steps), the default 45.5 shown as 46% — its sample a 56 px key\'s icon at 45.5% of it', () => {
+  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '45.5', text: '46%', min: '25', max: '100', value: '46%', ticks: 0, sample: '25', row: undefined });
   assert.match(r.iconSizeAtRest.row, /^Icon sizeBuilt-in icons on keys/);
 });
-check('Icon size by keyboard: from the in-between 45.5, onto the steps — 50, then 55 — the sample following at once, config.json changing only when the key is let go, the figure stored as shown; End is the top (70)', () => {
+check('Icon size by keyboard: from the in-between 45.5, onto the steps — 50, then 55 — the sample following at once, config.json changing only when the key is let go, the figure stored as shown; End is the top (100: a built-in filling the key)', () => {
   // Two steps up: 55% shown and stored, a 31 px sample.
   assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '55', value: '55%', sample: '31' }, onDisk: 'absent' });
   assert.equal(r.iconSizeKeySaved, true);
   assert.equal(r.iconSizeEnd, true);
 });
 check('Icon size by dragging: snapped to the step, the sample live, nothing saved until the pointer is let go', () => {
-  assert.equal(r.iconSizeWhileDragging.shown.now, '50', 'the middle of 25–70, on a step');
-  assert.equal(r.iconSizeWhileDragging.onDisk, 70);
+  assert.equal(r.iconSizeWhileDragging.shown.now, '65', 'the middle of 25–100 (62.5), on a step');
+  assert.equal(r.iconSizeWhileDragging.onDisk, 100);
   assert.equal(r.iconSizeDragSaved, true);
 });
 check('Reset to defaults puts Icon size back to 46% (45.5): the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));

@@ -101,6 +101,51 @@ await check('a converted config is opened as it is, nothing written', async () =
   }
 });
 
+await check('a key\'s resting icon kept in its action\'s old field (iconUnmuted) is sized too, so opening keeps its crop (Codex, PR #11)', async () => {
+  const { store, file } = await storeWith({ profiles: { p: { layouts: { SD: { pages: { m: { buttons: { 0: { action: { type: 'audio.mute', iconUnmuted: '~/wide.png' } } } } } } } } } });
+  try {
+    await sleep(150);
+    const b = JSON.parse(await fs.readFile(file, 'utf8')).profiles.p.layouts.SD.pages.m.buttons['0'];
+    assert.deepEqual(b, { action: { type: 'audio.mute' }, icon: '~/wide.png', iconScale: 200 });
+  } finally {
+    store.close();
+  }
+});
+
+await check('an older config written from outside while its icons are being read does not drop an edit made meanwhile: it is a conflict (Codex, PR #11)', async () => {
+  const { iconSizesOf } = await import('../src/main/config-store.js');
+  let hold: (() => void) | null = null;
+  const dir = path.join(TMP, `c${++n}`);
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'config.json');
+  await fs.writeFile(file, JSON.stringify({ version: 2, profiles: OLD.profiles }, null, 2) + '\n');
+  const store = await ConfigStore.open({
+    configPath: file,
+    debounceMs: 20,
+    env: { homeDir: TMP, randomHex: () => 'beef' },
+    // Reads after opening wait until released: an outside write's icons being read.
+    readIconSizes: async (config, home) => {
+      if (hold === null && config.version !== 2) await new Promise<void>((resolve) => (hold = resolve));
+      return iconSizesOf(config, home);
+    },
+  });
+  try {
+    const older = structuredClone(OLD) as typeof OLD & { profiles: { p: { layouts: { SD: { pages: { m: { buttons: Record<string, { label?: string }> } } } } } } };
+    older.profiles.p.layouts.SD.pages.m.buttons['1'] = { label: 'From outside' } as never;
+    await fs.writeFile(file, JSON.stringify(older, null, 2) + '\n');
+    for (let i = 0; i < 100 && hold === null; i++) await sleep(20);
+    assert.ok(hold !== null, 'the outside write was never read');
+    assert.equal(store.apply({ kind: 'setLabel', at: { profile: 'p', serial: 'SD', page: 'm', key: '2' }, label: 'Mine' }).ok, true);
+    (hold as unknown as () => void)();
+    await sleep(200);
+    const state = store.state();
+    const kept = state.config.profiles.p.layouts.SD.pages.m.buttons['2']?.label === 'Mine';
+    assert.ok(kept || state.conflict !== null, 'the edit vanished and no conflict was raised');
+  } finally {
+    store.close();
+  }
+});
+
 const at = { profile: 'p', serial: 'SD', page: 'm', key: '1' };
 await check('setIconScale: 20–200, null removes it; a new icon starts afresh, so Clear icon returns a key to following', async () => {
   const { store } = await storeWith({ version: 2, profiles: OLD.profiles });

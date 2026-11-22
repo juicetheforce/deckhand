@@ -40,6 +40,8 @@ export interface StoreOptions {
   debounceMs?: number;
   onChange?: (state: StoreState) => void;
   env?: Partial<EditEnvironment>;
+  /** How icon sizes are read for converting an older config (iconSizesOf); a test holds a read open with it. */
+  readIconSizes?: typeof iconSizesOf;
 }
 
 /** How long a burst of file events is given to settle before the file is read. */
@@ -66,6 +68,7 @@ export class ConfigStore {
   private readonly debounceMs: number;
   private readonly onChange: (state: StoreState) => void;
   private readonly env: EditEnvironment;
+  private readonly readIconSizes: typeof iconSizesOf;
 
   private constructor(options: StoreOptions, config: Config, text: string, sizes: IconSizes) {
     this.configPath = options.configPath;
@@ -75,6 +78,7 @@ export class ConfigStore {
       homeDir: options.env?.homeDir ?? os.homedir(),
       randomHex: options.env?.randomHex ?? ((length) => randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length)),
     };
+    this.readIconSizes = options.readIconSizes ?? iconSizesOf;
     this.config = config;
     this.baseText = text;
     this.reformatPending = serializeConfig(config) !== text;
@@ -116,7 +120,7 @@ export class ConfigStore {
     }
     const text = await fs.readFile(options.configPath, 'utf8');
     const config = parseAndValidate(text);
-    const store = new ConfigStore(options, config, text, await iconSizesOf(config, options.env?.homeDir ?? os.homedir()));
+    const store = new ConfigStore(options, config, text, await (options.readIconSizes ?? iconSizesOf)(config, options.env?.homeDir ?? os.homedir()));
     store.startWatching();
     return store;
   }
@@ -219,7 +223,7 @@ export class ConfigStore {
       // An imported config is migrated as one opened is, and written so (Codex, PR #6).
       migrateStateIcons(this.config);
       migratePagePanels(this.config);
-      const sizes = await iconSizesOf(this.config, this.env.homeDir);
+      const sizes = await this.readIconSizes(this.config, this.env.homeDir);
       migrateIconFit(this.config, (icon) => sizes.get(icon) ?? null);
       this.conflict = null;
       this.fileError = null;
@@ -370,15 +374,23 @@ export class ConfigStore {
 
   /** Take the file's text as the new base. An invalid file blocks editing but keeps the last good config on screen. */
   private async adoptFileText(text: string): Promise<void> {
-    this.baseText = text;
     let config: Config;
     try {
       config = parseAndValidate(text);
     } catch (err) {
+      this.baseText = text;
       this.fileError = (err as Error).message;
       return;
     }
-    const sizes = await iconSizesOf(config, this.env.homeDir);
+    const sizes = await this.readIconSizes(config, this.env.homeDir);
+    // An edit accepted while the icons were being read (apply() does not wait on the queue) would
+    // be lost by adopting the file now (Codex, PR #11): the two are a conflict, as when the file
+    // changes under unsaved edits.
+    if (this.dirty) {
+      this.enterConflict(text);
+      return;
+    }
+    this.baseText = text;
     this.config = config;
     this.fileError = null;
     this.reformatPending = serializeConfig(this.config) !== text;
@@ -396,8 +408,12 @@ type IconSizes = Map<string, PixelSize>;
  */
 export async function iconSizesOf(config: Config, homeDir: string): Promise<IconSizes> {
   const sizes: IconSizes = new Map();
+  // On a copy with its state icons in today's shape first: a key's resting icon still in its
+  // action's old field (iconUnmuted, iconOff) becomes its own icon, which is what gets a scale (Codex, PR #11).
+  const shaped = structuredClone(config);
+  migrateStateIcons(shaped);
   await Promise.all(
-    iconFilesToSize(config).map(async (icon) => {
+    iconFilesToSize(shaped).map(async (icon) => {
       const file = icon === '~' ? homeDir : icon.startsWith('~/') ? path.join(homeDir, icon.slice(2)) : icon;
       try {
         const size = imageSize((await readIconFile(file, { image: false })).data);

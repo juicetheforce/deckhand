@@ -237,6 +237,55 @@ console.log('the label font');
   check('…and an installed one draws differently (the check can fail)', Buffer.compare(chosen, fallback) !== 0);
 }
 
+console.log('a label over a built-in at Icon size 100%, as readable as at 70%');
+{
+  // A label is drawn over the icon: its white fill opaque, its dark outline at 75%.
+  // Readable means the fill is exactly as with no icon, and the outline stays dark
+  // over whatever the icon puts under it — checked over every built-in, at 70% (the
+  // old largest) and 100% (a built-in filling the key), at the bottom and the centre.
+  const { BUILTIN_ICONS } = await import(path.join(REPO, 'dist/default-icons.js'));
+  const names = [...BUILTIN_ICONS].filter((n) => n !== 'missing');
+  const worst = { 70: { fill: 0, outline: 0 }, 100: { fill: 0, outline: 0 } };
+  for (const size of [72, 96]) {
+    for (const labelPosition of ['bottom', 'center']) {
+      const base = display({ label: 'Desk\nspeakers', labelPosition, labelSize: 14 });
+      const labelOnly = await renderButton(base, size);
+      const bare = await renderButton(display({}), size);
+      const fill = [];
+      const outline = [];
+      const edges = [];
+      for (let i = 0; i < labelOnly.length; i += 4) {
+        // The solid fill (pure white) and the full-strength outline (75% black over the key colour,
+        // #101014 → about 4): the label's own pixels, not the anti-aliased edges that blend with
+        // whatever is under them at any icon size.
+        const white = labelOnly[i] === 255 && labelOnly[i + 1] === 255 && labelOnly[i + 2] === 255;
+        const full = labelOnly[i] <= 4 && labelOnly[i + 1] <= 4 && labelOnly[i + 2] <= 5;
+        if (white) fill.push(i);
+        else if (full) outline.push(i);
+        else if (labelOnly[i] !== bare[i] || labelOnly[i + 1] !== bare[i + 1]) edges.push(i);
+      }
+      for (const name of names) {
+        for (const percent of [70, 100]) {
+          const face = await renderButton({ ...base, icon: `builtin:${name}`, builtinIconSize: percent }, size);
+          const changedFill = fill.filter((i) => face[i] !== labelOnly[i] || face[i + 1] !== labelOnly[i + 1] || face[i + 2] !== labelOnly[i + 2]).length;
+          const brightest = Math.max(...outline.map((i) => Math.max(face[i], face[i + 1], face[i + 2])));
+          const edge = Math.max(...edges.map((i) => Math.max(face[i], face[i + 1], face[i + 2]) - Math.max(labelOnly[i], labelOnly[i + 1], labelOnly[i + 2])));
+          worst[percent].fill = Math.max(worst[percent].fill, changedFill);
+          worst[percent].outline = Math.max(worst[percent].outline, brightest);
+          worst[percent].edge = Math.max(worst[percent].edge ?? 0, edge);
+        }
+      }
+    }
+  }
+  check(`over all ${names.length} built-ins: the label's fill is never touched by the icon, at 70% or 100% (${worst[70].fill}, ${worst[100].fill} pixels changed)`, worst[70].fill === 0 && worst[100].fill === 0);
+  // 75% black over white is at most 64 a channel: white on that is about 10:1.
+  // White over the brightest outline, as a contrast ratio (WCAG's relative luminance).
+  const lum = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const contrast = (v) => (1.05 / (lum(v) + 0.05)).toFixed(1);
+  check(`…and its full outline is as dark at 100% as at 70%, over every icon: brightest ${worst[100].outline} and ${worst[70].outline}, white on it ${contrast(worst[100].outline)}:1 at worst`, worst[100].outline <= worst[70].outline && worst[100].outline < 128);
+  check(`…and its anti-aliased edges lighten no more at 100% than at 70%: by ${worst[100].edge} and ${worst[70].edge} at worst`, worst[100].edge <= worst[70].edge);
+}
+
 console.log('the pressed look');
 {
   const box = { width: 120, height: 120, shape: 'round', outline: true };
@@ -313,6 +362,20 @@ console.log('touch feedback through a DeckSession: drawn on the touch and the li
   const centre = (60 * 120 + 60) * 4;
   check('…and the key colour is the empty control\'s fill', virtual.draws.some((d) => d.control === 'b' && d.rgba[centre] === 0x4a && d.rgba[centre + 1] === 0x1f && d.rgba[centre + 2] === 0x2b));
   await s.close();
+
+  // A quick tap (Codex, PR #11): the lift's face is the cached resting one and finishes first, and
+  // is skipped as already sent; the press's slower, uncached pressed face must not land after it.
+  // A control never pressed before, so its pressed face is not cached either.
+  const tap = makeDevice(geometryOfPanel({ size: { width: 400, height: 200 }, controls: [{ id: 't', x: 0, y: 0, w: 130, h: 110, shape: 'hexagon' }] }, 'Panel'));
+  const st = new DeckSession(tap, { serial: 'TAP', hardware: {}, defaults: {}, switchProfile: async () => {}, failures: new KeyFailures(), profileOf: () => 'p', layout: { pages: { m: { buttons: { t: { label: 'Tap' } } } } } });
+  await st.start();
+  await sleep(300);
+  const restFace = tap.draws.at(-1).rgba;
+  tap.press('t');
+  tap.lift('t');
+  await sleep(600);
+  check(`a tap's lift is the last face drawn, even when the pressed one finishes after it (${tap.draws.length - 1} drawn after the start)`, Buffer.compare(tap.draws.at(-1).rgba, restFace) === 0);
+  await st.close();
 
   const off = makeDevice(geometryOfPanel(panel, 'Panel'));
   const s2 = await session(off, { touchFeedback: false });

@@ -646,6 +646,10 @@ export class DeckSession implements DeckHandle {
     this.lastRenderAt.set(index, Date.now());
     // Drawn for a page the deck has since left (a touch's pressed face, under a page action): the new page's own draw is what shows.
     if (this.page !== page) return;
+    // Drawn pressed or at rest for a touch that has changed since (Codex, PR #11): a quick tap's lift
+    // can finish first — its resting face cached and skipped as already sent — and the press's slower
+    // face must not land after it and stay. The draw for the current state is the one that shows.
+    if ((display.pressed === true) !== this.pressed.has(index)) return;
 
     // renderButton caches, so identical output is the same Buffer instance.
     // Skipping the USB write keeps the deck responsive under a 2 Hz refresh.
