@@ -294,17 +294,19 @@ one.
 
 **Sliders and dials.** Controls also has a **Slider**, added at about 14 × 60
 mm (its long side never more than three-quarters of the panel's shorter side),
-and a **Dial**, about 25 mm across and round. A slider is **vertical** (lowest
+and a **Dial**, about 25 mm across. Both are rectangles — a dial draws its
+round art inside its box — with no shape to choose, only their **Corners**.
+A slider is **vertical** (lowest
 at the bottom) or **horizontal** (lowest at the left) — turning it turns its
 box — and its touch is **Drag only**, the default, where a tap changes nothing
 and the level moves by how far your finger moves, or **Jump to touch**, where
 the level goes to your finger at once and then follows it. A dial turns with
 your finger round its centre, following its angle, not its distance; a tap
 changes nothing. Both are set in Edit layout, and a template keeps them. They
-take only an action that sets a level: **Volume** — Default output (whichever
-it is) or any output or input — **Brightness** — this deck or any connected
-deck, from 0 (dark; touch still works, so it can be turned back up) to 100 —
-and Discord's **User volume**, 0–200 %. With one selected, the library dims
+take only an action that sets a level: **Volume** — Default output or Default
+input (whichever it is) or any output or input — **Brightness** — this deck or
+any connected deck, from 5 to 100, as a Brightness key's — and Discord's **User
+volume**, 0–200 %. With one selected, the library dims
 every other action, and dragging one over it says **Needs an action with a
 value** and drops nothing; a slider's key moves onto another slider or dial,
 and never onto a button, nor a button's onto them. The level shown is the
@@ -312,13 +314,21 @@ real one, kept up to date by the same events as the keys: a volume changed in
 the desktop's own volume control moves the slider too, and nothing is polled.
 A slider has a **track**, a **fill** shown up to the level and a **thumb**; a
 dial a **base**, a **level ring** shown from its start angle round to the level,
-and a **knob**. The Icon tab has a chip for each, each picked as an icon is (the
-same folders, formats and limits) and drawn to the control's box; Fill, Base
-and Level ring can be **None**, and **Use built-in** goes back to Deckhand's
-own art, in the action's colour. The knob turns between a **Start** and an
-**End** angle, degrees from straight up (−135° and 135° unless set), kept with
-its art. Both can have a label, under the track or the dial, and a background
-colour, none unless set. **Clear slider** (or dial) empties it. While your
+and a **knob**; either can have a **background** image. The Icon tab has a chip
+for each. **The fill and the level ring are drawn by Deckhand, never an
+image**, so no art can hide the level: their chip turns them on or off and
+picks their colour (the action's unless chosen), and a dial's ring is drawn
+over its knob. Every other layer is picked as an icon is (the same folders,
+formats and limits): **the thumb, the knob and the base keep their own
+proportions**, fitted across the slider, inside the ring and in the dial's
+square, so a round knob stays round; **the track and the background fill
+their area** — the track the slider, the background the whole control, behind
+everything, for a scale along a slider, say. **Use built-in** goes back to
+Deckhand's own art, in the action's colour; a dial's Base can be **None**, and
+a background is none until an image is chosen. The knob turns between a
+**Start** and an **End** angle, degrees from straight up (−135° and 135° unless
+set), kept with its art. Both can have a label, under the track or the dial,
+and a background colour, none unless set. **Clear slider** (or dial) empties it. While your
 finger is on one, its thumb or knob is drawn brighter, unless Touch feedback
 is off. A lock, a page change or any other way off the page ends a drag with
 the value where it is. **A page's background.** The picture icon in a virtual deck's top bar, on any
@@ -555,10 +565,14 @@ default; `square`, which older configs carry, is the same), `round` or
 `keepRatio` is Edit layout's Lock proportions. `kind` is `slider` or `dial`
 (absent: a button); a slider's `direction` is `vertical` (the default) or
 `horizontal`, and its `touch` `drag` (the default) or `jump`. A slider's or
-dial's key may carry `layers` — `track`, `fill` and `thumb`, or `base`, `ring`
-and `knob`, each an image path or `builtin:<name>`, absent for Deckhand's own
-art, and `null` for none (`fill`, `base` and `ring` only) — and a dial's
-`angles`, `{ "start": -135, "end": 135 }`, degrees from straight up. A key's background fills its
+dial's key may carry `layers` — `background`, `track` and `thumb`, or
+`background`, `base` and `knob`, each an image path or `builtin:<name>`,
+absent for Deckhand's own art (a background: none), and `null` for none (`base`
+only) — its `level`, `{ "show": false }` to switch the fill or ring off and
+`"color": "#rrggbb"` for its colour, and a dial's `angles`,
+`{ "start": -135, "end": 135 }`, degrees from straight up. A slider or dial is
+always a rectangle: an older config's round one is drawn as one, and its
+`fill` or `ring` image as the drawn level. A key's background fills its
 whole shape and its icon is the square at the shorter side, centred; its label
 and failed mark sit in the largest rectangle inside the shape; nothing is drawn
 outside it. Where controls overlap, the later in `controls` is on top, on the
@@ -637,7 +651,7 @@ Now playing's album art is always drawn as the crop was.
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker, 5–100. On a slider or dial, `deck` alone: 0–100 |
+| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker, 5–100. On a slider or dial, `deck` alone: 5–100 |
 | `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them. Draws `decks-sleep`, and `decks-asleep` while they are |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
@@ -647,7 +661,7 @@ Now playing's album art is always drawn as the crop was.
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
 | `audio.cycleSource` | `devices: [{ node, label }, …]` — steps through inputs from one key |
 | `audio.micMute` | Toggles the default input's mute; `iconActive` (muted) |
-| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key. On a slider or dial: `node` and `label` (from `deckhand sinks` or `deckhand sources`), with `input: true` for an input — the device's volume, 0–100 %; no `node`, the default output |
+| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key. On a slider or dial: `node` and `label` (from `deckhand sinks` or `deckhand sources`), with `input: true` for an input — the device's volume, 0–100 %; no `node`, the default output, or with `input: true` the default input |
 | `audio.mute` | Toggles output mute; `iconActive` (muted) |
 | `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconActive` (playing) |
 | `sound.stopAll` | Stops every sound Deckhand is playing |

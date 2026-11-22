@@ -447,8 +447,11 @@ show through; the editor says so there.
 
 **A slider or dial is a touch zone that sets a level, and takes only an
 action that carries one** — Volume (any local output or input, or the default
-output), Brightness (any deck, 0–100) and Discord's User volume (0–200 %). A
-button keeps every action it has, these included, as before. Its value is read
+output or input), Brightness (any deck, 5–100, as a key's) and Discord's User
+volume (0–200 %). A button keeps every action it has, these included, as
+before. **A slider or dial is always a rectangle**: a round or hexagon one
+would cut off a dial's ring and its label, so a dial draws its round art
+inside its box. Its value is read
 from an event-fed cache and written outright (`ActionHandler.value`): a change
 made outside Deckhand moves the level shown, and nothing polls.
 
@@ -471,8 +474,8 @@ made outside Deckhand moves the level shown, and nothing polls.
   writes at most about fifty times a second, bounded by pactl's own round
   trip. Nothing of it runs at rest.
 - **The face is drawn in the daemon, its layers once and its level each
-  step.** Each layer — the built-in art or an image, drawn to the control's
-  box — is rasterised once per change of art, label or badge; each step puts
+  step.** Each layer — the built-in art or an image, in its own area, and the
+  level — is rasterised once per change of art, label or badge; each step puts
   them together in plain JavaScript (the fill or ring up to the level, the
   thumb moved or the knob turned) and sends the image as any key's is sent.
   Measured against two alternatives with the real helper under a headless KWin,
@@ -492,14 +495,24 @@ made outside Deckhand moves the level shown, and nothing polls.
   started is dropped; the face goes back to the real value. A write that fails
   marks the control, as a failed press does, and the rest of that drag writes
   nothing, so one drag is one failure.
-- **A brightness slider or dial may set a deck to 0**, the deck it is on
-  included — the one way besides sleep below a key's floor of 5. Touch still
-  works at 0, so it can be turned back up.
-- **Its art is Deckhand's own until something is chosen**, drawn for the box in
-  its action's colour: a slider's track running its length and its thumb
-  scaled by its width; a dial's base and ring from its start to its end angle.
-  An image chosen for a layer is drawn to the box and held to the image limits;
-  one refused is drawn as the built-in layer, the reason logged once.
+- **A brightness slider or dial stops at 5**, as a Brightness key does. It
+  once went to 0, and a panel dimmed that way came back only when its slider
+  was found by touch on a black screen.
+- **The level is drawn by Deckhand, never an image** — a slider's fill, a
+  dial's ring — shown or switched off, in a colour of the person's choosing or
+  the action's, so no art can take the level away: the fill lies under the
+  thumb, and **the ring is drawn over the knob**, whose area is inside it.
+- **Every other layer is Deckhand's own art until an image is chosen**, drawn
+  for the box in its action's colour: a slider's track running its length and
+  its thumb scaled by its width; a dial's base from its start to its end angle,
+  and its knob. **An image keeps its proportions where it is a thing on the
+  control** — the thumb, fitted across the slider; the knob, inside the ring;
+  the base, in the dial's square — so a round knob never becomes an oval, and
+  **fills its area where it is a surface**: the track, stretched to the art, and
+  a background image, which has no built-in art, stretched to the whole box
+  behind everything (a scale along a slider, say). Every image is held to the
+  image limits; one refused is drawn as the built-in layer, the reason logged
+  once.
 
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
@@ -603,13 +616,13 @@ is here so the test is not "fixed" instead.
 | `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 | `panel/idle.c`, `src/services/idle.ts`, `src/services/desktop-inhibit.ts` | **the compositor counts, never Deckhand**; the plain notification, so its inhibitors keep the decks lit; **and KDE's own inhibitions, which it doesn't count: while powerdevil lists one naming `idle` the helper doesn't run**, followed by the signal, which names the property as invalidated with no value, so each is followed by a read; `sleep` rows don't count; **the helper runs only while dimming is set and a Stream Deck is attached**; a helper that stops rides `recovery.ts`; one that says the protocol is absent is not retried until the settings change. **The re-dim deadline is one-shot, armed only by a press while idle**: cancelled by resumed, restarted by another press, overridden by a lock. Virtual decks are never idle-dimmed. Held by `smoke-sleep` and `smoke-panel` |
-| `src/sleep.ts`, `DeckSession.applySleep()` | **only this, and a brightness slider or dial (`setBrightnessLevel`), set a deck below `clampBrightness`'s 5** — a key's Brightness stays 5–100; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
+| `src/sleep.ts`, `DeckSession.applySleep()` | **only this sets a deck below `clampBrightness`'s 5** — a Brightness key, slider or dial stays 5–100; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
 | `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()` | what is on the screen stays until drawn again, so **a change is the level, then the canvas, then every key**; **it dims the whole deck, a see-through background included, as black laid over it** — colour and alpha alike move toward opaque black, so what shows through darkens too, and at 0 the screen is opaque black, never clear; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels) and `smoke-virtual` |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
 | `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going. **A touch is tested on the control's real shape, and the later of two overlapping controls in the panel's list is on top** — geometry carries that order (`z`) because keys are in reading order, which is not it. Held by `smoke-shapes` and `smoke-virtual-touch` |
 | `src/value-controls.ts`, `DeckSession`'s value path (`onValue`, `pumpWrites`, `endDrags`) | **a slider or dial takes only an action with a `value`** (Volume, Brightness, User volume), refused by the editor's drop and its main process alike; **its level is read from an event-fed cache and never polled**; **one write in flight, the newest waiting** — never a queue, never a timer; a volume drag skips the cache's re-read until its last write; **every way off a page ends a drag with the value where it is** — a lock, a page change (a page with the same controls too), a panel change, the deck closing; a failed write marks the control and stops that drag's writes. Held by `smoke-values` |
 | `panel/panel.c`'s `M`, `panel/evdev.c`'s moves, the virtual driver's `driving` | **the helper reports a finger's movement only for a contact the daemon asked it to follow**, at most once per frame, until it lifts; a follow for a contact not down is ignored, and a new contact in the same slot is not followed. Only the first finger on a slider or dial moves it. A button's touch is down and up only. Held by `smoke-panel` (the real helper) and `smoke-values` |
-| `src/value-face.ts`, `src/value-controls.ts`'s built-in art | **layers are drawn once per change of art, label or badge, and put together per value in plain JavaScript** — never a rasterisation per step (measured: ~24 ms a step with sharp against ~2–3 ms); the same value again is the same Buffer, kept per art for a few values, since two controls drawn alike share one art. **`assets/art/` is the generator's output at the design's reference sizes (46 × 130, 76 × 76)**, held equal by `smoke-values`; a built-in is drawn for its box, never stretched; an image chosen is drawn to the box. Held by `smoke-values` |
+| `src/value-face.ts`, `src/value-controls.ts`'s built-in art | **layers are drawn once per change of art, label or badge, and put together per value in plain JavaScript** — never a rasterisation per step (measured: ~24 ms a step with sharp against ~2–3 ms); the same value again is the same Buffer, kept per art for a few values, since two controls drawn alike share one art. **`assets/art/` is the generator's output at the design's reference sizes (46 × 130, 76 × 76)**, held equal by `smoke-values`; a built-in is drawn for its box, never stretched; **an image chosen is drawn in its area (`layerArea`): the thumb, knob and base keeping their proportions, the track and background stretched. The level is never an image** — Deckhand draws the fill under the thumb and **the ring over the knob**, so no art hides it. **A slider or dial is a rectangle**; an older round one is made one on load (`migrateValueControls`), as a fill or ring image becomes the drawn level. Held by `smoke-values` |
 | `src/shapes.ts`, `src/render.ts`'s `renderFace` | **each shape answers three questions — inside, outline, largest inner rectangle — and nothing else branches on the shape**: the label, a level and the failed badge go in the inner rectangle, the icon is the square at the shorter side, the fill covers the shape, **and everything outside it is alpha 0**. **A virtual deck's face has its outline (`OUTLINE_PX`) inside the shape's edge**, drawn twice as wide on the edge so the shape's cut leaves the inner half; a Stream Deck's key never has one. Without it, a square key with square corners is `renderButton`'s byte for byte; a Stream Deck's keys never take this path. Held by `smoke-shapes`, `smoke-virtual` and `smoke-panel` (real pixels) |
 | `panel/panel.c`'s `draw_image`, `src/drivers/panel-compose.ts` | **the helper puts the background under every image, and an image is clear wherever nothing is drawn**: never blend over the old pixels (a soft edge builds up over itself, a lower control redrawn paints over the upper), and never fill a gap in the daemon (the page's see-through background shows there). The background under an image is the page's, pixel for pixel — its colour, or its picture — at the deck's brightness. A control whose box another overlaps is sent as every control touching it, combined in the panel's order **at the moment it is sent, never when it is queued**: the queue holds controls, not images, or a control queued behind a busy helper carries a face since replaced over the newer one, and nothing redraws it. Held by `smoke-panel` (real pixels), `smoke-shapes` and `smoke-virtual` |
 | `src/page-background.ts`, `PanelDevice.setBackground()`, `panel/panel.c`'s ground (`'G'`) | **a page's background is the whole screen's, under every control, and controls never fade**. **Plain black and opaque — every page before backgrounds, and a new page — sends nothing but the canvas frame**, so the helper keeps its opaque `XRGB8888` buffers; below 100% they are `ARGB8888`, premultiplied, and back to `XRGB8888` once opaque again. The background is sent after every canvas frame (which resets it), before the keys; the same background again sends nothing. Its picture is drawn by the daemon at the screen's size on a page change, an edit, a brightness change or the screen coming back — **never on a clock**; a picture drawn for an older background is dropped. **An image is held to PNG, JPEG, WebP, GIF or SVG, 10 MB and 4096 px on its longer side** (`src/image-limits.ts`, one wording for the log and the editor): refused, the colour is shown alone and the log says why, once. Held by `smoke-panel` (real pixels, alpha and buffer formats under a headless KWin) and `smoke-virtual` |
