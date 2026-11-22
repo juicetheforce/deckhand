@@ -46,6 +46,7 @@ import {
   latchedKeysOn,
   liveFacesOn,
   faceIcon,
+  watchedImages,
   appIconsOf,
   integrationOf,
   notSetUp,
@@ -1144,6 +1145,19 @@ await check('failed keys: only those on the page being edited, from the deck bei
   assert.deepEqual(failedKeysOn(daemonView([XL]), { profile: 'default', serial: XL, page: 'main' }), {}, 'an older daemon sends no list');
   const offline: DaemonView = { connected: false, problem: 'x', status: null, decks: null };
   assert.deepEqual(failedKeysOn(offline, { profile: 'default', serial: XL, page: 'main' }), {});
+});
+
+await check('the watched images: icons, a page background, and a slider\'s or dial\'s chosen layer images (Codex, PR #12)', () => {
+  const page = {
+    background: { image: '~/bg.png' },
+    buttons: {
+      a: { icon: '~/a.png', action: { type: 'hotkey', keys: 'a' } },
+      s: { action: { type: 'audio.volume' }, layers: { thumb: '~/thumb.png', track: '~/track.png', base: null } },
+    },
+  } as unknown as Parameters<typeof watchedImages>[0][number];
+  const watched = watchedImages([page]);
+  for (const file of ['~/a.png', '~/bg.png', '~/thumb.png', '~/track.png']) assert.ok(watched.includes(file), `${file} watched: ${JSON.stringify(watched)}`);
+  assert.ok(!watched.includes(null as unknown as string), 'a None layer is not a file');
 });
 
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`);

@@ -543,9 +543,11 @@ export class DeckSession implements DeckHandle {
     const range = handler.range(action);
     const changed = valueOfFraction(next, range) !== valueOfFraction(drag.value, range);
     drag.value = next;
+    // A drag whose write failed shows the real value, not the finger: nothing it does is written.
+    if (this.writes.get(index)?.stopped) return;
     this.shownValue.set(index, next);
     void this.drawValue(index, true);
-    if (changed && !this.writes.get(index)?.stopped) {
+    if (changed) {
       drag.wrote = true;
       this.queueWrite(index, next, false);
     }
@@ -577,6 +579,8 @@ export class DeckSession implements DeckHandle {
       // One failure per drag: the rest of it writes nothing, and the face shows the real value.
       writes.stopped = true;
       writes.next = null;
+      this.shownValue.delete(index);
+      void this.drawValue(index, true);
     }
     this.judgeValue(index, profile, page, button, failure);
     if (writes.next) return void this.pumpWrites(index, writes);

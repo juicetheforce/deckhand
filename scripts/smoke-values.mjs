@@ -157,11 +157,13 @@ check('a finger\'s angle round the centre: up 0°, right 90°, left −90°', vc
 console.log('the face');
 const px = (buf, w, x, y) => [...buf.subarray((y * w + x) * 4, (y * w + x) * 4 + 4)];
 /** The thumb's cut line, the darkest run down the middle column: its row. */
-function thumbRow(buf, w, h) {
+function thumbRow(buf, w, h, held = false) {
   const rows = [];
+  // Held, the line is lightened 22% (to about 70) with the rest of the thumb.
+  const dark = held ? 80 : 40;
   for (let y = 0; y < h; y++) {
     const [r, g, b, a] = px(buf, w, Math.floor(w / 2), y);
-    if (a > 200 && r < 40 && g < 40 && b < 50) rows.push(y);
+    if (a > 200 && r < dark && g < dark && b < dark + 10) rows.push(y);
   }
   return rows.length === 0 ? -1 : rows.reduce((s, y) => s + y, 0) / rows.length;
 }
@@ -212,6 +214,9 @@ await settle('the face', async () => {
   };
   // The pointer is solid; elsewhere on the knob only its faint fill.
   check('the knob turned to the level: up at 50%, at 135° at 100%', pointer(dial(0.5), 0)[3] > 200 && pointer(dial(1), 135)[3] > 200 && pointer(dial(1), 0)[3] < 100, JSON.stringify([pointer(dial(0.5), 0), pointer(dial(1), 135), pointer(dial(1), 0)]));
+  // Angles past −180°: the ring's pixels are counted on from the start angle both ways, not only upwards.
+  const wide = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, angles: { start: -270, end: 0 } });
+  check('a dial from −270° to 0°: at half, the ring is lit at −225° (drawn where 135° is) and not at −45°', ringAt(composeValue(wide, 0.5, false), 135)[0] < 160 && ringAt(composeValue(wide, 0.5, false), 135)[3] > 200 && ringAt(composeValue(wide, 0.5, false), -45)[0] > 200, JSON.stringify([ringAt(composeValue(wide, 0.5, false), 135), ringAt(composeValue(wide, 0.5, false), -45)]));
   const noBase = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, layers: { base: null, ring: null } });
   check('Base and Level ring set to None: no arc at all', ringAt(composeValue(noBase, 1, false), -90)[3] === 0 && ringAt(composeValue(noBase, 1, false), 120)[3] === 0);
   const round = await valueArt({ ...base, kind: 'dial', width: 120, height: 120, shape: 'round', background: '#203040' });
@@ -314,10 +319,11 @@ const lastFace = async (id) => {
   const f = (await frames()).filter((e) => e.type === 'I' && e.x === c(id).x && e.y === c(id).y && e.rgba).at(-1);
   return f ? Buffer.from(f.rgba, 'base64') : null;
 };
-const levelOf = async (id) => {
+const levelOf = async (id, held = false) => {
   const face = await lastFace(id);
   const art = await valueArt({ ...base, kind: 'slider', width: c(id).w, height: c(id).h });
-  return face ? (240 - thumbRow(face, 60, 240) - art.travel.start - art.travel.thumb / 2) / vc.travelLength(art.travel) : null;
+  const row = face ? thumbRow(face, 60, 240, held) : -1;
+  return row < 0 ? null : (240 - row - art.travel.start - art.travel.thumb / 2) / vc.travelLength(art.travel);
 };
 
 await settle('the session', async () => {
@@ -467,11 +473,15 @@ await settle('the session', async () => {
   // Moves one at a time, so each could have written: the first failure stops the rest.
   await helperSays(down(12, 'ab'));
   for (let i = 1; i <= 6; i++) await helperSays(move(12, 'ab', 30, 120 - i * 12));
+  // The finger still down: once a write has failed, the face shows the real value (none known: the lowest), not the finger.
+  await sleep(150);
+  const failedFace = await levelOf('ab', true);
   await helperSays(up(12));
   await sleep(200);
   check('a slider for a device not connected: no pactl call at all', !(await pactlCalls()).slice(abFrom).some((l) => l.includes('alsa_output.gone')));
   check('…one notification for the drag, saying what to do', notified.length === 1 && /not connected/.test(notified[0].message), JSON.stringify(notified.map((n) => n.message)));
   check('…and the control marked failed', session.failedKeys().some((f) => f.key === 'ab'), JSON.stringify(session.failedKeys()));
+  check('…and while the finger is still down the face stops following it: the real value, not the failed one', failedFace !== null && failedFace < 0.02, String(failedFace));
 });
 
 stopAudio();

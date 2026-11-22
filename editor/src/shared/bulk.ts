@@ -214,24 +214,32 @@ export function duplicateKeys(page: PageDef, grid: KeyGrid, keys: Iterable<strin
 
   const writes: ButtonWrite[] = [];
   const created: string[] = [];
+  const kindOf = (key: string) => grid.keys.find((k) => k.id === key)?.kind;
   for (const source of sources) {
     const start = order.indexOf(source);
     let target: string | undefined;
     for (let step = 1; step < order.length; step++) {
       const candidate = order[(start + step) % order.length];
-      if (!occupied.has(candidate)) {
+      // Only onto its own family (round 5): a button's copy never lands on a slider or dial, nor theirs on a button.
+      if (!occupied.has(candidate) && sameKindFamily(kindOf(source), kindOf(candidate))) {
         target = candidate;
         break;
       }
     }
     if (target === undefined) {
-      const free = order.length - occupied.size + created.length;
+      const family = (key: string) => sameKindFamily(kindOf(source), kindOf(key));
+      const value = kindOf(source) !== undefined;
+      const mixed = grid.keys.some((k) => k.kind !== undefined);
+      // On a page of buttons only, as before; with sliders or dials on it, the room counted is the source's family's.
+      const free = order.filter((k) => family(k) && (!occupied.has(k) || created.includes(k))).length;
+      const what = !mixed ? 'key' : value ? 'slider or dial' : 'button';
+      const sameFamily = sources.filter(family).length;
       return {
         ok: false,
         error:
-          sources.length === 1
-            ? 'This page has no empty key to duplicate into.'
-            : `Duplicating ${sources.length} keys needs ${sources.length} empty keys; this page has ${free}.`,
+          sameFamily === 1
+            ? `This page has no empty ${what} to duplicate into.`
+            : `Duplicating ${sameFamily} ${mixed ? (value ? 'sliders and dials' : 'buttons') : 'keys'} needs ${sameFamily} empty ${mixed ? (value ? 'ones' : 'buttons') : 'keys'}; this page has ${free}.`,
       };
     }
     occupied.add(target);

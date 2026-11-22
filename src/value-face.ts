@@ -284,9 +284,10 @@ function revealOf(spec: ValueFaceSpec, fill: Buffer, w: number, h: number): Reve
       if (spec.kind === 'slider') from.push(spec.direction === 'horizontal' ? x + 0.5 : h - (y + 0.5));
       else {
         // Degrees from straight up, clockwise, counted on from the start angle.
-        let a = (Math.atan2(x + 0.5 - cx, cy - (y + 0.5)) * 180) / Math.PI;
-        while (a < spec.angles.start) a += 360;
-        from.push(a);
+        // Counted into the one turn that begins at the start angle, either way: a ring from −270° has pixels
+        // atan2 calls positive.
+        const a = (Math.atan2(x + 0.5 - cx, cy - (y + 0.5)) * 180) / Math.PI;
+        from.push(spec.angles.start + ((((a - spec.angles.start) % 360) + 360) % 360));
       }
     }
   }

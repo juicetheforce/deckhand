@@ -11,7 +11,7 @@ import type { ShapeBox } from '../../../src/shapes.js';
 import { pagePanelIn } from '../../../src/panel-presets.js';
 import { defaultIconFor, warningIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult, LiveFace } from '../../../src/control/protocol.js';
-import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { BUILTIN_PREFIX, builtinRef, keyStates } from '../shared/icons.js';
 import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
@@ -1063,4 +1063,30 @@ export function keyBoxOf(geometry: Pick<DeckGeometry, 'units' | 'keys'> | null, 
   if (!k) return null;
   if (geometry?.units === 'pixels') return { w: k.w, h: k.h, shape: k.shape, radius: k.radius };
   return { w: 1, h: 1 };
+}
+
+/**
+ * Every image file the shown pages draw, for the main process to watch and
+ * stamp (IconFiles.watchFiles): a file put back or replaced gets a new stamp,
+ * so the grid fetches it again. Both faces of a key with states — its default
+ * and its active state's, which the daemon's live state flips it to — and a
+ * virtual deck page's background image (Codex, PR #10), and a slider's or
+ * dial's chosen layer images (Codex, PR #12).
+ */
+export function watchedImages(pages: ReadonlyArray<PageDef>, appIcons: AppIcons = {}): string[] {
+  return [
+    ...new Set(
+      pages
+        .flatMap((p) => Object.values(p.buttons))
+        // Not `.map(faceIcon)`: that passes the array index as the second argument.
+        .flatMap((b) => {
+          const states = keyStates(b.action);
+          return [faceIcon(b, null, appIcons), states ? faceIcon(b, { state: states.activeState, active: true }, appIcons) : null];
+        })
+        .filter((i): i is string => i !== null)
+        .concat(pages.flatMap((p) => (p.background?.image ? [p.background.image] : [])))
+        // A slider's or dial's chosen layer images: replaced on disk, the grid draws the new one (Codex, PR #12).
+        .concat(pages.flatMap((p) => Object.values(p.buttons).flatMap((b) => Object.values(b.layers ?? {}).filter((l): l is string => typeof l === 'string' && l !== '')))),
+    ),
+  ];
 }
