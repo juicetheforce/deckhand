@@ -27,6 +27,9 @@ const LOG = path.join(TMP, 'panel.log');
 process.env.DECKHAND_DRM_DIR = DRM;
 process.env.DECKHAND_PANEL_BIN = path.join(REPO, 'scripts/test/fake-panel.mjs');
 process.env.FAKE_PANEL_LOG = LOG;
+// Written to make the fake helper report another size at its next "ready".
+const SIZE_FILE = path.join(TMP, 'size');
+process.env.FAKE_PANEL_SIZE_FILE = SIZE_FILE;
 // No logind here: the lock state is unknown, as it must be for a test that
 // reads nothing of this machine (smoke-virtual-touch.mjs has a fake one).
 process.env.DBUS_SYSTEM_BUS_ADDRESS = `unix:path=${path.join(TMP, 'no-bus')}`;
@@ -390,6 +393,29 @@ await settle('background', async () => {
     await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
     sent = await since(from);
     check('the output back: canvas, background, keys', sent[0]?.type === 'K' && sent[1]?.type === 'G' && sent[1].alpha === 128 && sent[2]?.type === 'I', JSON.stringify(sent.map((f) => f.type)));
+
+    // The screen changing size while a picture is being drawn for the old size (Codex, PR #10): the
+    // picture for the new size is the one that stays, whichever finishes last. The old size's render
+    // is held back (DECKHAND_TEST_GROUND_DELAY), so it finishes after the new one.
+    await visit('plain');
+    const pid4 = (await frames()).filter((f) => f.type === 'start' && f.output === 'DP-4').at(-1).pid;
+    process.env.DECKHAND_TEST_GROUND_DELAY = '1920x720:700';
+    from = (await frames()).length;
+    await session.goToPage('fill');
+    await sleep(50);
+    await fs.writeFile(SIZE_FILE, '1280x720');
+    process.kill(pid4, 'SIGHUP');
+    await until(async () => (await since(from)).some((f) => f.type === 'G' && f.w === 1280), 3000);
+    await sleep(1200);
+    const grounds = (await since(from)).filter((f) => f.type === 'G');
+    check('the screen resized while its picture was drawn: the new size\'s picture stays, the old one never lands after it',
+      grounds.at(-1)?.w === 1280 && grounds.at(-1)?.h === 720, JSON.stringify(grounds.map((f) => [f.w, f.h])));
+    delete process.env.DECKHAND_TEST_GROUND_DELAY;
+    await fs.rm(SIZE_FILE);
+    from = (await frames()).length;
+    process.kill(pid4, 'SIGHUP');
+    await until(async () => (await since(from)).some((f) => f.type === 'G' && f.w === 1920), 3000);
+    await visit('tinted');
 
     // An edit to the page's background reaches the deck on the reload; the same again sends nothing.
     from = (await frames()).length;

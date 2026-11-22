@@ -16,6 +16,9 @@
  *                        ({"ev":"touch",…}, {"ev":"tap",…}, {"ev":"touch-gone",…})
  *   FAKE_PANEL_TOUCH     "open" (default): answers a touch frame with
  *                        "touch-open" for each device; "fail": "touch-failed"
+ *   FAKE_PANEL_SIZE_FILE file: read at each "ready" for the size it reports
+ *                        ("1280x720"), as a screen changing resolution; absent
+ *                        or empty, FAKE_PANEL_SIZE
  *   FAKE_PANEL_SURFACE_FILE  file: read at each "ready" for the surface it
  *                        reports ("fullscreen-window", as on GNOME); absent or
  *                        empty, "layer-shell"
@@ -47,7 +50,15 @@ const surface = () => {
   const said = file ? (() => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } })() : '';
   return said || 'layer-shell';
 };
-const ready = () => say({ ev: 'ready', output, width, height, scale: 1, transform: 0, surface: surface() });
+const size = () => {
+  const file = process.env.FAKE_PANEL_SIZE_FILE;
+  const said = file ? (() => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } })() : '';
+  return /^\d+x\d+$/.test(said) ? said.split('x').map(Number) : [width, height];
+};
+const ready = () => {
+  const [w, h] = size();
+  say({ ev: 'ready', output, width: w, height: h, scale: 1, transform: 0, surface: surface() });
+};
 ready();
 
 process.on('SIGUSR1', ready);

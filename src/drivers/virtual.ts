@@ -193,8 +193,9 @@ class PanelDevice implements DeckDevice {
         this.inFlight = false;
         this.writeCanvas();
         for (const listener of this.redrawListeners) listener();
-        // A picture is drawn for the screen's size: a new size, a new picture.
-        if (this.groundSize !== `${this.ready.width}x${this.ready.height}` && this.background?.image) void this.drawGround(this.groundToken);
+        // A picture is drawn for the screen's size: a new size, a new picture — and a new generation,
+        // so one still being drawn for the old size is dropped when it finishes (Codex, PR #10).
+        if (this.groundSize !== `${this.ready.width}x${this.ready.height}` && this.background?.image) void this.drawGround(++this.groundToken);
         break;
       case 'touch':
         this.onTouch(event);
@@ -435,6 +436,7 @@ class PanelDevice implements DeckDevice {
   /** Draw the background's picture for the screen as it is, then show it; dropped if another background came since. */
   private async drawGround(token: number): Promise<void> {
     const size = { width: this.ready.width, height: this.ready.height };
+    await testGroundDelay(size);
     const ground = await renderGround(this.background, size.width, size.height);
     if (token !== this.groundToken || this.exited) return;
     if (ground.refused && !this.refusalsSaid.has(ground.refused)) {
@@ -525,6 +527,16 @@ class PanelDevice implements DeckDevice {
     await this.gone;
     clearTimeout(deadline);
   }
+}
+
+/**
+ * Tests only: DECKHAND_TEST_GROUND_DELAY="1920x720:700" holds back a background
+ * drawn for that screen size by that many milliseconds, so a test can make an
+ * older render finish after a newer one (smoke-virtual). Unset, nothing.
+ */
+async function testGroundDelay(size: { width: number; height: number }): Promise<void> {
+  const [at, ms] = (process.env.DECKHAND_TEST_GROUND_DELAY ?? '').split(':');
+  if (at === `${size.width}x${size.height}` && Number(ms) > 0) await new Promise((resolve) => setTimeout(resolve, Number(ms)));
 }
 
 /** Start a helper on an output and wait until its surface is shown. Resolves null, logged, if it is not. */

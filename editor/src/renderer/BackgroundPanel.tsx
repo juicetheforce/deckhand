@@ -259,12 +259,24 @@ function ImageChooser({ current, iconStamps, onChoose, onCancel }: { current: st
   const [message, setMessage] = useState<string | null>(null);
   const [refused, setRefused] = useState<ReadonlySet<string>>(new Set());
   const [checking, setChecking] = useState<string | null>(null);
+  /** Bumped by every pick and by closing: a check that comes back after either chooses nothing (Codex, PR #10). */
+  const generation = useRef(0);
+  useEffect(
+    () => () => {
+      generation.current++;
+    },
+    [],
+  );
+  const cancel = () => {
+    generation.current++;
+    onCancel();
+  };
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
-      onCancel();
+      cancel();
     };
     window.addEventListener('keydown', key, true);
     return () => window.removeEventListener('keydown', key, true);
@@ -278,8 +290,11 @@ function ImageChooser({ current, iconStamps, onChoose, onCancel }: { current: st
 
   const pick = async (entry: IconFolderEntry | IconSearchMatch) => {
     if (refused.has(entry.path)) return;
+    const mine = ++generation.current;
     setChecking(entry.path);
-    const verdict = await checkImage(entry.configPath, iconStamps[entry.configPath]);
+    // The listing's own stamp: a file changed since it was last checked is checked again.
+    const verdict = await checkImage(entry.configPath, entry.stamp ?? iconStamps[entry.configPath]);
+    if (mine !== generation.current) return;
     setChecking(null);
     if (verdict.state === 'refused') {
       setRefused((s) => new Set(s).add(entry.path));
@@ -290,7 +305,7 @@ function ImageChooser({ current, iconStamps, onChoose, onCancel }: { current: st
   };
 
   return createPortal(
-    <div className="image-chooser-scrim" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div className="image-chooser-scrim" onPointerDown={(e) => e.target === e.currentTarget && cancel()}>
       <div className="image-chooser glass" role="dialog" aria-label="Choose a background image" data-image-chooser="">
         <div className="picker">
           <FolderBar browser={browser} filterLabel="Filter images" />
@@ -333,7 +348,7 @@ function ImageChooser({ current, iconStamps, onChoose, onCancel }: { current: st
                     : 'PNG, JPEG, WebP, GIF or SVG, up to 10 MB and 4096 px on the longer side.')}
             </p>
             <div className="picker-actions">
-              <button onClick={onCancel}>Cancel</button>
+              <button onClick={cancel}>Cancel</button>
             </div>
           </div>
         </div>

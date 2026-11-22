@@ -581,7 +581,10 @@ function Editor({
           const states = keyStates(b.action);
           return [faceIcon(b, null, appIcons), states ? faceIcon(b, { state: states.activeState, active: true }, appIcons) : null];
         })
-        .filter((i): i is string => i !== null),
+        .filter((i): i is string => i !== null)
+        // A virtual deck page's background image, watched as an icon is: a file put back or replaced gets a
+        // new stamp, so a verdict on it (image-check.ts, kept per stamp) is made again (Codex, PR #10).
+        .concat(shownPages.flatMap((p) => (p.background?.image ? [p.background.image] : []))),
     ),
   ];
   const iconsKey = pageIcons.join('\u0000');

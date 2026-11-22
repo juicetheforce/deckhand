@@ -53,6 +53,7 @@ const half = Buffer.alloc(40 * 20 * 3);
 for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) half.set(x < 20 ? [255, 0, 0] : [0, 0, 255], (y * 40 + x) * 3);
 await sharp(half, { raw: { width: 40, height: 20, channels: 3 } }).png().toFile(path.join(pictures, 'dusk.png'));
 await sharp({ create: { width: 5000, height: 10, channels: 3, background: '#808080' } }).png().toFile(path.join(pictures, 'mural.png'));
+await sharp(half, { raw: { width: 40, height: 20, channels: 3 } }).png().toFile(path.join(pictures, 'quick.png'));
 await fs.writeFile(path.join(pictures, 'poster.png'), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(12 * 1024 * 1024)]));
 
 const { edid, fakeSysfs } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-sysfs.mjs')).href);
@@ -279,6 +280,23 @@ await click('[data-background-remove]');
 await until(async () => (await backgroundOnDisk())?.image === undefined);
 r.removed = await backgroundOnDisk();
 
+// ---- A PICTURE PUT BACK (Codex, PR #10): refused while missing, shown once it is there again ----
+await inEditor(`window.deckhand.apply({ kind: 'setPageBackground', profile: 'default', serial: '${KEY}', page: 'main', background: { color: '#102030', opacity: 60, image: '~/Pictures/later.png' } }).then(() => true)`);
+await mustSee('the missing picture refused', async () => /later\.png isn't there any more/.test((await inEditor(`document.querySelector('[data-background-refused]')?.textContent ?? ''`)) ?? ''));
+r.missingRefused = await inEditor(`document.querySelector('[data-background-refused]')?.textContent ?? null`);
+await fs.copyFile(path.join(pictures, 'dusk.png'), path.join(pictures, 'later.png'));
+await until(async () => !(await exists('[data-background-refused]')) && (await groundOf()).image === '~/Pictures/later.png', 8000);
+r.putBack = { refusedGone: !(await exists('[data-background-refused]')), ground: (await groundOf()).image };
+await click('[data-background-remove]');
+await until(async () => (await backgroundOnDisk())?.image === undefined);
+
+// ---- A PICK CANCELLED WHILE IT IS CHECKED (Codex, PR #10): nothing saved ----
+await click('[data-background-choose]');
+await mustSee('the chooser', () => exists(tile('quick.png')));
+await inEditor(`(() => { document.querySelector(${JSON.stringify(tile('quick.png'))}).click(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; })()`);
+await sleep(1500);
+r.cancelled = { chooserGone: !(await exists('[data-image-chooser]')), image: (await backgroundOnDisk())?.image ?? null };
+
 // ---- CLOSING ----
 await keyOn('[data-background-panel]', 'Escape');
 await until(async () => !(await panelOpen()), 3000);
@@ -382,7 +400,7 @@ check('opacity moved: shown on the page while it moves, saved only when let go',
   assert.equal(r.afterMove.ground.layerOpacity, '0.6');
 });
 check('the image chooser lists the pictures; one over 10 MB and one over 4096 px are refused with their reasons, dimmed, and not chosen', () => {
-  assert.deepEqual([...r.chooserTiles].sort(), ['dusk.png', 'mural.png', 'poster.png']);
+  assert.deepEqual([...r.chooserTiles].sort(), ['dusk.png', 'mural.png', 'poster.png', 'quick.png']);
   assert.equal(r.tooBig.message, 'poster.png is too big: 12.0 MB. The limit is 10 MB.');
   assert.equal(r.tooBig.dimmed, true);
   assert.equal(r.tooLarge, 'mural.png is too large: 5000 × 10 px. The limit is 4096 px on the longer side.');
@@ -403,6 +421,12 @@ check('Fit: saved, sent with the colour either side, drawn as contain', () => {
   assert.equal(r.fit.ground.fit, 'fit');
 });
 check('✕ removes the image and its fit', () => assert.deepEqual(r.removed, { color: '#102030', opacity: 60 }));
+check('a background naming a missing picture says so; once the picture is back, it is shown (Codex, PR #10)', () => {
+  assert.match(r.missingRefused ?? '', /later\.png isn't there any more\./);
+  assert.deepEqual(r.putBack, { refusedGone: true, ground: '~/Pictures/later.png' });
+});
+check('a picture picked and cancelled while it was being checked is not saved (Codex, PR #10)', () =>
+  assert.deepEqual(r.cancelled, { chooserGone: true, image: null }));
 check('Esc closes the panel, the icon no longer lit; a click outside closes it', () => {
   assert.deepEqual(r.escClosed, { closed: true, lit: 'false' });
   assert.equal(r.outsideClosed, true);
