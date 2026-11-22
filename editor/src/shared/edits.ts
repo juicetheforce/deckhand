@@ -4,7 +4,7 @@
  *
  * Types only, importing nothing that touches Node: the renderer imports this.
  */
-import type { ActionDef, ButtonDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, PageBackgroundDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
 import type { ButtonWrite } from './bulk.js';
 import type { PairIconField } from './icons.js';
 
@@ -117,6 +117,11 @@ export type Edit =
    * (shared/templates.ts) — under a name, newest last. A name in use is
    * refused unless `replace`, which replaces that template.
    */
+  /**
+   * A virtual deck page's background (round 3): the whole of it, replacing
+   * what was there; null removes it, so the page is black and opaque as before.
+   */
+  | { kind: 'setPageBackground'; profile: string; serial: string; page: string; background: PageBackgroundDef | null }
   | { kind: 'saveTemplate'; name: string; panel: PanelDef; replace: boolean }
   /** A template renamed from the picker; refused onto another's name. */
   | { kind: 'renameTemplate'; name: string; to: string }

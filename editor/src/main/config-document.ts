@@ -563,6 +563,15 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       layout.pages[edit.page] = { ...page, panel: structuredClone(edit.panel), buttons: structuredClone(edit.buttons) };
       return {};
     }
+    case 'setPageBackground': {
+      if (!config.decks?.[edit.serial]?.virtual) throw new EditError(`"${edit.serial}" is not a virtual deck: only a virtual deck's page has a background`);
+      const layout = layoutAt(config, edit.profile, edit.serial);
+      const page = Object.prototype.hasOwnProperty.call(layout.pages, edit.page) ? layout.pages[edit.page] : undefined;
+      if (!page) throw new EditError(`no page with ID "${edit.page}" in profile "${edit.profile}" for deck "${edit.serial}"`);
+      if (edit.background === null) delete page.background;
+      else page.background = structuredClone(edit.background);
+      return {};
+    }
     case 'saveTemplate':
     case 'renameTemplate':
     case 'deleteTemplate': {

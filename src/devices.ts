@@ -61,6 +61,8 @@ export interface DeckDevice {
   onLetGo?(listener: (reason: string) => void): void;
   /** Optional: whether its touches work now, for the control socket (a virtual deck: TouchState). */
   touchState?(): TouchState;
+  /** Optional: how a virtual deck's screen is shown — a layer-shell surface, or a full-screen window (control/protocol.ts). */
+  surfaceKind?(): 'layer-shell' | 'fullscreen-window';
 }
 
 

@@ -62,6 +62,13 @@ export interface DeckStatus {
   failed?: KeyFailure[];
   /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */
   touch?: TouchState;
+  /**
+   * How a virtual deck's screen is shown (panel/wayland.c): "layer-shell" (KDE
+   * Plasma and others), or "fullscreen-window" where the compositor has no
+   * layer-shell (GNOME), whose window may not let a see-through background
+   * show what is behind it (untested).
+   */
+  surface?: 'layer-shell' | 'fullscreen-window';
   /** A virtual deck turned off (the virtual.power action, or `virtual.power`): not connected, on purpose. Absent when on. */
   off?: true;
 }

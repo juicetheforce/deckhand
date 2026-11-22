@@ -150,6 +150,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.failed = session.failedKeys();
       const touch = session.touchState();
       if (touch !== undefined) entry.touch = touch;
+      const surface = session.surfaceKind();
+      if (surface !== undefined) entry.surface = surface;
     }
     return entry;
   });

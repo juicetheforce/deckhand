@@ -412,6 +412,11 @@ export class DeckSession implements DeckHandle {
     await this.releaseLatches(reason);
   }
 
+  /** How a virtual deck's screen is shown (DeckDevice.surfaceKind); undefined for a Stream Deck. */
+  surfaceKind(): 'layer-shell' | 'fullscreen-window' | undefined {
+    return this.device.surfaceKind?.();
+  }
+
   /** Whether a virtual deck's touches work now (DeckDevice.touchState); undefined for a Stream Deck. */
   touchState(): TouchState | undefined {
     return this.device.touchState?.();

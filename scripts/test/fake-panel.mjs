@@ -16,6 +16,9 @@
  *                        ({"ev":"touch",…}, {"ev":"tap",…}, {"ev":"touch-gone",…})
  *   FAKE_PANEL_TOUCH     "open" (default): answers a touch frame with
  *                        "touch-open" for each device; "fail": "touch-failed"
+ *   FAKE_PANEL_SURFACE_FILE  file: read at each "ready" for the surface it
+ *                        reports ("fullscreen-window", as on GNOME); absent or
+ *                        empty, "layer-shell"
  *
  * SIGUSR1: report a resize (ready again). SIGUSR2: the output goes away
  * ("output-lost"), as KWin does when a screen wakes; SIGHUP: it is back
@@ -39,7 +42,12 @@ if (process.env.FAKE_PANEL_FAIL === 'no-output') {
   say({ ev: 'error', message: `no output named ${output}` });
   process.exit(2);
 }
-const ready = () => say({ ev: 'ready', output, width, height, scale: 1, transform: 0, surface: 'layer-shell' });
+const surface = () => {
+  const file = process.env.FAKE_PANEL_SURFACE_FILE;
+  const said = file ? (() => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } })() : '';
+  return said || 'layer-shell';
+};
+const ready = () => say({ ev: 'ready', output, width, height, scale: 1, transform: 0, surface: surface() });
 ready();
 
 process.on('SIGUSR1', ready);

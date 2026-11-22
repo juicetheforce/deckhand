@@ -4,6 +4,9 @@ import { expandPath } from './config.js';
 import { isInStateDir } from './icon-file.js';
 import { IMAGE_FORMATS, MAX_IMAGE_BYTES, refusalText, sideRefusal, type ImageRefusal } from './image-limits.js';
 import type { PageBackgroundDef } from './types.js';
+import { backgroundOf } from './background-def.js';
+
+export { backgroundOf, isPlainBlack } from './background-def.js';
 
 /**
  * A virtual deck page's background (types.ts PageBackgroundDef), made into
@@ -23,26 +26,6 @@ export interface Ground {
   picture?: { width: number; height: number; rgba: Buffer };
   /** The image was refused: why, said once in the log. The colour is still drawn. */
   refused?: string;
-}
-
-/** The background as it is drawn: every field filled in. */
-export function backgroundOf(bg: PageBackgroundDef | undefined): Required<Omit<PageBackgroundDef, 'image'>> & { image: string | null } {
-  return {
-    color: bg?.color ?? '#000000',
-    image: bg?.image ?? null,
-    fit: bg?.fit ?? 'fill',
-    opacity: bg?.opacity ?? 100,
-  };
-}
-
-/**
- * Black, opaque, no image: what every page had before backgrounds, and a new
- * page has. The driver sends nothing for it beyond the canvas frame, which
- * is black and opaque already — so the helper keeps today's opaque buffer.
- */
-export function isPlainBlack(bg: PageBackgroundDef | undefined): boolean {
-  const b = backgroundOf(bg);
-  return b.image === null && b.opacity === 100 && b.color.toLowerCase() === '#000000';
 }
 
 function rgbOf(hex: string): [number, number, number] {

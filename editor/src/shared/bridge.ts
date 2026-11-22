@@ -9,6 +9,7 @@ import type { ExportResult, ImportChoice, ImportResult, KeptConfigList } from '.
 import type { AppSettings, DeckOption } from './settings.js';
 import type { SleepSettingsPatch } from './edits.js';
 import type { Defaults } from '../../../src/types.js';
+import type { ImageRefusal } from '../../../src/image-limits.js';
 import type { UpdateState } from './updates.js';
 import type { AppListing, AudioList, DecksResult, DiscordList, DiscordStatus, ObsAttempt, ObsList, ObsStatus, PairReply, ScreensReply, StatusResult, TouchState, TwitchList, TwitchStatus, VtsList, VtsStatus } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef, Config, PanelDef } from '../../../src/types.js';
@@ -305,6 +306,13 @@ export interface DeckhandBridge {
   /** List a folder, and watch it: onIconFolderChanged reports changes until another folder is listed or stopIconWatch. */
   listIconFolder(folder: string, kind?: 'icon' | 'sound'): Promise<IconFolderResult>;
   stopIconWatch(): Promise<void>;
+  /**
+   * Whether an image file passes the file half of the image limits
+   * (src/image-limits.ts): there, readable, an image in one of the five
+   * formats, at most 10 MB. Null when it does; its pixel size is checked
+   * where it is shown. A path as the config stores it.
+   */
+  checkImage(path: string): Promise<ImageRefusal | null>;
   /** Images below a folder whose name contains the query. A newer call supersedes an unfinished one. */
   searchIcons(folder: string, query: string, kind?: 'icon' | 'sound'): Promise<IconSearchResult>;
   /**

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { Placement } from './DeckCanvas.js';
 import { Dropdown } from './Dropdown.js';
-import { LockIcon } from './icons.js';
+import { BackgroundIcon, LockIcon } from './icons.js';
 import type { Choice } from './model.js';
 
 interface Props {
@@ -31,6 +31,12 @@ interface Props {
    * until something has) and Done sit beside it.
    */
   editLayout?: { open: boolean; changed: boolean; onOpen: () => void; onDiscard: () => void; onDone: () => void };
+  /**
+   * A virtual deck's background icon (19b, 24a), on every page, grid or
+   * custom: it opens the page's background panel under it, lit while that is
+   * open, dimmed in Edit layout. Absent on a Stream Deck.
+   */
+  background?: { open: boolean; dimmed: boolean; onToggle: (anchor: DOMRect) => void };
   /** In Edit layout: the Page ▾ and Change layout… are dimmed (the person edits the page they entered on). */
   pageLocked?: boolean;
   /**
@@ -69,7 +75,7 @@ const OWN_CLICK = 'button, input, select, textarea, label, a, [data-dropdown], [
 /** A deck name gets this much of its own width at most when the frame is widened for the header; longer ones end in an ellipsis. */
 const NAME_ROOM_PX = 160;
 
-export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, onChangeLayout, editLayout, pageLocked = false, onHeaderNeed, children, placement }: Props) {
+export function DeckPanel({ serial, name, size, focused, pages, page, disabled, onFocus, onPage, onChangeLayout, editLayout, background, pageLocked = false, onHeaderNeed, children, placement }: Props) {
   const { arrange } = placement;
   const header = useRef<HTMLElement>(null);
   /** Where the last press on the frame began, to tell a click from a drag. */
@@ -130,6 +136,20 @@ export function DeckPanel({ serial, name, size, focused, pages, page, disabled, 
           </span>
         )}
         <span className="toolbar-spacer" />
+        {background && (
+          <button
+            className="deck-panel-background"
+            aria-label={`Background of this page on ${name}`}
+            aria-pressed={background.open}
+            aria-expanded={background.open}
+            title="Background"
+            disabled={disabled || background.dimmed}
+            onClick={(e) => background.onToggle(e.currentTarget.getBoundingClientRect())}
+            data-background-icon={background.open ? 'open' : 'closed'}
+          >
+            <BackgroundIcon size={16} />
+          </button>
+        )}
         {editLayout && <EditLayoutButton disabled={disabled} {...editLayout} />}
         {onChangeLayout && (
           <button className="deck-panel-change-layout" disabled={disabled || pageLocked} onClick={onChangeLayout} title={`Change the layout of this page on ${name}`}>

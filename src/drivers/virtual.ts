@@ -507,6 +507,10 @@ class PanelDevice implements DeckDevice {
     for (const listener of this.redrawListeners) listener();
   }
 
+  surfaceKind(): 'layer-shell' | 'fullscreen-window' {
+    return this.ready.surface === 'fullscreen-window' ? 'fullscreen-window' : 'layer-shell';
+  }
+
   /** The screen as the helper last reported it. */
   screen(): Ready {
     return this.ready;

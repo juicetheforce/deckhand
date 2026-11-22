@@ -1794,6 +1794,8 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
       page: headerPage()?.dataset.value ?? null,
       changeLayout: panel()?.querySelector('.deck-panel-change-layout') !== null,
       editLayout: panel()?.querySelector('[data-edit-layout]') !== null,
+      background: panel()?.querySelector('[data-background-icon]') !== null,
+      pageGround: panel()?.querySelector('[data-page-ground]') !== null,
     },
     // Custom layouts (round 2a) are a virtual deck's only: none of it on a Stream Deck.
     layoutMode: {

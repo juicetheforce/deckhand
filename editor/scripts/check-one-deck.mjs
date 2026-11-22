@@ -95,7 +95,7 @@ if (r && !r.error) {
     assert.equal(s.grids, 1);
     assert.equal(s.keys, 15);
   });
-  check('its header: the name, columns × rows, and the Page dropdown on the page shown; no Change layout… or Edit layout on a Stream Deck', () =>
+  check('its header: the name, columns × rows, and the Page dropdown on the page shown; no Change layout…, Edit layout or background on a Stream Deck', () =>
     assert.deepEqual(s.header, {
       name: 'Little deck',
       size: '5 × 3',
@@ -106,6 +106,8 @@ if (r && !r.error) {
       page: 'main',
       changeLayout: false,
       editLayout: false,
+      background: false,
+      pageGround: false,
     }));
   check('custom layouts are a virtual deck\'s only: today\'s grid, no Controls palette, no mode bar', () =>
     assert.deepEqual(s.layoutMode, { positioned: 0, palette: false, modeBar: false }));

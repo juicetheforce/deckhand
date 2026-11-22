@@ -67,3 +67,14 @@ export function LockIcon({ locked, size = 14 }: { locked: boolean; size?: number
     </svg>
   );
 }
+
+/** The page's background, on a virtual deck's header (19b): a picture in a frame. */
+export function BackgroundIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M3 17 l5.5 -5 4 3.5 3 -2.5 5.5 4.5" />
+    </svg>
+  );
+}

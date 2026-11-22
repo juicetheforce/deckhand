@@ -3,9 +3,10 @@ import missingIconUrl from '../../../assets/icons/missing.svg';
 import { failedBadgeSvg, unsetBadgeSvg } from '../../../src/failed-badge.js';
 import { cornerRadius, fillsBox, innerRect, shapeName, shapePath } from '../../../src/shapes.js';
 import type { LiveFace } from '../../../src/control/protocol.js';
-import type { ButtonDef, Config, PageDef } from '../../../src/types.js';
+import type { ButtonDef, Config, PageBackgroundDef, PageDef } from '../../../src/types.js';
 import { iconUrl } from '../shared/icons.js';
-import { positionedBox } from '../shared/templates.js';
+import { fitScale, madeForAnother, positionedBox } from '../shared/templates.js';
+import { PageGround } from './PageGround.js';
 import { actionName } from './catalogue.js';
 import { keyUnder, type KeyRef } from './keyUnder.js';
 import { actionIncomplete, describeAction, integrationOf, INTEGRATIONS, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
@@ -49,6 +50,17 @@ interface Props {
   box?: { width: number; height: number };
   /** A virtual deck's screen, when known: a layout made for another size is fitted inside it, as on the deck and in Edit layout. */
   screen?: { width: number; height: number } | null;
+  /**
+   * A virtual deck's page background as drawn — the page's own, or one being
+   * changed in its panel and not yet saved. Drawn behind the keys over the
+   * whole screen (PageGround). Ignored on a Stream Deck.
+   */
+  background?: PageBackgroundDef;
+}
+
+/** The stamp of a background's image (App's iconStamps), so a file changed on disk is drawn again. */
+export function iconStampOf(stamps: Record<string, string>, background: PageBackgroundDef | undefined): string | undefined {
+  return background?.image ? stamps[background.image] : undefined;
 }
 
 /** How far the pointer must travel before a press becomes a drag, so a slightly shaky click still selects. */
@@ -179,7 +191,7 @@ function scaled(scale: number): CSSProperties {
   return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box, screen }: Props) {
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box, screen, background }: Props) {
   const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
   // A virtual deck: every page drawn as its panel places it (round 2a). A Stream Deck: its grid, as always.
   const canvas = geometry.units === 'pixels' && geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0 ? geometry.canvas : null;
@@ -192,8 +204,16 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
         maxWidth: `calc(${geometry.columns} * 104px)`,
       };
 
+  // The background covers the whole screen: past a layout made for another size, which sits centred in it.
+  let groundInset: { x: number; y: number } | undefined;
+  if (canvas && box && screen && madeForAnother(canvas, screen) && 'height' in gridStyle) {
+    const s = fitScale(screen, box);
+    groundInset = { x: Math.max(0, (screen.width * s - (gridStyle.width as number)) / 2), y: Math.max(0, (screen.height * s - (gridStyle.height as number)) / 2) };
+  }
+
   return (
     <div className={canvas ? 'grid grid-positioned' : 'grid'} style={gridStyle} data-deck={geometry.serial}>
+      {canvas && <PageGround background={background ?? page.background} stamp={iconStampOf(iconStamps, background ?? page.background)} inset={groundInset} />}
       {geometry.keys.map((k, i) => (
         <Key
           key={k.id}
@@ -339,7 +359,9 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
   return (
     <button
       className={classes}
-      style={{ ...(place ? place.style : { gridRow: row + 1, gridColumn: column + 1 }), background: kind === 'empty' ? undefined : face.background }}
+      // On a virtual deck every control is opaque, an empty one the plain key face, as the deck draws it:
+      // the page's background never shows through a button (Ryan, 2026-11-18). A Stream Deck's empty key stays a dashed gap.
+      style={{ ...(place ? place.style : { gridRow: row + 1, gridColumn: column + 1 }), background: kind === 'empty' && !place ? undefined : face.background }}
       title={title}
       aria-label={title}
       aria-pressed={selected}
