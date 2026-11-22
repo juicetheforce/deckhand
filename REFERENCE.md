@@ -290,7 +290,38 @@ size, shown scaled to fit and centred, as Edit layout's "Made for" chip says.
 Templates are kept in `config.json` (`templates`), so a backup and an export
 carry them. A virtual deck's top bar shows the
 grid's columns and rows on a grid page, and the screen's resolution on a custom
-one. **A page's background.** The picture icon in a virtual deck's top bar, on any
+one.
+
+**Sliders and dials.** Controls also has a **Slider**, added at about 14 × 60
+mm (its long side never more than three-quarters of the panel's shorter side),
+and a **Dial**, about 25 mm across and round. A slider is **vertical** (lowest
+at the bottom) or **horizontal** (lowest at the left) — turning it turns its
+box — and its touch is **Drag only**, the default, where a tap changes nothing
+and the level moves by how far your finger moves, or **Jump to touch**, where
+the level goes to your finger at once and then follows it. A dial turns with
+your finger round its centre, following its angle, not its distance; a tap
+changes nothing. Both are set in Edit layout, and a template keeps them. They
+take only an action that sets a level: **Volume** — Default output (whichever
+it is) or any output or input — **Brightness** — this deck or any connected
+deck, from 0 (dark; touch still works, so it can be turned back up) to 100 —
+and Discord's **User volume**, 0–200 %. With one selected, the library dims
+every other action, and dragging one over it says **Needs an action with a
+value** and drops nothing; a slider's key moves onto another slider or dial,
+and never onto a button, nor a button's onto them. The level shown is the
+real one, kept up to date by the same events as the keys: a volume changed in
+the desktop's own volume control moves the slider too, and nothing is polled.
+A slider has a **track**, a **fill** shown up to the level and a **thumb**; a
+dial a **base**, a **level ring** shown from its start angle round to the level,
+and a **knob**. The Icon tab has a chip for each, each picked as an icon is (the
+same folders, formats and limits) and drawn to the control's box; Fill, Base
+and Level ring can be **None**, and **Use built-in** goes back to Deckhand's
+own art, in the action's colour. The knob turns between a **Start** and an
+**End** angle, degrees from straight up (−135° and 135° unless set), kept with
+its art. Both can have a label, under the track or the dial, and a background
+colour, none unless set. **Clear slider** (or dial) empties it. While your
+finger is on one, its thumb or knob is drawn brighter, unless Touch feedback
+is off. A lock, a page change or any other way off the page ends a drag with
+the value where it is. **A page's background.** The picture icon in a virtual deck's top bar, on any
 page, opens the background of the page it shows, named in the panel: a
 **colour** (a swatch or its hex), an optional **image** — chosen from the same
 browser as icons, a PNG, JPEG, WebP, GIF or SVG of at most 10 MB and 4096 px
@@ -521,7 +552,13 @@ panel and never derived from its position, so moving a key keeps its
 button. Every control must lie on the canvas. `shape` is `rectangle` (the
 default; `square`, which older configs carry, is the same), `round` or
 `hexagon`; `radius` rounds a rectangle's corners, up to half its shorter side;
-`keepRatio` is Edit layout's Lock proportions. A key's background fills its
+`keepRatio` is Edit layout's Lock proportions. `kind` is `slider` or `dial`
+(absent: a button); a slider's `direction` is `vertical` (the default) or
+`horizontal`, and its `touch` `drag` (the default) or `jump`. A slider's or
+dial's key may carry `layers` — `track`, `fill` and `thumb`, or `base`, `ring`
+and `knob`, each an image path or `builtin:<name>`, absent for Deckhand's own
+art, and `null` for none (`fill`, `base` and `ring` only) — and a dial's
+`angles`, `{ "start": -135, "end": 135 }`, degrees from straight up. A key's background fills its
 whole shape and its icon is the square at the shorter side, centred; its label
 and failed mark sit in the largest rectangle inside the shape; nothing is drawn
 outside it. Where controls overlap, the later in `controls` is on top, on the
@@ -600,7 +637,7 @@ Now playing's album art is always drawn as the crop was.
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker |
+| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker, 5–100. On a slider or dial, `deck` alone: 0–100 |
 | `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them. Draws `decks-sleep`, and `decks-asleep` while they are |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
@@ -610,7 +647,7 @@ Now playing's album art is always drawn as the crop was.
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
 | `audio.cycleSource` | `devices: [{ node, label }, …]` — steps through inputs from one key |
 | `audio.micMute` | Toggles the default input's mute; `iconActive` (muted) |
-| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key |
+| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key. On a slider or dial: `node` and `label` (from `deckhand sinks` or `deckhand sources`), with `input: true` for an input — the device's volume, 0–100 %; no `node`, the default output |
 | `audio.mute` | Toggles output mute; `iconActive` (muted) |
 | `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconActive` (playing) |
 | `sound.stopAll` | Stops every sound Deckhand is playing |
@@ -634,7 +671,7 @@ Now playing's album art is always drawn as the crop was.
 | `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconActive` (push-to-talk) |
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
-| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 % |
+| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 %. On a slider or dial, `user` alone: the level outright |
 
 **Sleep.** Dimming after idle is off until you set it: **Settings › General ›
 Sleep** has **Dim after**, **Dim to** and **Sleep after**, global, for Stream Decks
@@ -1290,7 +1327,9 @@ smoke` at the root drives fake decks; `scripts/smoke-socket.mjs` (part of it)
 drives the control socket over a real socket, with
 `scripts/test/fake-input-helper.mjs` (the helper's protocol and timing, no
 uinput) and `scripts/test/fake-pactl.mjs` on `PATH` (with `FAKE_PACTL_STATE` it
-remembers presses, mutes and absent devices). `scripts/test/fake-mpris-player.mjs`
+remembers presses, mutes, volumes and absent devices, and its `subscribe`
+announces a change whenever that file changes, as the desktop's own volume
+control would). `scripts/test/fake-mpris-player.mjs`
 puts a fake player on a private bus (`scripts/smoke-mpris.mjs` re-runs itself
 under `dbus-run-session`). `scripts/test/fake-gio.mjs`,
 `fake-gsettings.mjs` and `fake-systemd-run.mjs` stand in for the programs an
@@ -1301,7 +1340,9 @@ can plug and unplug while the daemon runs. For virtual decks,
 (`DECKHAND_PANEL_BIN`), `fake-sysfs.mjs` builds a scratch `/sys/class/drm`,
 `/sys/class/input` and udev database of screens and touchscreens, and
 `fake-logind.mjs` puts a session that can be locked on a private bus
-standing in for the system bus. The fake panel logs a background frame by its
+standing in for the system bus. The fake panel logs a follow frame (`M`) by
+its contact, and a test says the moves itself, as it says the touches; with
+`FAKE_PANEL_RGBA_MAX` it logs larger images whole. The fake panel logs a background frame by its
 colour, opacity, size and a few pixels, and with `FAKE_PANEL_SURFACE_FILE`
 reports the surface that file names when it says it is ready (a full-screen
 window, as on GNOME). `scripts/test/fake-sound-player.sh`
@@ -1324,10 +1365,13 @@ The checks:
   Its `smoke-appearance.mjs` drives a session on a device of its own with
   the fake input helper set before anything is imported: a key there sends
   its hotkey, and the real helper would type it into the desktop.
+  `smoke-values.mjs` does the same for sliders and dials, with the fake pactl
+  and a fake logind: no test sends a volume or brightness change to the
+  machine's own devices.
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
