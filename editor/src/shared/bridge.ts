@@ -1,3 +1,4 @@
+import type { AppearancePatch } from './edits.js';
 /**
  * The API the preload script exposes to the renderer as `window.deckhand`,
  * and the state it carries. Types only, importing nothing that touches Node:
@@ -360,6 +361,12 @@ export interface DeckhandBridge {
   builtinIconSize(): Promise<number | null>;
   /** Save it (null: the default). Settings › General's slider, on release. */
   setBuiltinIconSize(percent: number | null): Promise<number | null>;
+  /** Settings › General › Appearance's config fields; null while config.json is not open. */
+  appearance(): Promise<Appearance | null>;
+  /** Each field given replaces the stored one (null: the default). Answers what is saved. */
+  setAppearance(patch: AppearancePatch): Promise<Appearance | null>;
+  /** The installed font families, asked of fontconfig each time (Settings only); never kept or watched. */
+  systemFonts(): Promise<SystemFonts>;
   /** `defaults.labelSize`; null while config.json is not open. */
   labelSize(): Promise<number | null>;
   /** null, or the default, removes it. Answers what is saved. */
@@ -512,4 +519,21 @@ export interface VirtualDecksView {
   keptLayouts: string[];
   /** Where a new virtual deck gets its layout: the profile the decks show now. */
   activeProfile: { id: string; name: string } | null;
+}
+
+/** Settings › General › Appearance as saved in config.json: each the stored value, or null for the default. */
+export interface Appearance {
+  labelFont: string | null;
+  touchFeedback: boolean;
+  /** `defaults.background`, the default button colour; null: the built-in default. */
+  keyColor: string | null;
+}
+
+export interface SystemFonts {
+  /** Whether fontconfig could be asked at all (fc-list). */
+  available: boolean;
+  /** One per family, A to Z. */
+  families: string[];
+  /** What Deckhand's default, sans-serif, resolves to here; null if fc-match could not say. */
+  defaultName: string | null;
 }

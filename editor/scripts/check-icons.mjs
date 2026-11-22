@@ -77,6 +77,8 @@ const BUTTONS = {
   '2': { icon: '~/Pictures/icons/gone.png', action: { type: 'hotkey', keys: 'ctrl+3' } },
 };
 const CONFIG = {
+  // Today's format, so opening it converts nothing (src/icon-fit.ts) and the file holds only what the UI wrote.
+  version: 2,
   profiles: {
     default: {
       name: 'Default',

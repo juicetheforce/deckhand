@@ -252,7 +252,7 @@ console.log('preview.set and preview.clear');
 
   const before = xlFake.writes.get(8) ?? 0;
   const burst = await Promise.all(Array.from({ length: 20 }, (_, i) => client.request('preview.set', { serial: 'XL1', key: 8, button: { label: `b${i}` } })));
-  const latest = await renderButton({ label: 'b19', iconFit: 'cover', labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: '#101014' }, 96);
+  const latest = await renderButton({ label: 'b19', labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: '#101014' }, 96);
   check(`20 overlapping previews on one key: at most 2 renders (${(xlFake.writes.get(8) ?? 0) - before}), latest shown`, burst.every((r) => r.ok) && (xlFake.writes.get(8) ?? 0) - before <= 2 && Buffer.compare(xlFake.images.get(8), latest) === 0);
 
   // Protocol 2: a key is a control id, a string; a whole number still names a Stream Deck key.

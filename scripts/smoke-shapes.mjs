@@ -77,7 +77,7 @@ console.log('the hit test');
 console.log('a shaped face');
 {
   const BG = '#203040';
-  const face = (extra = {}) => ({ labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: BG, iconFit: 'cover', ...extra });
+  const face = (extra = {}) => ({ labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: BG, ...extra });
   const alpha = (buf, w, x, y) => buf[(y * w + x) * 4 + 3];
   const rgb = (buf, w, x, y) => Array.from(buf.subarray((y * w + x) * 4, (y * w + x) * 4 + 3)).join();
 

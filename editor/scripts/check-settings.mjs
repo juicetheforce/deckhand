@@ -358,10 +358,10 @@ await inPage(editor, 'settings', key('keydown', 'ArrowRight'));
 await sleep(900);
 r.iconSizeWhileHeld = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
 await inPage(editor, 'settings', key('keyup', 'ArrowRight'));
-r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 52.5);
+r.iconSizeKeySaved = await until(async () => (await iconSizeOnDisk()) === 55);
 await inPage(editor, 'settings', key('keydown', 'End'));
 await inPage(editor, 'settings', key('keyup', 'End'));
-r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 70);
+r.iconSizeEnd = await until(async () => (await iconSizeOnDisk()) === 100);
 // A drag, by pointer: down at the left end, move to the middle, up.
 const pointer = (type, fraction) => `(() => { const s = ${slider}; const r = s.getBoundingClientRect(); s.dispatchEvent(new PointerEvent('${type}', { bubbles: true, pointerId: 1, button: 0, clientX: r.left + r.width * ${fraction}, clientY: r.top + 12 })); return true; })()`;
 await inPage(editor, 'settings', pointer('pointerdown', 0.02));
@@ -369,7 +369,48 @@ await inPage(editor, 'settings', pointer('pointermove', 0.5));
 await sleep(900);
 r.iconSizeWhileDragging = { shown: await inPage(editor, 'settings', sliderState), onDisk: await iconSizeOnDisk() };
 await inPage(editor, 'settings', pointer('pointerup', 0.5));
-r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 49);
+r.iconSizeDragSaved = await until(async () => (await iconSizeOnDisk()) === 65);
+
+// Round 4's rows in Appearance: Touch feedback, Label font and Key colour, in config.json.
+r.appearanceRows = await inPage(editor, 'settings', "(() => { const t = [...document.querySelectorAll('[data-settings-section=general] .sp-row-title')].map((e) => e.textContent); return t.slice(t.indexOf('Accent color')); })()");
+r.touchAtRest = await inPage(editor, 'settings', "(() => { const s = document.querySelector('#settings-touch-feedback'); return { checked: s.checked, row: s.closest('.sp-row').textContent }; })()");
+await inPage(editor, 'settings', clickIn('#settings-touch-feedback'));
+r.touchOffSaved = await until(async () => (await configJson()).defaults?.touchFeedback === false);
+const fontMenu = "(() => { const t = document.querySelector('[data-settings=label-font]'); t.click(); const rows = [...document.querySelectorAll('[data-dropdown-menu] [role=option]')].map((o) => ({ value: o.dataset.value, label: o.querySelector('.dropdown-shown').textContent, face: o.querySelector('.dropdown-shown').style.fontFamily, note: o.querySelector('.dropdown-note')?.textContent ?? null })); t.click(); return { trigger: t.dataset.value, detail: t.closest('.sp-row').querySelector('.sp-row-detail')?.textContent ?? null, rows }; })()";
+// until() answers only whether it saw it: what it saw is kept here.
+r.fontsAtRest = null;
+await until(async () => {
+  const m = await inPage(editor, 'settings', fontMenu);
+  if (m.rows.length > 2) r.fontsAtRest = m;
+  return r.fontsAtRest !== null;
+});
+const someFont = r.fontsAtRest ? r.fontsAtRest.rows[1].value : null;
+if (someFont !== null) await inPage(editor, 'settings', pickIn('[data-settings=label-font]', someFont));
+r.fontSaved = someFont !== null && (await until(async () => (await configJson()).defaults?.labelFont === someFont));
+// A font that is not installed, as a config from another machine names one: written by hand, then looked at again.
+{
+  const c = await configJson();
+  c.defaults = { ...c.defaults, labelFont: 'Orbitron Not Here' };
+  await fs.writeFile(path.join(configDir, 'config.json'), JSON.stringify(c, null, 2) + '\n');
+}
+r.fontMissing = null;
+await until(async () => {
+  await inPage(editor, 'settings', "(() => { window.dispatchEvent(new Event('focus')); return true; })()");
+  const m = await inPage(editor, 'settings', fontMenu);
+  if (m.trigger === 'Orbitron Not Here' && m.detail === 'Not installed. Using the default.') r.fontMissing = m;
+  return r.fontMissing !== null;
+});
+const colourOnDisk = async () => (await configJson()).defaults?.background ?? 'absent';
+r.colourAtRest = await inPage(editor, 'settings', "(() => { const p = document.querySelector('[data-colour-picker=key-colour]'); return { value: p.dataset.value, swatch: p.querySelector('[data-colour-swatch]').style.background, hex: p.querySelector('[data-colour-hex]').value, placeholder: p.querySelector('[data-colour-hex]').placeholder }; })()");
+await inPage(editor, 'settings', clickIn('[data-colour-picker=key-colour] [data-colour-swatch]'));
+r.colourChips = await inPage(editor, 'settings', "[...document.querySelectorAll('[data-colour-picker=key-colour] [data-colour-chip]')].map((c) => c.dataset.colourChip)");
+await inPage(editor, 'settings', clickIn('[data-colour-picker=key-colour] [data-colour-chip=\"#2b2350\"]'));
+r.colourSaved = await until(async () => (await colourOnDisk()) === '#2b2350');
+await inPage(editor, 'settings', clickIn('[data-colour-picker=key-colour] [data-colour-chip=default]'));
+r.colourDefault = await until(async () => (await colourOnDisk()) === 'absent');
+await inPage(editor, 'settings', "(() => { const i = document.querySelector('[data-colour-picker=key-colour] [data-colour-hex]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '#17382C'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()");
+r.colourTyped = await until(async () => (await colourOnDisk()) === '#17382c');
+r.colourEscCloses = await inPage(editor, 'settings', "(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return new Promise((done) => setTimeout(() => done(document.querySelector('[data-colour-picker=key-colour] [data-colour-chip]') === null), 80)); })()");
 
 // Sleep when the screen locks: on by default, in config.json because the daemon sleeps the decks.
 r.sleepShown = await inPage(editor, 'settings', "[document.querySelector('#settings-sleep-on-lock').checked, document.querySelector('#settings-sleep-on-lock').disabled]");
@@ -435,7 +476,7 @@ const dropdownsIn = `(() => { ${look}
     const o = getComputedStyle(m.querySelector('[role=option]'));
     const a = lum(c.backgroundColor), b = lum(o.color);
     const box = m.getBoundingClientRect();
-    const out = { name, trigger, panel: [c.backgroundColor, c.borderTopLeftRadius, c.borderTopWidth, c.borderTopColor, c.boxShadow].join(' '), contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), inWindow: box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight, onTop: m.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)) };
+    const out = { name, trigger, panel: [c.backgroundColor, c.borderTopLeftRadius, c.borderTopWidth, c.borderTopColor, c.boxShadow].join(' '), contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), inWindow: box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight, box: [box.left, box.top, box.right, box.bottom, innerWidth, innerHeight].map(Math.round).join(' '), onTop: m.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)) };
     t.click();
     return out;
   });
@@ -476,9 +517,13 @@ r.keepKeeps = JSON.stringify(await prefs()) === prefsBeforeReset && (await inPag
 await inPage(editor, 'settings', clickIn('[data-settings=reset]'));
 await inPage(editor, 'settings', clickIn('[data-settings=confirm-reset]'));
 r.notificationsBackOn = await until(async () => !('notifications' in (await configJson())));
-r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '65';
+r.iconSizeBackToDefault = await until(async () => (await iconSizeOnDisk()) === 'absent') && (await inPage(editor, 'settings', sliderState)).now === '45.5';
 r.sleepBackOn = await until(async () => (await configJson()).defaults?.sleep === undefined);
 r.labelBackToDefault = await until(async () => (await labelOnDisk()) === 'absent');
+r.appearanceBackToDefault = await until(async () => {
+  const d = (await configJson()).defaults ?? {};
+  return d.touchFeedback === undefined && d.labelFont === undefined && d.background === undefined;
+});
 r.reset = await until(async () => {
   const p = await prefs();
   return p.defaultDeck === null && p.closeToTray === true && p.accent === 'blue';
@@ -602,27 +647,59 @@ check('Notifications starts ticked; unticking writes "notifications": false to c
 });
 check('Reset to defaults is a button, without an ellipsis, and asks first: one click changes nothing, Keep keeps', () => {
   assert.deepEqual(r.resetButton, { text: 'Reset to defaults', tag: 'BUTTON', quiet: false });
-  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size and label size to their defaults\?ResetKeep$/);
+  assert.match(r.resetAsks ?? '', /^Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size, touch feedback, label font, key colour and label size to their defaults\?ResetKeep$/);
   assert.equal(r.oneClickChangesNothing, true);
   assert.equal(r.keepKeeps, true);
 });
 check('Reset to defaults turns notifications back on: the field leaves config.json', () => assert.equal(r.notificationsBackOn, true));
-check('Icon size: a slider in Appearance, shown relative to its largest — 40–100% in steps of 5, 13 ticks, 65% by default — its sample a 56 px key\'s icon at 45.5% of it', () => {
-  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '65', text: '65%', min: '40', max: '100', value: '65%', ticks: 13, sample: '25', row: undefined });
+check('Icon size: a slider in Appearance showing the true figure (Ryan, 2026-11-22) — 25–100% in steps of 5, no ticks (more than 12 steps), the default 45.5 shown as 46% — its sample a 56 px key\'s icon at 45.5% of it', () => {
+  assert.deepEqual({ ...r.iconSizeAtRest, row: undefined }, { now: '45.5', text: '46%', min: '25', max: '100', value: '46%', ticks: 0, sample: '25', row: undefined });
   assert.match(r.iconSizeAtRest.row, /^Icon sizeBuilt-in icons on keys/);
 });
-check('Icon size by keyboard: the sample follows each step at once, and config.json changes only when the key is let go — stored as a percent of the key (75% shown: 52.5); End is the top (70)', () => {
-  // Two steps up: 75% shown, 52.5% of the key stored, a 29 px sample.
-  assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '75', value: '75%', sample: '29' }, onDisk: 'absent' });
+check('Icon size by keyboard: from the in-between 45.5, onto the steps — 50, then 55 — the sample following at once, config.json changing only when the key is let go, the figure stored as shown; End is the top (100: a built-in filling the key)', () => {
+  // Two steps up: 55% shown and stored, a 31 px sample.
+  assert.deepEqual(r.iconSizeWhileHeld, { shown: { ...r.iconSizeWhileHeld.shown, now: '55', value: '55%', sample: '31' }, onDisk: 'absent' });
   assert.equal(r.iconSizeKeySaved, true);
   assert.equal(r.iconSizeEnd, true);
 });
 check('Icon size by dragging: snapped to the step, the sample live, nothing saved until the pointer is let go', () => {
-  assert.equal(r.iconSizeWhileDragging.shown.now, '70', 'the middle of 40–100');
-  assert.equal(r.iconSizeWhileDragging.onDisk, 70);
+  assert.equal(r.iconSizeWhileDragging.shown.now, '65', 'the middle of 25–100 (62.5), on a step');
+  assert.equal(r.iconSizeWhileDragging.onDisk, 100);
   assert.equal(r.iconSizeDragSaved, true);
 });
-check('Reset to defaults puts Icon size back to 65%: the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
+check('Reset to defaults puts Icon size back to 46% (45.5): the field leaves config.json', () => assert.equal(r.iconSizeBackToDefault, true));
+check('Appearance, in order: Accent color, Icon size, Touch feedback, Label font, Key colour, Label size', () =>
+  assert.deepEqual(r.appearanceRows.slice(0, 6), ['Accent color', 'Icon size', 'Touch feedback', 'Label font', 'Key colour', 'Label size']));
+check('Touch feedback: on by default, "Pressed look on virtual decks", and off is saved in config.json', () => {
+  assert.equal(r.touchAtRest.checked, true);
+  assert.match(r.touchAtRest.row, /^Touch feedbackPressed look on virtual decks/);
+  assert.equal(r.touchOffSaved, true);
+});
+check('Label font: Default first with the font it is, then the installed fonts, each in its own face; a choice is saved', () => {
+  assert.ok(r.fontsAtRest, 'no fonts listed');
+  const [first, ...fonts] = r.fontsAtRest.rows;
+  assert.equal(first.label, 'Default');
+  assert.equal(first.value, '');
+  assert.ok(first.note && first.note.length > 0, 'Default names the font it is');
+  assert.ok(fonts.every((f) => f.face.startsWith(`"${f.value}"`) || f.face.startsWith(`'${f.value}'`) || f.face.startsWith(f.value)), JSON.stringify(fonts.slice(0, 3)));
+  const labels = fonts.map((f) => f.label);
+  assert.deepEqual(labels, [...labels].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), 'A to Z');
+  assert.equal(r.fontSaved, true);
+});
+check('a chosen font that is not installed keeps its name and says "Not installed. Using the default."', () => {
+  assert.ok(r.fontMissing, 'never shown');
+  assert.equal(r.fontMissing.rows[1].label, 'Orbitron Not Here', 'listed under Default, with its name');
+});
+check('Key colour: Default to start; Default and the twelve swatches; a swatch, Default and a typed colour each saved as defaults.background; Esc closes', () => {
+  assert.deepEqual(r.colourAtRest, { value: 'default', swatch: 'rgb(16, 16, 20)', hex: '', placeholder: 'Default' });
+  assert.equal(r.colourChips.length, 13);
+  assert.equal(r.colourChips[0], 'default');
+  assert.equal(r.colourSaved, true);
+  assert.equal(r.colourDefault, true);
+  assert.equal(r.colourTyped, true);
+  assert.equal(r.colourEscCloses, true);
+});
+check('Reset to defaults puts Touch feedback, Label font and Key colour back: their fields leave config.json', () => assert.equal(r.appearanceBackToDefault, true));
 check('Dim after, Dim to and Sleep after: off by default, each saved in config.json without losing the others, Dim to only with Dim after', () => {
   assert.deepEqual({ ...r.idleAtRest, options: undefined }, { dimAfter: '', dimDisabled: false, sleepDisabled: false, dimToDisabled: 'true', dimToNow: '20', note: null, options: undefined });
   assert.deepEqual(r.idleAtRest.options, ['Off', '1 minute', '2 minutes', '5 minutes', '10 minutes', '15 minutes', '30 minutes', '1 hour']);
@@ -650,7 +727,7 @@ check('every dropdown looks like Show in editor: its trigger and its panel, read
     if (d.panel === null) continue;
     assert.equal(d.panel, r.deviceLook.panel, `${d.name}: panel`);
     assert.ok(d.contrast >= 4.5, `${d.name}: contrast ${d.contrast}`);
-    assert.equal(d.inWindow, true, `${d.name}: outside the window`);
+    assert.equal(d.inWindow, true, `${d.name}: outside the window (left top right bottom, window: ${d.box})`);
     assert.equal(d.onTop, true, `${d.name}: covered`);
   }
 });

@@ -5,8 +5,9 @@
  * Device knowledge comes from the daemon: key positions and counts
  * are read from `decks` geometry, never assumed.
  */
-import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
-import { geometryOfPanel } from '../../../src/geometry.js';
+import { DEFAULTS, fontFamily, startPageOf } from '../../../src/config-common.js';
+import { geometryOfPanel, type DeckGeometry } from '../../../src/geometry.js';
+import type { ShapeBox } from '../../../src/shapes.js';
 import { pagePanelIn } from '../../../src/panel-presets.js';
 import { defaultIconFor, warningIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult, LiveFace } from '../../../src/control/protocol.js';
@@ -574,13 +575,15 @@ export function keyKind(button: ButtonDef | undefined): KeyKind {
 export interface KeyFace {
   background: string;
   icon: string | null;
-  iconFit: 'cover' | 'contain';
   /**
-   * The share of the key the icon is drawn at, centred: a built-in's is
-   * defaults.builtinIconSize, as the deck draws it (src/render.ts); an icon
-   * file fills the key (1).
+   * The icon's scale as a fraction, on the deck's one rule (src/icon-scale.ts):
+   * at 1 the whole image fits the key's box, centred; above, it zooms in and
+   * the key cuts it. The key's own `iconScale`; else a built-in's is
+   * defaults.builtinIconSize and a file's 1, as the deck draws them.
    */
   iconScale: number;
+  /** Whether the key sets its own scale, or follows (a built-in: Icon size; a file: 100%). */
+  ownScale: boolean;
   /** The share of the key a built-in is drawn at: the missing placeholder's, whatever the key's icon. */
   builtinScale: number;
   label: string | null;
@@ -588,6 +591,8 @@ export interface KeyFace {
   labelPosition: 'top' | 'bottom' | 'center';
   /** The label size as a fraction of the key's width, from the deck's pixel size. */
   labelScale: number;
+  /** The label's font family, as CSS (label-fit.ts fontFamily): the chosen font, falling back to Deckhand's default. */
+  labelFont: string;
 }
 
 /** Each listed app's resolved icon file, by desktop file ID. */
@@ -668,9 +673,10 @@ export function keyFace(config: Config, button: ButtonDef | undefined, iconSize:
   return {
     background: button?.background ?? d.background,
     icon,
-    iconFit: button?.iconFit ?? d.iconFit,
-    iconScale: icon !== null && icon.startsWith(BUILTIN_PREFIX) ? builtinScale : 1,
+    iconScale: button?.iconScale !== undefined ? button.iconScale / 100 : icon !== null && icon.startsWith(BUILTIN_PREFIX) ? builtinScale : 1,
+    ownScale: button?.iconScale !== undefined,
     builtinScale,
+    labelFont: fontFamily(config.defaults?.labelFont),
     label: button?.label ?? null,
     labelColor: button?.labelColor ?? d.labelColor,
     labelPosition: button?.labelPosition ?? d.labelPosition,
@@ -1031,4 +1037,16 @@ export function describeAction(button: ButtonDef | undefined): string {
     return `hotkey ${keys}`;
   }
   return action.type;
+}
+
+/**
+ * A key's box and shape, for its icon scale's mark (src/icon-scale.ts
+ * wholeImageMark): a virtual deck's control at its size in pixels with its
+ * shape; a Stream Deck's key square, as it is drawn (a Studio's too).
+ */
+export function keyBoxOf(geometry: Pick<DeckGeometry, 'units' | 'keys'> | null, key: string): ShapeBox | null {
+  const k = geometry?.keys.find((p) => p.id === key);
+  if (!k) return null;
+  if (geometry?.units === 'pixels') return { w: k.w, h: k.h, shape: k.shape, radius: k.radius };
+  return { w: 1, h: 1 };
 }

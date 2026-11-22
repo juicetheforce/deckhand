@@ -154,6 +154,21 @@ export type Edit =
    * default, removes the field, so a default config does not carry it.
    */
   | { kind: 'setBuiltinIconSize'; percent: number | null }
+  /**
+   * A key's own icon scale (round 4, src/icon-scale.ts), percent of the
+   * control, 20–200; null removes it, so a built-in follows Icon size again
+   * and a file is drawn at 100%.
+   */
+  | { kind: 'setIconScale'; at: ButtonLocation; percent: number | null }
+  /** A key's own background colour ("#rrggbb"); null is Default, following Settings › General › Key colour. */
+  | { kind: 'setKeyBackground'; at: ButtonLocation; color: string | null }
+  /**
+   * Settings › General › Appearance's config fields (round 4): the label font
+   * (null: Deckhand's default), Touch feedback (on is the field's absence) and
+   * Key colour, the default button colour (`defaults.background`; null: the
+   * built-in default).
+   */
+  | { kind: 'setAppearance'; patch: AppearancePatch }
   /** Settings › General › Label size; null, or the default, removes it. */
   | { kind: 'setLabelSize'; size: number | null }
   /** Settings › General's Sleep group. Each field given replaces the stored one; null, or the default, removes it. */
@@ -205,3 +220,10 @@ export type IconChoice =
 export type EditResult = { pageId?: string; profileId?: string };
 
 export type ApplyResult = { ok: true; result: EditResult } | { ok: false; error: string };
+
+/** What setAppearance changes: each field given replaces the stored one; null removes it. */
+export interface AppearancePatch {
+  labelFont?: string | null;
+  touchFeedback?: boolean;
+  keyColor?: string | null;
+}

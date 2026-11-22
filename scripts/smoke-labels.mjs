@@ -19,7 +19,6 @@ const face = (label) => ({
   labelSize: FONT,
   labelPosition: 'bottom',
   background: '#101014',
-  iconFit: 'cover',
 });
 
 console.log('a line that fits');

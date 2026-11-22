@@ -153,7 +153,7 @@ const same = (a, b) => a !== undefined && Buffer.compare(a, b) === 0;
 
 /** A key rendered through renderButton with the deck defaults, for faces with a label. */
 function display(fields) {
-  return { iconFit: 'cover', labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: BACKGROUND, ...fields };
+  return { labelColor: '#ffffff', labelSize: 14, labelPosition: 'bottom', background: BACKGROUND, ...fields };
 }
 
 const GOOD = icon('clock'); // any readable image that is no key's default in this test
@@ -263,7 +263,7 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
     return { width: (r - l + 1) / 96, height: (b - t + 1) / 96, centre: [(l + r) / 2 / 96, (t + b) / 2 / 96] };
   };
   const asBuiltin = inkOf(await renderButton(display({ icon: 'builtin:mic' }), 96));
-  const asFile = inkOf(await renderButton(display({ icon: icon('mic'), iconFit: 'contain' }), 96));
+  const asFile = inkOf(await renderButton(display({ icon: icon('mic') }), 96));
   check(`a built-in's glyph is at most the built-in size (${DEFAULTS.builtinIconSize}% of the key): ${Math.round(asBuiltin.height * 100)}%`, asBuiltin.height <= DEFAULTS.builtinIconSize / 100 + 0.02 && asBuiltin.height > 0.3);
   check('...centred', asBuiltin.centre.every((c) => Math.abs(c - 0.5) < 0.04));
   check(`the same drawing chosen as a file is drawn as before, filling the key: ${Math.round(asFile.height * 100)}%`, asFile.height > 0.75);
@@ -278,12 +278,11 @@ console.log('built-in icons are drawn smaller than the key; icon files are not')
       return err.message.includes('builtinIconSize');
     }
   };
-  check('the config refuses a builtinIconSize outside 28–70 (the slider\'s 40–100%), or not a number', refusedSize(27.9) && refusedSize(70.5) && refusedSize('45'));
-  check('...and takes one within it, a hand-edited one between steps too', !refusedSize(28) && !refusedSize(70) && !refusedSize(45.5) && !refusedSize(53));
+  check('the config refuses a builtinIconSize outside 25–100, or not a number', refusedSize(24.9) && refusedSize(100.5) && refusedSize('45'));
+  check('...and takes one within it, an old slider\'s in-between step (28, 31.5, 45.5) too', !refusedSize(25) && !refusedSize(28) && !refusedSize(31.5) && !refusedSize(70) && !refusedSize(100) && !refusedSize(45.5) && !refusedSize(53));
 {
-  const { shownIconSize, storedIconSize } = await import(path.join(REPO, 'dist/config.js'));
-  check('the slider shows a size relative to its largest: 70% of the key is 100%, 45.5% is 65%, 28% is 40%', shownIconSize(70) === 100 && shownIconSize(45.5) === 65 && shownIconSize(28) === 40);
-  check('…and stores each step it shows as a percent of the key, exactly', storedIconSize(65) === 45.5 && storedIconSize(40) === 28 && storedIconSize(100) === 70 && storedIconSize(45) === 31.5 && [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].every((n) => shownIconSize(storedIconSize(n)) === n));
+  const { BUILTIN_ICON_SIZE } = await import(path.join(REPO, 'dist/config.js'));
+  check('the slider shows the true figure: 25–100% in steps of 5 (Ryan, 2026-11-22), with no conversion', BUILTIN_ICON_SIZE.min === 25 && BUILTIN_ICON_SIZE.max === 100 && BUILTIN_ICON_SIZE.step === 5 && Object.keys(BUILTIN_ICON_SIZE).length === 3);
 }
 }
 
@@ -309,7 +308,8 @@ console.log('keys with states: icons in the old shape migrated in memory, as the
   await fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(old));
   const { execFileSync } = await import('node:child_process');
   const loaded = execFileSync(process.execPath, ['--input-type=module', '-e', `const { loadConfig } = await import(${JSON.stringify(path.join(REPO, 'dist/config.js'))}); const { config } = await loadConfig(); process.stdout.write(JSON.stringify(config.profiles.p.layouts.S.pages.m.buttons[0]));`], { env: { ...process.env, DECKHAND_CONFIG_DIR: dir } }).toString();
-  check('the daemon\'s loadConfig migrates in memory: Stream\'s live icon is its active icon', loaded === JSON.stringify({ action: { type: 'obs.stream', iconActive: '~/live.png' } }), loaded);
+  check('the daemon\'s loadConfig migrates in memory: Stream\'s live icon is its active icon', loaded === JSON.stringify({ action: { type: 'obs.stream', iconActive: '~/live.png' }, iconFit: 'cover' }), loaded);
+  // (`iconFit: 'cover'` is icon-fit.ts legacyIconFit making an older config's crop explicit, in memory too.)
   check('…and never writes config.json', (await fs.readFile(path.join(dir, 'config.json'), 'utf8')) === JSON.stringify(old));
 }
 

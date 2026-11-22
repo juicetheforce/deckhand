@@ -5,6 +5,8 @@ import { builtinIconPath, builtinRefPath, type BuiltinIcon } from './builtin-ico
 import { DEFAULTS, expandPath } from './config.js';
 import { connectingBadgeSvg, failedBadgePlacement, failedBadgeSvg, unsetBadgeSvg } from './failed-badge.js';
 import { clearLabelWidths, escapeXml, fitLine, labelStyle } from './label-fit.js';
+import { coverScale, drawnSize, type Size } from './icon-scale.js';
+import { IMAGE_FORMATS, refusalText, sideRefusal } from './image-limits.js';
 import { cornerRadius, fillsBox, innerPixels, shapeName, shapePath } from './shapes.js';
 import { readIconFile } from './icon-file.js';
 import type { Display } from './types.js';
@@ -30,7 +32,7 @@ async function labelSvg(display: Display, width: number, height: number = width)
   const fontSize = display.labelSize;
   const given = (display.label ?? '').split('\n').filter((l) => l.length > 0);
   if (given.length === 0) return Buffer.alloc(0);
-  const lines = await Promise.all(given.map((line) => fitLine(line, fontSize, width)));
+  const lines = await Promise.all(given.map((line) => fitLine(line, fontSize, width, display.labelFont)));
 
   const lineHeight = Math.round(fontSize * 1.15);
   const block = lineHeight * lines.length;
@@ -53,7 +55,7 @@ async function labelSvg(display: Display, width: number, height: number = width)
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
   <style>
-    ${labelStyle(fontSize, display.labelColor)}
+    ${labelStyle(fontSize, display.labelColor, display.labelFont)}
   </style>
   ${tspans}
 </svg>`;
@@ -69,11 +71,11 @@ async function labelSvg(display: Display, width: number, height: number = width)
 async function levelSvg(display: Display, width: number, height: number = width): Promise<Buffer> {
   if (!display.level) return Buffer.alloc(0);
   const fontSize = display.labelSize;
-  const line = await fitLine(display.level, fontSize, width);
+  const line = await fitLine(display.level, fontSize, width, display.labelFont);
   const baseline = display.labelPosition === 'top' ? height - 2 - Math.round(fontSize * 0.15) : fontSize + 2;
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
   <style>
-    ${labelStyle(fontSize, display.labelColor)}
+    ${labelStyle(fontSize, display.labelColor, display.labelFont)}
   </style>
   <text x="${width / 2}" y="${baseline}" text-anchor="middle" class="lbl">${escapeXml(line)}</text>
 </svg>`);
@@ -94,35 +96,48 @@ async function iconStamp(iconPath: string): Promise<string> {
 }
 
 /**
- * An icon resized to the key. Throws if the file may not be read (icon-file.ts:
- * not a regular file, too large, in the state directory), cannot be read, or
- * is not an image sharp can decode.
+ * An icon drawn for a box (src/icon-scale.ts): at `scale` percent — 100, the
+ * whole image fitting the box, centred — on a clear layer the box's size,
+ * anything beyond the box cut away (the shape's mask cuts the rest).
+ * `'cover'` is the retired crop, kept as coverScale() of this image.
+ *
+ * Throws, with the reason, if the file may not be read (icon-file.ts: not a
+ * regular file, too large, in the state directory), cannot be read, or — for
+ * an icon the person set, `limits` — is outside the image limits
+ * (image-limits.ts: PNG, JPEG, WebP, GIF or SVG, 4096 px on the longer side),
+ * or is not an image sharp can decode.
  */
-async function iconLayer(filePath: string, size: number, fit: 'cover' | 'contain'): Promise<Buffer> {
-  return sharp((await readIconFile(filePath, { image: false })).data)
-    .resize(size, size, {
-      fit,
-      position: 'centre',
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    })
-    .png()
-    .toBuffer();
-}
-
-/**
- * A built-in icon's drawing, `percent` of a `size` key, centred on a clear
- * key-sized layer (Defaults.builtinIconSize): the built-ins alone are drawn
- * smaller than the key, so their glyphs sit as the mockups draw them. An icon
- * file the person chose is drawn by iconLayer() alone, never by this.
- */
-async function builtinIconLayer(filePath: string, size: number, percent: number): Promise<Buffer> {
-  const side = Math.max(1, Math.min(size, Math.round((size * percent) / 100)));
-  const drawing = await iconLayer(filePath, side, 'contain');
-  if (side === size) return drawing;
-  const before = Math.floor((size - side) / 2);
-  const after = size - side - before;
-  return sharp(drawing)
-    .extend({ top: before, bottom: after, left: before, right: after, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+async function iconLayer(filePath: string, box: Size, scale: number | 'cover', limits: boolean): Promise<Buffer> {
+  const { data } = await readIconFile(filePath, { image: false });
+  // Only the first frame of an animated image, as a background's.
+  let meta;
+  try {
+    meta = await sharp(data, { animated: false }).metadata();
+  } catch {
+    throw new Error(refusalText(filePath, { kind: 'not-an-image' }));
+  }
+  if (limits) {
+    if (!meta.format || !IMAGE_FORMATS.includes(meta.format)) throw new Error(refusalText(filePath, { kind: 'not-an-image' }));
+    const side = sideRefusal(meta.width ?? 0, meta.height ?? 0);
+    if (side) throw new Error(refusalText(filePath, side));
+  }
+  const image = { width: meta.width ?? 1, height: meta.height ?? 1 };
+  const percent = scale === 'cover' ? coverScale(image, box) : scale;
+  const drawn = drawnSize(image, box, percent);
+  let layer = sharp(await sharp(data, { animated: false }).resize(drawn.width, drawn.height, { fit: 'fill' }).png().toBuffer());
+  // Larger than the box: only the box's middle is ever seen.
+  if (drawn.width > box.width || drawn.height > box.height) {
+    const width = Math.min(drawn.width, box.width);
+    const height = Math.min(drawn.height, box.height);
+    layer = sharp(await layer.extract({ left: Math.floor((drawn.width - width) / 2), top: Math.floor((drawn.height - height) / 2), width, height }).png().toBuffer());
+  }
+  const w = Math.min(drawn.width, box.width);
+  const h = Math.min(drawn.height, box.height);
+  if (w === box.width && h === box.height) return layer.png().toBuffer();
+  const left = Math.floor((box.width - w) / 2);
+  const top = Math.floor((box.height - h) / 2);
+  return layer
+    .extend({ top, bottom: box.height - h - top, left, right: box.width - w - left, background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
 }
@@ -131,14 +146,14 @@ async function builtinIconLayer(filePath: string, size: number, percent: number)
 const builtinLayers = new Map<string, Buffer>();
 const warnedBuiltin = new Set<string>();
 
-/** A built-in icon drawn for the key (builtinIconLayer), or null (logged once) if the file cannot be drawn — an incomplete install. */
-async function builtinLayer(name: BuiltinIcon, size: number, percent: number): Promise<Buffer | null> {
+/** A built-in icon drawn for a box (iconLayer), or null (logged once) if the file cannot be drawn — an incomplete install. */
+async function builtinLayer(name: BuiltinIcon, box: Size, percent: number): Promise<Buffer | null> {
   const filePath = builtinIconPath(name);
-  const key = `${filePath}|${size}|${percent}`;
+  const key = `${filePath}|${box.width}x${box.height}|${percent}`;
   const hit = builtinLayers.get(key);
   if (hit) return hit;
   try {
-    const layer = await builtinIconLayer(filePath, size, percent);
+    const layer = await iconLayer(filePath, box, percent, false);
     builtinLayers.set(key, layer);
     return layer;
   } catch (err) {
@@ -220,8 +235,8 @@ const OUTLINE_OPACITY = 0.22;
  *
  * - **the key's fill covers the whole shape**, solid: no transparency inside
  *   a button, ever;
- * - **the icon is the square at the shorter side, centred**, as a non-square
- *   key's has always been;
+ * - **the icon is drawn by its scale on the one rule** (icon-scale.ts): at
+ *   100% the whole image fits the box, centred, and the shape cuts it;
  * - **the label, a live level and the failed badge are laid out in the
  *   shape's largest inner rectangle** (shapes.ts innerPixels), exactly as on a
  *   key whose face is that rectangle — no branch here knows which shape it is;
@@ -237,9 +252,6 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
   const shapeBox = { w: width, h: height, shape: box.shape, radius: box.radius };
   const cut = !fillsBox(shapeBox);
   const inner = innerPixels(shapeBox);
-  const side = Math.min(width, height);
-  const iconLeft = Math.floor((width - side) / 2);
-  const iconTop = Math.floor((height - side) / 2);
   // `builtin:<name>` names a shipped icon; anything else is a path, `~/` allowed.
   const builtinPath = display.icon ? builtinRefPath(display.icon) : null;
   const builtinSize = display.builtinIconSize ?? DEFAULTS.builtinIconSize;
@@ -266,18 +278,19 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
   if (iconPath) {
     try {
       // A built-in, by default or chosen by name, at its own size; a file as the person set it.
+      // A built-in follows the global size unless the key has its own scale; a file is 100% unless it has one.
       const icon = builtinPath !== null
-        ? await builtinIconLayer(builtinPath, side, builtinSize)
-        : await iconLayer(iconPath, side, display.iconFit === 'contain' ? 'contain' : 'cover');
-      layers.push({ input: display.unset ? await dimmed(icon) : icon, top: iconTop, left: iconLeft });
+        ? await iconLayer(builtinPath, box, typeof display.iconScale === 'number' ? display.iconScale : builtinSize, false)
+        : await iconLayer(iconPath, box, display.iconScale ?? 100, true);
+      layers.push({ input: display.unset ? await dimmed(icon) : icon, top: 0, left: 0 });
     } catch (err) {
       if (strictIcon) throw new Error(`cannot read icon ${iconPath}: ${(err as Error).message}`);
       if (!warnedMissing.has(iconPath)) {
         warnedMissing.add(iconPath);
         console.error(`[render] cannot read icon ${iconPath}: ${(err as Error).message} — showing the missing-icon placeholder`);
       }
-      const missing = await builtinLayer('missing', side, builtinSize);
-      if (missing) layers.push({ input: missing, top: iconTop, left: iconLeft });
+      const missing = await builtinLayer('missing', box, builtinSize);
+      if (missing) layers.push({ input: missing, top: 0, left: 0 });
     }
   }
 
@@ -315,7 +328,8 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
 
   if (layers.length > 0) base = base.composite(layers);
 
-  const buffer = await base.raw().toBuffer();
+  let buffer: Buffer = await base.raw().toBuffer();
+  if (display.pressed) buffer = await pressedLook(buffer, width, height);
 
   if (cache.size >= MAX_CACHE) {
     const oldest = cache.keys().next().value;
@@ -323,6 +337,30 @@ export async function renderFace(display: Display, box: FaceBox, strictIcon = fa
   }
   cache.set(cacheKey, buffer);
   return buffer;
+}
+
+/**
+ * Touch feedback's pressed look (Ryan, 2026-11-17; board 25a): the face
+ * lightened and drawn at 95%, centred, clear around it, so it stays inside its
+ * own shape with its outline, and the page's background shows in the gap.
+ */
+export const PRESSED_SCALE = 0.95;
+const PRESSED_LIGHTEN = 0.22;
+
+async function pressedLook(face: Buffer, width: number, height: number): Promise<Buffer> {
+  const light = Buffer.from(face);
+  for (let i = 0; i < light.length; i += 4) {
+    for (let c = 0; c < 3; c++) light[i + c] = Math.round(light[i + c] + (255 - light[i + c]) * PRESSED_LIGHTEN);
+  }
+  const w = Math.max(1, Math.round(width * PRESSED_SCALE));
+  const h = Math.max(1, Math.round(height * PRESSED_SCALE));
+  const left = Math.floor((width - w) / 2);
+  const top = Math.floor((height - h) / 2);
+  return sharp(light, { raw: { width, height, channels: 4 } })
+    .resize(w, h, { fit: 'fill' })
+    .extend({ top, bottom: height - h - top, left, right: width - w - left, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .raw()
+    .toBuffer();
 }
 
 export function clearRenderCache(): void {

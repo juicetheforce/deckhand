@@ -1,5 +1,6 @@
 import { sleep } from './sleep.js';
 import { DEFAULTS, resolvePage, startPageOf } from './config.js';
+import type { ResolvedDefaults } from './config-common.js';
 import { activeOf, attempt, defaultIconFileOf, describeAction, hasRelease, iconStateOf, isDynamic, runActionOrThrow, runRelease, type ActionFailure } from './actions/index.js';
 import { builtinIconRef } from './builtin-icons.js';
 import { defaultIconFor } from './default-icons.js';
@@ -70,7 +71,7 @@ export class DeckSession implements DeckHandle {
   private order: Map<string, number>;
   private hardware: DeckDef;
   private layout: LayoutDef;
-  private defaults: Required<Defaults>;
+  private defaults: ResolvedDefaults;
   private switchProfile: (profile: string) => Promise<void>;
   private onStateChange: () => void;
   private onActionNeeded: NonNullable<DeckSessionOptions['onActionNeeded']>;
@@ -116,6 +117,12 @@ export class DeckSession implements DeckHandle {
    * the key already had coming — no timer, nothing more at rest.
    */
   private drawnFaces = new Map<string, string>();
+  /**
+   * Controls a finger is on, drawn pressed (Touch feedback, render.ts
+   * pressedLook): a virtual deck's only, while `defaults.touchFeedback` is
+   * not false. Drawn on the touch and on its lift — nothing on a clock.
+   */
+  private pressed = new Set<string>();
   /** Unsubscribe from input's keyboard-lost notice. */
   private stopWatchingKeyboard: (() => void) | null = null;
   /** Last level sent to this deck. Per deck, so a nudge on one never moves another. */
@@ -190,6 +197,7 @@ export class DeckSession implements DeckHandle {
       ),
     );
     for (const id of [...this.previews.keys()]) if (!this.order.has(id)) this.previews.delete(id);
+    for (const id of [...this.pressed]) if (!this.order.has(id)) this.pressed.delete(id);
     this.lastSent.clear();
     this.lastRenderAt.clear();
     this.stale.clear();
@@ -240,6 +248,11 @@ export class DeckSession implements DeckHandle {
       // Sleep all decks' own key, pressed while dimmed, has done its job by waking them.
       // Returning before anything is armed is what swallows the release too.
       if (woke === 'swallow' || (woke === 'woke' && button?.action?.type === 'sleep.all')) return;
+      // Touch feedback: the control drawn pressed while the finger is on it, whatever it does.
+      if (this.touchFeedback()) {
+        this.pressed.add(index);
+        void this.renderButtonAt(index);
+      }
       // A previewed key does nothing when pressed: it shows something unsaved,
       // so neither its saved action nor the previewed one should run.
       // (A release for a press that began before the preview still runs below,
@@ -250,6 +263,8 @@ export class DeckSession implements DeckHandle {
       if (button?.action) void this.dispatch(index, button.action);
       return;
     }
+
+    if (this.pressed.delete(index)) void this.renderButtonAt(index);
 
     const hold = this.holds.get(index);
     if (hold) {
@@ -405,9 +420,22 @@ export class DeckSession implements DeckHandle {
     }
   }
 
+  /** Whether a touch draws its control pressed: a virtual deck's, with Touch feedback on (the default). Never a Stream Deck's. */
+  private touchFeedback(): boolean {
+    return this.geometry.units === 'pixels' && this.defaults.touchFeedback !== false;
+  }
+
+  /** Every control drawn pressed drawn at rest again: its touch let go without a lift (a lock, a page or panel change). */
+  private unpressAll(): void {
+    const was = [...this.pressed];
+    this.pressed.clear();
+    for (const index of was) if (this.screens.has(index)) void this.renderButtonAt(index);
+  }
+
   /** Everything held let go, at the device's asking (DeckDevice.onLetGo): a locked session. */
   private async letGo(reason: string): Promise<void> {
     if (this.closed) return;
+    this.unpressAll();
     await this.fireHeldReleases(reason);
     await this.releaseLatches(reason);
   }
@@ -542,8 +570,10 @@ export class DeckSession implements DeckHandle {
       // null (deliberately no icon) and absent both start with no icon layer
       // here; drawKey() gives an absent one the action's default.
       icon: button?.icon ?? undefined,
-      iconFit: button?.iconFit ?? this.defaults.iconFit,
+      // Its own scale; else, in an older config not yet converted, the old crop (icon-fit.ts legacyIconFit).
+      ...(button?.iconScale !== undefined ? { iconScale: button.iconScale } : button?.iconFit === 'cover' ? { iconScale: 'cover' as const } : {}),
       builtinIconSize: this.defaults.builtinIconSize,
+      ...(this.defaults.labelFont ? { labelFont: this.defaults.labelFont } : {}),
       label: button?.label,
       labelColor: button?.labelColor ?? this.defaults.labelColor,
       labelSize: button?.labelSize ?? this.defaults.labelSize,
@@ -576,6 +606,8 @@ export class DeckSession implements DeckHandle {
     const side = Math.min(screen.width, screen.height);
     const button = this.buttonAt(index);
     const display = this.baseDisplay(button);
+    const page = this.page;
+    if (this.pressed.has(index)) display.pressed = true;
 
     const patch = await describeAction(this.context(index), button?.action);
     if (patch) Object.assign(display, patch);
@@ -612,6 +644,12 @@ export class DeckSession implements DeckHandle {
       : await fillScreen(await renderButton(display, side, strictIcon), side, screen.width, screen.height, display.background);
 
     this.lastRenderAt.set(index, Date.now());
+    // Drawn for a page the deck has since left (a touch's pressed face, under a page action): the new page's own draw is what shows.
+    if (this.page !== page) return;
+    // Drawn pressed or at rest for a touch that has changed since (Codex, PR #11): a quick tap's lift
+    // can finish first — its resting face cached and skipped as already sent — and the press's slower
+    // face must not land after it and stay. The draw for the current state is the one that shows.
+    if ((display.pressed === true) !== this.pressed.has(index)) return;
 
     // renderButton caches, so identical output is the same Buffer instance.
     // Skipping the USB write keeps the deck responsive under a 2 Hz refresh.
@@ -834,6 +872,8 @@ export class DeckSession implements DeckHandle {
     if (this.history.length > 32) this.history.shift();
     // Every page of a virtual deck has its own layout (types.ts PageDef.panel).
     this.relayoutFor(this.layout, id);
+    // A key under a finger on the page left is not pressed on the new one.
+    this.pressed.clear();
     this.page = id;
     this.onStateChange();
     await this.renderPage(true);
@@ -845,6 +885,8 @@ export class DeckSession implements DeckHandle {
     await this.fireHeldReleases('a page change');
     await this.releaseLatches('a page change');
     this.relayoutFor(this.layout, previous);
+    // A key under a finger on the page left is not pressed on the new one.
+    this.pressed.clear();
     this.page = previous;
     this.onStateChange();
     await this.renderPage(true);
@@ -930,6 +972,8 @@ export class DeckSession implements DeckHandle {
     if (!stays) {
       await this.fireHeldReleases('a config reload');
       await this.releaseLatches('a config reload');
+      // A key under a finger on the page left is not pressed on the new one.
+      this.pressed.clear();
       this.page = page;
       this.history = [];
       this.onStateChange();

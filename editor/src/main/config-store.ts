@@ -5,6 +5,9 @@ import path from 'node:path';
 import { validateConfig } from '../../../src/config.js';
 import { migrateStateIcons } from '../../../src/state-icons.js';
 import { migratePagePanels } from '../../../src/panel-presets.js';
+import { iconFilesToSize, migrateIconFit } from '../../../src/icon-fit.js';
+import { readIconFile } from '../../../src/icon-file.js';
+import { imageSize, type PixelSize } from '../../../src/image-size.js';
 import type { Config } from '../../../src/types.js';
 import type { Conflict, StoreState } from '../shared/bridge.js';
 import type { ApplyResult, Edit, EditResult } from '../shared/edits.js';
@@ -37,6 +40,8 @@ export interface StoreOptions {
   debounceMs?: number;
   onChange?: (state: StoreState) => void;
   env?: Partial<EditEnvironment>;
+  /** How icon sizes are read for converting an older config (iconSizesOf); a test holds a read open with it. */
+  readIconSizes?: typeof iconSizesOf;
 }
 
 /** How long a burst of file events is given to settle before the file is read. */
@@ -63,8 +68,9 @@ export class ConfigStore {
   private readonly debounceMs: number;
   private readonly onChange: (state: StoreState) => void;
   private readonly env: EditEnvironment;
+  private readonly readIconSizes: typeof iconSizesOf;
 
-  private constructor(options: StoreOptions, config: Config, text: string) {
+  private constructor(options: StoreOptions, config: Config, text: string, sizes: IconSizes) {
     this.configPath = options.configPath;
     this.debounceMs = options.debounceMs ?? 400;
     this.onChange = options.onChange ?? (() => {});
@@ -72,10 +78,11 @@ export class ConfigStore {
       homeDir: options.env?.homeDir ?? os.homedir(),
       randomHex: options.env?.randomHex ?? ((length) => randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length)),
     };
+    this.readIconSizes = options.readIconSizes ?? iconSizesOf;
     this.config = config;
     this.baseText = text;
     this.reformatPending = serializeConfig(config) !== text;
-    this.migrate();
+    this.migrate(sizes);
   }
 
   /**
@@ -84,14 +91,17 @@ export class ConfigStore {
    * drew, and saved: the daemon reads either, and no icon someone set is
    * lost. A virtual deck's panel is moved from each profile onto each of its
    * pages (src/panel-presets.ts migratePagePanels), every page keeping the
-   * grid and keys it had. Whether the file needs reformatting is judged
-   * before, on the file as it was.
+   * grid and keys it had. A config from before the icon scale has `iconFit`
+   * converted (src/icon-fit.ts), each icon by its size, read beforehand
+   * (iconSizesOf). Whether the file needs reformatting is judged before, on
+   * the file as it was.
    */
-  private migrate(): void {
-    // Both run: `||` would skip the second whenever the first changed something.
+  private migrate(sizes: IconSizes): void {
+    // All run: `||` would skip the rest whenever one changed something.
     const icons = migrateStateIcons(this.config);
     const panels = migratePagePanels(this.config);
-    if (!icons && !panels) return;
+    const fit = migrateIconFit(this.config, (icon) => sizes.get(icon) ?? null);
+    if (!icons && !panels && !fit) return;
     this.dirty = true;
     this.scheduleSave();
   }
@@ -109,7 +119,8 @@ export class ConfigStore {
       throw new Error(`${options.configPath} is a symlink. The daemon does not see changes made through it, so the editor does not write it.`);
     }
     const text = await fs.readFile(options.configPath, 'utf8');
-    const store = new ConfigStore(options, parseAndValidate(text), text);
+    const config = parseAndValidate(text);
+    const store = new ConfigStore(options, config, text, await (options.readIconSizes ?? iconSizesOf)(config, options.env?.homeDir ?? os.homedir()));
     store.startWatching();
     return store;
   }
@@ -164,7 +175,7 @@ export class ConfigStore {
       this.conflict = null;
       if (choice === 'file') {
         this.dirty = false;
-        this.adoptFileText(conflict.fileText);
+        await this.adoptFileText(conflict.fileText);
       } else {
         // Overwrite whatever is on disk now, even if it changed again.
         this.baseText = await this.readFileText();
@@ -212,6 +223,8 @@ export class ConfigStore {
       // An imported config is migrated as one opened is, and written so (Codex, PR #6).
       migrateStateIcons(this.config);
       migratePagePanels(this.config);
+      const sizes = await this.readIconSizes(this.config, this.env.homeDir);
+      migrateIconFit(this.config, (icon) => sizes.get(icon) ?? null);
       this.conflict = null;
       this.fileError = null;
       this.reformatPending = false;
@@ -343,7 +356,7 @@ export class ConfigStore {
       this.enterConflict(text);
       return;
     }
-    this.adoptFileText(text);
+    await this.adoptFileText(text);
     this.emit();
   }
 
@@ -360,17 +373,57 @@ export class ConfigStore {
   }
 
   /** Take the file's text as the new base. An invalid file blocks editing but keeps the last good config on screen. */
-  private adoptFileText(text: string): void {
-    this.baseText = text;
+  private async adoptFileText(text: string): Promise<void> {
+    let config: Config;
     try {
-      this.config = parseAndValidate(text);
-      this.fileError = null;
-      this.reformatPending = serializeConfig(this.config) !== text;
-      this.migrate();
+      config = parseAndValidate(text);
     } catch (err) {
+      this.baseText = text;
       this.fileError = (err as Error).message;
+      return;
     }
+    const sizes = await this.readIconSizes(config, this.env.homeDir);
+    // An edit accepted while the icons were being read (apply() does not wait on the queue) would
+    // be lost by adopting the file now (Codex, PR #11): the two are a conflict, as when the file
+    // changes under unsaved edits.
+    if (this.dirty) {
+      this.enterConflict(text);
+      return;
+    }
+    this.baseText = text;
+    this.config = config;
+    this.fileError = null;
+    this.reformatPending = serializeConfig(this.config) !== text;
+    this.migrate(sizes);
   }
+}
+
+/** Each icon file's pixel size, by the path the config writes, for converting `iconFit`. */
+type IconSizes = Map<string, PixelSize>;
+
+/**
+ * The size of every icon file an older config names (none for a converted
+ * one), read under the same rules as every icon (src/icon-file.ts); a file
+ * that cannot be read or told is left out, and drawn at 100% from then.
+ */
+export async function iconSizesOf(config: Config, homeDir: string): Promise<IconSizes> {
+  const sizes: IconSizes = new Map();
+  // On a copy with its state icons in today's shape first: a key's resting icon still in its
+  // action's old field (iconUnmuted, iconOff) becomes its own icon, which is what gets a scale (Codex, PR #11).
+  const shaped = structuredClone(config);
+  migrateStateIcons(shaped);
+  await Promise.all(
+    iconFilesToSize(shaped).map(async (icon) => {
+      const file = icon === '~' ? homeDir : icon.startsWith('~/') ? path.join(homeDir, icon.slice(2)) : icon;
+      try {
+        const size = imageSize((await readIconFile(file, { image: false })).data);
+        if (size) sizes.set(icon, size);
+      } catch {
+        // Unreadable: no number for it.
+      }
+    }),
+  );
+  return sizes;
 }
 
 function parseAndValidate(text: string): Config {

@@ -170,6 +170,7 @@ export function Slider({
   disabled,
   onPreview,
   onCommit,
+  mark,
   children,
 }: {
   /** Its accessible name: the row's title. */
@@ -182,6 +183,12 @@ export function Slider({
   disabled?: boolean;
   onPreview?: (value: number) => void;
   onCommit: (value: number) => void;
+  /**
+   * A notch on the track, which the thumb catches on lightly (board 25b's
+   * green mark: where the whole image becomes visible). Within half a step
+   * of it, a move lands on it.
+   */
+  mark?: number;
   /** A live sample, right of the value. */
   children?: ReactNode;
 }) {
@@ -190,7 +197,10 @@ export function Slider({
   const [moving, setMoving] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const shown = moving ?? value;
-  const snap = (v: number) => Math.min(max, Math.max(min, min + Math.round((v - min) / step) * step));
+  const snap = (v: number) => {
+    if (mark !== undefined && mark >= min && mark <= max && Math.abs(v - mark) < step / 2) return mark;
+    return Math.min(max, Math.max(min, min + Math.round((v - min) / step) * step));
+  };
   const steps = Math.round((max - min) / step);
   const at = ((shown - min) / (max - min)) * 100;
 
@@ -224,7 +234,7 @@ export function Slider({
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={shown}
-        aria-valuetext={`${shown}${unit}`}
+        aria-valuetext={`${Math.round(shown)}${unit}`}
         aria-disabled={disabled || undefined}
         onPointerDown={(e) => {
           if (disabled || e.button !== 0) return;
@@ -242,7 +252,19 @@ export function Slider({
         onKeyDown={(e) => {
           if (disabled) return;
           const by: Record<string, number> = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step, PageUp: 2 * step, PageDown: -2 * step };
-          if (e.key in by) move(shown + by[e.key]);
+          // The arrows go step to step, stopping on the mark when they cross it.
+          if (e.key in by) {
+            const k = (shown - min) / step;
+            const steps = Math.abs(by[e.key]) / step;
+            const n = by[e.key] > 0 ? Math.floor(k + 1e-9) + steps : Math.ceil(k - 1e-9) - steps;
+            const target = Math.min(max, Math.max(min, min + n * step));
+            const crosses = mark !== undefined && mark !== shown && (mark - shown) * (target - mark) > 0;
+            const next = crosses ? (mark as number) : target;
+            if (next !== shown) {
+              setMoving(next);
+              onPreview?.(next);
+            }
+          }
           else if (e.key === 'Home') move(min);
           else if (e.key === 'End') move(max);
           else return;
@@ -256,10 +278,14 @@ export function Slider({
         {steps <= 12 &&
           Array.from({ length: steps + 1 }, (_, i) => <span key={i} className="sp-slider-tick" style={{ left: `${(i / steps) * 100}%` }} />)}
         <span className="sp-slider-fill" style={{ width: `${at}%` }} />
+        {mark !== undefined && mark >= min && mark <= max && (
+          <span className="sp-slider-mark" data-slider-mark={mark} title={`${mark}%: the whole image shows`} style={{ left: `${((mark - min) / (max - min)) * 100}%` }} />
+        )}
         <span className="sp-slider-thumb" style={{ left: `${at}%` }} />
       </div>
       <span className="sp-slider-value">
-        {shown}
+        {/* Rounded: an in-between value an older slider stored (45.5) reads 46 until it is moved. */}
+        {Math.round(shown)}
         {unit}
       </span>
       {children}

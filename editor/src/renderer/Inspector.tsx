@@ -12,6 +12,13 @@ import type { AudioLists } from './inspector/DeviceForms.js';
 import { pairLabel } from './inspector/controls.js';
 import { actionEditable, actionIncomplete, clipboardSummary, describeAction, hasForm, integrationOf, INTEGRATIONS, keyKind, settingsSectionOf, type Choice } from './model.js';
 import type { Bulk } from './useBulk.js';
+import { ColourPicker } from './ColourPicker.js';
+import { Slider } from './settings-ui.js';
+import { faceIcon } from './model.js';
+import { useImageCheck } from './image-check.js';
+import { ICON_SCALE, wholeImageMark } from '../../../src/icon-scale.js';
+import type { ShapeBox } from '../../../src/shapes.js';
+import { BUILTIN_PREFIX } from '../shared/icons.js';
 
 interface Props {
   /** How many keys are selected. With more than one, the inspector offers the bulk operations instead of one key's fields. */
@@ -40,6 +47,12 @@ interface Props {
   coverage: (profile: string) => { covered: string[]; uncoveredConnected: string[] };
   /** What the label inherits when the key sets nothing: config `defaults`, then the daemon's. */
   labelDefaults: { labelPosition: 'top' | 'bottom' | 'center'; labelColor: string; labelSize: number };
+  /** What a key's Default background is now: Settings › General › Key colour (defaults.background). */
+  keyColorDefault: string;
+  /** Settings › General › Icon size, which a built-in follows until its key has its own scale. */
+  builtinIconSize: number;
+  /** The selected key's box and shape (model.ts keyBoxOf), for its icon scale's mark. */
+  keyBox: ShapeBox | null;
   /** The daemon is connected and the deck attached, so the icon picker can preview on it. */
   canPreview: boolean;
   /** The daemon's live audio device lists, for the device forms. */
@@ -67,7 +80,7 @@ export interface Pick {
  * label and icon state, and Clear button. An action with no
  * form, or carrying settings its form has no control for, is shown read-only.
  */
-export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, canPreview, audio, apps, apply }: Props) {
+export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, keyColorDefault, builtinIconSize, keyBox, canPreview, audio, apps, apply }: Props) {
   // Kept here, outside the per-key component, so the tab and the picker's
   // folder stay put while moving from key to key in a setup burst.
   const [tab, setTab] = useState<Tab>('key');
@@ -106,6 +119,9 @@ export function Inspector({ selectedCount, bulk, at, keyNumber, button, failure,
       decks={decks}
       coverage={coverage}
       labelDefaults={labelDefaults}
+      keyColorDefault={keyColorDefault}
+      builtinIconSize={builtinIconSize}
+      keyBox={keyBox}
       canPreview={canPreview}
       audio={audio}
       apps={apps}
@@ -165,7 +181,7 @@ interface KeyInspectorProps extends Omit<Props, 'selectedCount' | 'bulk'> {
   onPlace: (place: PickerPlace) => void;
 }
 
-function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
+function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked, pick, pages, profiles, virtualDecks, decks, coverage, labelDefaults, keyColorDefault, builtinIconSize, keyBox, canPreview, audio, apps, apply, tab, onTab, place, onPlace }: KeyInspectorProps) {
   const [error, setError] = useState<string | null>(null);
   const kind = keyKind(button);
   // The action type being configured: the one picked from the library, else
@@ -279,6 +295,8 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
         <IconPicker key={slot ?? 'key'} at={at} button={button} slot={slot} editingBlocked={editingBlocked} canPreview={canPreview} place={place} onPlace={onPlace} />
       )}
 
+      {tab === 'icon' && <IconScale button={button} keyBox={keyBox} builtinIconSize={builtinIconSize} disabled={editingBlocked} onCommit={(percent) => void run({ kind: 'setIconScale', at, percent })} />}
+
       {tab === 'key' && editable && (
         <ActionForm
           type={type}
@@ -326,6 +344,22 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
       )}
 
       {tab === 'key' && (
+        // Board 27a: under Label, on every deck. Default follows Settings › General › Key colour.
+        <section className="inspector-section" data-inspector-section="background">
+          <h3 className="section-heading">Background</h3>
+          <ColourPicker
+            name="key-background"
+            label="Background"
+            value={button?.background ?? null}
+            defaultColor={keyColorDefault}
+            defaultTitle="Settings › General › Key colour"
+            disabled={editingBlocked}
+            onChange={(color) => void run({ kind: 'setKeyBackground', at, color })}
+          />
+        </section>
+      )}
+
+      {tab === 'key' && (
         <section className="inspector-section">
           <h3 className="section-heading">Icon</h3>
           <IconState button={button} disabled={editingBlocked} onChoose={(icon) => void run({ kind: 'setIcon', at, icon })} onBrowse={() => onTab('icon')} />
@@ -345,3 +379,42 @@ function KeyInspector({ at, keyNumber, button, failure, notSetUp, editingBlocked
   );
 }
 
+/**
+ * The key's icon scale (round 4, board 25b): one value per key, on every deck,
+ * 20–200% in steps of 5, on the one rule (src/icon-scale.ts) — at 100% the
+ * whole image fits the key. The mark is where the whole image becomes visible
+ * on this key's shape. A built-in follows Settings › General › Icon size until
+ * the slider is moved; Clear icon returns it to following. An icon already set
+ * that the limits refuse says why here, as the deck shows the missing icon.
+ */
+function IconScale({ button, keyBox, builtinIconSize, disabled, onCommit }: { button: ButtonDef | undefined; keyBox: ShapeBox | null; builtinIconSize: number; disabled: boolean; onCommit: (percent: number) => void }) {
+  const icon = faceIcon(button);
+  const builtin = icon !== null && icon.startsWith(BUILTIN_PREFIX);
+  const file = icon !== null && !builtin ? icon : null;
+  const verdict = useImageCheck(file);
+  const own = button?.iconScale;
+  const value = own ?? (builtin ? builtinIconSize : 100);
+  // A built-in is square; a file's own proportions, once it has loaded.
+  const size = builtin ? { width: 1, height: 1 } : verdict?.state === 'ok' ? verdict : null;
+  const mark = size && keyBox ? wholeImageMark(size, keyBox) : undefined;
+  return (
+    <section className="inspector-section icon-scale" data-inspector-section="icon-scale">
+      <h3 className="section-heading">Icon scale</h3>
+      <Slider label="Icon scale" value={value} min={ICON_SCALE.min} max={ICON_SCALE.max} step={ICON_SCALE.step} unit="%" mark={mark} disabled={disabled || icon === null} onCommit={onCommit} />
+      <p className="muted small" data-icon-scale-note="">
+        {icon === null
+          ? 'No icon on this key.'
+          : own === undefined && builtin
+            ? `Follows Icon size in Settings (${Math.round(builtinIconSize)}%) until you move it.`
+            : own !== undefined && builtin
+              ? 'Its own size. Clear icon makes it follow Icon size again.'
+              : '100% fits the whole image in the key.'}
+      </p>
+      {verdict?.state === 'refused' && (
+        <p className="field-error" data-icon-refused="">
+          {verdict.message} The deck shows the missing icon instead.
+        </p>
+      )}
+    </section>
+  );
+}

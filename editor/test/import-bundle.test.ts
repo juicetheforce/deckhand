@@ -328,7 +328,8 @@ await check('ConfigStore.replace: the replaced text is kept first, the new confi
     assert.equal(replaced, before);
     assert.equal(kept, before);
     const onDisk = JSON.parse(await fs.readFile(file, 'utf8'));
-    assert.deepEqual(onDisk, next);
+    // Converted as an opened config is (src/icon-fit.ts): an import from before the icon scale gets its version.
+    assert.deepEqual(onDisk, { ...next, version: 2 });
     assert.equal(store.state().dirty, false);
     assert.deepEqual(await fs.readdir(dir), ['config.json']);
   } finally {

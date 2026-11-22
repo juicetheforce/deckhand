@@ -720,6 +720,7 @@ console.log('rename profile');
 /** Two profiles on two decks, linked to each other by name and by ID, in keys, a multi and startProfile. */
 function profileLinkConfig(): Config {
   return {
+    version: 2,
     startProfile: 'Raid',
     profiles: {
       home: {
@@ -827,6 +828,7 @@ const DB = 'DECK-B';
  */
 function deleteFixture(): Config {
   return {
+    version: 2,
     startProfile: 'Raid',
     profiles: {
       home: {

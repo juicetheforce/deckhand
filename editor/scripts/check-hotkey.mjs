@@ -53,7 +53,8 @@ const BUTTONS = {
   '1': { action: { type: 'hotkey', keys: ['ctrl+c', 'ctrl+v'] } },
   '2': { label: 'Keep', icon: '~/Pictures/icons/ffxiv.png' },
 };
-const CONFIG = { profiles: { default: { name: 'Default', layouts: { [SERIAL]: { pages: { main: { name: 'Main', buttons: BUTTONS } } } } } } };
+// Today's format ("version": 2), so opening it converts nothing (src/icon-fit.ts) and the file holds only what the UI wrote.
+const CONFIG = { version: 2, profiles: { default: { name: 'Default', layouts: { [SERIAL]: { pages: { main: { name: 'Main', buttons: BUTTONS } } } } } } };
 const original = JSON.stringify(CONFIG, null, 2) + '\n';
 await fs.writeFile(path.join(configDir, 'config.json'), original);
 

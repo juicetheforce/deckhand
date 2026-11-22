@@ -105,7 +105,8 @@ export const info: ActionHandler = {
     const patch: DisplayPatch = { label: lines.join('\n') };
     if (params.showArt !== false && track.artPath) {
       patch.icon = track.artPath;
-      patch.iconFit = 'cover';
+      // The art keeps the old crop (Ryan, 2026-11-22): coverScale of its own proportions (icon-scale.ts).
+      patch.iconScale = 'cover';
     }
     return patch;
   },

@@ -1,7 +1,9 @@
 import { promises as fs, watch } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile } from './config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, resolvePage, resolveProfile, validFontName } from './config-common.js';
+import { CONFIG_VERSION, legacyIconFit } from './icon-fit.js';
+import { ICON_SCALE, validIconScale } from './icon-scale.js';
 import { Recovery } from './recovery.js';
 import { migrateStateIcons } from './state-icons.js';
 import { migratePagePanels } from './panel-presets.js';
@@ -10,7 +12,7 @@ import type { Config, LayoutDef } from './types.js';
 // Defaults and reference resolution live in config-common.ts, which needs no
 // file system, so the editor's renderer can import them. Re-exported here so
 // daemon code keeps importing from config.js.
-export { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, resolvePage, resolveProfile, shownIconSize, startPageOf, startProfileOf, storedIconSize } from './config-common.js';
+export { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, LABEL_FONT_DEFAULT, resolvePage, resolveProfile, startPageOf, startProfileOf, validFontName } from './config-common.js';
 
 export const CONFIG_DIR =
   process.env.DECKHAND_CONFIG_DIR ??
@@ -145,9 +147,13 @@ function validateLayout(layout: unknown, where: string): void {
     if (!isObject(page) || !isObject(page.buttons)) {
       throw new Error(`page "${pageId}" in ${where} is missing "buttons"`);
     }
-    for (const key of Object.keys(page.buttons)) {
+    for (const [key, button] of Object.entries(page.buttons)) {
       if (!CONTROL_ID.test(key)) {
         throw new Error(`button key "${key}" on page "${pageId}" in ${where} must be a key id: a Stream Deck's key index ("0", "1", …), or up to 32 letters, digits, "-" and "_"`);
+      }
+      const scale = isObject(button) ? button.iconScale : undefined;
+      if (scale !== undefined && !validIconScale(scale)) {
+        throw new Error(`button "${key}" on page "${pageId}" in ${where}: "iconScale" must be a number from ${ICON_SCALE.min} to ${ICON_SCALE.max}, the icon's scale in percent of the key`);
       }
     }
     if (page.panel !== undefined) validatePanel(page.panel, `page "${pageId}" in ${where}`);
@@ -222,6 +228,16 @@ export function validateConfig(config: unknown): Config {
     throw new Error(`"defaults.builtinIconSize" must be a number from ${BUILTIN_ICON_SIZE.min} to ${BUILTIN_ICON_SIZE.max}: the percent of the key a built-in icon is drawn at (Settings › General › Icon size)`);
   }
 
+  const labelFont = isObject(config.defaults) ? config.defaults.labelFont : undefined;
+  if (labelFont !== undefined && !validFontName(labelFont)) {
+    throw new Error('"defaults.labelFont" must be a font family\'s name, 1 to 100 characters, with no quotes, backslashes, < > & ; { } or control characters');
+  }
+  const touchFeedback = isObject(config.defaults) ? config.defaults.touchFeedback : undefined;
+  if (touchFeedback !== undefined && typeof touchFeedback !== 'boolean') throw new Error('"defaults.touchFeedback" must be true or false');
+  if (config.version !== undefined && config.version !== CONFIG_VERSION) {
+    throw new Error(`"version" must be ${CONFIG_VERSION}, or absent in a config from before it: this Deckhand reads no other`);
+  }
+
   if (config.notifications !== undefined && typeof config.notifications !== 'boolean') {
     throw new Error('"notifications" must be true or false');
   }
@@ -264,6 +280,8 @@ export async function loadConfig(): Promise<{ config: Config; text: string }> {
   migrateStateIcons(config);
   // A virtual deck's panel moved from each profile onto each page (panel-presets.ts), the same way.
   migratePagePanels(config);
+  // An older config's icons drawn as they were, until the editor converts it (icon-fit.ts), the same way.
+  legacyIconFit(config);
   return { config, text };
 }
 
