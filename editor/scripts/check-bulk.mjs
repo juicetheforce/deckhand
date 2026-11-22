@@ -39,6 +39,8 @@ const TO_SECOND = { label: 'To second', action: { type: 'page', to: 'second' } }
 const FAR = { label: 'Far', action: { type: 'hotkey', keys: 'f7' } };
 const LOW = { label: 'Low', action: { type: 'hotkey', keys: 'f8' } };
 const CONFIG = {
+  // Today's format, so opening it converts nothing (src/icon-fit.ts) and the file holds only what the operations wrote.
+  version: 2,
   decks: { [XL]: { name: 'Big deck' }, [V2]: { name: 'Little deck' } },
   startProfile: 'default',
   profiles: {

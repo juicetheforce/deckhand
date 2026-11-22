@@ -6,6 +6,7 @@ import type { IconChoice, ButtonLocation } from '../shared/edits.js';
 import { BUILTIN_FOLDER, iconUrl, type PairIconField } from '../shared/icons.js';
 import { FolderBar, useFolderBrowser, type PickerPlace } from './FolderBrowser.js';
 import { moveCursor, parentFolder, type GridKey } from './picker-model.js';
+import { checkImage } from './image-check.js';
 
 export { EMPTY_PLACE, type PickerPlace } from './FolderBrowser.js';
 
@@ -49,6 +50,10 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
   const { folder, listing, listError, search, searching } = browser;
   /** Images the deck refused to draw (render_failed): marked, and cannot be chosen. */
   const [refused, setRefused] = useState<ReadonlySet<string>>(new Set());
+  /** Why each refused image was refused, in the limits' own words. */
+  const [reasons, setReasons] = useState<ReadonlyMap<string, string>>(new Map());
+  /** Each picked file's listing stamp, so a file changed on disk is checked against the limits again. */
+  const stamps = useRef(new Map<string, string | undefined>());
   /** Images the editor could not show as a thumbnail: drawn with the missing icon. */
   const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
@@ -108,6 +113,22 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
       while (wanted.current !== null) {
         const choice = wanted.current;
         wanted.current = null;
+        // The image limits (round 4, src/image-limits.ts): a refused image is dimmed with its
+        // reason and never chosen. With the deck connected its preview is the check — the daemon
+        // refuses it in the same words — so nothing comes between a pick and its preview (a page
+        // switched straight after a pick would otherwise get the preview on its key). Without
+        // a deck to preview on, the editor asks first, in the save, which carries on when the
+        // picker closes.
+        if (choice.kind === 'file' && !canPreview && stamps.current.has(choice.path)) {
+          const verdict = await checkImage(choice.path, stamps.current.get(choice.path));
+          if (verdict.state === 'refused') {
+            setReasons((r) => new Map(r).set(choice.path, verdict.message));
+            setRefused((r) => new Set(r).add(choice.path));
+            if (latest.current === choice.path) setMessage(verdict.message);
+            continue;
+          }
+          if (wanted.current !== null) continue; // replaced while it was being checked
+        }
         if (choice.kind === 'file' && canPreview) {
           // Marked before the request goes out: leaving the key while it is in
           // flight must still clear it. The daemon records a preview as soon as
@@ -119,10 +140,15 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
           const previewed = slot === null ? { ...(button ?? {}), icon: choice.path } : { ...(button ?? {}), icon: choice.path, action: undefined, onRelease: undefined };
           const shown = await window.deckhand.previewSet(at.serial, at.key, previewed);
           if (!shown.ok) {
-            if (shown.code === 'render_failed') setRefused((s) => new Set(s).add(choice.path));
+            // The daemon's reason, in the limits' own words (render.ts iconLayer): "cannot read icon <path>: <why>".
+            const why = shown.error.replace(/^.*?cannot read icon .*?: /, '');
+            if (shown.code === 'render_failed') {
+              setRefused((s) => new Set(s).add(choice.path));
+              setReasons((r) => new Map(r).set(choice.path, why));
+            }
             if (latest.current === choice.path) {
               const name = choice.path.split('/').pop();
-              setMessage(shown.code === 'render_failed' ? `The deck cannot draw ${name}, so it was not chosen.` : `Not shown on the deck: ${shown.error}`);
+              setMessage(shown.code === 'render_failed' ? (why !== shown.error ? why : `The deck cannot draw ${name}, so it was not chosen.`) : `Not shown on the deck: ${shown.error}`);
             }
             if (shown.code === 'render_failed') continue;
           }
@@ -152,12 +178,13 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
     // A folder is somewhere to go, not a choice: the key keeps what it has.
     if (item.kind === 'folder') return;
     if (refused.has(item.entry.path)) {
-      setMessage(`The deck cannot draw ${item.entry.name}, so it cannot be chosen.`);
+      setMessage(reasons.get(item.entry.path) ?? `The deck cannot draw ${item.entry.name}, so it cannot be chosen.`);
       return;
     }
     // Not skipped when it is the key's icon already: picking another and coming
     // back before the first has saved must still end on this one. Saving the
     // icon a key already has writes nothing.
+    if (!item.entry.configPath.startsWith('builtin:')) stamps.current.set(item.entry.path, item.entry.stamp);
     choose({ kind: 'file', path: item.entry.path });
   };
 
@@ -201,7 +228,7 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
               className={classes.join(' ')}
               role="option"
               aria-selected={entry.path === cursor}
-              title={entry.configPath}
+              title={reasons.get(entry.path) ?? entry.configPath}
               tabIndex={-1}
               onClick={() => (item.kind === 'folder' ? openFolder(entry.path) : moveTo(item))}
             >
@@ -269,7 +296,8 @@ export function IconPicker({ at, button, slot, editingBlocked, canPreview, place
               label-only key is None on the Key tab, a separate state.
               "Clear icon", not a bare "Clear", beside
               the Key tab's Clear hotkey and Clear button. */}
-          {currentIcon !== undefined && (
+          {/* Also on a key drawing its action's default with a scale of its own: Clear icon is how it follows Icon size again (board 25b). */}
+          {(currentIcon !== undefined || (slot === null && button?.iconScale !== undefined)) && (
             <button
               disabled={editingBlocked}
               title={slot === null ? "Remove this key's icon, so its action's default icon is drawn" : "Remove the active state's icon, so the key draws its default icon in that state, or the built-in"}

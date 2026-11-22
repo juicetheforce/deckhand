@@ -807,10 +807,11 @@ async function icons(api: DeckhandBridge): Promise<Record<string, unknown>> {
   typeInto(document.querySelector<HTMLInputElement>('.picker-filter')!, '');
   await until(() => names().includes('corrupt.png'));
 
-  // 12. A file the deck cannot draw: refused by the daemon, marked, never saved; its thumbnail is the missing icon.
+  // 12. A file the deck cannot draw: refused by the image limits (round 4) with their reason, before it
+  // goes to the deck — marked, never saved; its thumbnail is the missing icon.
   await until(async () => !(await previews()).includes('1')); // the previous choice has finished saving
   await clickItem('corrupt.png');
-  out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent?.includes('cannot draw') === true);
+  out.corruptRefused = await until(() => document.querySelector('.picker .field-error')?.textContent === "corrupt.png isn't a PNG, JPEG, WebP, GIF or SVG.");
   await sleep(700);
   out.corruptNotSaved = (await iconOf('1')) === '~/Pictures/icons/FFXIV/WOLF/Halo (Area).png';
   out.corruptThumbMissing = await until(() => item('corrupt.png')?.querySelector('img')?.src.includes('missing') === true);
@@ -1959,6 +1960,31 @@ async function oneDeck(api: DeckhandBridge, out: Record<string, unknown>): Promi
   click(4, { shiftKey: true });
   await until(() => selected().length === 3);
   out.selection = { plain, ctrl, shift: { selected: selected(), title: title() } };
+
+  // 3a. Round 4's rows on a Stream Deck key, and nothing else new (the change Stream Deck owners
+  // see on purpose, scope §7): the Key tab gains Background, the Icon tab Icon scale.
+  click(0);
+  await until(() => title() === 'Key 1');
+  const tab = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.inspector [role="tab"]')].find((t) => t.textContent === name)!;
+  const headings = () => [...document.querySelectorAll('.inspector .section-heading')].map((h) => h.textContent);
+  const controlsIn = (section: string) => {
+    const el = document.querySelector(`.inspector [data-inspector-section="${section}"]`);
+    return el ? [...el.querySelectorAll('button, input, [role="slider"]')].map((c) => c.getAttribute('role') ?? c.tagName.toLowerCase()) : null;
+  };
+  tab('Key').click();
+  await until(() => headings().includes('Label'));
+  const keyTab = { headings: headings(), background: controlsIn('background'), backgroundValue: document.querySelector<HTMLElement>('.inspector [data-colour-picker="key-background"]')?.dataset.value ?? null };
+  tab('Icon').click();
+  await until(() => headings().includes('Icon scale'), 3_000);
+  const slider = document.querySelector<HTMLElement>('.inspector [data-inspector-section="icon-scale"] [role="slider"]');
+  const iconTab = {
+    headings: headings(),
+    scale: controlsIn('icon-scale'),
+    slider: slider ? { min: slider.getAttribute('aria-valuemin'), max: slider.getAttribute('aria-valuemax'), text: slider.getAttribute('aria-valuetext'), shown: slider.parentElement?.querySelector('.sp-slider-value')?.textContent ?? null, mark: slider.querySelector<HTMLElement>('[data-slider-mark]')?.dataset.sliderMark ?? null } : null,
+  };
+  tab('Key').click();
+  await until(() => headings().includes('Label'));
+  out.appearance = { keyTab, iconTab };
 
   // 4. Key onto key swaps.
   await drag(key(0), key(1));

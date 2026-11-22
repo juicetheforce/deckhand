@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { startPageOf } from '../../../src/config-common.js';
+import { DEFAULTS, startPageOf } from '../../../src/config-common.js';
 import type { ButtonDef, Config, PageBackgroundDef, PageDef, PanelDef } from '../../../src/types.js';
 import { defaultPanelOf, isCustomLayout, pagePanelIn } from '../../../src/panel-presets.js';
 import { geometryOfPanel } from '../../../src/geometry.js';
@@ -29,6 +29,7 @@ import { useActionDrag, type ActionDrag } from './useActionDrag.js';
 import type { KeyRef } from './keyUnder.js';
 import {
   canSwitchDeck,
+  keyBoxOf,
   clickKeys,
   deckForProfile,
   deviceTargets,
@@ -1125,6 +1126,9 @@ function Editor({
           decks={knownDecks(config, daemon)}
           coverage={(profile) => profileCoverage(config, daemon, profile)}
           labelDefaults={labelDefaults(config)}
+          keyColorDefault={config.defaults?.background ?? DEFAULTS.background}
+          builtinIconSize={config.defaults?.builtinIconSize ?? DEFAULTS.builtinIconSize}
+          keyBox={selection.key === null ? null : keyBoxOf(geometry, selection.key)}
           canPreview={canSwitchDeck(daemon, selection.serial)}
           audio={daemon.audio}
           apps={daemon.apps}

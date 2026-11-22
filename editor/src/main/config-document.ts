@@ -1,5 +1,9 @@
 import path from 'node:path';
-import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, DIM_TO, LABEL_SIZE, resolvePage, resolveProfile } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, CONTROL_ID, DEFAULTS, DIM_TO, LABEL_SIZE, resolvePage, resolveProfile, validFontName } from '../../../src/config-common.js';
+import { ICON_SCALE, validIconScale } from '../../../src/icon-scale.js';
+
+/** A colour as the pickers write it. */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef, PanelDef, ProfileDef } from '../../../src/types.js';
 import type { ButtonLocation, Edit, EditResult } from '../shared/edits.js';
 import { BUILTIN_PREFIX, builtinName, pairIconFields } from '../shared/icons.js';
@@ -261,6 +265,29 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
           buttonFor(page, edit.at.key).icon = storedIcon(edit.icon.path, env);
           break;
       }
+      // A new icon starts afresh: an image at 100%, a built-in following Icon size (board 25b).
+      // So Clear icon (the default) returns a key to following.
+      removeField(page, edit.at.key, 'iconScale');
+      return {};
+    }
+    case 'setIconScale': {
+      const page = pageAt(config, edit.at);
+      if (edit.percent === null) {
+        removeField(page, edit.at.key, 'iconScale');
+        return {};
+      }
+      if (!validIconScale(edit.percent)) throw new EditError(`icon scale must be from ${ICON_SCALE.min} to ${ICON_SCALE.max}%`);
+      buttonFor(page, edit.at.key).iconScale = edit.percent;
+      return {};
+    }
+    case 'setKeyBackground': {
+      const page = pageAt(config, edit.at);
+      if (edit.color === null) {
+        removeField(page, edit.at.key, 'background');
+        return {};
+      }
+      if (!HEX_COLOR.test(edit.color)) throw new EditError(`"${edit.color}" is not a colour like #1d2a4a`);
+      buttonFor(page, edit.at.key).background = edit.color.toLowerCase();
       return {};
     }
     case 'setActionIcon': {
@@ -414,6 +441,28 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       } else {
         config.defaults = { ...config.defaults, builtinIconSize: edit.percent };
       }
+      return {};
+    }
+    case 'setAppearance': {
+      const { labelFont, touchFeedback, keyColor } = edit.patch;
+      const next: NonNullable<Config['defaults']> = { ...config.defaults };
+      if (labelFont !== undefined) {
+        if (labelFont === null) delete next.labelFont;
+        else if (!validFontName(labelFont)) throw new EditError(`"${String(labelFont)}" is not a font name Deckhand can use`);
+        else next.labelFont = labelFont;
+      }
+      if (touchFeedback !== undefined) {
+        if (typeof touchFeedback !== 'boolean') throw new EditError('Touch feedback must be on or off');
+        if (touchFeedback) delete next.touchFeedback;
+        else next.touchFeedback = false;
+      }
+      if (keyColor !== undefined) {
+        if (keyColor === null || keyColor.toLowerCase() === DEFAULTS.background) delete next.background;
+        else if (!HEX_COLOR.test(keyColor)) throw new EditError(`"${keyColor}" is not a colour like #1d2a4a`);
+        else next.background = keyColor.toLowerCase();
+      }
+      if (Object.keys(next).length === 0) delete config.defaults;
+      else config.defaults = next;
       return {};
     }
     case 'setLabelSize': {

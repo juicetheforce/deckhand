@@ -4,7 +4,8 @@ import { failedBadgeSvg, unsetBadgeSvg } from '../../../src/failed-badge.js';
 import { cornerRadius, fillsBox, innerRect, shapeName, shapePath } from '../../../src/shapes.js';
 import type { LiveFace } from '../../../src/control/protocol.js';
 import type { ButtonDef, Config, PageBackgroundDef, PageDef } from '../../../src/types.js';
-import { iconUrl } from '../shared/icons.js';
+import { BUILTIN_PREFIX, iconUrl } from '../shared/icons.js';
+import { useImageCheck } from './image-check.js';
 import { fitScale, madeForAnother, positionedBox } from '../shared/templates.js';
 import { PageGround } from './PageGround.js';
 import { actionName } from './catalogue.js';
@@ -185,10 +186,15 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
 
 
 /** An icon drawn `scale` of the key, centred, as the deck draws a built-in (src/render.ts); 1 fills it. */
+/**
+ * An icon at `scale` of its key's box, on the deck's one rule (src/icon-scale.ts):
+ * the image fitted whole (object-fit: contain) in a box `scale` times the key's,
+ * centred; above 1 the key's own shape (its overflow, radius or clip-path) cuts it.
+ */
 function scaled(scale: number): CSSProperties {
-  if (scale >= 1) return {};
+  if (scale === 1) return {};
   const inset = `${((1 - scale) / 2) * 100}%`;
-  return { inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
+  return { inset: 'auto', left: inset, top: inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
 export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box, screen, background }: Props) {
@@ -293,7 +299,10 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
   // same path whose file changed — is tried again.
   const [missingIcon, setMissingIcon] = useState<string | null>(null);
   const iconId = face.icon === null ? null : `${face.icon}|${stamp ?? ''}`;
-  const iconMissing = iconId !== null && missingIcon === iconId;
+  // An image file the limits refuse is drawn as the deck draws it, the missing icon, with its reason (round 4).
+  const verdict = useImageCheck(face.icon !== null && !face.icon.startsWith(BUILTIN_PREFIX) ? face.icon : null, stamp);
+  const refusal = verdict?.state === 'refused' ? verdict.message : null;
+  const iconMissing = iconId !== null && (missingIcon === iconId || refusal !== null);
   const classes = [
     'key',
     kind === 'bound' ? '' : `key-${kind}`,
@@ -320,7 +329,7 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
         <span
           className={`key-label key-label-${face.labelPosition}`}
           // The deck's label size relative to its key pixels, applied to this key's width (container units).
-          style={{ color: face.labelColor, fontSize: `calc(${face.labelScale} * 100cqw)` }}
+          style={{ color: face.labelColor, fontFamily: face.labelFont, fontSize: `calc(${face.labelScale} * 100cqw)` }}
         >
           {/* One block per line, each cut on its own, as the deck does (src/label-fit.ts). */}
           {face.label.split('\n').filter((line) => line.length > 0).map((line, i) => (
@@ -379,14 +388,14 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
           className="key-icon"
           src={iconUrl(face.icon, stamp)}
           alt=""
-          style={{ objectFit: face.iconFit, ...(place ? iconBox(place, face.iconScale) : scaled(face.iconScale)) }}
+          style={{ objectFit: 'contain', ...scaled(face.iconScale) }}
           draggable={false}
           onError={() => setMissingIcon(iconId)}
         />
       )}
       {iconMissing && (
         // The same built-in the deck draws for an icon it cannot read.
-        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={`Cannot read ${face.icon}`} style={place ? iconBox(place, face.builtinScale) : scaled(face.builtinScale)} draggable={false} />
+        <img className="key-icon key-icon-missing" src={missingIconUrl} alt="" title={refusal ?? `Cannot read ${face.icon}`} data-icon-refused={refusal ?? undefined} style={scaled(face.builtinScale)} draggable={false} />
       )}
       {place ? (
         // The label, the marks and the badge in the shape's largest inner rectangle, as the deck draws them (src/render.ts renderFace).
@@ -455,10 +464,5 @@ export function placeOf(k: { x: number; y: number; w: number; h: number; shape: 
   };
 }
 
-/** The icon on a placed key: the square at its shorter side, centred, at `scale` of it (render.ts renderFace). */
-function iconBox(place: Place, scale: number): CSSProperties {
-  const side = Math.min(place.w, place.h) * Math.min(1, scale);
-  return { inset: 'auto', left: pct((place.w - side) / 2 / place.w), top: pct((place.h - side) / 2 / place.h), width: pct(side / place.w), height: pct(side / place.h) };
-}
 
 /** The panel drawn at its own proportions, as large as fits the room it has, centred. */

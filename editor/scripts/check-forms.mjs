@@ -99,6 +99,8 @@ const BUTTONS = {
   31: { action: { type: 'obs.stream' } },
 };
 const CONFIG = {
+  // Today's format, so opening it converts nothing (src/icon-fit.ts) and the file holds only what the UI wrote.
+  version: 2,
   // A virtual deck that is not connected: what Virtual deck on/off lists.
   decks: { [SERIAL]: {}, 'GRA-6e4e': { name: 'Side panel', virtual: { output: 'DP-4' } } },
   startProfile: 'default',

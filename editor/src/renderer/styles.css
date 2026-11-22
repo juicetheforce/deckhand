@@ -3958,6 +3958,17 @@ body.settings-body {
   background: var(--accent);
 }
 
+.sp-slider-mark {
+  position: absolute;
+  top: 15px;
+  width: 3px;
+  height: 12px;
+  margin-left: -1.5px;
+  border-radius: 1.5px;
+  background: #3fcf8e;
+  pointer-events: none;
+}
+
 .sp-slider-tick {
   position: absolute;
   top: 19px;
@@ -4902,4 +4913,24 @@ body.settings-body {
 .made-for b {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* A key's colour (ColourPicker.tsx): the page background's colour row and swatches, with Default first. */
+.colour-picker .background-swatches {
+  margin: 8px 0 0;
+  grid-template-columns: repeat(7, 26px);
+}
+
+.colour-chip-default {
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.dropdown-note {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11px;
 }

@@ -491,8 +491,11 @@ await check("key faces use the button's values, then config defaults, then the d
   const withDefaults = keyFace({ profiles: {}, defaults: { background: '#222222', labelSize: 20 } } as unknown as Config, { label: 'x' }, 72);
   assert.equal(withDefaults.background, '#222222');
   assert.equal(withDefaults.labelScale, 20 / 72);
-  const own = keyFace(EXAMPLE, { background: '#2a1f3d', labelPosition: 'top', icon: '~/a.png', iconFit: 'contain' }, 96);
-  assert.deepEqual([own.background, own.labelPosition, own.icon, own.iconFit], ['#2a1f3d', 'top', '~/a.png', 'contain']);
+  const own = keyFace(EXAMPLE, { background: '#2a1f3d', labelPosition: 'top', icon: '~/a.png', iconScale: 150 }, 96);
+  assert.deepEqual([own.background, own.labelPosition, own.icon, own.iconScale, own.ownScale], ['#2a1f3d', 'top', '~/a.png', 1.5, true]);
+  assert.equal(own.labelFont, 'sans-serif', 'no font chosen: Deckhand\'s default');
+  const fonted = keyFace({ profiles: {}, defaults: { labelFont: 'Fira Sans' } } as unknown as Config, { label: 'x' }, 72);
+  assert.equal(fonted.labelFont, "'Fira Sans', sans-serif", 'the chosen font, falling back to the default');
 });
 
 await check('a built-in is drawn at the deck\'s built-in size and an icon file fills the key, as on the deck', () => {
@@ -504,6 +507,9 @@ await check('a built-in is drawn at the deck\'s built-in size and an icon file f
   const tuned = { ...EXAMPLE, defaults: { ...EXAMPLE.defaults, builtinIconSize: 70 } } as Config;
   assert.equal(face({ action: hotkey }, tuned).iconScale, 0.7, 'defaults.builtinIconSize moves it');
   assert.equal(face({ icon: '~/a.png' }, tuned).builtinScale, 0.7, 'the missing placeholder follows it too');
+  assert.equal(face({ action: hotkey, iconScale: 120 }, tuned).iconScale, 1.2, 'a key\'s own scale wins over Icon size');
+  assert.equal(face({ icon: '~/a.png', iconScale: 40 }).iconScale, 0.4, '…and over a file\'s 100%');
+  assert.equal(face({ action: hotkey }).ownScale, false, 'without one, it follows');
 });
 
 await check('every key with states has a Default icon and an active state icon; the grid shows its Default icon', async () => {

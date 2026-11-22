@@ -179,6 +179,13 @@ if (r && !r.error) {
     assert.deepEqual(r.selection.ctrl, { selected: [0, 2], title: '2 keys selected' });
     assert.deepEqual(r.selection.shift.selected, [2, 3, 4]);
   });
+  check('round 4 on a Stream Deck key, exactly: the Key tab gains Background (a swatch and its hex, Default), the Icon tab Icon scale', () => {
+    assert.deepEqual(r.appearance?.keyTab, { headings: ['Hotkey', 'Label', 'Background', 'Icon'], background: ['button', 'input'], backgroundValue: 'default' });
+    assert.deepEqual(r.appearance?.iconTab.headings, ['Icon scale']);
+    assert.deepEqual(r.appearance?.iconTab.scale, ['slider']);
+  });
+  check('…the Icon scale slider runs 20–200%; a built-in following Icon size shows its true figure, 46%; the whole image shows at 100% on a square key', () =>
+    assert.deepEqual(r.appearance?.iconTab.slider, { min: '20', max: '200', text: '46%', shown: '46%', mark: '100' }));
   check('a key dragged onto another swaps them', () => {
     assert.deepEqual(r.swap.key0, SPRINT);
     assert.deepEqual(r.swap.key1, JUMP);

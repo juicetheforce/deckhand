@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEventHandler } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type MouseEventHandler } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 /**
@@ -19,6 +19,10 @@ import { createPortal, flushSync } from 'react-dom';
 export interface DropdownOption {
   value: string;
   label: string;
+  /** How its label is drawn in the list (Label font: each font in its own face). */
+  style?: CSSProperties;
+  /** Quiet text at the right of its row (Label font's Default: the font it is). */
+  note?: string;
 }
 
 /** A trigger's data-* attributes, and the rest a <button> takes. */
@@ -62,10 +66,13 @@ export function Dropdown({
     const above = at.top - gap - margin;
     const height = list.scrollHeight + 2;
     const under = height <= below || below >= above;
-    const room = Math.max(under ? below : above, 60);
+    // Never taller than the window: a trigger scrolled half out of view would otherwise measure more room than there is.
+    const room = Math.max(Math.min(under ? below : above, window.innerHeight - margin * 2), 60);
     list.style.minWidth = `${at.width}px`;
     list.style.maxHeight = `${room}px`;
-    list.style.top = `${under ? at.bottom + gap : Math.max(margin, at.top - gap - Math.min(height, room))}px`;
+    // Kept inside the window either way, even for a trigger scrolled out of view.
+    const top = under ? at.bottom + gap : at.top - gap - Math.min(height, room);
+    list.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - margin - Math.min(height, room)))}px`;
     list.style.left = `${Math.max(margin, Math.min(at.left, window.innerWidth - list.offsetWidth - margin))}px`;
     (list.querySelector<HTMLButtonElement>('[aria-selected="true"]') ?? list.querySelector<HTMLButtonElement>('[role="option"]'))?.focus({ preventScroll: false });
   }, [open]);
@@ -157,7 +164,10 @@ export function Dropdown({
                     if (o.value !== value) onChange(o.value);
                   }}
                 >
-                  <span className="dropdown-shown">{o.label}</span>
+                  <span className="dropdown-shown" style={o.style}>
+                    {o.label}
+                  </span>
+                  {o.note && <span className="dropdown-note muted">{o.note}</span>}
                   {o.value === value && (
                     <span className="dropdown-mark" aria-hidden="true">
                       ✓

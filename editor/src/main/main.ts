@@ -12,7 +12,7 @@ import { socketPath } from '../../../src/control/server.js';
 import { parseCombo } from '../../../src/keymap.js';
 import type { DiscordList, ObsList, TwitchList, VtsList } from '../../../src/control/protocol.js';
 import type { ActionDef, ButtonDef } from '../../../src/types.js';
-import type { DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SleepSettings, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
+import type { Appearance, DaemonResult, DeleteProfileResult, EditorSnapshot, IconFolderResult, IconSearchResult, ObsForm, ObsSaveResult, SleepSettings, SettingsSection, StoreView, WindowState } from '../shared/bridge.js';
 import { MAX_SHOWN_DECKS, type VirtualDecksView } from '../shared/bridge.js';
 import { MAX_DECK_POSITIONS, readPositions, validPosition, validSerial, withPosition, type DeckPosition } from '../shared/deck-positions.js';
 import { cleanGridChoice, readGridChoices, withGridChoice } from '../shared/grid-choice.js';
@@ -20,7 +20,8 @@ import { cleanGuides } from '../shared/layout-arrange.js';
 import { IMPORT_LIMITS, MAX_KEPT_CONFIGS, type ExportResult, type ImportChoice, type ImportResult, type KeptConfigList } from '../shared/backup.js';
 import { deleteProfileKeepingACopy } from './profile-delete.js';
 import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } from './kept-configs.js';
-import type { ApplyResult, ButtonLocation, Edit, IconChoice, SleepSettingsPatch } from '../shared/edits.js';
+import type { AppearancePatch, ApplyResult, ButtonLocation, Edit, IconChoice, SleepSettingsPatch } from '../shared/edits.js';
+import { systemFonts } from './fonts.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIconField } from '../shared/icons.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
@@ -805,6 +806,26 @@ function registerIpc(): void {
     store.apply({ kind: 'setBuiltinIconSize', percent: percent as number | null });
     return builtinIconSize();
   });
+  // Settings › General › Appearance's config fields, in config.json: the daemon draws them. Null while it is not open.
+  const appearance = (): Appearance | null => {
+    const view = store?.state();
+    if (!view) return null;
+    const d = view.config.defaults;
+    return { labelFont: d?.labelFont ?? null, touchFeedback: d?.touchFeedback !== false, keyColor: d?.background ?? null };
+  };
+  ipcMain.handle('appearance', (event) => (fromSettingsWindow(event) ? appearance() : null));
+  ipcMain.handle('setAppearance', (event, patch: unknown) => {
+    if (!fromSettingsWindow(event) || !store || typeof patch !== 'object' || patch === null) return appearance();
+    const { labelFont, touchFeedback, keyColor } = patch as Record<string, unknown>;
+    const clean: AppearancePatch = {};
+    if (labelFont === null || typeof labelFont === 'string') clean.labelFont = labelFont;
+    if (typeof touchFeedback === 'boolean') clean.touchFeedback = touchFeedback;
+    if (keyColor === null || typeof keyColor === 'string') clean.keyColor = keyColor;
+    store.apply({ kind: 'setAppearance', patch: clean });
+    return appearance();
+  });
+  // Asked of fontconfig only when Settings asks (fonts.ts): nothing kept, nothing at rest.
+  ipcMain.handle('systemFonts', (event) => (fromSettingsWindow(event) ? systemFonts() : { available: false, families: [], defaultName: null }));
   // Both in config.json too: the daemon draws the labels and sleeps the decks. Null while config.json is not open.
   const labelSize = (): number | null => {
     const view = store?.state();

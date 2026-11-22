@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import logoUrl from '../../../assets/logo/deckhand.svg';
 import micIconUrl from '../../../assets/icons/mic.svg';
-import { BUILTIN_ICON_SIZE, DEFAULTS, DIM_TO, LABEL_SIZE, shownIconSize, storedIconSize } from '../../../src/config-common.js';
+import { BUILTIN_ICON_SIZE, DEFAULTS, DIM_TO, fontFamily, LABEL_SIZE } from '../../../src/config-common.js';
+import type { Appearance, SystemFonts } from '../shared/bridge.js';
+import { ColourPicker } from './ColourPicker.js';
 import type { DiscordStatus, ObsStatus, TwitchStatus, VtsStatus } from '../../../src/control/protocol.js';
 import { RESTORED_FOLDER, type ExportResult, type ImportChoice, type ImportIcon, type ImportResult, type ImportReview, type KeptConfig, type KeptConfigList } from '../shared/backup.js';
 import type { SettingsSection, SleepSettings } from '../shared/bridge.js';
@@ -67,6 +69,10 @@ export function SettingsWindow() {
   /** Label size's sample while the slider moves. */
   const [labelSample, setLabelSample] = useState<number | null>(null);
   const [sleepSettings, setSleepSettingsState] = useState<SleepSettings | null>(null);
+  /** Appearance's config fields; null while config.json is not open. */
+  const [appearance, setAppearanceState] = useState<Appearance | null>(null);
+  /** The installed fonts, asked of fontconfig once each time the window opens; null until they come. */
+  const [fonts, setFonts] = useState<SystemFonts | null>(null);
   const [idleAvailable, setIdleAvailable] = useState<boolean | null>(null);
   /** Icon size's sample while the slider moves, as stored (percent of the key): live, though nothing is saved until it is let go. */
   const [iconSample, setIconSample] = useState<number | null>(null);
@@ -83,6 +89,8 @@ export function SettingsWindow() {
   // Once each time the window opens: it starts a short process, so never on a redraw.
   useEffect(() => {
     void window.deckhand.idleAvailable().then(setIdleAvailable);
+    // Asked once per opening, never kept or watched: finding the fonts costs nothing at rest.
+    void window.deckhand.systemFonts().then(setFonts);
   }, []);
 
   useEffect(() => {
@@ -94,6 +102,7 @@ export function SettingsWindow() {
       void window.deckhand.builtinIconSize().then(setIconSize);
       void window.deckhand.labelSize().then(setLabelSize);
       void window.deckhand.sleepSettings().then(setSleepSettingsState);
+      void window.deckhand.appearance().then(setAppearanceState);
     };
     refreshDecks();
     // A deck plugged in while the window is open shows the next time it is looked at.
@@ -125,6 +134,15 @@ export function SettingsWindow() {
       setLabelSize(saved);
       setLabelSample(null);
     });
+  const changeAppearance = (patch: Parameters<typeof window.deckhand.setAppearance>[0]) => void window.deckhand.setAppearance(patch).then(setAppearanceState);
+  const chosenFont = appearance?.labelFont ?? null;
+  const fontMissing = chosenFont !== null && fonts !== null && fonts.available && !fonts.families.some((f) => f.toLowerCase() === chosenFont.toLowerCase());
+  const fontOptions = [
+    { value: '', label: 'Default', note: fonts?.defaultName ?? undefined },
+    // A chosen font that is not installed keeps its name in the list, as on the trigger.
+    ...(fontMissing ? [{ value: chosenFont, label: chosenFont }] : []),
+    ...(fonts?.families ?? []).map((f) => ({ value: f, label: f, style: { fontFamily: fontFamily(f) } })),
+  ];
   const changeSleep = (patch: SleepSettingsPatch) => void window.deckhand.setSleepSettings(patch).then(setSleepSettingsState);
   const sleepOnLock = sleepSettings === null ? null : sleepSettings.onLock !== false;
   const noConfig = sleepSettings === null;
@@ -227,24 +245,70 @@ export function SettingsWindow() {
                   </div>
                 </Row>
                 <Divider />
-                {/* Claude Design's 16a–16c: global, percent of the key, built-in icons only. */}
+                {/* Claude Design's 16a–16c: global, built-in icons only, unless a key sets its own scale.
+                    The true figure, percent of the key (Ryan, 2026-11-22): 45.5 reads 46% until moved. */}
                 <Row title="Icon size" detail={iconSize === null ? 'Needs config.json to be open' : 'Built-in icons on keys'}>
-                  {/* Shown relative to the largest size (70% of the key as 100%), stored as a percent of the key. */}
                   <Slider
                     label="Icon size"
-                    value={shownIconSize(iconSize ?? DEFAULTS.builtinIconSize)}
-                    min={BUILTIN_ICON_SIZE.shown.min}
-                    max={BUILTIN_ICON_SIZE.shown.max}
-                    step={BUILTIN_ICON_SIZE.shown.step}
+                    value={iconSize ?? DEFAULTS.builtinIconSize}
+                    min={BUILTIN_ICON_SIZE.min}
+                    max={BUILTIN_ICON_SIZE.max}
+                    step={BUILTIN_ICON_SIZE.step}
                     unit="%"
                     disabled={iconSize === null}
-                    onPreview={(shown) => setIconSample(storedIconSize(shown))}
-                    onCommit={(shown) => changeIconSize(storedIconSize(shown))}
+                    onPreview={setIconSample}
+                    onCommit={changeIconSize}
                   >
                     <span className="sp-icon-sample" data-settings="icon-sample">
                       <img src={micIconUrl} alt="" width={Math.round((56 * sampleSize) / 100)} height={Math.round((56 * sampleSize) / 100)} />
                     </span>
                   </Slider>
+                </Row>
+                <Divider />
+                {/* Board 27b and 27d: between Icon size and Label font. Virtual decks only. */}
+                <Row title="Touch feedback" detail={appearance === null ? 'Needs config.json to be open' : 'Pressed look on virtual decks'} htmlFor="settings-touch-feedback">
+                  <Switch id="settings-touch-feedback" checked={appearance?.touchFeedback ?? true} disabled={appearance === null} onChange={(on) => changeAppearance({ touchFeedback: on })} />
+                </Row>
+                <Divider />
+                {/* Board 27b and 27c: one font for every label on every deck, each listed in its own face. */}
+                <Row
+                  title="Label font"
+                  detail={
+                    appearance === null ? (
+                      'Needs config.json to be open'
+                    ) : fontMissing ? (
+                      <span data-settings="font-missing">Not installed. Using the default.</span>
+                    ) : fonts !== null && !fonts.available ? (
+                      'Installed fonts can’t be listed here'
+                    ) : (
+                      'Labels on every key'
+                    )
+                  }
+                  htmlFor="settings-label-font"
+                >
+                  <Dropdown
+                    id="settings-label-font"
+                    aria-label="Label font"
+                    className="sp-select"
+                    data-settings="label-font"
+                    value={chosenFont ?? ''}
+                    options={fontOptions}
+                    disabled={appearance === null}
+                    onChange={(font) => changeAppearance({ labelFont: font === '' ? null : font })}
+                  />
+                </Row>
+                <Divider />
+                {/* Ryan, 2026-11-18 (2a answer 8): the default button colour on every deck, defaults.background. */}
+                <Row title="Key colour" detail={appearance === null ? 'Needs config.json to be open' : 'Buttons on every deck, unless a key sets its own'}>
+                  <ColourPicker
+                    name="key-colour"
+                    label="Key colour"
+                    value={appearance?.keyColor ?? null}
+                    defaultColor={DEFAULTS.background}
+                    defaultTitle={DEFAULTS.background}
+                    disabled={appearance === null}
+                    onChange={(color) => changeAppearance({ keyColor: color })}
+                  />
                 </Row>
                 <Divider />
                 <Row title="Label size" detail={labelSize === null ? 'Needs config.json to be open' : 'Labels on keys, unless a key sets its own'}>
@@ -302,7 +366,7 @@ export function SettingsWindow() {
 
       {confirmingReset ? (
         <div className="settings-footer settings-footer-confirm" data-settings-confirm="reset">
-          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size and label size to their defaults?</span>
+          <span className="settings-note settings-note-ask">Reset the default deck, close to tray, sleep settings, notifications, accent color, icon size, touch feedback, label font, key colour and label size to their defaults?</span>
           <button
             className="sp-button sp-button-danger-solid"
             onClick={() => {
@@ -311,6 +375,7 @@ export function SettingsWindow() {
               if (notifications === false) changeNotifications(true);
               if (iconSize !== null && iconSize !== DEFAULTS.builtinIconSize) changeIconSize(null);
               if (labelSize !== null && labelSize !== DEFAULTS.labelSize) changeLabelSize(null);
+              if (appearance !== null && (!appearance.touchFeedback || appearance.labelFont !== null || appearance.keyColor !== null)) changeAppearance({ touchFeedback: true, labelFont: null, keyColor: null });
               if (sleepSettings !== null && Object.keys(sleepSettings).length > 0) changeSleep({ onLock: true, dimAfter: null, dimTo: null, sleepAfter: null });
             }}
             data-settings="confirm-reset"
