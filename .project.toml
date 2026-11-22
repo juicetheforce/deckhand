@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Round 5 (sliders and dials, PR #12): Codex's review, then Ryan's test list on the 10.3\" panel and the V2; merge after. Nothing released until v2 is done."
+next = "Ryan tests round 5's changes on PR #12 (drawn level, image areas, rectangles, brightness from 5, Default input) and Codex re-reviews; then merge. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -51,4 +51,5 @@ Round 3 merged 2026-11-21 (PR #10, f881ae5), not released: test list passed on t
 Round 4 built 2026-11-22 (PR #11), not merged: one icon-scale rule (100% = the whole image fits the key), per key on every deck; iconFit retired behind a config "version": 2 the editor writes; image limits on icons in the daemon too; label font, key colour, touch feedback (virtual decks).
 Round 4 merged 2026-11-22 (PR #11, 2746fdf), not released: test list passed on the 10.3" panel and the V2, Icon size widened to 100% and checked; Codex's three findings fixed.
 Round 5 built 2026-11-22 (PR #12), not merged: sliders and dials on virtual decks for Volume (any device), Brightness (down to 0) and Discord user volume; the daemon draws the face (measured against the helper composing: ~1 ms a step apart); a pactl call is ~22 ms CPU, at most one per drag step; nothing at rest.
+Round 5 (PR #12, 2026-11-22): sliders and dials; test list passed on the 10.3" panel and the V2. Ryan's decisions: the level (fill, ring) is drawn by Deckhand, never an image; knob/thumb keep proportions; sliders and dials are rectangles; brightness stops at 5; Default input added; ~1 core in a fast volume drag accepted, no cap.
 """
