@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks the editor's background fix on PR #12 (an SVG background or track stretched as on the deck); then merge. Nothing released until v2 is done."
+next = "Ryan checks the Brightness slider drag on a virtual deck on PR #12 (no blackout, flash or lag); Codex re-reviews; then merge. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
