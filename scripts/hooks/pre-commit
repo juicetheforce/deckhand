@@ -13,7 +13,11 @@
 
 set -euo pipefail
 
-if ! git diff --cached --name-only | grep -qE '^(editor|src)/'; then
+# The whole list first, then the search: piped straight into `grep -q`, git
+# died of SIGPIPE on a long list once grep had its match, pipefail failed the
+# pipeline, and the check was skipped (scripts/test/pre-commit.test.sh).
+staged=$(git diff --cached --name-only)
+if ! grep -qE '^(editor|src)/' <<<"$staged"; then
   exit 0
 fi
 

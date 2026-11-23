@@ -176,6 +176,10 @@ for part in dist assets helper panel package.json; do cp -a "$APP/$part" "$T/$pa
 mkdir -p "$T/editor" && cp -a "$APP/editor/package.json" "$T/editor/package.json"
 ln -s "$APP/node_modules" "$T/node_modules"
 cp -r "$REPO/scripts" "$T/scripts"
+# Reference art from the checkout, as the scripts are: smoke-values compares the
+# generator with assets/art/, which the package does not carry — nothing at run
+# time reads those files (src/value-controls.ts draws from the generator).
+cp -r "$REPO/assets/art" "$T/assets/art"
 export PATH="$APP/runtime:$PATH"   # the fakes' #!/usr/bin/env node finds the bundled one
 for smoke in $(node -p "require('$REPO/package.json').scripts.smoke" | grep -o 'scripts/smoke[a-z-]*\.mjs'); do
   # A smoke test that skips (smoke-panel without KWin or the helper) tested

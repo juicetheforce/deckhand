@@ -290,7 +290,11 @@ await inPage(editor, 'settings', clickIn('[data-vd-screen=DP-4] button'));
 await until(async () => (await frames()).filter((f) => f.type === 'start').length > startsAgain);
 await tapOn('DP-4', `${sysfs.dev}/event15`);
 r.readded = await until(async () => (await onDisk()).decks?.[KEY]?.virtual !== undefined);
-r.readdedNotice = await until(async () => /previous layout/.test((await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? ''")) ?? ''));
+// Every page kept with its own layout, and the default grid it had: said as such, never a per-profile size (the wording before every page had its own layout).
+const noticeText = async () => (await inPage(editor, 'settings', "document.querySelector('[data-vd-notice]')?.textContent ?? ''")) ?? '';
+await until(async () => /virtual deck again/.test(await noticeText()));
+r.readdedText = await noticeText();
+r.readdedNotice = /pages are kept, each with its own layout/.test(r.readdedText) && /default grid/.test(r.readdedText) && !/size it had|layout in “/.test(r.readdedText);
 r.readdedAskedSize = await exists(editor, '[data-vd-step=size]');
 const readdedLayout = (await onDisk()).profiles.default.layouts[KEY];
 r.readdedControls = readdedLayout.pages[readdedLayout.startPage].panel?.controls.length;
@@ -384,7 +388,7 @@ check('Remove takes away the pairing only: the layouts stay', () => {
 check('added again after Remove: no size asked, its kept layout used, and said so', () => {
   assert.equal(r.readded, true);
   assert.equal(r.readdedAskedSize, false);
-  assert.equal(r.readdedNotice, true);
+  assert.equal(r.readdedNotice, true, `the notice said: ${r.readdedText}`);
   assert.equal(r.readdedControls, 24, 'the 3 × 8 its page had');
   assert.equal(r.rulesAfterReadd, true, 'and its touchscreen\'s rule back');
 });
