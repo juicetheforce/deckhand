@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks the Brightness slider drag on a virtual deck on PR #12 (no blackout, flash or lag); Codex re-reviews; then merge. Nothing released until v2 is done."
+next = "Round 6, the level meter experiment: measure what a live meter costs while shown and at rest, report it, and build only if Ryan says so. Ryan starts it. Nothing released until v2 is done."
 category = "Gaming"
 paused = false
 focus = true
@@ -53,4 +53,5 @@ Round 4 merged 2026-11-22 (PR #11, 2746fdf), not released: test list passed on t
 Round 5 built 2026-11-22 (PR #12), not merged: sliders and dials on virtual decks for Volume (any device), Brightness (down to 0) and Discord user volume; the daemon draws the face (measured against the helper composing: ~1 ms a step apart); a pactl call is ~22 ms CPU, at most one per drag step; nothing at rest.
 Round 5 (PR #12, 2026-11-22): sliders and dials; test list passed on the 10.3" panel and the V2. Ryan's decisions: the level (fill, ring) is drawn by Deckhand, never an image; knob/thumb keep proportions; sliders and dials are rectangles; brightness stops at 5; Default input added; ~1 core in a fast volume drag accepted, no cap.
 MIDI controller recorded as a future direction (2026-11-22): Mackie Control first, OSC possible; not v2. A virtual deck's brightness is now light given off (gamma 2.2): 5 is dim but lit.
+Round 5 merged 2026-11-23 (PR #12, aebcfc9), not released: sliders and dials confirmed on the 10.3" panel; a virtual deck's brightness is now dimmed by the helper as it shows (a fast drag no longer blacks out or lags); tests no longer hear real USB events.
 """
