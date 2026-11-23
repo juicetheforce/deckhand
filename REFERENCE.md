@@ -65,14 +65,15 @@ It installs for your user only:
 
 | What | Where |
 | --- | --- |
-| The daemon, its Node, the key-injection helper and the editor | `~/.local/share/deckhand/` |
+| The daemon, its Node, the key-injection and display helpers and the editor | `~/.local/share/deckhand/` |
 | The systemd user service | `~/.local/share/systemd/user/deckhand.service` |
 | The `deckhand`, `deckhand-editor` and `deckhand-uninstall` commands | `~/.local/bin/` |
 | The editor's desktop entry and icon | `~/.local/share/applications/`, `~/.local/share/icons/` |
 | A udev rule giving your user the decks and `/dev/uinput` | `/etc/udev/rules.d/60-deckhand.rules` |
+| The touchscreen pairing helper, root-owned, used only when you pair a touchscreen | `/usr/local/libexec/deckhand-touch-access` |
 
-**`sudo` is asked for only to write the udev rule**, and only when it is
-missing or has changed — and, on distributions that restrict unprivileged user
+**`sudo` is asked for only to write the udev rule and the pairing helper**, and
+only when either is missing or has changed — and, on distributions that restrict unprivileged user
 namespaces (Ubuntu 24.04 and later), once to add an AppArmor profile that
 lets the editor start. The installer reports whether your user can open
 `/dev/uinput` and each connected deck.
@@ -165,7 +166,8 @@ deckhand-uninstall --purge  # removes your config without asking
 Uninstall removes the service, the installed copy, the commands, the desktop
 entry and Deckhand's udev rule. The rule always goes, because it gives every
 program you run access to `/dev/uinput`; with it go every paired
-touchscreen's rule and the pairing helper in `/usr/local/libexec`. It also removes
+touchscreen's rule and the pairing helper in `/usr/local/libexec`, and the
+editor's AppArmor profile where one was added. It also removes
 `~/.local/state/deckhand/`, backups included — that is the app's state, not
 your config. A developer install is removed the same way; the checkout is
 yours to delete.
@@ -246,7 +248,7 @@ page, opens it for laying out by hand. While it is open the button stays lit,
 with **Discard changes** and **Done** beside it, a bar names the deck, profile
 and page in place of the page tabs, only that deck is shown, and the action
 library becomes **Controls**: drag a **Button** onto the panel, or click it to add one
-in the middle, about 30 mm across on any screen. Drag a control to move it, or
+in the middle, the size of a Medium key (about 26 mm across) on any screen. Drag a control to move it, or
 one of its eight handles to resize it, or type its X, Y, width and height, in
 the screen's pixels; nothing leaves the panel. Each control is a
 **rectangle**, with corners from square to a full pill, **round** or a
@@ -270,8 +272,9 @@ height to the first one selected. Every change is saved as it is made, so the
 touchscreen shows the layout as it is built. **Done**, or the lit Edit layout,
 leaves; so do closing the window, changing profile and a deck key that changes
 page or profile.
-**Discard changes** puts the layout back as it was when Edit layout was
-opened, deleted controls with their keys. Outside Edit layout a layout cannot
+**Discard changes** (dimmed until something has changed) says what will be
+undone and asks first, then puts the layout back as it was when Edit layout was
+opened, deleted controls with their keys. **Esc** clears the selection. Outside Edit layout a layout cannot
 be changed, only filled with actions, icons and labels. On a custom layout a
 key lands only on a control: **paste** puts the copied keys on the selected
 controls, one each, and pastes nothing with none selected; a key **dragged**
@@ -349,7 +352,8 @@ for the compositor than an opaque deck — so on such a machine, keep
 see-through backgrounds to screens where nothing moves behind the deck.
 Deckhand's own share is the same either way. See-through needs the
 compositor's layer-shell, as on KDE Plasma; where the deck is a full-screen
-window instead, as on GNOME, the panel says it may not show through.
+window instead, as on GNOME, the panel says it may not show through. Virtual
+decks have not been tried on GNOME at all.
 **Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
@@ -523,8 +527,9 @@ at a time, so a script flooding it can't hold up a key press on a deck.
 ## Configuration
 
 The editor covers all of this; the format is here for hand-editing and
-scripts. `config.example.json` shows a complete file — its serials and audio
-`node` names are placeholders.
+scripts. `config.example.json` shows a small complete file for Stream Decks — its
+serials and audio `node` names are placeholders; a virtual deck's pages,
+backgrounds and sliders are described below.
 
 ```jsonc
 {

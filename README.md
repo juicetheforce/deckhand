@@ -12,7 +12,46 @@ Discord, pages and profiles.
 I built it for my own decks, because the software I was using kept breaking.
 It's one person's project, used every day.
 
-![The editor, with a Stream Deck XL's page open](assets/screenshots/editor.png)
+![A touchscreen laid out by hand: sliders, dials, round and hexagonal buttons over a background image](assets/screenshots/touchscreen.png)
+
+## New in 0.13
+
+A touchscreen used as a deck can now be laid out however you like, and every
+deck gets a few new ways to look the way you want.
+
+- **Lay out a touchscreen by hand.** Each page of a virtual deck is either a
+  fixed grid, like a Stream Deck, or a layout of your own: buttons anywhere, at
+  any size, as rounded rectangles, circles or hexagons, overlapping if you
+  like. **Edit layout** has a grid, snapping, and tools to align and space
+  several buttons at once, and the touchscreen shows the layout as you build
+  it. Save a layout as a template to start other pages from.
+- **Sliders and dials.** Drag a finger to set the volume of any output or
+  input, a deck's brightness, or one person's volume in a Discord call. The
+  level is drawn in a colour you choose, and follows changes made anywhere
+  else, such as your desktop's own volume control. Their art can be your own
+  images, layer by layer.
+- **A background for every page** of a virtual deck: a colour, an image if
+  you like, and an opacity, so below 100% what is behind the deck on that screen shows
+  through.
+- **Every page of a virtual deck has its own layout**, so one page can be a
+  big grid of small keys and the next a few large buttons.
+- **For every deck, Stream Decks included**: a colour for each key and a
+  default for all of them, the font of every label, and how large each key's
+  icon is drawn. With nothing changed, keys look as they did.
+- **Touch feedback**: a button on a touchscreen shows it was pressed, and a
+  slider or dial lights up while you hold it. On by default; one switch turns
+  it off.
+- **The editor shows every deck in its own frame**, with its page and, for a
+  virtual deck, its layout and background controls on the frame itself.
+
+**Updating from 0.12 or earlier:** the editor converts your config to the new
+format the first time it opens it. After that, an older Deckhand can't use it
+properly, so going back means putting back the copy from before the update:
+every change keeps the file it replaced in `~/.local/state/deckhand/backups/`,
+the newest 20. Virtual decks' brightness levels below 100 now look
+brighter than before, closer to how a Stream Deck dims.
+
+![Edit layout on a touchscreen, with a hexagonal button selected](assets/screenshots/edit-layout.png)
 
 ## How it's different
 
@@ -37,7 +76,7 @@ It's one person's project, used every day.
   icon draws a built-in one for its action, as large as you like (Settings ›
   General › Icon size), and every key can scale its own icon. A key that shows a state — muted, live, playing —
   takes a default icon of yours and one for that state. A label can stack its words on more than
-  one line.
+  one line, in any font you have installed, and any key can have its own colour.
 
 ## How it treats your hardware
 
@@ -62,6 +101,10 @@ It's one person's project, used every day.
   when you plug it back in it comes back on the active profile's start page.
   Any key it was holding down is released when it goes.
 
+With one deck, the editor is just that deck:
+
+![The editor with one Stream Deck XL, a key selected](assets/screenshots/one-deck.png)
+
 ![Two decks side by side in the editor](assets/screenshots/multi-deck.png)
 
 ## Virtual decks
@@ -74,8 +117,8 @@ touch panel.
 
 - **Set it up in the editor**, in **Settings › Decks › Add a virtual
   deck**: choose the screen, tap it so Deckhand knows which touchscreen is
-  its own, and choose a grid size: Small, Medium, Large, or your own rows
-  and columns. Pairing asks for your password once, to give Deckhand access to
+  its own, and choose a grid size for its pages: Small, Medium, Large, or your
+  own rows and columns. Pairing asks for your password once, to give Deckhand access to
   that one touchscreen and no other ([why](SECURITY.md#device-access)). Edit its keys like any deck's. Nothing is ever edited on the
   touchscreen itself, so a stray touch can't change anything.
 - **Its touches go only to Deckhand.** Deckhand reads the touchscreen
@@ -100,14 +143,28 @@ touch panel.
   with square to fully rounded corners, circles or hexagons, overlapping if you
   like, with a grid, snapping, and tools to align and space several at once.
   The touchscreen shows the layout as you build it, and a touch goes to the
-  button's real shape.
+  button's real shape. A layout can be saved as a template, offered for new
+  pages on any touchscreen and scaled to fit it.
+- **Sliders and dials** go on a laid-out page beside its buttons. A slider is
+  upright or sideways, moved by dragging, or by jumping to where you touch; a
+  dial turns as you drag around it. They set the volume of any output or
+  input (or whichever is the default), a deck's brightness, or one person's
+  volume in a Discord call, and show the level as it is, whoever changed it.
+  Each is built from layers you can replace with your own images
+  ([how](REFERENCE.md#sliders-and-dials-their-layers)); the level itself is
+  always drawn by Deckhand, in a colour you pick, so your art can't hide it.
+
+![A dial selected in the editor, set to a headset's volume](assets/screenshots/dial.png)
+
+- **Touch feedback**: a pressed button is drawn pressed, and a slider or dial
+  lights up while held. One switch in Settings › General turns it off.
 - **Every page has its own background**: a colour, an image filling the screen
   or fitted inside it, and an opacity. Below 100% the screen is see-through,
   so whatever is behind the deck on that screen shows between the buttons, and
   can't be touched there; the buttons themselves always stay solid. A new page
   starts black.
-- **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
-  own backlight stays where it is. A Brightness key can adjust this deck or any
+- **Brightness keys and sliders work on it.** Its keys are drawn darker, so
+  your monitor's own backlight stays where it is. A Brightness key can adjust this deck or any
   other, and Sleep all decks dims it too, background included, so a
   see-through deck goes dark rather than clear. Turned off, it draws pure black, but
   an LCD's backlight still shows faintly. It doesn't sleep on a lock, since the
@@ -318,7 +375,8 @@ corrupted or cut-short download, and that is all it does: the checksums come
 from the same GitHub release as the download, so they don't prove who made it.
 
 `sudo` is asked for once, to add a udev rule that gives you access to the
-decks, and on Ubuntu once more for an AppArmor profile the editor needs. Then open **Deckhand** from your application menu.
+decks and the small helper that pairs a touchscreen, and on Ubuntu once more
+for an AppArmor profile the editor needs. Then open **Deckhand** from your application menu.
 
 To update, run the same line again; an **Update** pill appears in the editor
 when a newer release is out, with the line to copy. To remove it: `deckhand-uninstall`.
@@ -345,7 +403,8 @@ And what it doesn't do well yet:
 - **Replacing a deck.** A new deck starts blank, even the same model, because
   layouts belong to a serial number. Moving them over means editing the
   serial in the config file ([how](REFERENCE.md#using-it)).
-- **Dials, the Plus's touch strip, and the Neo's info bar** are ignored.
+- **A Stream Deck+'s dials and touch strip, and the Neo's info bar** are
+  ignored. (Sliders and dials exist only on virtual decks.)
 - **x86_64 only.** On other machines, install from source.
 - **Typed text assumes a US keyboard layout.**
 - **Audio devices with non-English names** show their system name instead,
@@ -367,7 +426,8 @@ And what it doesn't do well yet:
 - **Virtual decks need Wayland**, and have only been tried on KDE Plasma.
   On GNOME the panel is a fullscreen window instead, which hasn't been
   tried: it should take the keyboard focus once when it appears, and show in
-  the window list. X11 isn't supported.
+  the window list, and a see-through background may not show through there.
+  X11 isn't supported.
 - **A touch on a virtual deck whose screen has gone to sleep** presses the
   key under it.
 - **A rotated touchscreen** hasn't been tried.
@@ -385,9 +445,11 @@ you use Deckhand and something here matters to you, say so in an issue.
 That's what shapes it.
 
 - Timer keys.
-- Volume for individual devices, not just the default one.
+- Volume keys for individual devices. Sliders and dials can already set any
+  device's volume; a Volume key still nudges the default output.
 - Window actions on KDE Plasma.
-- Dials and the touch strip, if I ever have a Stream Deck+ to test on.
+- A Stream Deck+'s dials and touch strip, if I ever have one to test on.
+- A live level meter inside a slider.
 - Sharing a virtual deck's panel: exporting one, and importing it on another
   screen.
 - More OBS keys (replay buffer, virtual camera, studio mode) when someone

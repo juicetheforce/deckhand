@@ -138,8 +138,9 @@ is added, for every page made without a choice.
 
 - **The screen is drawn on a Wayland layer-shell surface on the `overlay`
   layer** that never takes keyboard focus, on the chosen output; where the
-  compositor has no layer-shell (GNOME), a fullscreen window on it. Two
-  standard protocols and one fallback: no per-desktop code, and no portal.
+  compositor has no layer-shell (GNOME), a fullscreen window on it — a path not
+  yet tried on a real GNOME desktop. Two standard protocols and one fallback: no
+  per-desktop code, and no portal.
 - **Touch is read from the touchscreen directly and grabbed**, below the
   compositor, so the desktop never sees it and nothing depends on which
   display the desktop thinks the touchscreen belongs to — which KDE Plasma
@@ -253,9 +254,9 @@ hardware gets faster. Three recurring timers are accepted exceptions:
 Everything else is started by an event. Those three are the only `setInterval`
 calls in `src/`; check with grep before adding one, and a new recurring timer
 needs a reason good enough to join this list. Media players are discovered
-from D-Bus's `NameOwnerChanged`, not by rescanning. One `setTimeout` a grep
-will find is not a recurring timer: after the session bus is lost,
-`src/services/mpris.ts` retries once, 2 s later, and further retries ride the
+from D-Bus's `NameOwnerChanged`, not by rescanning. The `setTimeout`s a grep
+will find are one-shot deadlines and debounces, not recurring timers. One of
+them: after the session bus is lost, `src/services/mpris.ts` retries once, 2 s later, and further retries ride the
 60-second scan. **The input helper, `pactl subscribe`, `udevadm monitor`
 and the config watch do the same** (`src/recovery.ts`): one quick retry, then
 the scan, and staying up 10 seconds earns the quick retry back, so a
@@ -457,7 +458,7 @@ GPU, see-through belongs on screens where nothing moves behind the deck.
 Deckhand itself spends the same in every case, and nothing of it runs on a
 clock. Where the compositor
 has no layer-shell (GNOME) the deck is a full-screen window, which may not
-show through; the editor says so there.
+show through; the editor says so there. Not yet tried on GNOME.
 
 **A slider or dial is a touch zone that sets a level, and takes only an
 action that carries one** — Volume (any local output or input, or the default
