@@ -75,7 +75,8 @@ export function ValueFace({
       return (
         <span key={name} className="value-layer" data-value-layer={name} style={{ ...full, ...style, ...(isHeld ? { filter: 'brightness(1.25)' } : {}) }}>
           <img
-            src={iconUrl(file, stamps[file])}
+            // Stretched as the deck stretches it: an SVG keeps its own proportions in an <img> unless told not to.
+            src={iconUrl(file, stamps[file], { stretch: a.stretch })}
             alt=""
             draggable={false}
             style={at}

@@ -1,4 +1,5 @@
-// Sliders and dials in the editor (round 5): new controls' physical sizes
+// Sliders and dials in the editor (round 5): new controls' physical sizes,
+// a stretched layer's SVG made to stretch (shared/icons.ts stretchedSvg),
 // (shared/layout-edit.ts addControl), a template keeping a slider
 // (shared/templates.ts), keys landing only on their own family
 // (shared/bulk.ts, DeckGrid's keyDropRefused), and the setLayer, setAngles
@@ -8,12 +9,13 @@ import assert from 'node:assert/strict';
 import type { Config, PanelDef } from '../../src/types.js';
 import { validateConfig } from '../../src/config.js';
 import { mmToPx } from '../../src/panel-presets.js';
-import { DIAL_MM, NEEDS_VALUE, SLIDER_MM } from '../../src/value-controls.js';
+import { DIAL_MM, dialLayerSvg, NEEDS_VALUE, SLIDER_MM, sliderLayerSvg } from '../../src/value-controls.js';
 import { applyEdit } from '../src/main/config-document.js';
 import type { Edit } from '../src/shared/edits.js';
 import { addControl, duplicateControl, layoutChanges, setShape } from '../src/shared/layout-edit.js';
 import { templateLayout } from '../src/shared/templates.js';
 import { copyKeys, keyDropRefused, placeClipboard, placeOnControls } from '../src/shared/bulk.js';
+import { iconUrl, stretchedSvg } from '../src/shared/icons.js';
 
 let failures = 0;
 function check(name: string, fn: () => void): void {
@@ -169,6 +171,54 @@ check('a button-only action is refused on a slider or dial, here as in the drop;
   apply(c, { kind: 'assignAction', at: at('b'), action: { type: 'hotkey', keys: 'a' } });
   assert.equal(buttons(c).s.action?.type, 'audio.volume');
   assert.equal(buttons(c).b.action?.type, 'hotkey');
+});
+
+console.log('a stretched layer, as the deck stretches it');
+const root = (svg: string) => /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/.exec(svg)![0];
+check('an SVG with a viewBox is told not to keep its proportions', () => {
+  const out = stretchedSvg('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300" viewBox="0 0 120 300"><rect width="120" height="300"/></svg>');
+  assert.match(root(out), /preserveAspectRatio="none"/);
+  assert.match(out, /^<\?xml version="1.0"\?>\n<svg /, 'the prolog kept');
+  assert.match(out, /<rect width="120" height="300"\/><\/svg>$/, 'the drawing untouched');
+});
+check('its own preserveAspectRatio is replaced, whichever quotes; only the root\'s', () => {
+  const out = stretchedSvg(`<svg viewBox='0 0 10 10' preserveAspectRatio='xMinYMin slice'><svg preserveAspectRatio="xMidYMid meet"/></svg>`);
+  assert.equal(root(out), `<svg preserveAspectRatio="none" viewBox='0 0 10 10'>`);
+  assert.match(out, /<svg preserveAspectRatio="xMidYMid meet"\/>/, 'a nested svg is its own business');
+});
+check('a width and height but no viewBox: given the viewBox of its size, or it would not scale at all', () => {
+  assert.equal(root(stretchedSvg('<svg width="60px" height="300" data-note="a > b"></svg>')), '<svg preserveAspectRatio="none" viewBox="0 0 60 300" width="60px" height="300" data-note="a > b">');
+  assert.equal(root(stretchedSvg('<svg width="50%" height="300"></svg>')), '<svg preserveAspectRatio="none" width="50%" height="300">', 'no size to take');
+});
+check('text with no <svg> is returned as it was; iconUrl asks for stretching only when told', () => {
+  assert.equal(stretchedSvg('not an image'), 'not an image');
+  assert.match(iconUrl('~/a.svg', '1', { stretch: true }), /&stretch=1$/);
+  assert.doesNotMatch(iconUrl('~/a.svg', '1'), /stretch/);
+  assert.doesNotMatch(iconUrl('~/a.svg', '1', { stretch: false }), /stretch/);
+});
+
+console.log('the glow, drawn in one page with every other face');
+// The editor puts every face's SVG inline in one document, where an id names one element for all of them:
+// two filters sharing an id must be the same filter, or the second face's glow is cut to the first's region.
+check('a glow filter\'s id is never shared by a different filter: sliders of one width and two lengths, either way up, and dials', () => {
+  const svgs = [
+    sliderLayerSvg('fill', { w: 46, h: 130 }, undefined, '#ff3b5c', false, true),
+    sliderLayerSvg('fill', { w: 46, h: 260 }, undefined, '#ff3b5c', false, true),
+    sliderLayerSvg('fill', { w: 130, h: 46 }, 'horizontal', '#ff3b5c', false, true),
+    sliderLayerSvg('fill', { w: 260, h: 46 }, 'horizontal', '#ff3b5c', false, true),
+    dialLayerSvg('ring', { w: 120, h: 120 }, { start: -135, end: 135 }, '#ff3b5c', false, true),
+    dialLayerSvg('ring', { w: 120, h: 160 }, { start: -135, end: 135 }, '#ff3b5c', false, true),
+  ];
+  const byId = new Map<string, string>();
+  for (const svg of svgs) {
+    const filters = [...svg.matchAll(/<filter id="([^"]+)"[^>]*>.*?<\/filter>/g)];
+    assert.equal(filters.length, 1, 'one glow filter in each');
+    for (const [def, id] of filters) {
+      const seen = byId.get(id);
+      assert.ok(seen === undefined || seen === def, `${id} names two filters:\n  ${seen}\n  ${def}`);
+      byId.set(id, def);
+    }
+  }
 });
 
 if (failures > 0) {

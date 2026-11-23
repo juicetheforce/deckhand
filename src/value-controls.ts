@@ -271,9 +271,14 @@ const HALO = { grow: 2.63, rx: 5.26, alpha: 0.3 };
  */
 const GLOW = { blur: 1.6, opacity: 0.85 };
 
-/** An SVG blur filter over the whole box, so a thin bar's glow is not cut at its own edges. Its id names its size: faces drawn side by side in the editor share one page. */
+/**
+ * An SVG blur filter over the whole box, so a thin bar's glow is not cut at its own edges. Its id
+ * names everything it holds — the blur and the region's size — because the editor draws every face
+ * inline in one page, where an id names one element for all of them: two faces of one width and two
+ * lengths sharing an id would both use the first's region, the longer one's glow cut short.
+ */
 function glowFilter(blur: number, w: number, h: number): { id: string; def: string } {
-  const id = `dh-glow-${Math.round(blur * 100)}`;
+  const id = `dh-glow-${Math.round(blur * 100)}-${Math.round(w * 100)}x${Math.round(h * 100)}`;
   return { id, def: `<defs><filter id="${id}" filterUnits="userSpaceOnUse" x="0" y="0" width="${r2(w)}" height="${r2(h)}"><feGaussianBlur stdDeviation="${r2(blur)}"/></filter></defs>` };
 }
 

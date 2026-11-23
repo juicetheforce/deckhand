@@ -107,9 +107,42 @@ export function builtinName(icon: string): BuiltinIcon | null {
   * makes a changed file a different URL. Without it Chromium keeps showing
   * the image it loaded first, however the file changes on disk.
   */
-export function iconUrl(configPath: string, stamp?: string): string {
+export function iconUrl(configPath: string, stamp?: string, options: { stretch?: boolean } = {}): string {
   const version = stamp === undefined ? '' : `&v=${encodeURIComponent(stamp)}`;
-  return `${ICON_SCHEME}://icon/?path=${encodeURIComponent(configPath)}${version}`;
+  const stretch = options.stretch ? '&stretch=1' : '';
+  return `${ICON_SCHEME}://icon/?path=${encodeURIComponent(configPath)}${version}${stretch}`;
+}
+
+/** The root element's start tag: `<svg`, then attributes, quoted values allowed to hold `>`. */
+const SVG_ROOT = /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/;
+
+/**
+ * An SVG's text made to stretch to whatever box it is drawn in, as the deck
+ * stretches it (src/value-face.ts: sharp draws it at its own size, then
+ * resizes it with fit 'fill'). Asked for by a slider's or dial's stretched
+ * layers (`stretch` on iconUrl). An SVG in an <img> keeps its own proportions
+ * — `preserveAspectRatio`, "xMidYMid meet" unless it says otherwise — inside
+ * the box object-fit gives it, so object-fit 'fill' alone letterboxes it. So
+ * the root's `preserveAspectRatio` becomes "none"; and an SVG with a width and
+ * height but no viewBox, which would not scale at all, is given the viewBox of
+ * its own size. Anything else is left as it is; text with no <svg> is returned
+ * unchanged.
+ */
+export function stretchedSvg(text: string): string {
+  const match = SVG_ROOT.exec(text);
+  if (!match) return text;
+  let tag = match[0].replace(/\spreserveAspectRatio\s*=\s*("[^"]*"|'[^']*')/g, '');
+  if (!/\sviewBox\s*=/.test(tag)) {
+    const size = (name: string) => {
+      const m = new RegExp(`\\s${name}\\s*=\\s*["']\\s*([0-9.]+)\\s*(px)?\\s*["']`).exec(tag);
+      return m ? Number(m[1]) : NaN;
+    };
+    const w = size('width');
+    const h = size('height');
+    if (w > 0 && h > 0) tag = tag.replace(/^<svg\b/, `<svg viewBox="0 0 ${w} ${h}"`);
+  }
+  tag = tag.replace(/^<svg\b/, '<svg preserveAspectRatio="none"');
+  return text.slice(0, match.index) + tag + text.slice(match.index + match[0].length);
 }
 
 // What counts as an image, by extension or by first bytes: one copy, shared
