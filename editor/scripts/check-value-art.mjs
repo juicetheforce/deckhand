@@ -4,14 +4,17 @@
 // virtual driver, with scripts/test/fake-panel.mjs as its display helper,
 // logging each control's image whole; the editor's window captured once.
 //
-// Five controls, each with the same art: a 120 × 300 SVG of four coloured
+// Six controls; five with the same art: a 120 × 300 SVG of four coloured
 // quarters, with a viewBox and no preserveAspectRatio — as drawing programs
 // save them, and the shape of none of them. As the background of:
 // - an upright slider, taller and narrower than the art;
 // - a horizontal slider, wider than the art;
 // - a dial, square;
 // and as the track — the other layer stretched to its area — of an upright
-// and a horizontal slider. Every other layer is a transparent image or none,
+// and a horizontal slider; and an upright slider whose background SVG's size
+// and viewBox have different proportions (Codex, PR #12), drawn at its own
+// size — the square fitted inside with clear bands — then stretched, bands and
+// all. Every other layer is a transparent image or none,
 // and the level is off, so the face is that art alone. The deck stretches it over the whole box (sharp,
 // fit 'fill'); an SVG in an <img> keeps its own proportions unless told not
 // to, which object-fit cannot do, so before the fix the editor letterboxed it
@@ -55,6 +58,14 @@ await fs.writeFile(
     `<rect x="0" y="0" width="60" height="150" fill="${hex(QUARTERS.tl)}"/><rect x="60" y="0" width="60" height="150" fill="${hex(QUARTERS.tr)}"/>` +
     `<rect x="0" y="150" width="60" height="150" fill="${hex(QUARTERS.bl)}"/><rect x="60" y="150" width="60" height="150" fill="${hex(QUARTERS.br)}"/></svg>\n`,
 );
+// Its size and its viewBox of different proportions (Codex, PR #12): drawn at its own size, the square viewBox is
+// fitted inside 120 × 300 with clear bands above and below, and that whole image is stretched — bands and all.
+await fs.writeFile(
+  path.join(pictures, 'banded.svg'),
+  `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300" viewBox="0 0 100 100">` +
+    `<rect x="0" y="0" width="50" height="50" fill="${hex(QUARTERS.tl)}"/><rect x="50" y="0" width="50" height="50" fill="${hex(QUARTERS.tr)}"/>` +
+    `<rect x="0" y="50" width="50" height="50" fill="${hex(QUARTERS.bl)}"/><rect x="50" y="50" width="50" height="50" fill="${hex(QUARTERS.br)}"/></svg>\n`,
+);
 await sharp({ create: { width: 10, height: 10, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toFile(path.join(pictures, 'clear.png'));
 
 const { edid, fakeSysfs } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-sysfs.mjs')).href);
@@ -95,8 +106,10 @@ const CONTROLS = [
   // The track, the other layer stretched to its area: no background, the art as the track.
   { id: 'tv', x: 1500, y: 100, w: 110, h: 470, kind: 'slider', what: 'an upright slider', layer: 'track' },
   { id: 'th', x: 500, y: 520, w: 470, h: 110, kind: 'slider', direction: 'horizontal', what: 'a horizontal slider', layer: 'track' },
+  // An SVG whose size and viewBox differ: its own bands kept, then stretched.
+  { id: 'bv', x: 1700, y: 100, w: 110, h: 470, kind: 'slider', what: 'an upright slider (an SVG whose size and viewBox differ)', art: 'banded.svg', banded: true },
 ];
-const art = (c) => ({
+const art = (c) => c.art ? { action: { type: 'audio.volume' }, level: { show: false }, layers: { background: `~/Pictures/${c.art}`, track: '~/Pictures/clear.png', thumb: '~/Pictures/clear.png' } } : ({
   action: { type: 'audio.volume' },
   level: { show: false },
   layers:
@@ -117,7 +130,7 @@ const CONFIG = {
           pages: {
             main: {
               name: 'Main',
-              panel: { size: { width: 1920, height: 720 }, preset: 'free', controls: CONTROLS.map(({ what, layer, ...c }) => c) },
+              panel: { size: { width: 1920, height: 720 }, preset: 'free', controls: CONTROLS.map(({ what, layer, art, banded, ...c }) => c) },
               buttons: Object.fromEntries(CONTROLS.map((c) => [c.id, art(c)])),
             },
           },
@@ -208,18 +221,21 @@ const pixel = (img, w, x, y) => [...img.subarray((y * w + x) * 4, (y * w + x) * 
 
 // ---- COMPARED ----
 const FRACTIONS = [0.12, 0.38, 0.62, 0.88];
+const BANDED_FRACTIONS = [0.15, 0.4, 0.6, 0.85];
 const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 48);
 for (const c of CONTROLS) {
   const img = deck[c.id];
   const box = boxes[c.id];
   const misses = [];
   let deckQuarters = 0;
-  for (const fy of FRACTIONS)
+  for (const fy of c.banded ? BANDED_FRACTIONS : FRACTIONS)
     for (const fx of FRACTIONS) {
       const onDeck = pixel(img.data, img.w, Math.floor(fx * img.w), Math.floor(fy * img.h));
       const inEditorPx = pixel(shotImage.data, shotImage.info.width, Math.floor((box.left + fx * box.width) * scale), Math.floor((box.top + fy * box.height) * scale));
-      const quarter = QUARTERS[(fy < 0.5 ? 't' : 'b') + (fx < 0.5 ? 'l' : 'r')];
-      if (near(onDeck, quarter)) deckQuarters++;
+      // The banded art: its square drawn in the middle 120 of 300, so the quarters lie between 30% and 70% down.
+      const band = c.banded && (fy < 0.3 || fy > 0.7);
+      const quarter = band ? [0, 0, 0] : QUARTERS[(fy < 0.5 ? 't' : 'b') + (fx < 0.5 ? 'l' : 'r')];
+      if (near(onDeck, quarter) || (band && onDeck[0] + onDeck[1] + onDeck[2] < 60)) deckQuarters++;
       if (!near(onDeck, inEditorPx)) misses.push(`at ${fx},${fy}: deck ${onDeck} editor ${inEditorPx}`);
     }
   // The deck's own drawing first: the art stretched over the whole box, each quarter in its quarter.

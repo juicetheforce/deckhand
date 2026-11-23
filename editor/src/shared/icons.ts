@@ -119,30 +119,39 @@ const SVG_ROOT = /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/;
 /**
  * An SVG's text made to stretch to whatever box it is drawn in, as the deck
  * stretches it (src/value-face.ts: sharp draws it at its own size, then
- * resizes it with fit 'fill'). Asked for by a slider's or dial's stretched
- * layers (`stretch` on iconUrl). An SVG in an <img> keeps its own proportions
- * — `preserveAspectRatio`, "xMidYMid meet" unless it says otherwise — inside
- * the box object-fit gives it, so object-fit 'fill' alone letterboxes it. So
- * the root's `preserveAspectRatio` becomes "none"; and an SVG with a width and
- * height but no viewBox, which would not scale at all, is given the viewBox of
- * its own size. Anything else is left as it is; text with no <svg> is returned
- * unchanged.
+ * resizes that image with fit 'fill'). Asked for by a slider's or dial's
+ * stretched layers (`stretch` on iconUrl). An SVG in an <img> keeps its own
+ * proportions inside the box object-fit gives it, so object-fit 'fill' alone
+ * letterboxes it.
+ *
+ * - **With a width and height**, it is put, unchanged, inside an outer SVG of
+ *   that size that stretches: drawn at its own size first, exactly as sharp
+ *   draws it — a viewBox of other proportions fitted inside it, bands and all
+ *   (Codex, PR #12) — then that whole image stretched.
+ * - **With a viewBox alone**, the viewBox is its size: its own
+ *   `preserveAspectRatio` becomes "none".
+ * - Anything else, or text with no <svg>, is returned as it is.
  */
 export function stretchedSvg(text: string): string {
   const match = SVG_ROOT.exec(text);
   if (!match) return text;
-  let tag = match[0].replace(/\spreserveAspectRatio\s*=\s*("[^"]*"|'[^']*')/g, '');
-  if (!/\sviewBox\s*=/.test(tag)) {
-    const size = (name: string) => {
-      const m = new RegExp(`\\s${name}\\s*=\\s*["']\\s*([0-9.]+)\\s*(px)?\\s*["']`).exec(tag);
-      return m ? Number(m[1]) : NaN;
-    };
-    const w = size('width');
-    const h = size('height');
-    if (w > 0 && h > 0) tag = tag.replace(/^<svg\b/, `<svg viewBox="0 0 ${w} ${h}"`);
+  const tag = match[0];
+  const size = (name: string) => {
+    const m = new RegExp(`\\s${name}\\s*=\\s*["']\\s*([0-9.]+)\\s*(px)?\\s*["']`).exec(tag);
+    return m ? Number(m[1]) : NaN;
+  };
+  const w = size('width');
+  const h = size('height');
+  if (w > 0 && h > 0) {
+    // The root ends at its own closing tag, the last in the text; or at once, written as <svg … />.
+    const end = tag.endsWith('/>') ? match.index + tag.length : text.lastIndexOf('</svg>') + '</svg>'.length;
+    if (end < match.index + tag.length) return text;
+    const outer = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`;
+    return text.slice(0, match.index) + outer + text.slice(match.index, end) + '</svg>' + text.slice(end);
   }
-  tag = tag.replace(/^<svg\b/, '<svg preserveAspectRatio="none"');
-  return text.slice(0, match.index) + tag + text.slice(match.index + match[0].length);
+  if (!/\sviewBox\s*=/.test(tag)) return text;
+  const stretched = tag.replace(/\spreserveAspectRatio\s*=\s*("[^"]*"|'[^']*')/g, '').replace(/^<svg\b/, '<svg preserveAspectRatio="none"');
+  return text.slice(0, match.index) + stretched + text.slice(match.index + tag.length);
 }
 
 // What counts as an image, by extension or by first bytes: one copy, shared

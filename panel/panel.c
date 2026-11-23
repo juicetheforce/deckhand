@@ -30,9 +30,13 @@
  *                behind the panel on that screen shows where the background
  *                does. Keys are drawn over it as they always are.
  *   'C' clear    the background everywhere.
- *   'B' brightness  u8 percent, 0-100: everything drawn from now on gives off
- *                that share of its light (LIGHT, below), 0 being pure black; what is on the screen stays until
- *                drawn again, so the daemon sends the canvas and every key after it.
+ *   'B' brightness  u8 percent, 0-100: the whole screen gives off that share
+ *                of its light (LIGHT, below), 0 being pure black — what is on it
+ *                now included: nothing needs sending again. The screen is kept
+ *                drawn at full brightness and dimmed as each frame is handed
+ *                to the compositor (dim_out), so a change is one frame shown,
+ *                never a clear and a redraw, and a burst of changes read at
+ *                once is shown as the last of them.
  *                It dims the whole deck, a see-through background included: as
  *                if black were laid over it at 100 − percent, so whatever shows
  *                through darkens too, and at 0 the screen is opaque black.
@@ -84,6 +88,7 @@
  * deckhand-panel --idle DIM_MS SLEEP_MS, and --idle-probe: idle.c. Nothing is shown.
  *
  * --dump FILE writes the screen's buffer as a binary PPM on exit, for tests.
+ * --present-log FILE logs every frame shown (log_present), for tests.
  * --touch-test-range MAX lets a touch path that is not an input device (a
  * FIFO of recorded events) be read, with both axes 0..MAX, for tests.
  */
@@ -96,6 +101,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "idle.h"
@@ -118,7 +124,7 @@ static unsigned canvas_w, canvas_h;
 static uint32_t ground = 0xff000000;
 static uint32_t *ground_px;
 static unsigned ground_w, ground_h;
-/* The deck's brightness, a percent: 'B'. */
+/* The deck's brightness, a percent: 'B'. The canvas is always drawn at 100; this is applied as it is shown. */
 static unsigned brightness = 100;
 
 /*
@@ -218,33 +224,50 @@ static void place_canvas(void) {
   origin_y = (int)((h - canvas_h * scale) / 2);
 }
 
-/* A channel at the deck's brightness. */
-static inline unsigned dimmed(unsigned channel) {
-  return brightness == 100 ? channel : channel * LIGHT[brightness] / 1000;
-}
-
-/* An alpha at the deck's brightness: the black laid over the deck adds its own. */
-static inline unsigned veiled(unsigned alpha) {
-  return brightness == 100 ? alpha : (alpha * LIGHT[brightness] + 255 * (1000 - LIGHT[brightness])) / 1000;
-}
-
 static uint32_t argb(unsigned a, unsigned r, unsigned g, unsigned b) {
   return (uint32_t)a << 24 | (uint32_t)r << 16 | (uint32_t)g << 8 | b;
 }
 
-/* A premultiplied pixel at the deck's brightness: darker, and as opaque as the veil makes it. */
-static uint32_t veil(uint32_t p) {
-  if (brightness == 100) return p;
-  return argb(veiled(p >> 24), dimmed((p >> 16) & 0xff), dimmed((p >> 8) & 0xff), dimmed(p & 0xff));
+/* The current brightness as a factor of 256 (light given off, LIGHT), and what
+ * the black laid over a see-through screen adds to a pixel's alpha. Made once
+ * per change. */
+static uint32_t light256 = 256, veil_add;
+
+/* The canvas copied into a buffer being shown, at the deck's brightness. Black
+ * laid over premultiplied pixels is the same whether it is laid over each layer
+ * or over what they make together, so dimming here is dimming every layer.
+ * Two channels at a time in one 32-bit multiply each (255 × 256 fits in the 16
+ * bits between them): a loop the compiler can run over many pixels at once, as
+ * a whole screen is copied after every change of level. */
+static void dim_out(uint32_t *dst, const uint32_t *src, size_t count) {
+  const uint32_t f = light256, add = veil_add;
+  for (size_t i = 0; i < count; i++) {
+    uint32_t p = src[i];
+    uint32_t rb = ((p & 0x00ff00ffu) * f >> 8) & 0x00ff00ffu;
+    uint32_t ag = ((p >> 8 & 0x00ff00ffu) * f) & 0xff00ff00u;
+    dst[i] = ((rb | ag) & 0x00ffffffu) | (((ag >> 24) + add) << 24);
+  }
 }
 
-/* The background under a screen pixel, at the deck's brightness, premultiplied. */
+/* A new brightness: the whole screen shown at it with the next frame, nothing redrawn. */
+static void set_brightness(unsigned level) {
+  if (level == brightness) return;
+  brightness = level;
+  light256 = (LIGHT[level] * 256 + 500) / 1000;
+  veil_add = 255 - (255 * light256 >> 8);
+  platform_set_copy(brightness == 100 ? NULL : dim_out);
+  int w, h, stride;
+  platform_canvas(&w, &h, &stride);
+  platform_damage(0, 0, w, h);
+}
+
+/* The background under a screen pixel, premultiplied. */
 static uint32_t ground_at(int x, int y, int sw, int sh) {
-  if (!ground_px) return veil(ground);
+  if (!ground_px) return ground;
   unsigned gx = (unsigned)((uint64_t)x * ground_w / (unsigned)sw), gy = (unsigned)((uint64_t)y * ground_h / (unsigned)sh);
   if (gx >= ground_w) gx = ground_w - 1;
   if (gy >= ground_h) gy = ground_h - 1;
-  return veil(ground_px[(size_t)gy * ground_w + gx]);
+  return ground_px[(size_t)gy * ground_w + gx];
 }
 
 /* Whether any of the background lets what is behind the screen through. */
@@ -267,7 +290,7 @@ static void fill_background(void) {
   uint32_t *px = platform_canvas(&w, &h, &stride);
   if (!px) return;
   if (!ground_px) {
-    uint32_t fill = veil(ground);
+    uint32_t fill = ground;
     for (int y = 0; y < h; y++)
       for (int x = 0; x < w; x++) px[y * stride + x] = fill;
   } else {
@@ -329,19 +352,19 @@ static void draw_image(int x, int y, unsigned w, unsigned h, const unsigned char
       uint32_t *d = &px[ty * stride + tx];
       unsigned a = s[3];
       if (a == 255) {
-        *d = 0xff000000u | (uint32_t)dimmed(s[0]) << 16 | (uint32_t)dimmed(s[1]) << 8 | dimmed(s[2]);
+        *d = 0xff000000u | (uint32_t)s[0] << 16 | (uint32_t)s[1] << 8 | s[2];
         continue;
       }
-      /* The background is already at this brightness, and premultiplied: the image over it. */
+      /* The background, premultiplied: the image over it. */
       uint32_t under = ground_at(tx, ty, sw, sh);
       if (a == 0) {
         *d = under;
         continue;
       }
       unsigned ua = under >> 24, ur = (under >> 16) & 0xff, ug = (under >> 8) & 0xff, ub = under & 0xff;
-      unsigned r = (dimmed(s[0]) * a + ur * (255 - a)) / 255;
-      unsigned g = (dimmed(s[1]) * a + ug * (255 - a)) / 255;
-      unsigned b = (dimmed(s[2]) * a + ub * (255 - a)) / 255;
+      unsigned r = (s[0] * a + ur * (255 - a)) / 255;
+      unsigned g = (s[1] * a + ug * (255 - a)) / 255;
+      unsigned b = (s[2] * a + ub * (255 - a)) / 255;
       *d = argb(a + ua * (255 - a) / 255, r, g, b);
     }
   }
@@ -498,7 +521,7 @@ static int handle_frames(void) {
         break;
       case 'B':
         if (body_len != 1 || body[0] > 100) { emit_error("bad brightness frame"); return 5; }
-        brightness = body[0];
+        set_brightness(body[0]);
         break;
       case 'T': {
         int c = set_touch(body, body_len);
@@ -550,7 +573,7 @@ static int read_input(void) {
   }
 }
 
-/* The screen's buffer as a binary PPM (premultiplied colour, as shown), and
+/* The screen as shown — the canvas at the deck's brightness — as a binary PPM (premultiplied colour), and
  * its alpha beside it as FILE.alpha, a binary PGM: 255 everywhere while the
  * background is opaque. */
 static void write_dump(const char *path) {
@@ -562,7 +585,8 @@ static void write_dump(const char *path) {
   fprintf(f, "P6\n%d %d\n255\n", w, h);
   for (int y = 0; y < h; y++)
     for (int x = 0; x < w; x++) {
-      uint32_t p = px[y * stride + x];
+      uint32_t p;
+      dim_out(&p, &px[y * stride + x], 1);
       unsigned char rgb[3] = { (p >> 16) & 0xff, (p >> 8) & 0xff, p & 0xff };
       fwrite(rgb, 1, 3, f);
     }
@@ -573,8 +597,27 @@ static void write_dump(const char *path) {
   if (!f) return;
   fprintf(f, "P5\n%d %d\n255\n", w, h);
   for (int y = 0; y < h; y++)
-    for (int x = 0; x < w; x++) fputc(ground_see_through() ? (int)(px[y * stride + x] >> 24) : 255, f);
+    for (int x = 0; x < w; x++) {
+      uint32_t p;
+      dim_out(&p, &px[y * stride + x], 1);
+      fputc(ground_see_through() ? (int)(p >> 24) : 255, f);
+    }
   fclose(f);
+}
+
+/* Tests only, --present-log FILE: one line per frame shown — the time in ms
+ * (wall clock), the brightness, and the colour at the centre of each cell of a
+ * 16 × 6 grid over the screen, as handed to the compositor. A test sees every
+ * frame a person would, a black or half-drawn one included. */
+static FILE *present_log;
+static void log_present(const uint32_t *px, int w, int h, int stride) {
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  fprintf(present_log, "%lld %u", (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000, brightness);
+  for (int j = 0; j < 6; j++)
+    for (int i = 0; i < 16; i++) fprintf(present_log, " %06x", px[(size_t)((2 * j + 1) * h / 12) * stride + (2 * i + 1) * w / 32] & 0xffffff);
+  fputc('\n', present_log);
+  fflush(present_log);
 }
 
 int main(int argc, char **argv) {
@@ -584,6 +627,11 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--output") && i + 1 < argc) output = argv[++i];
     else if (!strcmp(argv[i], "--dump") && i + 1 < argc) dump = argv[++i];
+    else if (!strcmp(argv[i], "--present-log") && i + 1 < argc) {
+      present_log = fopen(argv[++i], "a");
+      if (!present_log) { fprintf(stderr, "cannot open %s\n", argv[i]); return 2; }
+      platform_on_present(log_present);
+    }
     else if (!strcmp(argv[i], "--touch-test-range") && i + 1 < argc) touch_test_max = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--version")) { puts("deckhand-panel 1"); return 0; }
     else { fprintf(stderr, "usage: deckhand-panel --output NAME [--dump FILE] [--touch-test-range MAX]\n"); return 2; }

@@ -175,20 +175,28 @@ check('a button-only action is refused on a slider or dial, here as in the drop;
 
 console.log('a stretched layer, as the deck stretches it');
 const root = (svg: string) => /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/.exec(svg)![0];
-check('an SVG with a viewBox is told not to keep its proportions', () => {
-  const out = stretchedSvg('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300" viewBox="0 0 120 300"><rect width="120" height="300"/></svg>');
-  assert.match(root(out), /preserveAspectRatio="none"/);
-  assert.match(out, /^<\?xml version="1.0"\?>\n<svg /, 'the prolog kept');
-  assert.match(out, /<rect width="120" height="300"\/><\/svg>$/, 'the drawing untouched');
+const OUTER = (w: number, h: number) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`;
+check('an SVG with a size: put whole inside an outer one of that size that stretches, as the deck draws it then stretches it', () => {
+  const inner = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300" viewBox="0 0 120 300"><rect width="120" height="300"/></svg>';
+  assert.equal(stretchedSvg('<?xml version="1.0"?>\n' + inner + '\n'), '<?xml version="1.0"?>\n' + OUTER(120, 300) + inner + '</svg>\n', 'the prolog before, the SVG itself untouched');
 });
-check('its own preserveAspectRatio is replaced, whichever quotes; only the root\'s', () => {
+check('…its size and viewBox of other proportions keep their own fit inside it, bands and all (Codex, PR #12)', () => {
+  const inner = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="300" viewBox="0 0 100 100"><rect width="100" height="100"/></svg>';
+  const out = stretchedSvg(inner);
+  assert.equal(out, OUTER(120, 300) + inner + '</svg>');
+  assert.doesNotMatch(out.slice(OUTER(120, 300).length), /preserveAspectRatio/, 'the inner SVG keeps its own: the square fitted inside 120 × 300');
+});
+check('…a width and height with no viewBox, and one written <svg … />', () => {
+  assert.equal(stretchedSvg('<svg width="60px" height="300" data-note="a > b"></svg>'), OUTER(60, 300) + '<svg width="60px" height="300" data-note="a > b"></svg></svg>');
+  assert.equal(stretchedSvg('<svg width="60" height="30"/>'), OUTER(60, 30) + '<svg width="60" height="30"/></svg>');
+});
+check('a viewBox alone is its size: its own preserveAspectRatio replaced, whichever quotes; only the root\'s', () => {
   const out = stretchedSvg(`<svg viewBox='0 0 10 10' preserveAspectRatio='xMinYMin slice'><svg preserveAspectRatio="xMidYMid meet"/></svg>`);
   assert.equal(root(out), `<svg preserveAspectRatio="none" viewBox='0 0 10 10'>`);
   assert.match(out, /<svg preserveAspectRatio="xMidYMid meet"\/>/, 'a nested svg is its own business');
 });
-check('a width and height but no viewBox: given the viewBox of its size, or it would not scale at all', () => {
-  assert.equal(root(stretchedSvg('<svg width="60px" height="300" data-note="a > b"></svg>')), '<svg preserveAspectRatio="none" viewBox="0 0 60 300" width="60px" height="300" data-note="a > b">');
-  assert.equal(root(stretchedSvg('<svg width="50%" height="300"></svg>')), '<svg preserveAspectRatio="none" width="50%" height="300">', 'no size to take');
+check('no size to take and no viewBox: left as it is', () => {
+  assert.equal(stretchedSvg('<svg width="50%" height="300"></svg>'), '<svg width="50%" height="300"></svg>');
 });
 check('text with no <svg> is returned as it was; iconUrl asks for stretching only when told', () => {
   assert.equal(stretchedSvg('not an image'), 'not an image');

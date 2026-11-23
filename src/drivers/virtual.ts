@@ -155,6 +155,9 @@ class PanelDevice implements DeckDevice {
     const lines = readline.createInterface({ input: proc.stdout });
     lines.on('line', (line) => this.onLine(line));
     this.gone = new Promise((resolve) => proc.on('exit', () => resolve()));
+    // A helper that dies with frames on their way breaks the pipe; its exit (below) is how that is handled.
+    // Unheard, the write's EPIPE is an uncaught error, and it stops the daemon.
+    proc.stdin.on('error', () => {});
     proc.on('exit', (code) => {
       this.exited = true;
       this.stopLock();
@@ -526,14 +529,17 @@ class PanelDevice implements DeckDevice {
   /** Dimmed by the helper, not the screen's own backlight: Plasma's control moved most monitors too little to use. */
   readonly dimsInSoftware = true;
 
+  /**
+   * The level alone: the helper keeps the screen drawn at full brightness and
+   * dims it as it shows each frame, so nothing is cleared or sent again. A
+   * slider dragged quickly sends a few bytes a step, and the helper shows the
+   * newest level it has read — never a backlog of redraws, never a black
+   * screen between them (panel/panel.c's 'B').
+   */
   async setBrightness(percent: number): Promise<void> {
     if (percent === this.brightness) return;
     this.brightness = percent;
     this.write(brightnessFrame(percent));
-    // What is on the screen stays until drawn again.
-    this.pending.clear();
-    this.writeCanvas();
-    for (const listener of this.redrawListeners) listener();
   }
 
   surfaceKind(): 'layer-shell' | 'fullscreen-window' {

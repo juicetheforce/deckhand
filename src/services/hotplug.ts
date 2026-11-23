@@ -62,7 +62,8 @@ export function retryMonitor(): void {
 function start(): void {
   if (proc || failed || watchers.size === 0) return;
   recovery.started();
-  const child = spawn('udevadm', ['monitor', '--udev', '--subsystem-match=hidraw', '--subsystem-match=drm', '--subsystem-match=input'], {
+  // Tests give their own (scripts/test/fake-udevadm.mjs), so no real device plugged or unplugged mid-run reaches them.
+  const child = spawn(process.env.DECKHAND_UDEVADM ?? 'udevadm', ['monitor', '--udev', '--subsystem-match=hidraw', '--subsystem-match=drm', '--subsystem-match=input'], {
     stdio: ['ignore', 'pipe', 'ignore'],
   });
   proc = child;

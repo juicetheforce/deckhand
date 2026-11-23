@@ -16,6 +16,7 @@
  *
  *   npm run build:ts && node scripts/smoke-virtual.mjs
  */
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +27,8 @@ const DRM = path.join(TMP, 'drm');
 const LOG = path.join(TMP, 'panel.log');
 process.env.DECKHAND_DRM_DIR = DRM;
 process.env.DECKHAND_PANEL_BIN = path.join(REPO, 'scripts/test/fake-panel.mjs');
+// Never the machine's own udev: a device plugged or unplugged mid-run asked a scan, and failed a check by timing alone.
+process.env.DECKHAND_UDEVADM = path.join(REPO, 'scripts/test/fake-udevadm.mjs');
 process.env.FAKE_PANEL_LOG = LOG;
 // Written to make the fake helper report another size at its next "ready".
 const SIZE_FILE = path.join(TMP, 'size');
@@ -170,16 +173,17 @@ let config = validateConfig({
 });
 const asked = [];
 /**
- * The scans this driver asked for itself — a helper stopping, a pairing — not
- * those for a display event. The watch listens to the real udev, and this
- * machine's GPU sends drm change events every few seconds (7 in 30 s on the
- * laptop, 2026-11-21); the fake screens are plugged without one, so the first
- * real event after a plug reads as a change of screens and asks for a scan.
- * Which check that lands in depends on timing alone.
+ * The scans this driver asked for itself — a helper stopping, a pairing. The
+ * watch runs scripts/test/fake-udevadm.mjs, never the real udevadm, so no
+ * device event from this machine reaches it: before, a USB device unplugged
+ * during the suite (2026-11-22) and the GPU's drm change events (every few
+ * seconds) each asked a scan, and which check that failed was timing alone.
  */
-const askedByHelpers = () => asked.filter((why) => !/^(add|remove|change) card\d/.test(why));
+const askedByHelpers = () => asked;
 const driver = createVirtualDriver(() => config);
+process.env.FAKE_UDEVADM_LOG = path.join(TMP, 'udevadm.log');
 driver.watch((why) => asked.push(why));
+check('the watch runs the stand-in udevadm, never this machine\'s', await until(async () => /^monitor /.test(await fs.readFile(process.env.FAKE_UDEVADM_LOG, 'utf8').catch(() => ''))));
 check('no such connector: not listed', (await driver.list()).length === 0 && listScreens(DRM).length === 0);
 await plug('DP-4', 'disconnected');
 check('connector disconnected: not listed', (await driver.list()).length === 0);
@@ -236,14 +240,17 @@ await settle('newest wins', async () => {
   await plug('DP-5', 'disconnected');
 });
 
-console.log('brightness: drawn darker by the helper');
+console.log('brightness: dimmed by the helper, the level alone');
 await settle('brightness', async () => {
   const newFrames = async (before) => (await frames()).slice(before);
   let before = (await frames()).length;
   await session.setBrightness(40);
-  check('the level, then the canvas, then every key again', await until(async () => (await newFrames(before)).filter((f) => f.type === 'I').length >= 6));
+  await until(async () => (await newFrames(before)).some((f) => f.type === 'B'));
+  await sleep(300);
   const sent = await newFrames(before);
-  check('…in that order, at the level', sent[0]?.type === 'B' && sent[0].percent === 40 && sent[1]?.type === 'K', JSON.stringify(sent.slice(0, 2)));
+  // The helper dims what is on the screen as it shows it: no clear to black, nothing sent again (a quick drag of a
+  // Brightness slider blacked the panel out and fell seconds behind when every level redrew the page, 2026-11-22).
+  check('the level alone: no canvas, no background, no key sent again', sent.length === 1 && sent[0].type === 'B' && sent[0].percent === 40, JSON.stringify(sent.map((f) => f.type)));
   before = (await frames()).length;
   await session.setBrightness(40);
   await sleep(100);
@@ -253,13 +260,12 @@ await settle('brightness', async () => {
   check('Sleep all decks off: level 0', await until(async () => (await newFrames(before)).some((f) => f.type === 'B' && f.percent === 0)));
   before = (await frames()).length;
   sleepCoordinator.toggleAll({ mode: 'off' });
-  check('…and back at its own level, its keys drawn again', await until(async () => {
-    const f = await newFrames(before);
-    return f.some((x) => x.type === 'B' && x.percent === 40) && f.filter((x) => x.type === 'I').length >= 6;
-  }));
+  check('…and back at its own level, the level alone', await until(async () => (await newFrames(before)).some((x) => x.type === 'B' && x.percent === 40)));
+  await sleep(300);
+  check('…nothing else sent for the sleep or the wake', (await newFrames(before)).every((x) => x.type === 'B'), JSON.stringify((await newFrames(before)).map((x) => x.type)));
   before = (await frames()).length;
   await session.setBrightness(100);
-  await until(async () => (await newFrames(before)).filter((f) => f.type === 'I').length >= 6);
+  await until(async () => (await newFrames(before)).some((f) => f.type === 'B'));
   await sleep(300);
 });
 
@@ -376,13 +382,15 @@ await settle('background', async () => {
     await visit('tiff');
     check('a refusal is said once, not on every visit', errors.length === said, JSON.stringify(errors));
 
-    // The deck's brightness: the level, the canvas, the page's background, then every key.
+    // The deck's brightness on a see-through page: the level alone — the helper dims the background, and what
+    // shows through it, as it shows each frame (panel.c's 'B'; smoke-panel holds the pixels).
     await visit('tinted');
     from = (await frames()).length;
     await session.setBrightness(40);
-    await until(async () => (await since(from)).filter((f) => f.type === 'I').length >= 2);
+    await until(async () => (await since(from)).some((f) => f.type === 'B'));
+    await sleep(300);
     sent = await since(from);
-    check('a brightness change on a see-through page: level, canvas, background, then the keys', sent.slice(0, 3).map((f) => f.type).join() === 'B,K,G' && sent[3]?.type === 'I', JSON.stringify(sent.map((f) => f.type)));
+    check('a brightness change on a see-through page: the level alone, no canvas, background or key again', sent.map((f) => f.type).join() === 'B', JSON.stringify(sent.map((f) => f.type)));
     await session.setBrightness(100);
     await sleep(200);
 
@@ -604,7 +612,18 @@ await settle('stopped', async () => {
   const dev = await d.open();
   const askedBefore = askedByHelpers().length;
   const start = (await frames()).findLast((f) => f.type === 'start' && f.output === 'HDMI-A-2');
+  // Writes to a helper already dead, before its exit is heard: the pipe is broken. That must not reach the
+  // daemon as an unhandled error, which would stop it (found driving the real helper, 2026-11-22).
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err.code ?? err.message);
+  process.on('uncaughtException', onUncaught);
   process.kill(start.pid, 'SIGKILL');
+  // Hold the event loop while it dies, so the driver cannot know yet; then write to it.
+  execFileSync('sleep', ['0.3']);
+  for (let level = 10; level < 60; level++) await dev.setBrightness(level);
+  await sleep(300);
+  process.off('uncaughtException', onUncaught);
+  check('a helper gone mid-write: the broken pipe is no error for the daemon', uncaught.length === 0, JSON.stringify(uncaught));
   check('a scan is asked', await until(async () => askedByHelpers().length === askedBefore + 1));
   check('…which leaves the deck out, so its session closes rather than keep a helper that is gone', (await driver.list()).length === 0);
   check('…and not straight back either, so a broken helper cannot loop', (await driver.list()).length === 0);
