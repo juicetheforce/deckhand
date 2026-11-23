@@ -477,6 +477,8 @@ image lines up with the levels if its marks span that same distance.
 - **A background drawn at the control's proportions**, since it is stretched:
   for a scale, mark it over the thumb's run (above), and leave the middle clear
   if the fill should stand out.
+- **An SVG track or background is stretched like any other image**, whatever
+  its own `preserveAspectRatio` says, in the editor as on the deck.
 
 ## The deckhand command
 
@@ -1435,7 +1437,7 @@ The checks:
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:value-art`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
