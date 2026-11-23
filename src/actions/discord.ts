@@ -128,6 +128,25 @@ export const userVolume: ActionHandler = {
     if ('missing' in outcome && outcome.missing === 'no-channel') throw new ActionNeeded('You are not in a voice channel in Discord: join one first');
     if ('missing' in outcome) throw new Error(`${name} is not in your voice channel`);
   },
+  /**
+   * On a slider or dial: the volume you hear that person at outright, 0–200,
+   * from Discord's own events (kept while the profile has a User volume key).
+   */
+  value: {
+    range: () => ({ min: 0, max: discord.USER_VOLUME_MAX }),
+    read(params) {
+      const s = discord.cachedState();
+      return s.connection === 'connected' ? (s.users[String(params.user)]?.volume ?? null) : null;
+    },
+    async write(_ctx, params, value) {
+      const user = named(params.user);
+      if (!user) throw new Error('no one chosen');
+      const name = named(params.userName) ?? 'The person chosen';
+      const outcome = await discord.setUserVolume(user, value);
+      if ('missing' in outcome && outcome.missing === 'no-channel') throw new ActionNeeded('You are not in a voice channel in Discord: join one first');
+      if ('missing' in outcome) throw new Error(`${name} is not in your voice channel`);
+    },
+  },
   describe: async (_ctx, params: ActionDef) => {
     const face = shared();
     if (face || params.showLevel !== true) return face;

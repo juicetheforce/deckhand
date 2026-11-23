@@ -212,6 +212,18 @@ check('never past 200', fake.channels['c-general'].people[0].volume === 200);
 await runActionOrThrow(ctx, { ...VOL, delta: -250 });
 check('never below 0', fake.channels['c-general'].people[0].volume === 0);
 fake.channels['c-general'].people[0].volume = 100;
+// On a slider or dial (round 5): the value outright, read from the cache, one request a step when the person is cached.
+const { valueOf, attemptValue } = await import(path.join(REPO, 'dist/actions/index.js'));
+const userValue = valueOf({ type: 'discord.userVolume' });
+check('a User volume slider reads the level from the cache, 0–200', JSON.stringify(userValue.range(VOL)) === '{"min":0,"max":200}' && typeof userValue.read(VOL, ctx) === 'number');
+const valueFrom = fake.commands.length;
+const setFailure = await attemptValue(ctx, VOL, 150, false);
+const sent = fake.commands.slice(valueFrom).map((x) => x.cmd);
+check('…sets it outright: 150, one request, no channel lookup — the person is in the cache', setFailure === null && fake.channels['c-general'].people[0].volume === 150 && JSON.stringify(sent) === '["SET_USER_VOICE_SETTINGS"]', JSON.stringify(sent));
+check('…and the cache follows at once', userValue.read(VOL, ctx) === 150);
+const absent = await attemptValue(ctx, { ...VOL, user: '999', userName: 'Sam' }, 50, false);
+check('…someone not in the channel: the channel asked, nothing set, said', absent !== null && /Sam is not in your voice channel/.test(absent.message) && fake.commands.slice(valueFrom).filter((x) => x.cmd === 'SET_USER_VOICE_SETTINGS').length === 1);
+fake.channels['c-general'].people[0].volume = 100;
 const notThere = await thrown(() => runActionOrThrow(ctx, { ...VOL, user: '999', userName: 'Sam' }));
 check('someone not in your channel: marked, saying so — not notified', notThere instanceof Error && !(notThere instanceof ActionNeeded) && /Sam is not in your voice channel/.test(notThere.message));
 await runActionOrThrow(ctx, LEAVE);

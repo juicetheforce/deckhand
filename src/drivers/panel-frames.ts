@@ -73,6 +73,13 @@ export function imageFrameParts(x: number, y: number, width: number, height: num
 /** How bright the helper draws everything after this, a percent; 0 is pure black. */
 export const brightnessFrame = (percent: number): Buffer => frame('B', Buffer.from([Math.max(0, Math.min(100, Math.round(percent)))]));
 export const clearFrame = (): Buffer => frame('C', Buffer.alloc(0));
+
+/** Follow a contact: report its movement until it lifts (panel.c's 'M') — one on a slider or dial. */
+export function followFrame(contact: number): Buffer {
+  const body = Buffer.alloc(4);
+  body.writeUInt32LE(contact >>> 0, 0);
+  return frame('M', body);
+}
 export const quitFrame = (): Buffer => frame('Q', Buffer.alloc(0));
 
 /**

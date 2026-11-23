@@ -45,6 +45,8 @@ export interface AudioDevice {
   monitorSource: string;
   /** The active port's availability: "available", "not available", "availability unknown", or null with no ports. */
   portAvailability: string | null;
+  /** Its first channel's volume in percent, as pactl reports it: what a Volume slider or dial shows. Null if pactl gave none. */
+  volume: number | null;
 }
 
 /** Everything the audio key faces display, read in one refresh. */
@@ -72,6 +74,7 @@ function parseDevices(json: Array<Record<string, unknown>>): AudioDevice[] {
       flags: Array.isArray(d.flags) ? (d.flags as unknown[]).map(String) : [],
       monitorSource: typeof d.monitor_source === 'string' ? d.monitor_source : '',
       portAvailability: active && typeof active.availability === 'string' ? active.availability : null,
+      volume: firstChannelPercent(d.volume),
     };
   });
 }
@@ -303,6 +306,45 @@ export async function setDefaultSource(sourceName: string, moveStreams = true): 
 export async function toggleMicMute(): Promise<void> {
   await pactl(['set-source-mute', '@DEFAULT_SOURCE@', 'toggle']);
   await refreshCache();
+}
+
+/**
+ * A Volume slider's or dial's device: the default output (`node` absent), the
+ * default input (`node` absent, `input`), or an output or input by its exact
+ * node name — no fallback, as everywhere.
+ */
+export interface VolumeTarget {
+  node?: string;
+  input?: boolean;
+}
+
+/** A device's volume from the cache, in percent, or null when it is not present (or not known yet). Never spawns pactl. */
+export function cachedVolume(target: VolumeTarget): number | null {
+  const state = cache;
+  if (!state) return null;
+  if (!target.node) return target.input ? (state.sourceDevices.find((d) => d.name === state.defaultSource)?.volume ?? null) : state.defaultSinkVolume;
+  const list = target.input ? state.sourceDevices : state.sinkDevices;
+  return list.find((d) => d.name === target.node)?.volume ?? null;
+}
+
+/** Whether the device is in the cache's lists: a slider for a device not present fails its moves. */
+export function cachedPresent(target: VolumeTarget): boolean {
+  const state = cache;
+  if (!state || !target.node) return state !== null;
+  return (target.input ? state.sourceDevices : state.sinkDevices).some((d) => d.name === target.node);
+}
+
+/**
+ * Set a device's volume outright, in percent: one pactl call. While a finger
+ * is dragging, `refresh` is false — the slider shows the finger, and
+ * `pactl subscribe`'s change event re-reads the cache once the drag pauses —
+ * and the drag's last write re-reads it, so the level lands on the truth.
+ */
+export async function setVolume(target: VolumeTarget, percent: number, refresh: boolean): Promise<void> {
+  const level = `${Math.max(0, Math.round(percent))}%`;
+  const device = target.node ?? (target.input ? '@DEFAULT_SOURCE@' : '@DEFAULT_SINK@');
+  await pactl([target.input ? 'set-source-volume' : 'set-sink-volume', device, level]);
+  if (refresh) await refreshCache();
 }
 
 export async function adjustVolume(deltaPercent: number): Promise<void> {

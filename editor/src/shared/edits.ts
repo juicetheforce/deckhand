@@ -4,6 +4,7 @@
  *
  * Types only, importing nothing that touches Node: the renderer imports this.
  */
+import type { LayerName } from '../../../src/value-controls.js';
 import type { ActionDef, ButtonDef, PageBackgroundDef, PanelDef, TouchDeviceDef } from '../../../src/types.js';
 import type { ButtonWrite } from './bulk.js';
 import type { PairIconField } from './icons.js';
@@ -50,6 +51,17 @@ export type Edit =
    * no deliberately blank half.
    */
   | { kind: 'setActionIcon'; at: ButtonLocation; field: PairIconField; icon: IconChoice }
+  /**
+   * A slider's or dial's layer (round 5, src/value-controls.ts): an image
+   * (`file`), None (`none`: Fill, Base and Level ring only), or the built-in
+   * art again (`default`). The knob back to built-in takes its angles with it:
+   * they go with the knob's art.
+   */
+  | { kind: 'setLayer'; at: ButtonLocation; layer: LayerName; icon: IconChoice }
+  /** A dial's start and end angles, degrees from straight up; null: the defaults again (−135°, 135°). */
+  | { kind: 'setAngles'; at: ButtonLocation; angles: { start: number; end: number } | null }
+  /** A slider's fill or a dial's ring, drawn by Deckhand: shown or not, and its colour (null: the action's). */
+  | { kind: 'setLevel'; at: ButtonLocation; show: boolean; color: string | null }
   /** Set or (null or "") remove the label. */
   | { kind: 'setLabel'; at: ButtonLocation; label: string | null }
   /**

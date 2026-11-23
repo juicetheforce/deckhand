@@ -12,12 +12,19 @@ import type { PanelControlDef, PanelDef, TemplateDef } from '../../../src/types.
 /** A template's name: at most this many characters (src/config.ts holds the same). */
 export const TEMPLATE_NAME_MAX = 64;
 
-/** A control as a template keeps it: its place, size and shape, and Lock proportions — nothing it shows. */
+/**
+ * A control as a template keeps it: its place, size and shape, Lock
+ * proportions, and whether it is a slider or dial — a slider with its
+ * direction and touch — nothing it shows.
+ */
 function layoutOnly(c: PanelControlDef): PanelControlDef {
   const out: PanelControlDef = { id: c.id, x: c.x, y: c.y, w: c.w, h: c.h };
   if (c.shape !== undefined) out.shape = c.shape;
   if (c.radius !== undefined) out.radius = c.radius;
   if (c.keepRatio) out.keepRatio = true;
+  if (c.kind !== undefined) out.kind = c.kind;
+  if (c.kind === 'slider' && c.direction !== undefined) out.direction = c.direction;
+  if (c.kind === 'slider' && c.touch !== undefined) out.touch = c.touch;
   return out;
 }
 

@@ -11,7 +11,9 @@
  * - **touch, from recorded evdev frames** (FIFOs, read with
  *   --touch-test-range): multitouch contacts reported down at their place on
  *   the canvas — through its scale and, letterboxed, its origin — and up when
- *   lifted; a lift never seen down, and movement, report nothing; after
+ *   lifted; a lift never seen down, and movement, report nothing, until the
+ *   daemon follows a contact (M): then it is reported moved, once per frame,
+ *   until it lifts; after
  *   SYN_DROPPED every contact is lifted and a slot needs a new contact; a
  *   sibling is read and says nothing; pairing names the first touchscreen
  *   touched, single-touch, once; a device going away says so; a path that is
@@ -36,7 +38,7 @@ import readline from 'node:readline';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const HELPER = path.join(REPO, 'panel/deckhand-panel');
-const { brightnessFrame, canvasFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
+const { brightnessFrame, canvasFrame, followFrame, groundFrame, imageFrame, imageFrameParts, quitFrame, touchFrame } = await import(path.join(REPO, 'dist/drivers/panel-frames.js'));
 import { openSync, writeSync, closeSync } from 'node:fs';
 
 let failures = 0;
@@ -302,8 +304,19 @@ try {
       return (x, y) => [...ppm.subarray(off + (y * 1920 + x) * 3, off + (y * 1920 + x) * 3 + 3)];
     };
     let px = await read();
-    check('at 50: the key and the background are half as bright', JSON.stringify(px(24, 24)) === '[100,50,25]' && JSON.stringify(px(5, 5)) === '[50,100,20]', JSON.stringify([px(24, 24), px(5, 5)]));
-    check('at 50: a half-transparent key blends over the dimmed background', Math.abs(px(64, 24)[1] - 50) <= 1, JSON.stringify(px(64, 24)));
+    // A level is light given off, as a backlight's: a stored value is scaled by (level / 100)^(1 / 2.2) — 0.73 at 50.
+    check('at 50: the key and the background give off half the light (values × 0.73)', JSON.stringify(px(24, 24)) === '[146,73,36]' && JSON.stringify(px(5, 5)) === '[73,146,29]', JSON.stringify([px(24, 24), px(5, 5)]));
+    check('at 50: a half-transparent key blends over the dimmed background', Math.abs(px(64, 24)[1] - 73) <= 1, JSON.stringify(px(64, 24)));
+    // At 5, the floor: still visibly lit, as a Stream Deck at 5 is — white at 65 of 255 (× 0.256), never 12.
+    const f = helper(['--output', 'Virtual-1', '--dump', shots]);
+    await until(() => f.events.some((e) => e.ev === 'ready'));
+    f.proc.stdin.write(brightnessFrame(5));
+    f.proc.stdin.write(canvasFrame(960, 360, [255, 255, 255]));
+    await until(() => f.events.some((e) => e.ev === 'drawn'));
+    f.proc.stdin.write(quitFrame());
+    await f.exited;
+    px = await read();
+    check('at 5, the lowest a key or slider sets: visibly lit — white drawn at 65 of 255', JSON.stringify(px(5, 5)) === '[65,65,65]', JSON.stringify(px(5, 5)));
     const z = helper(['--output', 'Virtual-1', '--dump', shots]);
     await until(() => z.events.some((e) => e.ev === 'ready'));
     z.proc.stdin.write(brightnessFrame(0));
@@ -404,8 +417,8 @@ try {
       w.write(key(10));
     }, 1);
     const dim = g.px(5, 5);
-    check(`at 50 on a 50% background: darker and less see-through (${dim} ≈ 50,25,0,191)`, Math.abs(dim[0] - 50) <= 1 && Math.abs(dim[1] - 25) <= 1 && Math.abs(dim[3] - 191) <= 1, JSON.stringify(dim));
-    check('…its key half as bright, still opaque', JSON.stringify(g.px(24, 24)) === '[100,50,25,255]', JSON.stringify(g.px(24, 24)));
+    check(`at 50 on a 50% background: darker and less see-through (${dim} ≈ 73,36,0,162)`, Math.abs(dim[0] - 73) <= 1 && Math.abs(dim[1] - 36) <= 1 && Math.abs(dim[3] - 162) <= 1, JSON.stringify(dim));
+    check('…its key giving off half the light, still opaque', JSON.stringify(g.px(24, 24)) === '[146,73,36,255]', JSON.stringify(g.px(24, 24)));
     g = await run((w) => {
       w.write(brightnessFrame(0));
       w.write(canvasFrame(960, 360));
@@ -553,6 +566,35 @@ try {
   await until(() => touches(t, mark).length >= 1);
   seen = touches(t, mark);
   check('letterboxed (1000 × 360 on 1920 × 720: scale 1.92, 14 px down): the middle of the screen is 500, 180.2', seen[0]?.x === 500 && seen[0]?.y === 180.2, JSON.stringify(seen));
+
+  // Following a contact (a slider's or dial's, round 5): only once asked, once per frame, until it lifts.
+  mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 600), syn());
+  await sleep(150);
+  check('a contact not followed: its movement says nothing, as always', touches(t, mark).length === 0, JSON.stringify(touches(t, mark)));
+  t.proc.stdin.write(followFrame(4));
+  // The helper reads its touchscreens before its stdin when both are ready, so a move sent in the same
+  // instant as the follow can come first and go unreported — as a real finger's first move might, harmlessly.
+  await sleep(150);
+  // Two changes in one frame are one move: x then y, then the report.
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 700), ev(EV.ABS, C.MT_Y, 600), syn());
+  await until(() => touches(t, mark).length >= 1);
+  await sleep(100);
+  seen = touches(t, mark);
+  check('followed (M): its movement reported once per frame, in canvas units (0.7,0.6 → 700, 217.7)', seen.length === 1 && seen[0].edge === 'move' && seen[0].contact === 4 && seen[0].x === 700 && seen[0].y === 217.7, JSON.stringify(seen));
+  mark = t.events.length;
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, -1), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.TRACKING, 12), ev(EV.ABS, C.MT_X, 100), ev(EV.ABS, C.MT_Y, 100), syn());
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 200), syn());
+  await until(() => touches(t, mark).length >= 2);
+  await sleep(150);
+  seen = touches(t, mark);
+  check('…until it lifts: a new contact in the same slot is not followed', seen.length === 2 && seen[0].edge === 'up' && seen[1].edge === 'down', JSON.stringify(seen));
+  mark = t.events.length;
+  t.proc.stdin.write(followFrame(77));
+  send(touch, ev(EV.ABS, C.SLOT, 4), ev(EV.ABS, C.MT_X, 300), syn());
+  await sleep(150);
+  check('a follow for a contact not down is ignored', touches(t, mark).length === 0 && t.proc.exitCode === null, JSON.stringify(touches(t, mark)));
 
   mark = t.events.length;
   closeSync(touch.fd);

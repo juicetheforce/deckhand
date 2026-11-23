@@ -19,10 +19,12 @@ export function ColourPicker({
   value,
   defaultColor,
   defaultTitle,
+  defaultName = 'Default',
   label,
   disabled,
   onChange,
   name,
+  swatches = BACKGROUND_SWATCHES,
 }: {
   /** The colour set, or null: Default. */
   value: string | null;
@@ -30,12 +32,16 @@ export function ColourPicker({
   defaultColor: string;
   /** What Default follows, said on its chip. */
   defaultTitle: string;
+  /** What the unset choice is called: "Default" unless set — a slider's or dial's is "None", the page showing around its art. */
+  defaultName?: string;
   /** The row's accessible name. */
   label: string;
   disabled?: boolean;
   onChange: (color: string | null) => void;
   /** For the checks: data-colour-picker="<name>". */
   name: string;
+  /** The preset colours offered: the background swatches unless set — a slider's or dial's level has its own bright set. */
+  swatches?: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   const shown = value ?? defaultColor;
@@ -73,7 +79,7 @@ export function ColourPicker({
         <button
           className="background-swatch"
           style={{ background: shown }}
-          aria-label={`${label}: ${value ?? 'Default'}`}
+          aria-label={`${label}: ${value ?? defaultName}`}
           aria-expanded={open}
           disabled={disabled}
           onClick={() => setOpen((o) => !o)}
@@ -82,7 +88,7 @@ export function ColourPicker({
         <input
           className="background-hex"
           aria-label={`${label} hex`}
-          placeholder="Default"
+          placeholder={defaultName}
           value={hex}
           spellCheck={false}
           maxLength={7}
@@ -99,14 +105,14 @@ export function ColourPicker({
             aria-selected={value === null}
             className={`background-chip colour-chip-default${value === null ? ' background-chip-current' : ''}`}
             style={{ background: defaultColor }}
-            title={`Default: ${defaultTitle}`}
+            title={`${defaultName}: ${defaultTitle}`}
             disabled={disabled}
             onClick={() => value !== null && onChange(null)}
             data-colour-chip="default"
           >
-            <span aria-hidden="true">D</span>
+            <span aria-hidden="true">{defaultName.slice(0, 1)}</span>
           </button>
-          {BACKGROUND_SWATCHES.map((c) => (
+          {swatches.map((c) => (
             <button
               key={c}
               role="option"

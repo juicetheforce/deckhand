@@ -56,6 +56,15 @@ void platform_damage(int x, int y, int w, int h);
  * shown when it is. */
 void platform_present(void);
 
+/* How the canvas is copied into the buffer shown: NULL as it is, or through
+ * fn (panel.c's brightness). The caller marks everything changed when it
+ * changes how, so the whole screen is shown the new way. */
+void platform_set_copy(void (*fn)(uint32_t *dst, const uint32_t *src, size_t count));
+
 void platform_close(void);
+
+/* Tests only (--present-log): called at each present with the pixels handed to
+ * the compositor, so a test sees every frame the screen is shown. */
+void platform_on_present(void (*fn)(const uint32_t *px, int width, int height, int stride));
 
 #endif

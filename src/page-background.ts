@@ -14,7 +14,7 @@ export { backgroundOf, isPlainBlack } from './background-def.js';
  * layer's opacity, and — with an image — a picture of the whole layer at the
  * screen's size, the image fitted over the colour and the opacity applied.
  *
- * Drawn once per page change, a background edit, a brightness change or the
+ * Drawn once per page change, a background edit or the
  * screen coming back — never on a clock — and kept by the driver until one of
  * those.
  */

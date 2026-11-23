@@ -14,6 +14,10 @@ import { fileURLToPath } from 'node:url';
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// Never the machine's own udev (src/services/hotplug.ts): a real device plugged or unplugged during a run would ask
+// a scan, and fail a check by timing alone. Set before the daemon is imported or started.
+process.env.DECKHAND_UDEVADM ??= path.join(REPO, 'scripts/test/fake-udevadm.mjs');
+
 // The daemon's state directory holds the rolling backups and credentials.json
 // (OBS's password). A script that has not chosen one gets a scratch directory,
 // never the real ~/.local/state/deckhand: the editor asks obs.status on every

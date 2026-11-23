@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { validateConfig } from '../../../src/config.js';
 import { migrateStateIcons } from '../../../src/state-icons.js';
+import { migrateValueControls } from '../../../src/value-controls.js';
 import { migratePagePanels } from '../../../src/panel-presets.js';
 import { iconFilesToSize, migrateIconFit } from '../../../src/icon-fit.js';
 import { readIconFile } from '../../../src/icon-file.js';
@@ -93,15 +94,19 @@ export class ConfigStore {
    * pages (src/panel-presets.ts migratePagePanels), every page keeping the
    * grid and keys it had. A config from before the icon scale has `iconFit`
    * converted (src/icon-fit.ts), each icon by its size, read beforehand
-   * (iconSizesOf). Whether the file needs reformatting is judged before, on
-   * the file as it was.
+   * (iconSizesOf). A slider's or dial's fill or ring image becomes the drawn
+   * level, and a round or hexagon one a rectangle (src/value-controls.ts
+   * migrateValueControls). Whether the file needs reformatting is judged
+   * before, on the file as it was.
    */
   private migrate(sizes: IconSizes): void {
     // All run: `||` would skip the rest whenever one changed something.
     const icons = migrateStateIcons(this.config);
     const panels = migratePagePanels(this.config);
     const fit = migrateIconFit(this.config, (icon) => sizes.get(icon) ?? null);
-    if (!icons && !panels && !fit) return;
+    // Sliders and dials before 2026-11-22's decisions: a fill or ring image becomes the drawn level, and none is round.
+    const values = migrateValueControls(this.config);
+    if (!icons && !panels && !fit && !values) return;
     this.dirty = true;
     this.scheduleSave();
   }

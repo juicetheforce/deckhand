@@ -109,7 +109,7 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
         setMessage('Nothing pasted: on a custom layout, select the controls to paste onto.');
         return;
       }
-      const placement = custom ? placeOnControls(clipboard, targets, layout) : placeClipboard(clipboard, pasteAnchor(geometry, selection.keys, clipboard), geometry, layout);
+      const placement = custom ? placeOnControls(clipboard, targets, layout, geometry) : placeClipboard(clipboard, pasteAnchor(geometry, selection.keys, clipboard), geometry, layout);
       const failure = await put(placement.writes);
       if (failure !== null) {
         setMessage(`Could not paste: ${failure}`);
@@ -184,7 +184,7 @@ export function useBulk({ config, daemon, selection, layout, page, geometry, edi
       // nothing is skipped; a page key whose target is not on that deck loses the link.
       // On a custom layout, that control itself: rows and columns there can name another.
       const placement = isCustomLayout(toLayout.pages[to.page].panel)
-        ? placeOnControls(clip, [to.key], toLayout)
+        ? placeOnControls(clip, [to.key], toLayout, toGeometry ?? undefined)
         : placeClipboard(clip, { row: toPosition.row, column: toPosition.column }, toGeometry!, toLayout);
       const failure = await put(placement.writes, to.serial, to.page);
       if (failure !== null) {

@@ -23,6 +23,7 @@ import { deleteKeptConfig, keepConfigCopy, keptConfigPath, listKeptConfigs } fro
 import type { AppearancePatch, ApplyResult, ButtonLocation, Edit, IconChoice, SleepSettingsPatch } from '../shared/edits.js';
 import { systemFonts } from './fonts.js';
 import { BUILTIN_FOLDER, BUILTIN_PREFIX, iconUrl, isPairIconField, type PairIconField } from '../shared/icons.js';
+import { LAYERS, type LayerName } from '../../../src/value-controls.js';
 import { cleanSettingsPatch, deckOptions, DEFAULT_SETTINGS, readSettings, type AppSettings, type DeckOption } from '../shared/settings.js';
 import { ConfigStore } from './config-store.js';
 import { DaemonClient, DaemonError, pairScreen } from './daemon-client.js';
@@ -403,10 +404,11 @@ async function commitIcon(
   at: ButtonLocation,
   icon: IconChoice,
   preview: { serial: string; key: string } | null,
-  slot: PairIconField | null,
+  slot: PairIconField | `layer:${LayerName}` | null,
 ): Promise<ApplyResult> {
   if (!store) return { ok: false, error: storeError ?? 'config.json is not open' };
-  const result = store.apply(slot === null ? { kind: 'setIcon', at, icon } : { kind: 'setActionIcon', at, field: slot, icon });
+  const layer = typeof slot === 'string' && slot.startsWith('layer:') ? (slot.slice(6) as LayerName) : null;
+  const result = store.apply(layer !== null ? { kind: 'setLayer', at, layer, icon } : slot === null ? { kind: 'setIcon', at, icon } : { kind: 'setActionIcon', at, field: slot as PairIconField, icon });
   if (!result.ok) return result;
   const before = daemon.lastReloadAt();
   const wrote = await store.flush();
@@ -1360,10 +1362,11 @@ function registerIpc(): void {
   });
   ipcMain.handle('commitIcon', (event, at: unknown, icon: unknown, preview: unknown, slot: unknown) => {
     if (!fromOurWindow(event) || !isLocation(at) || !isIconChoice(icon)) return { ok: false, error: 'not allowed' };
-    if (slot !== null && !isPairIconField(slot)) return { ok: false, error: 'not allowed' };
+    const isLayer = typeof slot === 'string' && slot.startsWith('layer:') && ([...LAYERS.slider, ...LAYERS.dial] as string[]).includes(slot.slice(6));
+    if (slot !== null && !isLayer && !isPairIconField(slot)) return { ok: false, error: 'not allowed' };
     const p = preview as { serial?: unknown; key?: unknown } | null;
     const target = p && typeof p.serial === 'string' && typeof p.key === 'string' ? { serial: p.serial, key: p.key } : null;
-    return commitIcon(at, icon, target, slot);
+    return commitIcon(at, icon, target, slot as PairIconField | `layer:${LayerName}` | null);
   });
   ipcMain.on('reportCheck', (event, name: string, report: unknown) => {
     if (!CHECK || event.sender !== window?.webContents || name !== CHECK) return;

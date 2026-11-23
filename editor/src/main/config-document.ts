@@ -12,6 +12,7 @@ import { deleteProfile } from '../shared/profile-deletion.js';
 import { defaultPanelOf, isCustomLayout, pagePanelOf } from '../../../src/panel-presets.js';
 import { regridPage } from '../shared/panel-size.js';
 import { renamedTemplate, withoutTemplate, withTemplate } from '../shared/templates.js';
+import { controlKind, LAYERS, LAYERS_THAT_MAY_BE_NONE, NEEDS_VALUE, takesValue, validAngles } from '../../../src/value-controls.js';
 
 export type { ButtonLocation, Edit, EditResult };
 
@@ -128,6 +129,12 @@ function storedIcon(iconPath: string, env: EditEnvironment): string {
 }
 
 /** The button at a location, created empty if the slot is empty. */
+/** A slider or dial takes only an action that carries a value (src/value-controls.ts): any other is refused, here as in the editor's drop. */
+function refuseButtonOnly(page: PageDef, key: string, type: string): void {
+  const kind = controlKind(page.panel?.controls.find((c) => c.id === key));
+  if (kind !== 'button' && !takesValue(type)) throw new EditError(`${NEEDS_VALUE}: a ${kind} takes Volume, Brightness or User volume`);
+}
+
 function buttonFor(page: PageDef, key: string): ButtonDef {
   page.buttons[key] ??= {};
   return page.buttons[key];
@@ -221,11 +228,13 @@ function followProfileName(config: Config, profileId: string, name: string): voi
 export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): EditResult {
   switch (edit.kind) {
     case 'setAction': {
+      refuseButtonOnly(pageAt(config, edit.at), edit.at.key, edit.action.type);
       buttonFor(pageAt(config, edit.at), edit.at.key).action = edit.action;
       return {};
     }
     case 'assignAction': {
       const page = pageAt(config, edit.at);
+      refuseButtonOnly(page, edit.at.key, edit.action.type);
       const button = buttonFor(page, edit.at.key);
       button.action = edit.action;
       delete button.onRelease;
@@ -296,6 +305,50 @@ export function applyEdit(config: Config, edit: Edit, env: EditEnvironment): Edi
       if (edit.icon.kind === 'none') throw new EditError('a state icon is a file, a built-in, or the default — not "none"');
       if (edit.icon.kind === 'default') delete action[edit.field];
       else action[edit.field] = storedIcon(edit.icon.path, env);
+      return {};
+    }
+    case 'setLayer': {
+      const page = pageAt(config, edit.at);
+      const kind = controlKind(page.panel?.controls.find((c) => c.id === edit.at.key));
+      if (kind === 'button' || !(LAYERS[kind] as readonly string[]).includes(edit.layer)) throw new EditError(`this control has no ${edit.layer} layer`);
+      const button = buttonFor(page, edit.at.key);
+      const layers = { ...(button.layers ?? {}) };
+      if (edit.icon.kind === 'default') {
+        delete layers[edit.layer];
+        // Where a knob's pointer rests depends on its art: the built-in knob turns from the default angles.
+        if (edit.layer === 'knob') delete button.angles;
+      } else if (edit.icon.kind === 'none') {
+        if (!LAYERS_THAT_MAY_BE_NONE.includes(edit.layer)) throw new EditError(`the ${edit.layer} cannot be none`);
+        (layers as Record<string, string | null>)[edit.layer] = null;
+      } else {
+        (layers as Record<string, string | null>)[edit.layer] = storedIcon(edit.icon.path, env);
+      }
+      if (Object.keys(layers).length === 0) delete button.layers;
+      else button.layers = layers;
+      if (Object.keys(button).length === 0) delete page.buttons[edit.at.key];
+      return {};
+    }
+    case 'setAngles': {
+      const page = pageAt(config, edit.at);
+      if (controlKind(page.panel?.controls.find((c) => c.id === edit.at.key)) !== 'dial') throw new EditError('only a dial has angles');
+      if (edit.angles === null) {
+        removeField(page, edit.at.key, 'angles');
+        return {};
+      }
+      if (!validAngles(edit.angles)) throw new EditError('the knob turns from −360° to 360°, at least 10° and at most one turn');
+      buttonFor(page, edit.at.key).angles = { start: Math.round(edit.angles.start), end: Math.round(edit.angles.end) };
+      return {};
+    }
+    case 'setLevel': {
+      const page = pageAt(config, edit.at);
+      if (controlKind(page.panel?.controls.find((c) => c.id === edit.at.key)) === 'button') throw new EditError('only a slider or dial shows a level');
+      if (edit.color !== null && !/^#[0-9a-fA-F]{6}$/.test(edit.color)) throw new EditError('a colour is "#rrggbb"');
+      // Shown in the action's colour is the default, and stored as nothing.
+      if (edit.show && edit.color === null) {
+        removeField(page, edit.at.key, 'level');
+        return {};
+      }
+      buttonFor(page, edit.at.key).level = { ...(edit.show ? {} : { show: false }), ...(edit.color !== null ? { color: edit.color.toLowerCase() } : {}) };
       return {};
     }
     case 'setLabel': {

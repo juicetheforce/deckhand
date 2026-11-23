@@ -1,6 +1,6 @@
 import { ActionNeeded, NotSetUp } from '../action-error.js';
 import type { IconState } from '../default-icons.js';
-import type { ActionContext, ActionDef, ActionHandler, DisplayPatch } from '../types.js';
+import type { ActionContext, ActionDef, ActionHandler, DisplayPatch, ValueHandler } from '../types.js';
 import * as keyboard from './keyboard.js';
 import * as audio from './audio.js';
 import * as discord from './discord.js';
@@ -230,4 +230,26 @@ export function iconStateOf(action: ActionDef, ctx?: ActionContext): IconState {
 /** Whether a key with states is in its active state, from cached state only; false for actions with one face. */
 export function activeOf(action: ActionDef, ctx?: ActionContext): boolean {
   return registry[action.type]?.active?.(action, ctx) ?? false;
+}
+
+/** The action's value, if it carries one (ActionHandler.value): what a slider or dial uses. */
+export function valueOf(action: ActionDef | undefined): ValueHandler | null {
+  return (action && registry[action.type]?.value) || null;
+}
+
+/** Write a slider's or dial's value: a failure returned, as attempt()'s are, never thrown. */
+export async function attemptValue(ctx: ActionContext, action: ActionDef, value: number, final: boolean): Promise<ActionFailure | null> {
+  const handler = valueOf(action);
+  if (!handler) {
+    const message = `"${action.type}" carries no value: a slider or dial needs Volume, Brightness or User volume`;
+    return { message, actionNeeded: false };
+  }
+  try {
+    await handler.write(ctx, action, value, final);
+    return null;
+  } catch (err) {
+    const failure = failureOf(err);
+    ctx.log(`action "${action.type}" failed to set ${value}: ${failure.message}`);
+    return failure;
+  }
 }

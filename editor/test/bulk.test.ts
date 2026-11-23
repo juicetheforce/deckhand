@@ -227,6 +227,29 @@ await check('duplicate is all or nothing when the page is short of empty keys', 
   assert.equal(duplicateKeys({ buttons: full }, V2, ids(14)).ok, false, 'an empty selection has nothing to duplicate');
 });
 
+await check('duplicate lands only on a control of the same family: a button skips an empty slider, a slider an empty button', () => {
+  const mixed: KeyGrid = {
+    keys: [
+      { id: 'b0', row: 0, column: 0 },
+      { id: 's1', row: 0, column: 1, kind: 'slider' },
+      { id: 'b2', row: 0, column: 2 },
+      { id: 'd3', row: 0, column: 3, kind: 'dial' },
+    ],
+  };
+  const page: PageDef = { buttons: { b0: hotkey('ctrl+1'), s1: { action: { type: 'audio.volume' } } } };
+  const button = duplicateKeys(page, mixed, ['b0']);
+  assert.ok(button.ok);
+  assert.deepEqual(button.created, ['b2'], 'the hotkey goes to the next empty button, not the slider beside it');
+  const slider = duplicateKeys(page, mixed, ['s1']);
+  assert.ok(slider.ok);
+  assert.deepEqual(slider.created, ['d3'], 'the slider goes to the dial, past the empty button');
+  const noRoom = duplicateKeys({ buttons: { ...page.buttons, d3: { action: { type: 'brightness' } } } }, mixed, ['s1']);
+  assert.equal(noRoom.ok, false, 'no empty slider or dial: nothing written, though a button is empty');
+  assert.match(noRoom.ok ? '' : noRoom.error, /no empty slider or dial/);
+  const noButton = duplicateKeys({ buttons: { ...page.buttons, b2: hotkey('x') } }, mixed, ['b0']);
+  assert.match(noButton.ok ? '' : noButton.error, /no empty button/);
+});
+
 await check('clear empties only occupied selected keys; swap moves whole buttons both ways', () => {
   const page: PageDef = { buttons: { '0': hotkey('a'), '1': hotkey('b') } };
   assert.deepEqual(clearKeys(page, ids(0, 5, 0)), [{ key: '0', button: null }]);

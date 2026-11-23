@@ -11,7 +11,7 @@ import type { ShapeBox } from '../../../src/shapes.js';
 import { pagePanelIn } from '../../../src/panel-presets.js';
 import { defaultIconFor, warningIconFor } from '../../../src/default-icons.js';
 import type { AppListing, DecksResult, LiveFace } from '../../../src/control/protocol.js';
-import type { ActionDef, ButtonDef, Config, LayoutDef } from '../../../src/types.js';
+import type { ActionDef, ButtonDef, Config, LayoutDef, PageDef } from '../../../src/types.js';
 import type { DaemonView, SettingsSection } from '../shared/bridge.js';
 import { BUILTIN_PREFIX, builtinRef, keyStates } from '../shared/icons.js';
 import { keyNamed, rangeSelection, type Clipboard, type KeyGrid, type Placement } from '../shared/bulk.js';
@@ -513,11 +513,17 @@ function joinNames(names: string[]): string {
 export function placementMessage(verb: 'Pasted' | 'Copied', placement: Placement, destination: string, skippedWhy = 'no place on that deck'): string {
   const written = placement.writes.length;
   const parts: string[] = [];
-  if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
+  if (written === 0 && placement.wrongKind.length > 0 && placement.skipped.length === 0) parts.push(`Nothing ${verb.toLowerCase()} to ${destination}.`);
+  else if (written === 0) parts.push(`Nothing ${verb.toLowerCase()}: no copied key has a place on ${destination}.`);
   else parts.push(`${verb} ${written === 1 ? '1 key' : `${written} keys`} to ${destination}.`);
   if (written > 0 && placement.skipped.length > 0) {
     const names = joinNames(placement.skipped.map((k) => keyNamed(k.button, k.sourceNumber)));
     parts.push(`Skipped ${names}: ${placement.skipped.length === 1 ? 'it has' : 'they have'} ${skippedWhy}.`);
+  }
+  if (placement.wrongKind.length > 0) {
+    const names = joinNames(placement.wrongKind.map((k) => keyNamed(k.button, k.sourceNumber)));
+    const one = placement.wrongKind.length === 1;
+    parts.push(`Skipped ${names}: a slider's or dial's key goes only on a slider or dial, and a button's only on a button, so ${one ? 'it has' : 'they have'} nowhere to land there.`);
   }
   if (placement.lostNavigation.length > 0) {
     const names = joinNames(placement.lostNavigation.map((l) => keyNamed(l.clip.button, l.clip.sourceNumber)));
@@ -661,6 +667,13 @@ export function liveFacesOn(daemon: DaemonView, selection: Pick<Selection, 'prof
   return deck.live ?? {};
 }
 
+/** Each slider's and dial's value on the deck now, whole percent of its range, by control id: only while the deck shows this page. */
+export function valuesOn(daemon: DaemonView, selection: Pick<Selection, 'profile' | 'serial' | 'page'>): Record<string, number> {
+  const deck = daemon.status?.decks.find((d) => d.serial === selection.serial);
+  if (!deck || deck.profile !== selection.profile || deck.page !== selection.page) return {};
+  return deck.values ?? {};
+}
+
 /**
  * An approximation of the key face; the deck is the truth. Live faces — clock
  * time, track, active output — are not drawn; default icons are (faceIcon).
@@ -711,7 +724,8 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   editor: [],
   app: ['app'],
   brightness: ['delta', 'value', 'showLevel', 'deck'],
-  'audio.volume': ['delta', 'showLevel'],
+  // On a slider or dial, its device (inspector/ValueForms.tsx): node, label, and input for an input.
+  'audio.volume': ['delta', 'showLevel', 'node', 'label', 'input'],
   'audio.micMute': ['iconActive', 'labelMuted', 'labelUnmuted'],
   'audio.mute': ['iconActive', 'labelMuted', 'labelUnmuted'],
   'media.control': ['method', 'iconActive'],
@@ -1049,4 +1063,30 @@ export function keyBoxOf(geometry: Pick<DeckGeometry, 'units' | 'keys'> | null, 
   if (!k) return null;
   if (geometry?.units === 'pixels') return { w: k.w, h: k.h, shape: k.shape, radius: k.radius };
   return { w: 1, h: 1 };
+}
+
+/**
+ * Every image file the shown pages draw, for the main process to watch and
+ * stamp (IconFiles.watchFiles): a file put back or replaced gets a new stamp,
+ * so the grid fetches it again. Both faces of a key with states — its default
+ * and its active state's, which the daemon's live state flips it to — and a
+ * virtual deck page's background image (Codex, PR #10), and a slider's or
+ * dial's chosen layer images (Codex, PR #12).
+ */
+export function watchedImages(pages: ReadonlyArray<PageDef>, appIcons: AppIcons = {}): string[] {
+  return [
+    ...new Set(
+      pages
+        .flatMap((p) => Object.values(p.buttons))
+        // Not `.map(faceIcon)`: that passes the array index as the second argument.
+        .flatMap((b) => {
+          const states = keyStates(b.action);
+          return [faceIcon(b, null, appIcons), states ? faceIcon(b, { state: states.activeState, active: true }, appIcons) : null];
+        })
+        .filter((i): i is string => i !== null)
+        .concat(pages.flatMap((p) => (p.background?.image ? [p.background.image] : [])))
+        // A slider's or dial's chosen layer images: replaced on disk, the grid draws the new one (Codex, PR #12).
+        .concat(pages.flatMap((p) => Object.values(p.buttons).flatMap((b) => Object.values(b.layers ?? {}).filter((l): l is string => typeof l === 'string' && l !== '')))),
+    ),
+  ];
 }

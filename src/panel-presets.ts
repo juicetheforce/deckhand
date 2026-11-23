@@ -272,6 +272,15 @@ export function newButtonSide(screen: ScreenSize): number {
   return gridFor(screen, 'medium').keyPx;
 }
 
+/**
+ * Millimetres as this screen's pixels: by its EDID size when that can be
+ * believed, else Medium's own pitch (240 px for 30 mm), the same guess a new
+ * Button's size makes.
+ */
+export function mmToPx(screen: ScreenSize, mm: number): number {
+  return mm * (pxPerMm(screen) ?? PITCH_PX.medium / PITCH_MM.medium);
+}
+
 /** A side in millimetres on this screen, or null when its physical size is not known. */
 export function sideMm(screen: ScreenSize, px: number): number | null {
   const perMm = pxPerMm(screen);

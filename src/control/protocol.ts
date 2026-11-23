@@ -58,6 +58,13 @@ export interface DeckStatus {
   latched?: string[];
   /** The keys with states on the page shown, by control id, and the state each is in (DeckSession.liveFaces), so the editor's grid draws what the deck draws. */
   live?: Record<string, LiveFace>;
+  /**
+   * The sliders and dials on the page shown, by control id, and each one's
+   * value in whole percent of its range (DeckSession.values), so the editor's
+   * grid draws the level the deck draws. Changes when it settles, never per
+   * step of a drag.
+   */
+  values?: Record<string, number>;
   /** Keys whose last press failed, on any page or profile. */
   failed?: KeyFailure[];
   /** A virtual deck's touch: whether touches work now, and if not, why (TouchState). */

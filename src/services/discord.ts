@@ -278,6 +278,30 @@ export function adjustUserVolume(userId: string, delta: number): Promise<{ volum
 }
 
 /**
+ * Set the volume you hear one person at outright, 0–200 (a User volume slider
+ * or dial). One request when the person is in the channel cache — which a
+ * User volume key keeps while the profile has one — so a drag costs one
+ * round trip per step; otherwise the channel is asked first, as a press does.
+ */
+export function setUserVolume(userId: string, volume: number): Promise<{ volume: number } | { missing: 'no-channel' | 'not-in-channel' }> {
+  return pressWith(async (connected) => {
+    const next = Math.max(0, Math.min(MAX_USER_VOLUME, Math.round(volume)));
+    if (!(client === connected && usersChannel !== null && state.users[userId])) {
+      const channel = await connected.command('GET_SELECTED_VOICE_CHANNEL');
+      if (typeof channel.id !== 'string') return { missing: 'no-channel' as const };
+      if (!voiceStates(channel).some((v) => v.id === userId)) return { missing: 'not-in-channel' as const };
+    }
+    const reply = await connected.command('SET_USER_VOICE_SETTINGS', { user_id: userId, volume: next });
+    const set = typeof reply.volume === 'number' ? reply.volume : next;
+    if (client === connected && usersChannel !== null && state.users[userId]) update({ users: { ...state.users, [userId]: { ...state.users[userId], volume: set } } });
+    return { volume: set };
+  });
+}
+
+/** Discord's own range for the volume you hear a person at. */
+export const USER_VOLUME_MAX = MAX_USER_VOLUME;
+
+/**
  * What a Discord key's picker offers, asked of Discord now — connecting as
  * the profile does, waiting up to 8 s for the handshake (a picker can; a
  * press never does), and letting go after if the profile has no Discord

@@ -9,8 +9,10 @@
  * Multitouch protocol B (slots) is read when the device has it; otherwise the
  * single-touch events (BTN_TOUCH, ABS_X, ABS_Y). A frame is acted on at its
  * SYN_REPORT: a slot given a tracking id is a contact down, at the slot's
- * position; a tracking id of -1 lifts it. Only downs and ups are reported —
- * a touch belongs to the control it started on, so movement changes nothing.
+ * position; a tracking id of -1 lifts it; a contact down whose position
+ * changed is reported moved, once per frame (the core passes a move on only
+ * for a contact the daemon follows: a slider's or dial's). A touch belongs to
+ * the control it started on, so movement never changes which.
  * A lift of a slot that was never down is ignored. After SYN_DROPPED (the
  * kernel's buffer overflowed) every contact is lifted, and a slot comes back
  * only with a new tracking id: a finger still down then has to be lifted and
@@ -40,6 +42,7 @@ struct slot {
   int id;       /* tracking id; -1 none */
   int x, y;
   int down;     /* reported down */
+  int rx, ry;   /* the position last reported */
 };
 
 struct source {
@@ -49,7 +52,7 @@ struct source {
   struct axis mt_x, mt_y, st_x, st_y;
   int slot;
   struct slot slots[MAX_SLOTS];
-  int st_touch, st_xv, st_yv, st_down;
+  int st_touch, st_xv, st_yv, st_down, st_rx, st_ry;
   int dropping;
   /* A FIFO can give part of an event; the rest arrives with the next read. */
   unsigned char partial[sizeof(struct input_event)];
@@ -138,7 +141,13 @@ static void sync_frame(int index, touch_contact_fn fn) {
       struct slot *sl = &s->slots[i];
       if (sl->id >= 0 && !sl->down) {
         sl->down = 1;
+        sl->rx = sl->x;
+        sl->ry = sl->y;
         fn(index, i, 1, scaled(sl->x, s->mt_x), scaled(sl->y, s->mt_y));
+      } else if (sl->id >= 0 && (sl->x != sl->rx || sl->y != sl->ry)) {
+        sl->rx = sl->x;
+        sl->ry = sl->y;
+        fn(index, i, 2, scaled(sl->x, s->mt_x), scaled(sl->y, s->mt_y));
       } else if (sl->id < 0 && sl->down) {
         sl->down = 0;
         fn(index, i, 0, 0, 0);
@@ -148,7 +157,13 @@ static void sync_frame(int index, touch_contact_fn fn) {
   }
   if (s->st_touch == 1 && !s->st_down) {
     s->st_down = 1;
+    s->st_rx = s->st_xv;
+    s->st_ry = s->st_yv;
     fn(index, 0, 1, scaled(s->st_xv, s->st_x), scaled(s->st_yv, s->st_y));
+  } else if (s->st_touch == 1 && (s->st_xv != s->st_rx || s->st_yv != s->st_ry)) {
+    s->st_rx = s->st_xv;
+    s->st_ry = s->st_yv;
+    fn(index, 0, 2, scaled(s->st_xv, s->st_x), scaled(s->st_yv, s->st_y));
   } else if (s->st_touch == 0 && s->st_down) {
     s->st_down = 0;
     fn(index, 0, 0, 0, 0);

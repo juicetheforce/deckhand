@@ -147,6 +147,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       entry.previews = session.previewKeys();
       entry.latched = session.latchedKeys();
       entry.live = session.liveFaces();
+      const values = session.values();
+      if (Object.keys(values).length > 0) entry.values = values;
       entry.failed = session.failedKeys();
       const touch = session.touchState();
       if (touch !== undefined) entry.touch = touch;

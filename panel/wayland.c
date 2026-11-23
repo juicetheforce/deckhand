@@ -59,6 +59,9 @@ struct buffer {
   uint32_t *pixels;
   size_t size;
   int busy;
+  /* What of the canvas has changed since this buffer last had it: only that is
+   * copied when it is shown next. Two buffers take turns, so each keeps its own. */
+  int stale, stale_x0, stale_y0, stale_x1, stale_y1;
 };
 
 static struct wl_display *display;
@@ -267,6 +270,10 @@ static int make_shm_buffers(int w, int h, char *err, size_t errlen) {
     close(fd);
     buffers[i].pixels = px;
     buffers[i].size = size;
+    buffers[i].stale = 1;
+    buffers[i].stale_x0 = buffers[i].stale_y0 = 0;
+    buffers[i].stale_x1 = w;
+    buffers[i].stale_y1 = h;
   }
   return 0;
 }
@@ -437,6 +444,18 @@ void platform_translucent(int on) {
 
 void platform_damage(int x, int y, int w, int h) {
   if (w <= 0 || h <= 0) return;
+  for (int i = 0; i < 2; i++) {
+    struct buffer *b = &buffers[i];
+    if (!b->stale) {
+      b->stale = 1;
+      b->stale_x0 = x; b->stale_y0 = y; b->stale_x1 = x + w; b->stale_y1 = y + h;
+      continue;
+    }
+    if (x < b->stale_x0) b->stale_x0 = x;
+    if (y < b->stale_y0) b->stale_y0 = y;
+    if (x + w > b->stale_x1) b->stale_x1 = x + w;
+    if (y + h > b->stale_y1) b->stale_y1 = y + h;
+  }
   if (!damaged) {
     damage_x0 = x; damage_y0 = y; damage_x1 = x + w; damage_y1 = y + h;
     damaged = 1;
@@ -456,11 +475,28 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 }
 static const struct wl_callback_listener frame_listener = { frame_done };
 
+static void (*present_hook)(const uint32_t *px, int width, int height, int stride);
+/* How the canvas is copied into a buffer being shown: as it is, or through panel.c's filter (its brightness). */
+static void (*copy_out)(uint32_t *dst, const uint32_t *src, size_t count);
+void platform_set_copy(void (*fn)(uint32_t *dst, const uint32_t *src, size_t count)) { copy_out = fn; }
+void platform_on_present(void (*fn)(const uint32_t *px, int width, int height, int stride)) { present_hook = fn; }
+
 void platform_present(void) {
   if (!damaged || frame_pending || !surface || surface_new) return;
   struct buffer *b = !buffers[0].busy ? &buffers[0] : !buffers[1].busy ? &buffers[1] : NULL;
   if (!b) return; /* shown when a buffer comes back: its release is an event, and dispatch presents again */
-  memcpy(b->pixels, canvas, b->size);
+  /* Only what changed since this buffer was last shown: a key's redraw copies the key, not the screen. */
+  if (b->stale) {
+    int x0 = b->stale_x0 < 0 ? 0 : b->stale_x0, y0 = b->stale_y0 < 0 ? 0 : b->stale_y0;
+    int x1 = b->stale_x1 > canvas_w ? canvas_w : b->stale_x1, y1 = b->stale_y1 > canvas_h ? canvas_h : b->stale_y1;
+    for (int y = y0; y < y1 && x1 > x0; y++) {
+      size_t at = (size_t)y * canvas_w + x0;
+      if (copy_out) copy_out(b->pixels + at, canvas + at, (size_t)(x1 - x0));
+      else memcpy(b->pixels + at, canvas + at, (size_t)(x1 - x0) * 4);
+    }
+    b->stale = 0;
+  }
+  if (present_hook) present_hook(b->pixels, canvas_w, canvas_h, canvas_w);
   wl_surface_attach(surface, b->wl, 0, 0);
   if (compositor_version >= 4)
     wl_surface_damage_buffer(surface, damage_x0, damage_y0, damage_x1 - damage_x0, damage_y1 - damage_y0);

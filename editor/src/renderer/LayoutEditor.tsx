@@ -13,6 +13,7 @@ import { describeAction, keyKind, type AppIcons } from './model.js';
 import { iconStampOf, Key, placeOf } from './DeckGrid.js';
 import { PageGround } from './PageGround.js';
 import { Checkbox, Row, Segmented } from './inspector/controls.js';
+import { controlKind, type ControlKind } from '../../../src/value-controls.js';
 
 /**
  * Edit layout mode (scope §7, round 2a; boards 21–23): the page's controls
@@ -339,6 +340,22 @@ export function LayoutCanvas({
   );
 }
 
+/**
+ * A slider turned the other way: its box turned about its centre too, so a
+ * tall one becomes a wide one (Claude's call), kept on the canvas. Vertical is
+ * stored as nothing.
+ */
+function turned(c: PanelControlDef, direction: 'vertical' | 'horizontal', size: { width: number; height: number }): Partial<PanelControlDef> {
+  const now = c.direction ?? 'vertical';
+  const out: Partial<PanelControlDef> = { direction: direction === 'vertical' ? undefined : direction };
+  if (now === direction) return out;
+  const longFirst = direction === 'horizontal' ? c.w < c.h : c.h < c.w;
+  if (!longFirst) return out;
+  const w = Math.min(c.h, size.width);
+  const h = Math.min(c.w, size.height);
+  return { ...out, w, h, x: c.x + (c.w - w) / 2, y: c.y + (c.h - h) / 2 };
+}
+
 /** A marquee's rectangle in canvas pixels, whichever way it was dragged. */
 function marqueeBox(m: Marquee): { x: number; y: number; w: number; h: number } {
   return { x: Math.min(m.start.x, m.at.x), y: Math.min(m.start.y, m.at.y), w: Math.abs(m.at.x - m.start.x), h: Math.abs(m.at.y - m.start.y) };
@@ -356,30 +373,36 @@ function Selection({ c, size, onHandle }: { c: PanelControlDef; size: { width: n
   );
 }
 
+/** The palette's controls, in its order (21a): a Button, a Slider and a Dial (round 5). */
+const PALETTE: ReadonlyArray<{ kind: ControlKind; label: string }> = [
+  { kind: 'button', label: 'Button' },
+  { kind: 'slider', label: 'Slider' },
+  { kind: 'dial', label: 'Dial' },
+];
+
 /**
- * The library pane in Edit layout: the Controls palette (21a). Button only in
- * this round; Slider and Dial come with round 5. A control is dragged onto the
- * panel; a click adds it in the middle — Claude's call, so it can be added
- * without a drag.
+ * The library pane in Edit layout: the Controls palette (21a) — Button, Slider
+ * and Dial. A control is dragged onto the panel; a click adds it in the middle
+ * — Claude's call, so it can be added without a drag.
  */
-export function ControlsPalette({ onDrop, onAdd }: { onDrop: (clientX: number, clientY: number) => void; onAdd: () => void }) {
-  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
-  const press = useRef<{ pointer: number; x: number; y: number; moved: boolean } | null>(null);
+export function ControlsPalette({ onDrop, onAdd }: { onDrop: (kind: ControlKind, clientX: number, clientY: number) => void; onAdd: (kind: ControlKind) => void }) {
+  const [drag, setDrag] = useState<{ x: number; y: number; kind: ControlKind } | null>(null);
+  const press = useRef<{ pointer: number; x: number; y: number; moved: boolean; kind: ControlKind } | null>(null);
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       const p = press.current;
       if (!p || p.pointer !== e.pointerId) return;
       if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4) return;
       p.moved = true;
-      setDrag({ x: e.clientX, y: e.clientY });
+      setDrag({ x: e.clientX, y: e.clientY, kind: p.kind });
     };
     const onUp = (e: PointerEvent) => {
       const p = press.current;
       if (!p || p.pointer !== e.pointerId) return;
       press.current = null;
       setDrag(null);
-      if (p.moved) onDrop(e.clientX, e.clientY);
-      else onAdd();
+      if (p.moved) onDrop(p.kind, e.clientX, e.clientY);
+      else onAdd(p.kind);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && press.current) {
@@ -402,26 +425,28 @@ export function ControlsPalette({ onDrop, onAdd }: { onDrop: (clientX: number, c
         <h2 className="library-heading">Controls</h2>
       </div>
       <ul className="palette-list">
-        <li>
-          <button
-            className="palette-entry"
-            data-palette="button"
-            title="Drag onto the panel, or click to add one in the middle"
-            onPointerDown={(e) => {
-              if (e.button !== 0) return;
-              e.preventDefault();
-              press.current = { pointer: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
-            }}
-          >
-            <span className="palette-glyph" aria-hidden="true" />
-            Button
-          </button>
-        </li>
+        {PALETTE.map(({ kind, label }) => (
+          <li key={kind}>
+            <button
+              className="palette-entry"
+              data-palette={kind}
+              title="Drag onto the panel, or click to add one in the middle"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                press.current = { pointer: e.pointerId, x: e.clientX, y: e.clientY, moved: false, kind };
+              }}
+            >
+              <span className={`palette-glyph palette-glyph-${kind}`} aria-hidden="true" />
+              {label}
+            </button>
+          </li>
+        ))}
       </ul>
       {drag &&
         createPortal(
           <div className="action-drag" style={{ left: drag.x + 14, top: drag.y + 14 }} aria-hidden="true">
-            Button
+            {PALETTE.find((p) => p.kind === drag.kind)?.label}
           </div>,
           document.body,
         )}
@@ -472,10 +497,41 @@ export function LayoutInspector({
   const shape = shapeName(c.shape);
   const set = (change: Partial<PanelControlDef>) => onChange(withControl(panel, c.id, change));
   const list = (ids: string[]) => ids.map((id) => names.get(id)).join(' and ');
+  const kind = controlKind(c);
   return (
     <aside className="inspector glass" aria-label="Inspector" data-layout-inspector={c.id}>
-      <h2 className="inspector-title">Button</h2>
+      <h2 className="inspector-title">{kind === 'slider' ? 'Slider' : kind === 'dial' ? 'Dial' : 'Button'}</h2>
       <p className="muted inspector-sub">{names.get(c.id)}</p>
+
+      {kind === 'slider' && (
+        // A slider's own settings (26b): part of the layout, so a template keeps them.
+        <section className="inspector-section" data-inspector-section="slider">
+          <h3 className="section-heading">Slider</h3>
+          <Segmented
+            label="Direction"
+            options={[
+              { value: 'vertical', label: 'Vertical' },
+              { value: 'horizontal', label: 'Horizontal' },
+            ]}
+            value={c.direction ?? 'vertical'}
+            disabled={false}
+            onChoose={(direction) => onChange(withControl(panel, c.id, turned(c, direction as 'vertical' | 'horizontal', panel.size)))}
+          />
+          <Segmented
+            label="Touch"
+            options={[
+              { value: 'drag', label: 'Drag only' },
+              { value: 'jump', label: 'Jump to touch' },
+            ]}
+            value={c.touch ?? 'drag'}
+            disabled={false}
+            onChoose={(touch) => set(touch === 'drag' ? { touch: undefined } : { touch: 'jump' })}
+          />
+          <p className="muted small" data-touch-note="">
+            {(c.touch ?? 'drag') === 'drag' ? 'A tap changes nothing: the level moves by how far your finger moves.' : 'The level goes to your finger at once, then follows it.'}
+          </p>
+        </section>
+      )}
 
       <section className="inspector-section">
         <h3 className="section-heading">Position</h3>
@@ -500,14 +556,17 @@ export function LayoutInspector({
       </section>
 
       <section className="inspector-section">
-        <h3 className="section-heading">Shape</h3>
-        <Segmented
-          label="Shape"
-          options={SHAPE_NAMES.map((s) => ({ value: s, label: SHAPE_LABELS[s] }))}
-          value={shape}
-          disabled={false}
-          onChoose={(s) => onChange(setShape(panel, c.id, s))}
-        />
+        <h3 className="section-heading">{kind === 'button' ? 'Shape' : 'Corners'}</h3>
+        {/* A slider or dial is a rectangle (Ryan, 2026-11-22): round and hexagon cut off a dial's ring and label. Its corners stay. */}
+        {kind === 'button' && (
+          <Segmented
+            label="Shape"
+            options={SHAPE_NAMES.map((s) => ({ value: s, label: SHAPE_LABELS[s] }))}
+            value={shape}
+            disabled={false}
+            onChoose={(s) => onChange(setShape(panel, c.id, s))}
+          />
+        )}
         {shape === 'rectangle' && (
           <Row name="Corners">
             <span className="layout-corners">

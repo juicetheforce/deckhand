@@ -1,5 +1,6 @@
 import { activeIcon } from '../state-icons.js';
 import * as audio from '../services/audio.js';
+import { ActionNeeded } from '../action-error.js';
 import type { ActionDef, ActionHandler, DisplayPatch } from '../types.js';
 
 /**
@@ -36,6 +37,14 @@ interface DeviceRef {
 /** The node an action names, or null if it names none. */
 function nodeOf(params: ActionDef): string | null {
   return typeof params.node === 'string' && params.node !== '' ? params.node : null;
+}
+
+/** A Volume slider's device (services/audio.ts VolumeTarget). */
+function volumeTarget(params: ActionDef): audio.VolumeTarget {
+  const node = nodeOf(params);
+  const input = params.input === true;
+  // No node: the default output, or with `input` the default input.
+  return node ? { node, input } : input ? { input } : {};
 }
 
 /** How to name a device in a message: its stored label, else the node. */
@@ -366,6 +375,33 @@ export const volume: ActionHandler = {
     const delta = typeof params.delta === 'number' ? params.delta : 5;
     await audio.adjustVolume(delta);
     ctx.invalidateByType(['audio.volume']);
+  },
+
+  /**
+   * On a slider or dial: a device's volume outright, 0–100%. `node` names an
+   * output, or an input with `input: true`; absent, the default output,
+   * whichever it is. A button's Volume has no device: it nudges the default
+   * output, as it always has.
+   *
+   *   { "type": "audio.volume" }                                   the default output
+   *   { "type": "audio.volume", "node": "alsa_output.…", "label": "Speakers" }
+   *   { "type": "audio.volume", "node": "alsa_input.…", "label": "Desk mic", "input": true }
+   *
+   * The level is read from the cache `pactl subscribe` keeps, so a change made
+   * in the desktop's own volume control moves it too.
+   */
+  value: {
+    range: () => ({ min: 0, max: 100 }),
+    read: (params) => audio.cachedVolume(volumeTarget(params)),
+    async write(ctx, params, value, final) {
+      const target = volumeTarget(params);
+      if (!audio.cachedPresent(target)) {
+        const label = typeof params.label === 'string' ? params.label : '';
+        throw new ActionNeeded(`${target.input ? 'The input' : 'The output'} ${nameOf({ node: target.node ?? '', label })} is not connected. Connect it, or choose another in the editor.`);
+      }
+      await audio.setVolume(target, value, final);
+      if (final) ctx.invalidateByType(['audio.volume']);
+    },
   },
 
   // Reads cached state only — never spawns pactl (see services/audio.ts).

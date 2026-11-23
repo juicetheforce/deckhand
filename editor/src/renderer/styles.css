@@ -4934,3 +4934,184 @@ body.settings-body {
   padding-left: 12px;
   font-size: 11px;
 }
+
+/*
+ * Sliders and dials (round 5; boards 26b–26f): their art and level, drawn as
+ * the deck draws them (ValueFace.tsx). No outline and no fill unless set: the
+ * page shows around the art. The zone is drawn only when it matters — dashed
+ * when empty, the accent when selected or a drop target, soft red when a drop
+ * is refused.
+ */
+.key.key-value,
+.key.key-value:hover {
+  /* No border: a border takes room, and the face would sit inside it — every layer inset from the
+     control's box, which the deck fills edge to edge. The zone is an outline drawn just inside the
+     box instead, which takes none, and follows the control's own corners (its inline radius). */
+  border: none;
+  box-shadow: none;
+  outline: 1px dashed transparent;
+  outline-offset: -1px;
+}
+
+.key.key-value.key-empty {
+  outline-color: rgba(255, 255, 255, 0.22);
+}
+
+.key.key-value.key-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.key.key-value.key-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.value-face {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  pointer-events: none;
+}
+
+.value-layer {
+  display: block;
+  pointer-events: none;
+}
+
+.value-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* A drop refused while still in the air (26e): a soft red dashed outline in the control's shape, and one short line. */
+.key.key-drop-refused,
+.key.key-shaped.key-drop-refused {
+  border: 2px dashed rgba(229, 72, 77, 0.75);
+  box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
+}
+
+/* A slider or dial: the same, as an outline inside its box, which takes no room from its layers. */
+.key.key-value.key-drop-refused {
+  border: none;
+  outline: 2px dashed rgba(229, 72, 77, 0.75);
+  outline-offset: -2px;
+}
+
+.key-shaped.key-drop-refused .key-outline path {
+  stroke: rgba(229, 72, 77, 0.75);
+  stroke-dasharray: 6 5;
+}
+
+.drop-refused-line {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(20, 10, 12, 0.88);
+  color: #ffb3b6;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The library with a slider or dial selected (26d): an action that sets no level, dimmed and not placeable. */
+.library-entry-dimmed {
+  cursor: not-allowed;
+}
+
+.library-entry-dimmed .library-icon,
+.library-entry-dimmed .library-text {
+  opacity: 0.32;
+}
+
+/* The palette's Slider and Dial (21a, 26). */
+.palette-glyph-slider {
+  width: 10px;
+  margin: 0 6px;
+  border-radius: 5px;
+  background: linear-gradient(to top, rgba(143, 156, 240, 0.7) 55%, rgba(255, 255, 255, 0.08) 55%);
+}
+
+.palette-glyph-dial {
+  border-radius: 50%;
+  background: conic-gradient(from -135deg, rgba(143, 156, 240, 0.7) 0 190deg, rgba(255, 255, 255, 0.08) 190deg 270deg, transparent 270deg);
+}
+
+/* A slider's or dial's layers on the Icon tab (26f): one chip each, the open one tinted. */
+.layer-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.layer-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  min-width: 0;
+}
+
+.layer-chip-open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.layer-chip-picture {
+  width: 22px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.layer-chip-picture img,
+.layer-chip-picture span {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.layer-chip-none {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.layer-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.layer-chip-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.layer-chip-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,6 +1,6 @@
 import { protocol } from 'electron';
 import { iconFilePath } from './builtin-icons.js';
-import { ICON_SCHEME } from '../shared/icons.js';
+import { ICON_SCHEME, stretchedSvg } from '../shared/icons.js';
 import { IconFileError, readIconFile } from '../../../src/icon-file.js';
 
 /**
@@ -16,7 +16,9 @@ import { IconFileError, readIconFile } from '../../../src/icon-file.js';
  * (src/icon-file.ts), checked before reading: a regular file, not too large,
  * never in Deckhand's state directory. Paths are as the config stores
  * them: ~/... is allowed, and builtin:<name> is served from the built-in
- * icon directory (builtinIconDir in src/main/builtin-icons.ts).
+ * icon directory (builtinIconDir in src/main/builtin-icons.ts). With
+ * `stretch=1`, an SVG is served made to stretch to its box (stretchedSvg), as
+ * the deck draws a slider's or dial's stretched layers.
  */
 
 /** Must run before the app is ready. */
@@ -27,12 +29,16 @@ export function registerIconScheme(): void {
 /** Must run after the app is ready. */
 export function handleIconScheme(): void {
   protocol.handle(ICON_SCHEME, async (request) => {
-    const requested = new URL(request.url).searchParams.get('path');
+    const url = new URL(request.url);
+    const requested = url.searchParams.get('path');
     if (!requested) return new Response('no path', { status: 400 });
     const filePath = iconFilePath(requested);
     if (filePath === null) return new Response('not a built-in icon', { status: 404 });
     try {
       const { data, type } = await readIconFile(filePath, { image: true });
+      // A layer the deck stretches: an SVG told to stretch too (stretchedSvg), or it keeps its proportions.
+      if (url.searchParams.get('stretch') === '1' && type === 'image/svg+xml')
+        return new Response(stretchedSvg(data.toString('utf8')), { headers: { 'content-type': type, 'cache-control': 'no-store' } });
       return new Response(new Uint8Array(data), { headers: { 'content-type': type as string, 'cache-control': 'no-store' } });
     } catch (err) {
       return new Response(err instanceof IconFileError ? err.reason : 'not found', { status: 404 });

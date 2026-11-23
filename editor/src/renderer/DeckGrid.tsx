@@ -8,6 +8,8 @@ import { BUILTIN_PREFIX, iconUrl } from '../shared/icons.js';
 import { useImageCheck } from './image-check.js';
 import { fitScale, madeForAnother, positionedBox } from '../shared/templates.js';
 import { PageGround } from './PageGround.js';
+import { ValueFace } from './ValueFace.js';
+import { keyDropRefused } from '../shared/bulk.js';
 import { actionName } from './catalogue.js';
 import { keyUnder, type KeyRef } from './keyUnder.js';
 import { actionIncomplete, describeAction, integrationOf, INTEGRATIONS, keyFace, keyKind, type AppIcons, type DeckGeometryWithSerial } from './model.js';
@@ -30,6 +32,8 @@ interface Props {
   latchedKeys: string[];
   /** The state each key with states is in on the deck right now (model.ts liveFacesOn), so its face follows it. By control id. */
   liveFaces: Record<string, LiveFace>;
+  /** Each slider's and dial's value on the deck now (model.ts valuesOn), whole percent, by control id. */
+  values?: Record<string, number>;
   selectedKeys: string[];
   /** A click, with the modifiers that decide whether it adds to the selection (Ctrl) or extends it (Shift). */
   onClickKey: (key: string, modifiers: { ctrl: boolean; shift: boolean }) => void;
@@ -39,10 +43,12 @@ interface Props {
   onMoveKey: ((from: string, to: string) => void) | null;
   /** A key dropped on another shown deck's key: copy it there. Null when editing is blocked or no other deck is shown. */
   onCopyKey: ((from: string, to: KeyRef) => void) | null;
-  /** The key under the pointer while a key of this grid is dragged, on any deck (useKeyDrag). */
-  onKeyDragOver: (over: KeyRef | null) => void;
+  /** The key under the pointer while a key of this grid is dragged, on any deck (useKeyDrag), with why it refuses the drop if it does. */
+  onKeyDragOver: (over: (KeyRef & { refused?: string | null }) | null) => void;
   /** The key on this deck something is being dragged over — an action from the library, or a key from this deck or another — drawn as the drop target. */
   dropTarget: string | null;
+  /** Why the drop target refuses what is over it (26e: "Needs an action with a value"), drawn in its shape with that line; null when it would take it. */
+  dropRefused?: string | null;
   /**
    * A virtual deck's room in its frame, in pixels at 100%: its page is drawn
    * positioned (keys where the panel puts them, at their size and shape),
@@ -71,9 +77,14 @@ const DRAG_THRESHOLD_PX = 6;
 interface KeyDrop {
   onMoveKey: ((from: string, to: string) => void) | null;
   onCopyKey: ((from: string, to: KeyRef) => void) | null;
-  /** The key under the pointer while a key is dragged, on any deck, or null: drawn by the grid it is on. */
-  onDragOver: (over: KeyRef | null) => void;
+  /** The key under the pointer while a key is dragged, on any deck, or null: drawn by the grid it is on, with why it refuses the drop if it does. */
+  onDragOver: (over: (KeyRef & { refused?: string | null }) | null) => void;
+  /** The kind of a key on this grid: a slider's or dial's contents go only onto a slider or dial, a button's only onto a button. */
+  kindOf: (key: string) => 'slider' | 'dial' | undefined;
+  /** The action on a key of this grid, for the refusal's words. */
+  actionOf: (key: string) => string | undefined;
 }
+
 
 /**
  * Key onto key: drag a button and drop it on another key. On this deck it
@@ -102,7 +113,10 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
     dragRef.current = next;
     setDragState(next);
     const after = next?.over ?? null;
-    if (before?.serial !== after?.serial || before?.key !== after?.key) dropRef.current.onDragOver(after);
+    if (before?.serial !== after?.serial || before?.key !== after?.key) {
+      const refused = next && after ? keyDropRefused(dropRef.current.kindOf(next.from), dropRef.current.actionOf(next.from), after.kind) : null;
+      dropRef.current.onDragOver(after ? { ...after, refused } : null);
+    }
   };
   const serialRef = useRef(serial);
   serialRef.current = serial;
@@ -140,6 +154,8 @@ function useKeyDrag(serial: string, drop: KeyDrop) {
       suppressClick.current = back !== null && back.serial === serialRef.current && back.key === p.from;
       setDrag(null);
       if (over === null) return;
+      // Refused while still in the air (26e): letting go drops nothing.
+      if (keyDropRefused(dropRef.current.kindOf(p.from), dropRef.current.actionOf(p.from), over.kind) !== null) return;
       if (over.serial === serialRef.current) dropRef.current.onMoveKey?.(p.from, over.key);
       else dropRef.current.onCopyKey?.(p.from, over);
     };
@@ -197,8 +213,14 @@ function scaled(scale: number): CSSProperties {
   return { inset: 'auto', left: inset, top: inset, width: `${scale * 100}%`, height: `${scale * 100}%` };
 }
 
-export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, box, screen, background }: Props) {
-  const keyDrag = useKeyDrag(geometry.serial, { onMoveKey, onCopyKey, onDragOver: onKeyDragOver });
+export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedKeys, notSetUp, latchedKeys, liveFaces, values, selectedKeys, onClickKey, onKeyMenu, onMoveKey, onCopyKey, onKeyDragOver, dropTarget, dropRefused = null, box, screen, background }: Props) {
+  const keyDrag = useKeyDrag(geometry.serial, {
+    onMoveKey,
+    onCopyKey,
+    onDragOver: onKeyDragOver,
+    kindOf: (key) => geometry.keys.find((k) => k.id === key)?.kind,
+    actionOf: (key) => page.buttons[key]?.action?.type,
+  });
   // A virtual deck: every page drawn as its panel places it (round 2a). A Stream Deck: its grid, as always.
   const canvas = geometry.units === 'pixels' && geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0 ? geometry.canvas : null;
   const gridStyle: CSSProperties = canvas
@@ -239,6 +261,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           unset={notSetUp(page.buttons[k.id]?.action?.type)}
           latched={latchedKeys.includes(k.id)}
           live={liveFaces[k.id] ?? null}
+          value={values?.[k.id] ?? null}
           selected={selectedKeys.includes(k.id)}
           onClick={(modifiers) => {
             if (!keyDrag.takeSuppressedClick()) onClickKey(k.id, modifiers);
@@ -247,6 +270,7 @@ export function DeckGrid({ config, geometry, page, iconStamps, appIcons, failedK
           onPointerDown={(occupied, e) => keyDrag.onPointerDown(k.id, occupied, e)}
           dragging={keyDrag.drag?.from === k.id}
           dropTarget={dropTarget === k.id}
+          dropRefused={dropTarget === k.id ? dropRefused : null}
         />
       ))}
     </div>
@@ -278,6 +302,8 @@ export interface KeyProps {
   latched: boolean;
   /** The state the deck shows it in, for a key with states; null for none known. */
   live: LiveFace | null;
+  /** A slider's or dial's value on the deck, whole percent; null or absent when not known. */
+  value?: number | null;
   selected: boolean;
   onClick: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onMenu: (x: number, y: number) => void;
@@ -286,9 +312,14 @@ export interface KeyProps {
   dragging: boolean;
   /** A dragged key is over this one (drawn as the dashed drop target). */
   dropTarget: boolean;
+  /** …and refuses it, saying why (26e): a soft red dashed outline in its shape and the line. */
+  dropRefused?: string | null;
 }
 
-export function Key({ serial, config, id, number, row, column, place, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, live, selected, onClick, onMenu, onPointerDown, dragging, dropTarget }: KeyProps) {
+export function Key({ serial, config, id, number, row, column, place, hasScreen, iconSize, button, iconStamps, appIcons, failure, unset, latched, live, value = null, selected, onClick, onMenu, onPointerDown, dragging, dropTarget, dropRefused = null }: KeyProps) {
+  if (place?.kind) {
+    return <ValueKey {...{ serial, config, id, number, place: place as Place & { kind: 'slider' | 'dial' }, button, iconStamps, failure, unset, value, selected, onClick, onMenu, onPointerDown, dragging, dropTarget, dropRefused }} />;
+  }
   const unsetName = INTEGRATIONS[integrationOf(button?.action?.type) ?? 'obs'].name;
   const kind = keyKind(button);
   const incomplete = actionIncomplete(button?.action);
@@ -309,7 +340,7 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
     selected ? 'key-selected' : '',
     hasScreen ? '' : 'key-no-screen',
     dragging ? 'key-dragging' : '',
-    dropTarget ? 'key-drop-target' : '',
+    dropTarget ? (dropRefused ? 'key-drop-refused' : 'key-drop-target') : '',
     incomplete ? 'key-incomplete' : '',
     latched ? 'key-latched' : '',
     unset ? 'key-unset' : '',
@@ -405,6 +436,7 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
       ) : (
         faceText
       )}
+      {dropTarget && dropRefused && <span className="drop-refused-line" data-drop-refused="">{dropRefused}</span>}
       {place && !place.fills && (
         // The shape's outline: the editor's own (the deck draws none), its colour saying selected or empty.
         <svg className="key-outline" viewBox={`0 0 ${place.w} ${place.h}`} preserveAspectRatio="none" aria-hidden="true">
@@ -415,8 +447,48 @@ export function Key({ serial, config, id, number, row, column, place, hasScreen,
   );
 }
 
+/**
+ * A slider or dial (src/value-controls.ts): its art and level (ValueFace), its
+ * label in its band, the failed or not-set-up badge; no fill unless the key
+ * has a background of its own — the page shows around the art.
+ */
+function ValueKey({ serial, config, id, number, place, button, iconStamps, failure, unset, value, selected, onClick, onMenu, onPointerDown, dragging, dropTarget, dropRefused }: Pick<KeyProps, 'serial' | 'config' | 'id' | 'number' | 'button' | 'iconStamps' | 'failure' | 'unset' | 'selected' | 'onClick' | 'onMenu' | 'onPointerDown' | 'dragging' | 'dropTarget' | 'dropRefused'> & { place: Place & { kind: 'slider' | 'dial' }; value: number | null }) {
+  const kind = keyKind(button);
+  const what = place.kind === 'slider' ? 'Slider' : 'Dial';
+  const title = kind === 'empty' ? `${what}, key ${number}: empty` : `${what}, key ${number}: ${describeAction(button)}${value !== null ? ` — ${value}%` : ''}`;
+  const classes = ['key', 'key-value', kind === 'empty' ? 'key-empty' : '', selected ? 'key-selected' : '', dragging ? 'key-dragging' : '', dropTarget ? (dropRefused ? 'key-drop-refused' : 'key-drop-target') : '', unset ? 'key-unset' : ''].filter(Boolean).join(' ');
+  return (
+    <button
+      className={classes}
+      style={{ ...place.style, background: button?.background ?? 'transparent' }}
+      title={title}
+      aria-label={title}
+      aria-pressed={selected}
+      data-deck={serial}
+      data-key={id}
+      data-control-kind={place.kind}
+      onPointerDown={(e) => onPointerDown(kind !== 'empty', e)}
+      onClick={(e) => onClick({ ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu(e.clientX, e.clientY);
+      }}
+    >
+      <ValueFace kind={place.kind} direction={place.direction} w={place.w} h={place.h} button={button} config={config} value={value} stamps={iconStamps} />
+      {dropTarget && dropRefused && <span className="drop-refused-line" data-drop-refused="">{dropRefused}</span>}
+      <span className="key-inner" style={place.inner.style}>
+        {unset && <span className="key-failed key-unset-badge" dangerouslySetInnerHTML={{ __html: unsetBadgeSvg(100) }} />}
+        {failure !== undefined && !unset && <span className="key-failed" title={`Its last change failed: ${failure}`} dangerouslySetInnerHTML={{ __html: failedBadgeSvg(100) }} />}
+      </span>
+    </button>
+  );
+}
+
 /** A key's place on a virtual deck's panel, as CSS: in percent of the panel, so it scales with it. */
 export interface Place {
+  /** A slider or dial (src/value-controls.ts); absent for a button. */
+  kind?: 'slider' | 'dial';
+  direction?: 'vertical' | 'horizontal';
   style: CSSProperties;
   /** Its box in canvas pixels. */
   w: number;
@@ -434,7 +506,7 @@ const pct = (v: number) => `${v * 100}%`;
 /** The hexagon's six corners, as a clip-path: in percent, so it stretches with its box as the deck's does. */
 const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)';
 
-export function placeOf(k: { x: number; y: number; w: number; h: number; shape: string; radius?: number; z?: number; index: number }, canvas: { width: number; height: number }): Place {
+export function placeOf(k: { x: number; y: number; w: number; h: number; shape: string; radius?: number; z?: number; index: number; kind?: 'slider' | 'dial'; direction?: 'vertical' | 'horizontal' }, canvas: { width: number; height: number }): Place {
   const box = { w: k.w, h: k.h, shape: k.shape, radius: k.radius };
   const shape = shapeName(k.shape);
   const r = cornerRadius(box);
@@ -452,6 +524,8 @@ export function placeOf(k: { x: number; y: number; w: number; h: number; shape: 
     ...(shape === 'hexagon' ? { clipPath: HEXAGON_CLIP } : {}),
   };
   return {
+    ...(k.kind ? { kind: k.kind } : {}),
+    ...(k.kind === 'slider' && k.direction ? { direction: k.direction } : {}),
     style,
     w: k.w,
     h: k.h,

@@ -12,6 +12,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+// A fake machine hears no real device events: the hotplug watch runs the stand-in udevadm (src/services/hotplug.ts).
+process.env.DECKHAND_UDEVADM ??= path.join(path.dirname(new URL(import.meta.url).pathname), 'fake-udevadm.mjs');
+
 /** A base EDID block: maker, product, the numeric serial field, a detailed timing with the size, and text descriptors. */
 export function edid({ maker, product, numeric = 0x01010101, serial, name, widthMm = 0, heightMm = 0 }) {
   const b = Buffer.alloc(128);

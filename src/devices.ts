@@ -68,7 +68,14 @@ export interface DeckDevice {
 
 export interface ControlInput {
   control: string;
-  edge: 'down' | 'up';
+  /**
+   * 'move': a finger on a slider or dial moved (a virtual deck's only; the
+   * session asked for it by the control's kind). A button's touch is only
+   * ever down and up.
+   */
+  edge: 'down' | 'up' | 'move';
+  /** Where the finger is, in the control's own box (0,0 its top-left, canvas pixels): on a slider's or dial's down and move. */
+  at?: { x: number; y: number };
 }
 
 /** A device a driver can see, not yet opened. */

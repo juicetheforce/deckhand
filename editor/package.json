@@ -29,6 +29,8 @@
     "check:virtual": "npm run build && node scripts/check-virtual.mjs",
     "check:layout": "npm run build && node scripts/check-layout.mjs",
     "check:background": "npm run build && node scripts/check-background.mjs",
+    "check:values": "npm run build && node scripts/check-values.mjs",
+    "check:value-art": "npm run build && node scripts/check-value-art.mjs",
     "check:appearance": "npm run build && node scripts/check-appearance.mjs",
     "check:backup": "npm run build && node scripts/check-backup.mjs",
     "check:titlebar": "npm run build && node scripts/check-titlebar.mjs",

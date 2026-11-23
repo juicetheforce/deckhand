@@ -248,6 +248,29 @@ export const brightness: ActionHandler = {
     const target = typeof params.deck === 'string' && params.deck !== '' ? sleep.deck(params.deck) : ctx.deck;
     return target ? { level: `${target.currentBrightness()}%` } : null;
   },
+
+  /**
+   * On a slider or dial: the target deck's brightness outright, **5–100**, as
+   * a Brightness key's (Ryan, 2026-11-22): never dark, since a panel at 0 came
+   * back only when the slider was found by touch on a black screen. The
+   * target is the same picker's (`deck`, else this deck).
+   */
+  value: {
+    range: () => ({ min: 5, max: 100 }),
+    read(params, ctx) {
+      const named = typeof params.deck === 'string' && params.deck !== '' ? params.deck : null;
+      const target = named === null ? ctx.deck : sleep.deck(named);
+      return target ? target.currentBrightness() : null;
+    },
+    async write(ctx, params, value) {
+      const named = typeof params.deck === 'string' && params.deck !== '' ? params.deck : null;
+      const target = named === null ? ctx.deck : sleep.deck(named);
+      if (!target) throw new ActionNeeded('The deck this control adjusts is not connected. Connect it, or choose another in the editor.');
+      await target.setBrightness(value);
+      sleep.invalidateByType(['brightness']);
+      ctx.invalidateByType(['brightness']);
+    },
+  },
 };
 
 /**
