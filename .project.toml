@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Round 6, the level meter experiment: measure what a live meter costs while shown and at rest, report it, and build only if Ryan says so. Ryan starts it. Nothing released until v2 is done."
+next = "Ryan updates Nobara to v0.13.0 and checks the Stream Decks and the Xeneon after the config conversion. Then v0.14.0, sharing a page, which needs Claude Design boards before it is built; the last feature release before the Windows work."
 category = "Gaming"
 paused = false
 focus = true
@@ -54,4 +54,6 @@ Round 5 built 2026-11-22 (PR #12), not merged: sliders and dials on virtual deck
 Round 5 (PR #12, 2026-11-22): sliders and dials; test list passed on the 10.3" panel and the V2. Ryan's decisions: the level (fill, ring) is drawn by Deckhand, never an image; knob/thumb keep proportions; sliders and dials are rectangles; brightness stops at 5; Default input added; ~1 core in a fast volume drag accepted, no cap.
 MIDI controller recorded as a future direction (2026-11-22): Mackie Control first, OSC possible; not v2. A virtual deck's brightness is now light given off (gamma 2.2): 5 is dim but lit.
 Round 5 merged 2026-11-23 (PR #12, aebcfc9), not released: sliders and dials confirmed on the 10.3" panel; a virtual deck's brightness is now dimmed by the helper as it shows (a fast drag no longer blacks out or lags); tests no longer hear real USB events.
+v0.13.0 published 2026-11-23: editor v2 (rounds 1-5: a layout per page, custom layouts with shapes, Edit layout, templates, backgrounds, sliders and dials, appearance for every deck). Release hold lifted; the level meter deferred. Ship test 86/86 after a fix to the test itself (PR #13, Codex: no findings). 1.0 may come with a working Windows release.
+v0.14.0 decided 2026-11-23: sharing one virtual-deck page as a file (everything visual, action types but no targets), from a share icon on the deck's header; separate from backups; Claude Design boards first.
 """
