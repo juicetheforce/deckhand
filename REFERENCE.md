@@ -1418,7 +1418,15 @@ SIGTERM as each real one does. `scripts/smoke-panel.mjs` runs the real
 helper, `panel/deckhand-panel`, under a headless KWin (`kwin_wayland
 --virtual`) on a sealed bus, feeds it recorded touches, and compares what it
 drew pixel by pixel; without `kwin_wayland` or a built helper it says
-"skipped" and passes, so read its output. `scripts/test/fake-discord.mjs`
+"skipped" and passes, so read its output. `scripts/smoke-brightness-drag.mjs`
+runs the real daemon session and virtual driver against the real helper
+under a headless KWin, through `scripts/test/panel-shim.mjs` (it stands in
+for the touchscreen and says a test's touches); the helper's `--present-log`
+logs every frame it shows, so a fast drag of a Brightness slider is checked
+frame by frame for black, a missing key, or an old level after the finger
+lifts, and its CPU per step measured against a Volume slider's. It skips as
+`smoke-panel` does. `scripts/test/fake-udevadm.mjs` is a `udevadm monitor`
+that says nothing (Traps in the checks, below). `scripts/test/fake-discord.mjs`
 is the Discord app's local socket and Discord's token endpoint
 (`DECKHAND_DISCORD_API_URL`), behaving as real Discord was measured to;
 `scripts/smoke-discord.mjs` and `check:discord` point `XDG_RUNTIME_DIR` at a
@@ -1492,13 +1500,16 @@ window.
 
 Each has been hit more than once.
 
-- **A test that runs the virtual driver hears this machine's own GPU.** Its
-  watch reads the real `udevadm monitor`, and a laptop's GPU sends `drm`
-  change events every few seconds at rest; fake screens are plugged without
-  one, so the first real event after a plug reads as a change of screens and
-  asks for a scan. A check about scans the driver asks for itself must leave
-  those out (`smoke-virtual`'s `askedByHelpers`), or it fails only when a run
-  is long enough to catch one.
+- **A test must never hear this machine's own devices.** The hotplug watch
+  runs `udevadm monitor`; on a real one, a laptop's GPU sends `drm` change
+  events every few seconds at rest, and a USB device plugged or unplugged
+  during a run is an event too — each asked a scan, and failed a check about
+  scans by timing alone. `DECKHAND_UDEVADM` names the command, and
+  `scripts/test/control-harness.mjs` and `scripts/test/fake-sysfs.mjs` set it
+  to `scripts/test/fake-udevadm.mjs`, a monitor that says nothing; a test that
+  imports neither and starts the watch sets it itself (`smoke-virtual` does,
+  and checks it). `smoke-recovery` alone puts its own `udevadm` on `PATH`, to
+  test the monitor's restarts.
 - **A slider's key needs its release a moment later.** The settings slider
   saves on key-up, from what the key-down moved it to; both sent in one go,
   the key-up comes before React has drawn the move, and nothing is saved.
