@@ -312,23 +312,14 @@ value** and drops nothing; a slider's key moves onto another slider or dial,
 and never onto a button, nor a button's onto them. The level shown is the
 real one, kept up to date by the same events as the keys: a volume changed in
 the desktop's own volume control moves the slider too, and nothing is polled.
-A slider has a **track**, a **fill** shown up to the level and a **thumb**; a
-dial a **base**, a **level ring** shown from its start angle round to the level,
-and a **knob**; either can have a **background** image. The Icon tab has a chip
-for each. **The fill and the level ring are drawn by Deckhand, never an
-image**, so no art can hide the level: their chip turns them on or off and
-picks their colour (the action's unless chosen), and a dial's ring is drawn
-over its knob. Every other layer is picked as an icon is (the same folders,
-formats and limits): **the thumb, the knob and the base keep their own
-proportions**, fitted across the slider, inside the ring and in the dial's
-square, so a round knob stays round; **the track and the background fill
-their area** — the track the slider, the background the whole control, behind
-everything, for a scale along a slider, say. **Use built-in** goes back to
-Deckhand's own art, in the action's colour; a dial's Base can be **None**, and
-a background is none until an image is chosen. The knob turns between a
-**Start** and an **End** angle, degrees from straight up (−135° and 135° unless
-set), kept with its art. Both can have a label, under the track or the dial,
-and a background colour, none unless set. **Clear slider** (or dial) empties it. While your
+Each is built from **layers** — a slider from a background, a track, a fill
+and a thumb; a dial from a background, a base, a knob and a level ring — with
+a chip for each on the Icon tab: every one Deckhand's own art until an image
+is chosen, except the fill and the level ring, which Deckhand always draws, in
+a colour of your choosing, with a soft glow. Which layer goes where, how each
+is sized, and what makes good art for it: [Sliders and dials: their
+layers](#sliders-and-dials-their-layers). Both can have a label, under the
+track or the dial, and a background colour, none unless set. **Clear slider** (or dial) empties it. While your
 finger is on one, its thumb or knob is drawn brighter, unless Touch feedback
 is off. A lock, a page change or any other way off the page ends a drag with
 the value where it is. **A page's background.** The picture icon in a virtual deck's top bar, on any
@@ -427,6 +418,65 @@ its tray menu, find the new serial with `deckhand decks`, and in
 `~/.config/deckhand/config.json` replace the old serial with the new one
 everywhere it appears (under `decks` and in each profile's `layouts`). Save;
 the deck picks it up at once.
+
+## Sliders and dials: their layers
+
+A slider or dial on a virtual deck is a stack of layers, drawn from the back
+to the front. Each is picked on the Icon tab's chip of the same name, from the
+same browser as icons — a PNG, JPEG, WebP, GIF or SVG of at most 10 MB and
+4096 px on its longer side — or left as Deckhand's own art, drawn in the
+action's colour. **Use built-in** goes back to that art.
+
+| Slider, back to front | Dial, back to front | What it is | How it is sized |
+| --- | --- | --- | --- |
+| Background colour | Background colour | The Key tab's **Background**: a colour, or **None** (the default), where the page shows through | The whole control |
+| Background | Background | An image behind everything: a scale, a panel texture. None until one is chosen | **Stretched** to the whole control, the label's band included |
+| Track | Base | What stays still: the slot the thumb runs in; the dial's face or scale. A dial's Base can be **None** | Track: **stretched** to the control above the label. Base: **keeps its proportions**, fitted in the square of the dial's shorter side, centred |
+| Fill | — | **Drawn by Deckhand, never an image**: a bar along the middle of the slider, shown from the lowest end up to the level, with a soft glow | The slider's length; its width is the built-in track's |
+| Thumb | Knob | What moves: the thumb slides along the slider; the knob turns about the dial's centre | Thumb: **keeps its proportions**, fitted in an area as wide as the slider and as long as it is wide (never more than a third of its length). Knob: **keeps its proportions**, fitted in the square inside the level ring (about four-fifths of the dial's shorter side), centred |
+| — | Level ring | **Drawn by Deckhand, never an image**: an arc from the knob's start angle round to the level, with a soft glow, drawn over the knob so no knob can hide it | Just inside the dial's square |
+| Label | Label | The key's label, in its own band at the foot of the control | As many lines as it has |
+
+The fill's and the ring's chip has **Show** and a colour: the action's own
+unless one is chosen, from a set of bright colours made to stand out, or typed
+as hex. The control's **Corners** (Edit layout) round every layer alike. While a
+finger is on it, the thumb or knob is drawn brighter, unless Touch feedback is
+off.
+
+**How the level lines up.** The thumb's centre is the level. It runs from half
+the thumb's length above the track's lowest end to half its length below its
+highest end: with Deckhand's track a few pixels in from each end of the
+control, with an image as the track the whole length. A scale on a background
+image lines up with the levels if its marks span that same distance.
+
+**What makes good art:**
+
+- **A transparent background on every layer but the Background.** Each layer is
+  drawn over the ones behind it; anything opaque around a thumb or knob covers
+  the track or base. A PNG with transparency, or an SVG, works best; an SVG
+  stays sharp at any size.
+- **Knobs drawn straight on, from directly above, with the pointer straight
+  up.** The knob turns about the centre of its image, and Deckhand points it at
+  the level by turning it from straight up. Keep everything inside a circle
+  centred in the image: corners sweep outside it as it turns. A pointer drawn
+  elsewhere can be lined up with **Start** and **End** (Icon tab, Knob), the
+  angles it turns between, degrees from straight up, clockwise — −135° and
+  135° unless set.
+- **A base the same shape as the knob's world**: square, centred, its scale
+  marks between the same start and end angles as the knob. It is not
+  stretched, so a round base stays round.
+- **Tracks that stretch well.** A track is stretched to the slider in both
+  directions, so draw it for the slider's own proportions, or keep it simple —
+  a plain or rounded bar, a gradient along its length — so stretching does not
+  show. Keep detail away from its ends, which stretch the most visibly on a
+  long slider. The fill is drawn along the middle, so a slot down the centre
+  suits it.
+- **A thumb drawn the way it lies**: wider than tall on a vertical slider,
+  taller than wide on a horizontal one — an image is never turned, so a
+  horizontal slider wants its own thumb. Its middle is where the level reads.
+- **A background drawn at the control's proportions**, since it is stretched:
+  for a scale, mark it over the thumb's run (above), and leave the middle clear
+  if the fill should stand out.
 
 ## The deckhand command
 
