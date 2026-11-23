@@ -304,8 +304,19 @@ try {
       return (x, y) => [...ppm.subarray(off + (y * 1920 + x) * 3, off + (y * 1920 + x) * 3 + 3)];
     };
     let px = await read();
-    check('at 50: the key and the background are half as bright', JSON.stringify(px(24, 24)) === '[100,50,25]' && JSON.stringify(px(5, 5)) === '[50,100,20]', JSON.stringify([px(24, 24), px(5, 5)]));
-    check('at 50: a half-transparent key blends over the dimmed background', Math.abs(px(64, 24)[1] - 50) <= 1, JSON.stringify(px(64, 24)));
+    // A level is light given off, as a backlight's: a stored value is scaled by (level / 100)^(1 / 2.2) — 0.73 at 50.
+    check('at 50: the key and the background give off half the light (values × 0.73)', JSON.stringify(px(24, 24)) === '[146,73,36]' && JSON.stringify(px(5, 5)) === '[73,146,29]', JSON.stringify([px(24, 24), px(5, 5)]));
+    check('at 50: a half-transparent key blends over the dimmed background', Math.abs(px(64, 24)[1] - 73) <= 1, JSON.stringify(px(64, 24)));
+    // At 5, the floor: still visibly lit, as a Stream Deck at 5 is — white at 65 of 255 (× 0.256), never 12.
+    const f = helper(['--output', 'Virtual-1', '--dump', shots]);
+    await until(() => f.events.some((e) => e.ev === 'ready'));
+    f.proc.stdin.write(brightnessFrame(5));
+    f.proc.stdin.write(canvasFrame(960, 360, [255, 255, 255]));
+    await until(() => f.events.some((e) => e.ev === 'drawn'));
+    f.proc.stdin.write(quitFrame());
+    await f.exited;
+    px = await read();
+    check('at 5, the lowest a key or slider sets: visibly lit — white drawn at 65 of 255', JSON.stringify(px(5, 5)) === '[65,65,65]', JSON.stringify(px(5, 5)));
     const z = helper(['--output', 'Virtual-1', '--dump', shots]);
     await until(() => z.events.some((e) => e.ev === 'ready'));
     z.proc.stdin.write(brightnessFrame(0));
@@ -406,8 +417,8 @@ try {
       w.write(key(10));
     }, 1);
     const dim = g.px(5, 5);
-    check(`at 50 on a 50% background: darker and less see-through (${dim} ≈ 50,25,0,191)`, Math.abs(dim[0] - 50) <= 1 && Math.abs(dim[1] - 25) <= 1 && Math.abs(dim[3] - 191) <= 1, JSON.stringify(dim));
-    check('…its key half as bright, still opaque', JSON.stringify(g.px(24, 24)) === '[100,50,25,255]', JSON.stringify(g.px(24, 24)));
+    check(`at 50 on a 50% background: darker and less see-through (${dim} ≈ 73,36,0,162)`, Math.abs(dim[0] - 73) <= 1 && Math.abs(dim[1] - 36) <= 1 && Math.abs(dim[3] - 162) <= 1, JSON.stringify(dim));
+    check('…its key giving off half the light, still opaque', JSON.stringify(g.px(24, 24)) === '[146,73,36,255]', JSON.stringify(g.px(24, 24)));
     g = await run((w) => {
       w.write(brightnessFrame(0));
       w.write(canvasFrame(960, 360));

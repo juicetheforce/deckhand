@@ -345,6 +345,18 @@ await inEditor(`(() => { const i = document.querySelector('[data-colour-picker=l
 await mustSee('the fill\'s colour on disk', async () => (await keyOnDisk(slider.id))?.level?.color === '#ff8800');
 r.levelFill = await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=level]')?.innerHTML ?? ''`);
 check('a colour chosen is stored, and the grid draws the fill in it', (await keyOnDisk(slider.id))?.level?.color === '#ff8800' && /#ff8800/i.test(r.levelFill), r.levelFill.slice(0, 200));
+// The level's own swatches: bright and saturated, never the background palette.
+{
+  const { LEVEL_COLOURS } = await import(pathToFileURL(path.join(repoRoot, 'dist/value-controls.js')).href);
+  await click('[data-colour-picker=level-colour] [data-colour-swatch]');
+  await mustSee('the level\'s swatches', () => exists('[data-colour-picker=level-colour] [data-colour-chip="#00e5ff"]'), 5000).catch(() => undefined);
+  r.levelChips = await inEditor(`[...document.querySelectorAll('[data-colour-picker=level-colour] [data-colour-chip]')].map((c) => c.dataset.colourChip)`);
+  check('the level offers its own bright colours, its action\'s first, not the background swatches', JSON.stringify(r.levelChips) === JSON.stringify(['default', ...LEVEL_COLOURS]), JSON.stringify(r.levelChips));
+  await click('[data-colour-picker=level-colour] [data-colour-chip="#00e5ff"]');
+  await mustSee('the swatch on disk', async () => (await keyOnDisk(slider.id))?.level?.color === '#00e5ff');
+  check('a swatch chosen is stored as the level\'s colour', (await keyOnDisk(slider.id))?.level?.color === '#00e5ff', JSON.stringify((await keyOnDisk(slider.id))?.level));
+  await inEditor(`(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; })()`);
+}
 // The background: no built-in, an image, and None again.
 await click('[data-layer-chip=background]');
 await mustSee('the background\'s picker', () => exists('[data-layer-none=background]'));
@@ -352,8 +364,11 @@ check('the background offers None, and no built-in', !(await exists('[data-layer
 await mustSee('the picker on Pictures (background)', () => exists(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`), 10000);
 await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
 await mustSee('the background on disk', async () => (await keyOnDisk(slider.id))?.layers?.background === '~/Pictures/cap.png');
-r.backImg = await inEditor(`(() => { const face = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]').getBoundingClientRect(); const i = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=background] img'); if (!i) return null; const b = i.getBoundingClientRect(); return { fit: getComputedStyle(i).objectFit, w: Math.round(b.width - face.width), h: Math.round(b.height - face.height) }; })()`);
-check('a background image chosen is stored, and drawn stretched over the whole control', r.backImg?.fit === 'fill' && r.backImg.w === 0 && r.backImg.h === 0, JSON.stringify(r.backImg));
+// The control's own box is the key's outer edge (the deck fills its whole box): the image must cover exactly that, selected or not.
+const backBox = () => inEditor(`(() => { const k = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"]'); const i = k.querySelector('[data-value-layer=background] img'); if (!i) return null; const K = k.getBoundingClientRect(); const b = i.getBoundingClientRect(); const d = (v) => Math.round(v * 10) / 10; return { fit: getComputedStyle(i).objectFit, dx: d(b.left - K.left), dy: d(b.top - K.top), dw: d(b.width - K.width), dh: d(b.height - K.height), selected: k.classList.contains('key-selected') }; })()`);
+const covers = (b) => b && b.fit === 'fill' && [b.dx, b.dy, b.dw, b.dh].every((v) => Math.abs(v) < 0.5);
+r.backImg = await backBox();
+check('a background image chosen is stored, and drawn stretched over the control\'s whole box, as the deck draws it — selected', r.backImg?.selected && covers(r.backImg), JSON.stringify(r.backImg));
 await click('[data-layer-none=background]');
 await mustSee('no background on disk', async () => (await keyOnDisk(slider.id))?.layers?.background === undefined);
 check('None: no background image stored', (await keyOnDisk(slider.id))?.layers?.background === undefined);
@@ -364,7 +379,8 @@ check('the track has no None', !(await exists('[data-layer-none=track]')));
 await mustSee('the picker on Pictures (track)', () => exists(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`), 10000);
 await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
 await mustSee('the track on disk', async () => (await keyOnDisk(slider.id))?.layers?.track === '~/Pictures/cap.png');
-check('a track image chosen is stored, and the grid draws it', (await keyOnDisk(slider.id))?.layers?.track === '~/Pictures/cap.png' && (await exists(`.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=track] img`)));
+r.trackImg = await inEditor(`(() => { const k = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"]'); const i = k.querySelector('[data-value-layer=track] img'); if (!i) return null; const K = k.getBoundingClientRect(); const b = i.getBoundingClientRect(); const d = (v) => Math.round(v * 10) / 10; return { fit: getComputedStyle(i).objectFit, dx: d(b.left - K.left), dy: d(b.top - K.top), dw: d(b.width - K.width), dh: d(b.height - K.height) }; })()`);
+check('a track image chosen is stored, and the grid draws it stretched over the whole control (no label), as the deck does', (await keyOnDisk(slider.id))?.layers?.track === '~/Pictures/cap.png' && covers(r.trackImg), JSON.stringify(r.trackImg));
 await click('[data-layer-builtin=track]');
 await mustSee('the built-in track again', async () => (await keyOnDisk(slider.id))?.layers?.track === undefined);
 await click('[data-layer-chip=thumb]');
@@ -378,6 +394,16 @@ await mustSee('the thumb on disk', async () => (await keyOnDisk(slider.id))?.lay
 check('a thumb image chosen is stored as a path', (await keyOnDisk(slider.id))?.layers?.thumb === '~/Pictures/cap.png');
 // cap.png is 60 × 240: in the thumb's area (the slider's width, as long as it is wide) it is fitted, never stretched.
 r.thumbImg = await inEditor(`(() => { const s = document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-layer=thumb]'); const i = s?.querySelector('img'); if (!i) return null; const b = i.getBoundingClientRect(); const f = s.getBoundingClientRect(); return { fit: getComputedStyle(i).objectFit, across: Math.round(b.width - f.width), along: Math.round(b.height - f.height) }; })()`);
+// Its travel is the deck's own rule, from cap.png's own size (60 × 240) fitted in the thumb's area.
+{
+  const { sliderTravel } = await import(pathToFileURL(path.join(repoRoot, 'dist/value-controls.js')).href);
+  const c = await controlOnDisk(slider.id);
+  const want = sliderTravel({ w: c.w, h: c.h }, c.direction, { customTrack: false, thumb: { w: 60, h: 240 } });
+  const wantSaid = [want.start, want.end, want.thumb].map((n) => Math.round(n)).join(',');
+  await mustSee('the thumb image loaded', async () => (await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`)) === wantSaid, 5000).catch(() => undefined);
+  r.travel = await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`);
+  check('a chosen thumb travels in the grid by the deck\'s rule: its own size fitted in its area', r.travel === wantSaid, `${r.travel} vs ${wantSaid}`);
+}
 check('the grid draws a chosen thumb keeping its proportions (contain), across the slider\'s width, not its length', r.thumbImg?.fit === 'contain' && r.thumbImg.across === 0 && r.thumbImg.along < 0, JSON.stringify(r.thumbImg));
 
 // ---- THE DIAL: BRIGHTNESS AND ITS ANGLES ----

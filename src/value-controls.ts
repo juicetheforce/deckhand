@@ -221,6 +221,13 @@ export function valueOfFraction(fraction: number, range: { min: number; max: num
 
 /** Each value action's colour, as its built-in icons have it. */
 export const ART_COLOURS: Record<string, string> = { 'audio.volume': '#8f9cf0', brightness: '#e8b45a', 'discord.userVolume': '#5ab8f5' };
+/**
+ * The level's own colours (Ryan, 2026-11-22): bright and saturated, so a fill
+ * or ring reads at a glance — never the background swatches, which are dull on
+ * purpose. Offered beside the action's own colour and a colour typed in.
+ */
+export const LEVEL_COLOURS = ['#ff3b5c', '#ff7a1a', '#ffd60a', '#a6ff1a', '#22e07a', '#00e5ff', '#2f8bff', '#8b5cff', '#d946ff', '#ff2bd6', '#ffffff'] as const;
+
 /** The colour of art for a control with no action yet: Volume's, as board 26a draws the set. */
 export const ART_DEFAULT_COLOUR = '#8f9cf0';
 /** The dark cut-out of the family's solid parts. */
@@ -257,9 +264,21 @@ function sliderParts(across: number, along: number): { k: number; dx: number } {
 
 /** The held thumb's and knob's halo (26b, 26c): grown this much on each side, in the art's own units, in its colour at 30%. */
 const HALO = { grow: 2.63, rx: 5.26, alpha: 0.3 };
+/**
+ * The level's glow (Ryan, 2026-11-22): a soft copy of the fill or ring under
+ * it, in its colour, reaching about the halo's distance — blurred by this, in
+ * the art's units — at this opacity. Drawn once per art, never per step.
+ */
+const GLOW = { blur: 1.6, opacity: 0.85 };
+
+/** An SVG blur filter over the whole box, so a thin bar's glow is not cut at its own edges. Its id names its size: faces drawn side by side in the editor share one page. */
+function glowFilter(blur: number, w: number, h: number): { id: string; def: string } {
+  const id = `dh-glow-${Math.round(blur * 100)}`;
+  return { id, def: `<defs><filter id="${id}" filterUnits="userSpaceOnUse" x="0" y="0" width="${r2(w)}" height="${r2(h)}"><feGaussianBlur stdDeviation="${r2(blur)}"/></filter></defs>` };
+}
 
 /** One layer of the built-in slider, as an SVG the box's size: vertical, or lying down. `held`: the thumb with its halo. */
-export function sliderLayerSvg(layer: 'track' | 'fill' | 'thumb', box: { w: number; h: number }, direction: string | undefined, colour: string, held = false): string {
+export function sliderLayerSvg(layer: 'track' | 'fill' | 'thumb', box: { w: number; h: number }, direction: string | undefined, colour: string, held = false, glow = false): string {
   const horizontal = direction === 'horizontal';
   const across = horizontal ? box.h : box.w;
   const along = horizontal ? box.w : box.h;
@@ -269,7 +288,9 @@ export function sliderLayerSvg(layer: 'track' | 'fill' | 'thumb', box: { w: numb
   if (layer === 'track') {
     body = `<rect x="${r2(dx + t.x * k)}" y="${r2(t.end * k)}" width="${r2(t.w * k)}" height="${r2(along - 2 * t.end * k)}" rx="${r2(t.rx * k)}" fill="${rgba(colour, 0.12)}" stroke="${rgba(colour, 0.6)}" stroke-width="${r2(t.stroke * k)}"/>`;
   } else if (layer === 'fill') {
-    body = `<rect x="${r2(dx + t.x * k)}" y="${r2(SLIDER.fillTop * k)}" width="${r2(t.w * k)}" height="${r2(along - SLIDER.fillTop * k - t.end * k)}" rx="${r2(t.rx * k)}" fill="${colour}" opacity=".9"/>`;
+    const bar = `x="${r2(dx + t.x * k)}" y="${r2(SLIDER.fillTop * k)}" width="${r2(t.w * k)}" height="${r2(along - SLIDER.fillTop * k - t.end * k)}" rx="${r2(t.rx * k)}" fill="${colour}"`;
+    const f = glowFilter(GLOW.blur * k, horizontal ? box.h : box.w, horizontal ? box.w : box.h);
+    body = (glow ? `${f.def}<rect ${bar} opacity="${GLOW.opacity}" filter="url(#${f.id})"/>` : '') + `<rect ${bar} opacity=".9"/>`;
   } else {
     const th = SLIDER.thumb;
     const mid = along / 2;
@@ -282,6 +303,28 @@ export function sliderLayerSvg(layer: 'track' | 'fill' | 'thumb', box: { w: numb
   if (!horizontal) return svg(box.w, box.h, body);
   // Lying down: the vertical art turned a quarter clockwise, so its bottom is the left.
   return svg(box.w, box.h, `<g transform="translate(${r2(box.w)} 0) rotate(90)">${body}</g>`);
+}
+
+/**
+ * A slider's travel, the same rule on the deck and in the editor, from the
+ * layout alone: the built-in track's ends, or the whole length under a chosen
+ * track (stretched to it); the built-in thumb's length, or a chosen thumb's as
+ * drawn — its own size (`thumb`, the image's width and height) fitted in its
+ * area (layerArea), so its centre sits on the level.
+ */
+export function sliderTravel(box: { w: number; h: number }, direction: string | undefined, how: { customTrack: boolean; thumb: { w: number; h: number } | null }): Travel {
+  const builtin = builtinSliderTravel(box, direction);
+  const horizontal = direction === 'horizontal';
+  const length = horizontal ? box.w : box.h;
+  const start = how.customTrack ? 0 : builtin.start;
+  const end = how.customTrack ? length : builtin.end;
+  let thumb = builtin.thumb;
+  if (how.thumb && how.thumb.w > 0 && how.thumb.h > 0) {
+    const area = layerArea('thumb', box, direction);
+    const k = Math.min(area.w / how.thumb.w, area.h / how.thumb.h);
+    thumb = Math.round((horizontal ? how.thumb.w : how.thumb.h) * k);
+  }
+  return { start, end, thumb: Math.min(thumb, Math.max(0, end - start)) };
 }
 
 /** The built-in slider's travel at this box, without measuring: the track's ends and the thumb's length. */
@@ -305,7 +348,7 @@ function arcPath(cx: number, cy: number, r: number, start: number, end: number):
 }
 
 /** One layer of the built-in dial, as an SVG the box's size: drawn at its shorter side, centred. The arcs run from start to end. */
-export function dialLayerSvg(layer: 'base' | 'ring' | 'knob', box: { w: number; h: number }, angles: { start: number; end: number }, colour: string, held = false): string {
+export function dialLayerSvg(layer: 'base' | 'ring' | 'knob', box: { w: number; h: number }, angles: { start: number; end: number }, colour: string, held = false, glow = false): string {
   const k = Math.min(box.w, box.h) / DIAL.size;
   const cx = box.w / 2;
   const cy = box.h / 2;
@@ -318,7 +361,9 @@ export function dialLayerSvg(layer: 'base' | 'ring' | 'knob', box: { w: number; 
       `<path d="M${r2(cx)} ${r2(cy - (DIAL.size / 2 - n.from) * k)} L${r2(cx)} ${r2(cy - (DIAL.size / 2 - n.to) * k)}" stroke="${colour}" stroke-width="${r2(n.line * k)}" stroke-linecap="round"/>`;
   } else {
     const stroke = layer === 'base' ? 'rgba(255,255,255,.14)' : colour;
-    body = `<path d="${arcPath(cx, cy, DIAL.arc.r * k, angles.start, angles.end)}" fill="none" stroke="${stroke}" stroke-width="${r2(DIAL.arc.w * k)}" stroke-linecap="round"/>`;
+    const arc = `d="${arcPath(cx, cy, DIAL.arc.r * k, angles.start, angles.end)}" fill="none" stroke="${stroke}" stroke-width="${r2(DIAL.arc.w * k)}" stroke-linecap="round"`;
+    const f = glowFilter(GLOW.blur * k, box.w, box.h);
+    body = (glow && layer === 'ring' ? `${f.def}<path ${arc} opacity="${GLOW.opacity}" filter="url(#${f.id})"/>` : '') + `<path ${arc}/>`;
   }
   return svg(box.w, box.h, body);
 }
@@ -333,11 +378,11 @@ export function builtinLayerSvg(layer: LayerName, box: { w: number; h: number },
 
 /**
  * The level, drawn by Deckhand: a slider's fill (the built-in track's bar,
- * the whole length) or a dial's ring (start to end); shown up to the level by
- * the face, in its colour.
+ * the whole length) or a dial's ring (start to end), with its soft glow
+ * (GLOW); shown up to the level by the face, in its colour.
  */
 export function levelSvg(kind: ValueKind, box: { w: number; h: number }, how: { direction?: string; angles?: { start: number; end: number }; color: string }): string {
-  return kind === 'slider' ? sliderLayerSvg('fill', box, how.direction, how.color) : dialLayerSvg('ring', box, how.angles ?? DEFAULT_ANGLES, how.color);
+  return kind === 'slider' ? sliderLayerSvg('fill', box, how.direction, how.color, false, true) : dialLayerSvg('ring', box, how.angles ?? DEFAULT_ANGLES, how.color, false, true);
 }
 
 /**

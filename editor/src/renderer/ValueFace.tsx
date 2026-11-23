@@ -1,7 +1,7 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { DEFAULTS, fontFamily } from '../../../src/config-common.js';
 import type { ButtonDef, Config } from '../../../src/types.js';
-import { anglesOf, builtinLayerSvg, builtinSliderTravel, knobAngle, layerArea, LAYERS, LAYERS_WITHOUT_BUILTIN, levelAt, levelOf, levelSvg, takesValue, thumbOffset, type LayerName, type Travel } from '../../../src/value-controls.js';
+import { anglesOf, builtinLayerSvg, knobAngle, layerArea, LAYERS, LAYERS_WITHOUT_BUILTIN, levelAt, levelOf, levelSvg, sliderTravel, takesValue, thumbOffset, type LayerName } from '../../../src/value-controls.js';
 import { iconUrl } from '../shared/icons.js';
 
 /**
@@ -16,8 +16,9 @@ import { iconUrl } from '../shared/icons.js';
  *
  * The level is the deck's, from the daemon's status (`values`), when the page
  * shown is the one the deck is on; otherwise the control is drawn at its
- * lowest. A chosen thumb travels here as if its image fills its area; on the
- * deck, by what the image itself draws.
+ * lowest. A slider's travel is the deck's own rule (value-controls.ts
+ * sliderTravel): a chosen thumb's length from its image's own size, learnt
+ * when the image loads.
  */
 export function ValueFace({
   kind,
@@ -55,6 +56,8 @@ export function ValueFace({
   const v = value === null ? 0 : Math.max(0, Math.min(1, value / 100));
   const [back, still, moving] = LAYERS[kind] as unknown as [LayerName, LayerName, LayerName];
   const full: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
+  // A chosen thumb's own size, from its image once loaded: the travel needs it, as the deck's does.
+  const [thumbSize, setThumbSize] = useState<{ src: string; w: number; h: number } | null>(null);
   const custom = (name: LayerName) => {
     const ref = button?.layers?.[name];
     return typeof ref === 'string' && ref !== '' ? ref : null;
@@ -71,7 +74,13 @@ export function ValueFace({
       const at: CSSProperties = { position: 'absolute', left: `${(a.x / on.w) * 100}%`, top: `${(a.y / on.h) * 100}%`, width: `${(a.w / on.w) * 100}%`, height: `${(a.h / on.h) * 100}%`, objectFit: a.stretch ? 'fill' : 'contain' };
       return (
         <span key={name} className="value-layer" data-value-layer={name} style={{ ...full, ...style, ...(isHeld ? { filter: 'brightness(1.25)' } : {}) }}>
-          <img src={iconUrl(file, stamps[file])} alt="" draggable={false} style={at} />
+          <img
+            src={iconUrl(file, stamps[file])}
+            alt=""
+            draggable={false}
+            style={at}
+            onLoad={name === 'thumb' ? (e) => setThumbSize({ src: file, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }) : undefined}
+          />
         </span>
       );
     }
@@ -89,9 +98,16 @@ export function ValueFace({
   };
 
   let levelStyle: CSSProperties = {};
+  /** A slider's travel as drawn, for the checks: start, end and thumb, whole pixels. */
+  let travelSaid: string | undefined;
   let movingStyle: CSSProperties = {};
   if (kind === 'slider') {
-    const travel = editorTravel(box, direction, custom('track') !== null, custom('thumb') !== null);
+    const thumbFile = custom('thumb');
+    // Until a chosen thumb's image has loaded, its area's length stands in for it.
+    const area = layerArea('thumb', box, direction);
+    const thumb = thumbFile === null ? null : thumbSize?.src === thumbFile ? thumbSize : { w: area.w, h: area.h };
+    const travel = sliderTravel(box, direction, { customTrack: custom('track') !== null, thumb });
+    travelSaid = [travel.start, travel.end, travel.thumb].map((n) => Math.round(n)).join(',');
     const at = levelAt(v, travel);
     const length = direction === 'horizontal' ? w : artH;
     const shift = thumbOffset(v, travel, length);
@@ -113,7 +129,7 @@ export function ValueFace({
   ) : null;
 
   return (
-    <span className="value-face" data-value-face={kind} data-value={value ?? ''} aria-hidden="true">
+    <span className="value-face" data-value-face={kind} data-value={value ?? ''} data-travel={travelSaid} aria-hidden="true">
       {layer(back, { w, h })}
       <span style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: `${(artH / h) * 100}%` }}>
         {layer(still, box)}
@@ -140,21 +156,6 @@ function svgFilling(svg: string): string {
   return svg.replace('<svg ', '<svg style="width:100%;height:100%;display:block" preserveAspectRatio="none" ');
 }
 
-/**
- * A slider's travel as the editor draws it: the built-in track's ends, or the
- * whole length under a chosen track (stretched to it); the built-in thumb's
- * length, or a chosen thumb's area's — the deck measures the image itself.
- */
-function editorTravel(box: { w: number; h: number }, direction: string | undefined, customTrack: boolean, customThumb: boolean): Travel {
-  const builtin = builtinSliderTravel(box, direction);
-  const length = direction === 'horizontal' ? box.w : box.h;
-  const area = layerArea('thumb', box, direction);
-  return {
-    start: customTrack ? 0 : builtin.start,
-    end: customTrack ? length : builtin.end,
-    thumb: customThumb ? (direction === 'horizontal' ? area.w : area.h) : builtin.thumb,
-  };
-}
 
 /** A clip-path showing the sector from one angle to another round the centre (degrees from straight up, clockwise), in percent of the box. */
 function sector(from: number, to: number, w: number, h: number): string {

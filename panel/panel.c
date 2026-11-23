@@ -30,8 +30,8 @@
  *                behind the panel on that screen shows where the background
  *                does. Keys are drawn over it as they always are.
  *   'C' clear    the background everywhere.
- *   'B' brightness  u8 percent, 0-100: everything drawn from now on is that much
- *                darker, 0 being pure black; what is on the screen stays until
+ *   'B' brightness  u8 percent, 0-100: everything drawn from now on gives off
+ *                that share of its light (LIGHT, below), 0 being pure black; what is on the screen stays until
  *                drawn again, so the daemon sends the canvas and every key after it.
  *                It dims the whole deck, a see-through background included: as
  *                if black were laid over it at 100 − percent, so whatever shows
@@ -120,6 +120,28 @@ static uint32_t *ground_px;
 static unsigned ground_w, ground_h;
 /* The deck's brightness, a percent: 'B'. */
 static unsigned brightness = 100;
+
+/*
+ * What a level does to a stored value, in thousandths: a level is light given
+ * off, as a Stream Deck's backlight gives it, so a value is scaled by
+ * (level / 100)^(1 / 2.2) — a screen's values are gamma-encoded, and scaling
+ * them by the level itself gave off far less: at 5, white was drawn at 12 of
+ * 255 and the screen looked off. At 5 it is 65; 0 is still pure black.
+ * round(1000 * (p / 100)^(1 / 2.2)), p = 0..100: a table, so no libm.
+ */
+static const unsigned short LIGHT[101] = {
+  0, 123, 169, 203, 232, 256, 278, 299, 317, 335,
+  351, 367, 381, 396, 409, 422, 435, 447, 459, 470,
+  481, 492, 502, 513, 523, 533, 542, 551, 561, 570,
+  579, 587, 596, 604, 612, 621, 629, 636, 644, 652,
+  659, 667, 674, 681, 689, 696, 703, 710, 716, 723,
+  730, 736, 743, 749, 756, 762, 768, 775, 781, 787,
+  793, 799, 805, 811, 816, 822, 828, 834, 839, 845,
+  850, 856, 861, 867, 872, 877, 883, 888, 893, 898,
+  904, 909, 914, 919, 924, 929, 934, 939, 944, 948,
+  953, 958, 963, 968, 972, 977, 982, 986, 991, 995,
+  1000
+};
 static double scale = 1.0;
 static int origin_x, origin_y;
 
@@ -198,12 +220,12 @@ static void place_canvas(void) {
 
 /* A channel at the deck's brightness. */
 static inline unsigned dimmed(unsigned channel) {
-  return brightness == 100 ? channel : channel * brightness / 100;
+  return brightness == 100 ? channel : channel * LIGHT[brightness] / 1000;
 }
 
 /* An alpha at the deck's brightness: the black laid over the deck adds its own. */
 static inline unsigned veiled(unsigned alpha) {
-  return brightness == 100 ? alpha : (alpha * brightness + 255 * (100 - brightness)) / 100;
+  return brightness == 100 ? alpha : (alpha * LIGHT[brightness] + 255 * (1000 - LIGHT[brightness])) / 1000;
 }
 
 static uint32_t argb(unsigned a, unsigned r, unsigned g, unsigned b) {

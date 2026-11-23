@@ -24,6 +24,7 @@ export function ColourPicker({
   disabled,
   onChange,
   name,
+  swatches = BACKGROUND_SWATCHES,
 }: {
   /** The colour set, or null: Default. */
   value: string | null;
@@ -39,6 +40,8 @@ export function ColourPicker({
   onChange: (color: string | null) => void;
   /** For the checks: data-colour-picker="<name>". */
   name: string;
+  /** The preset colours offered: the background swatches unless set — a slider's or dial's level has its own bright set. */
+  swatches?: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   const shown = value ?? defaultColor;
@@ -109,7 +112,7 @@ export function ColourPicker({
           >
             <span aria-hidden="true">{defaultName.slice(0, 1)}</span>
           </button>
-          {BACKGROUND_SWATCHES.map((c) => (
+          {swatches.map((c) => (
             <button
               key={c}
               role="option"

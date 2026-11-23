@@ -191,7 +191,7 @@ const base = { labelColor: '#ffffff', labelSize: 14, angles: { start: -135, end:
 await settle('the face', async () => {
   const s = await valueArt({ ...base, kind: 'slider', width: 60, height: 240 });
   const travel = vc.builtinSliderTravel({ w: 60, h: 240 }, 'vertical');
-  check('the built-in slider\'s travel is measured from its art', Math.abs(s.travel.start - travel.start) <= 1.5 && Math.abs(s.travel.end - travel.end) <= 1.5 && Math.abs(s.travel.thumb - travel.thumb) <= 2, JSON.stringify([s.travel, travel]));
+  check('the built-in slider\'s travel is the built-in rule\'s, exactly as the editor\'s', JSON.stringify(s.travel) === JSON.stringify(travel), JSON.stringify([s.travel, travel]));
   for (const v of [0, 0.5, 1]) {
     const row = thumbRow(composeValue(s, v, false), 60, 240);
     const want = 240 - vc.levelAt(v, s.travel);
@@ -206,6 +206,9 @@ await settle('the face', async () => {
   const none = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, level: { show: false, color: '#8f9cf0' } });
   check('the fill switched off: nothing below the level but the track\'s faint fill', px(composeValue(none, 0.5, false), 60, 30, 200)[3] < 100);
   const red = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, level: { show: true, color: '#ff0000' } });
+  // The glow: soft, in the level's colour, just outside the bar (which ends near x 37 of 60) — below the level, never above it.
+  const glowFace = composeValue(red, 0.5, false);
+  check('the fill glows: its colour, faint, beside the bar below the level, and nothing there above it', px(glowFace, 60, 39, 200)[0] > 150 && px(glowFace, 60, 39, 200)[3] > 20 && px(glowFace, 60, 39, 200)[3] < 200 && px(glowFace, 60, 39, 40)[3] === 0, JSON.stringify([px(glowFace, 60, 39, 200), px(glowFace, 60, 39, 40)]));
   check('the fill in the colour chosen', px(composeValue(red, 0.5, false), 60, 30, 200)[0] > 220 && px(composeValue(red, 0.5, false), 60, 30, 200)[2] < 60, JSON.stringify(px(composeValue(red, 0.5, false), 60, 30, 200)));
   const hz = await valueArt({ ...base, kind: 'slider', width: 240, height: 60, direction: 'horizontal' });
   const hface = composeValue(hz, 0.25, false);
@@ -228,6 +231,13 @@ await settle('the face', async () => {
   };
   // The ring is the action's colour (red 143); past the level only the base shows, faint white (red 255).
   check('the ring is swept from the start angle round to the level', ringAt(dial(0.5), -90)[0] < 160 && ringAt(dial(0.5), -90)[3] > 200 && ringAt(dial(0.5), 90)[0] > 200 && ringAt(dial(0.5), 90)[3] < 100, JSON.stringify([ringAt(dial(0.5), -90), ringAt(dial(0.5), 90)]));
+  // The ring's glow, just outside its outer edge, at the level and not past it.
+  const outside = (face, deg) => {
+    const r = (33.44 + 4.56 / 2 + 1.5) * (120 / 76);
+    const a = (deg * Math.PI) / 180;
+    return px(face, 120, Math.round(60 + r * Math.sin(a)), Math.round(60 - r * Math.cos(a)));
+  };
+  check('the ring glows: faint colour just outside it up to the level, none past it', outside(dial(0.5), -90)[3] > 20 && outside(dial(0.5), -90)[2] > 200 && outside(dial(0.5), 90)[3] === 0, JSON.stringify([outside(dial(0.5), -90), outside(dial(0.5), 90)]));
   // The knob's pointer: at 0.5 it points up (0°); at 1, 135°.
   const pointer = (face, deg) => {
     const r = (38 - 25) * (120 / 76);
@@ -275,6 +285,7 @@ await settle('the face', async () => {
   const capped = await valueArt({ ...base, kind: 'slider', width: 60, height: 240, layers: { thumb: wideImage } });
   const cEx = extentOf(composeValue(capped, 0.5, false), 60, 240, isGreen);
   check('…a wide thumb is fitted, not stretched: 4 to 1 stays 4 to 1', cEx && cEx.w === 60 && cEx.h === 15, JSON.stringify(cEx));
+  check('…and travels by the shared rule: its own size fitted in its area, the same as the editor computes', JSON.stringify(capped.travel) === JSON.stringify(vc.sliderTravel({ w: 60, h: 240 }, undefined, { customTrack: false, thumb: { w: 200, h: 50 } })) && capped.travel.thumb === 15, JSON.stringify(capped.travel));
   const knobbed = await valueArt({ ...base, kind: 'dial', width: 160, height: 120, layers: { knob: square } });
   const kEx = extentOf(composeValue(knobbed, 0.5, false), 160, 120, isGreen);
   check('a chosen knob keeps its proportions on a wide dial: square, centred, inside the ring', kEx && Math.abs(kEx.w - kEx.h) <= 1 && kEx.w < 120 * 0.85 && Math.abs(kEx.x0 + kEx.w / 2 - 80) <= 1, JSON.stringify(kEx));

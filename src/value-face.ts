@@ -8,7 +8,7 @@ import { IMAGE_FORMATS, refusalText, sideRefusal } from './image-limits.js';
 import { escapeXml, fitLine, labelStyle } from './label-fit.js';
 import { fillsBox, innerPixels, shapePath } from './shapes.js';
 import type { ValueLayersDef } from './types.js';
-import { boxTravel, builtinLayerSvg, clamp01, knobAngle, layerArea, LAYERS, LAYERS_WITHOUT_BUILTIN, levelAt, levelSvg, thumbOffset, type LayerName, type Travel } from './value-controls.js';
+import { boxTravel, builtinLayerSvg, sliderTravel, clamp01, knobAngle, layerArea, LAYERS, LAYERS_WITHOUT_BUILTIN, levelAt, levelSvg, thumbOffset, type LayerName, type Travel } from './value-controls.js';
 
 /**
  * A slider's or dial's face on a virtual deck (src/value-controls.ts): its
@@ -157,6 +157,11 @@ async function svgPixels(svg: string, width: number, height: number): Promise<Bu
  * layer, said once in the log — a control stays usable.
  */
 async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: number, held = false): Promise<Buffer | null> {
+  return (await layerDrawn(spec, name, w, h, held))?.px ?? null;
+}
+
+/** layerPixels, and a chosen image's own size (absent for the built-in): a thumb's sets the slider's travel. */
+async function layerDrawn(spec: ValueFaceSpec, name: LayerName, w: number, h: number, held = false): Promise<{ px: Buffer; image?: { w: number; h: number } } | null> {
   const ref = spec.layers?.[name];
   if (ref === null) return null;
   const file = layerFile(ref);
@@ -174,10 +179,11 @@ async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: n
       const ah = Math.max(1, Math.round(area.h));
       const clear = { r: 0, g: 0, b: 0, alpha: 0 };
       const image = await sharp(data, { animated: false }).resize(aw, ah, { fit: area.stretch ? 'fill' : 'contain', background: clear }).ensureAlpha().png().toBuffer();
-      return await sharp({ create: { width: w, height: h, channels: 4, background: clear } })
+      const px = await sharp({ create: { width: w, height: h, channels: 4, background: clear } })
         .composite([{ input: image, left: Math.round(area.x), top: Math.round(area.y) }])
         .raw()
         .toBuffer();
+      return { px, image: { w: meta.width ?? 0, h: meta.height ?? 0 } };
     } catch (err) {
       if (!warned.has(file)) {
         warned.add(file);
@@ -186,7 +192,7 @@ async function layerPixels(spec: ValueFaceSpec, name: LayerName, w: number, h: n
     }
   }
   if (LAYERS_WITHOUT_BUILTIN.includes(name)) return null;
-  return svgPixels(builtinLayerSvg(name, { w, h }, { direction: spec.direction, angles: spec.angles, type: spec.type, held }), w, h);
+  return { px: await svgPixels(builtinLayerSvg(name, { w, h }, { direction: spec.direction, angles: spec.angles, type: spec.type, held }), w, h) };
 }
 
 function extentOf(rgba: Buffer, w: number, h: number): Layer['extent'] {
@@ -225,7 +231,9 @@ async function drawArt(spec: ValueFaceSpec): Promise<ValueArt> {
   const band = bandHeight(spec);
   const artH = Math.max(1, h - band);
   const [backName, stillName, movingName] = LAYERS[spec.kind];
-  const [back, still, moving] = await Promise.all([layerPixels(spec, backName, w, h), layerPixels(spec, stillName, w, artH), layerPixels(spec, movingName, w, artH)]);
+  const [back, stillDrawn, movingDrawn] = await Promise.all([layerPixels(spec, backName, w, h), layerDrawn(spec, stillName, w, artH), layerDrawn(spec, movingName, w, artH)]);
+  const still = stillDrawn?.px ?? null;
+  const moving = movingDrawn?.px ?? null;
   const fill = spec.level.show ? await svgPixels(levelSvg(spec.kind, { w, h: artH }, { direction: spec.direction, angles: spec.angles, color: spec.level.color }), w, artH) : null;
   const movingPx = moving ?? Buffer.alloc(w * artH * 4);
   // Held: the built-in drawn with its halo, then lightened; a chosen image lightened.
@@ -282,7 +290,8 @@ async function drawArt(spec: ValueFaceSpec): Promise<ValueArt> {
     travel: boxTravel({ w, h: artH }, spec.direction),
     faces: new Map(),
   };
-  if (spec.kind === 'slider') art.travel = measuredTravel(still, movingLayer, w, artH, spec.direction);
+  // The same rule as the editor's (value-controls.ts sliderTravel): from the layout and a chosen thumb's own size, never measured.
+  if (spec.kind === 'slider') art.travel = sliderTravel({ w, h: artH }, spec.direction, { customTrack: stillDrawn?.image !== undefined, thumb: movingDrawn?.image ?? null });
   return art;
 }
 
@@ -309,17 +318,6 @@ function revealOf(spec: ValueFaceSpec, fill: Buffer, w: number, h: number): Reve
   return { at: Int32Array.from(at), from: Float32Array.from(from) };
 }
 
-/** Where the track lies along the axis and how long the thumb is, from what each draws. */
-function measuredTravel(track: Buffer | null, thumb: Layer, w: number, h: number, direction: string | undefined): Travel {
-  const horizontal = direction === 'horizontal';
-  const length = horizontal ? w : h;
-  const t = track ? extentOf(track, w, h) : null;
-  const start = t ? (horizontal ? t.x0 : h - t.y1) : 0;
-  const end = t ? (horizontal ? t.x1 : h - t.y0) : length;
-  const e = thumb.extent;
-  const thumbLen = e ? (horizontal ? e.x1 - e.x0 : e.y1 - e.y0) : 0;
-  return { start, end, thumb: Math.min(thumbLen, Math.max(0, end - start)) };
-}
 
 /** Straight-alpha `src` over `dst` at one pixel (byte offsets), scaled by `k` (0–1). */
 function blendAt(dst: Buffer, d: number, src: Buffer, s: number, k = 1): void {

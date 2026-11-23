@@ -4944,21 +4944,27 @@ body.settings-body {
  */
 .key.key-value,
 .key.key-value:hover {
-  border: 1px dashed transparent;
-  border-radius: 6px;
+  /* No border: a border takes room, and the face would sit inside it — every layer inset from the
+     control's box, which the deck fills edge to edge. The zone is an outline drawn just inside the
+     box instead, which takes none, and follows the control's own corners (its inline radius). */
+  border: none;
   box-shadow: none;
+  outline: 1px dashed transparent;
+  outline-offset: -1px;
 }
 
 .key.key-value.key-empty {
-  border-color: rgba(255, 255, 255, 0.22);
+  outline-color: rgba(255, 255, 255, 0.22);
 }
 
 .key.key-value.key-selected {
-  border: 2px solid var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .key.key-value.key-drop-target {
-  border: 2px dashed var(--accent);
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
@@ -4993,6 +4999,13 @@ body.settings-body {
 .key.key-shaped.key-drop-refused {
   border: 2px dashed rgba(229, 72, 77, 0.75);
   box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
+}
+
+/* A slider or dial: the same, as an outline inside its box, which takes no room from its layers. */
+.key.key-value.key-drop-refused {
+  border: none;
+  outline: 2px dashed rgba(229, 72, 77, 0.75);
+  outline-offset: -2px;
 }
 
 .key-shaped.key-drop-refused .key-outline path {

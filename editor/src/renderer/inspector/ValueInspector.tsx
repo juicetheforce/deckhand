@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ButtonDef, Config } from '../../../../src/types.js';
-import { anglesOf, ANGLE_LIMIT, artColour, builtinLayerSvg, DEFAULT_ANGLES, LAYER_LABELS, LAYERS, LAYERS_WITHOUT_BUILTIN, LEVEL_LABELS, levelOf, levelSvg, MIN_SWEEP, takesValue, type LayerName } from '../../../../src/value-controls.js';
+import { anglesOf, ANGLE_LIMIT, artColour, LEVEL_COLOURS, builtinLayerSvg, DEFAULT_ANGLES, LAYER_LABELS, LAYERS, LAYERS_WITHOUT_BUILTIN, LEVEL_LABELS, levelOf, levelSvg, MIN_SWEEP, takesValue, type LayerName } from '../../../../src/value-controls.js';
 import type { ButtonLocation, Edit } from '../../shared/edits.js';
 import { iconUrl } from '../../shared/icons.js';
 import { actionName } from '../catalogue.js';
@@ -214,6 +214,7 @@ function LevelForm({ kind, at, button, disabled, run }: { kind: 'slider' | 'dial
       <Checkbox label={`Show the ${name.toLowerCase()}`} checked={level.show} disabled={disabled} onChange={(show) => void run({ kind: 'setLevel', at, show, color: chosen })} />
       <ColourPicker
         name="level-colour"
+        swatches={LEVEL_COLOURS}
         label={`${name} colour`}
         value={chosen}
         defaultColor={artColour(button?.action?.type)}
