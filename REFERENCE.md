@@ -1462,7 +1462,9 @@ The checks:
   the plain Device dropdown, and nothing for arranging decks — no padlock,
   dragging or Show in editor, and for a Stream Deck no background — and most
   people have one deck. It checks the working
-  tree, so stage everything a change needs.
+  tree, so stage everything a change needs. However many files are staged
+  with them, a staged `editor/` or `src/` file runs it
+  (`scripts/test/pre-commit.test.sh`).
 - The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
   desktop entry and icon, against a scratch HOME), `preflight.test.sh`
   (against stub commands), `apparmor-profile.test.sh`, `upgrade.test.sh`
@@ -1474,11 +1476,15 @@ The checks:
   install-or-update line), `udev-trigger.test.sh` (re-applying the rule,
   with uinput loaded and not) and `touch-access.test.sh` (the root pairing
   helper in its test mode: the temporary access granted and dropped on every
-  path, the rule it writes, the entries it refuses). `scripts/install.sh check` runs the preflight for real and changes
+  path, the rule it writes, the entries it refuses), and `pre-commit.test.sh`
+  (the hook runs the one-deck check whenever `editor/` or `src/` is staged,
+  through a stand-in `npm`). `scripts/install.sh check` runs the preflight for real and changes
   nothing.
 - A built release: `scripts/test/release-ships.sh <version>` loads it in
   containers of the target distributions, pipes its installer, **installs it
-  on this machine**, and runs the suites against that install.
+  on this machine**, and runs the suites against that install. The tests come
+  from the checkout, with `assets/art/` — reference art `smoke-values` compares
+  the generator with, which the package does not carry.
 
 **When a test passes first time, break the code on purpose and check it
 fails.** That has caught weak checks many times. **Before a break runner's

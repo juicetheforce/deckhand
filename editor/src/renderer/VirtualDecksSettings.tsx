@@ -106,7 +106,7 @@ export function VirtualDecks() {
     setNotice({
       kind: 'ok',
       text: kept
-        ? `${p.name ?? p.screen} is a virtual deck again, paired with ${p.touchName}. Its previous layout in “${profile.name}” is kept, at the size it had.`
+        ? `${p.name ?? p.screen} is a virtual deck again, paired with ${p.touchName}. Its pages are kept, each with its own layout, and new pages start from the default grid it had.`
         : `${p.name ?? p.screen} is a virtual deck, paired with ${p.touchName}. Its keys are in the editor, in “${profile.name}”.`,
     });
   };
