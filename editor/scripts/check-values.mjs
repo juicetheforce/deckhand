@@ -59,6 +59,8 @@ const { createRequire } = await import('node:module');
 const sharp = createRequire(path.join(repoRoot, 'package.json'))('sharp');
 await sharp({ create: { width: 60, height: 240, channels: 4, background: { r: 0, g: 200, b: 0, alpha: 1 } } }).png().toFile(path.join(pictures, 'cap.png'));
 await sharp({ create: { width: 5000, height: 10, channels: 3, background: '#808080' } }).png().toFile(path.join(pictures, 'mural.png'));
+// A wide thumb (4 to 1): fitted in its area it is shorter than the area, so the travel tells its own size from the area's.
+await sharp({ create: { width: 200, height: 50, channels: 4, background: { r: 200, g: 0, b: 200, alpha: 1 } } }).png().toFile(path.join(pictures, 'wide.png'));
 
 const { edid, fakeSysfs } = await import(pathToFileURL(path.join(repoRoot, 'scripts/test/fake-sysfs.mjs')).href);
 const sysfs = fakeSysfs(scratch);
@@ -403,6 +405,15 @@ r.thumbImg = await inEditor(`(() => { const s = document.querySelector('.grid[da
   await mustSee('the thumb image loaded', async () => (await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`)) === wantSaid, 5000).catch(() => undefined);
   r.travel = await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`);
   check('a chosen thumb travels in the grid by the deck\'s rule: its own size fitted in its area', r.travel === wantSaid, `${r.travel} vs ${wantSaid}`);
+  await click(`.picker-item[data-path="${path.join(pictures, 'wide.png')}"]`);
+  await mustSee('the wide thumb on disk', async () => (await keyOnDisk(slider.id))?.layers?.thumb === '~/Pictures/wide.png');
+  const wide = sliderTravel({ w: c.w, h: c.h }, c.direction, { customTrack: false, thumb: { w: 200, h: 50 } });
+  const wideSaid = [wide.start, wide.end, wide.thumb].map((n) => Math.round(n)).join(',');
+  await mustSee('the wide thumb loaded', async () => (await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`)) === wideSaid, 5000).catch(() => undefined);
+  r.wideTravel = await inEditor(`document.querySelector('.grid[data-deck="${KEY}"] [data-key="${slider.id}"] [data-value-face]')?.dataset.travel`);
+  check('…a wide thumb too: shorter than its area, as the deck draws it', r.wideTravel === wideSaid && wide.thumb < Math.min(c.w, c.h / 3) - 1, `${r.wideTravel} vs ${wideSaid}`);
+  await click(`.picker-item[data-path="${path.join(pictures, 'cap.png')}"]`);
+  await mustSee('the thumb back on cap.png', async () => (await keyOnDisk(slider.id))?.layers?.thumb === '~/Pictures/cap.png');
 }
 check('the grid draws a chosen thumb keeping its proportions (contain), across the slider\'s width, not its length', r.thumbImg?.fit === 'contain' && r.thumbImg.across === 0 && r.thumbImg.along < 0, JSON.stringify(r.thumbImg));
 
