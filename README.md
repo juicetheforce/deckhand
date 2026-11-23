@@ -35,7 +35,7 @@ It's one person's project, used every day.
 - **Icons are just files on disk.** Point a key at any image. Nothing is
   copied or imported; edit the file and the key updates. A key without an
   icon draws a built-in one for its action, as large as you like (Settings ›
-  General › Icon size). A key that shows a state — muted, live, playing —
+  General › Icon size), and every key can scale its own icon. A key that shows a state — muted, live, playing —
   takes a default icon of yours and one for that state. A label can stack its words on more than
   one line.
 
@@ -74,8 +74,8 @@ touch panel.
 
 - **Set it up in the editor**, in **Settings › Decks › Add a virtual
   deck**: choose the screen, tap it so Deckhand knows which touchscreen is
-  its own, and choose a key size: Small, Medium, Large, or your own rows and
-  columns. Pairing asks for your password once, to give Deckhand access to
+  its own, and choose a grid size: Small, Medium, Large, or your own rows
+  and columns. Pairing asks for your password once, to give Deckhand access to
   that one touchscreen and no other ([why](SECURITY.md#device-access)). Edit its keys like any deck's. Nothing is ever edited on the
   touchscreen itself, so a stray touch can't change anything.
 - **Its touches go only to Deckhand.** Deckhand reads the touchscreen
@@ -91,11 +91,25 @@ touch panel.
   apart by their ports. A touchscreen with no serial number is remembered by
   its USB port, so if you move its USB cable, tap it again (**Tap again** in
   Settings).
-- **Each profile can give the screen its own key size**, in Settings ›
-  Decks.
+- **Each page can have its own grid.** New pages start at the size you chose
+  for the screen, or at the grid you pick, and **Change layout…**, in the
+  deck's top bar, gives one page a different grid.
+- **Or lay a page out by hand.** A page started from **Blank**, or from a
+  template you saved, is a custom layout: **Edit layout**, in the deck's top
+  bar, lets you place buttons anywhere on the screen at any size, as rectangles
+  with square to fully rounded corners, circles or hexagons, overlapping if you
+  like, with a grid, snapping, and tools to align and space several at once.
+  The touchscreen shows the layout as you build it, and a touch goes to the
+  button's real shape.
+- **Every page has its own background**: a colour, an image filling the screen
+  or fitted inside it, and an opacity. Below 100% the screen is see-through,
+  so whatever is behind the deck on that screen shows between the buttons, and
+  can't be touched there; the buttons themselves always stay solid. A new page
+  starts black.
 - **Brightness keys work on it.** Its keys are drawn darker, so your monitor's
   own backlight stays where it is. A Brightness key can adjust this deck or any
-  other, and Sleep all decks dims it too. Turned off, it draws pure black, but
+  other, and Sleep all decks dims it too, background included, so a
+  see-through deck goes dark rather than clear. Turned off, it draws pure black, but
   an LCD's backlight still shows faintly. It doesn't sleep on a lock, since the
   lock screen and your monitor's power saving already cover it.
 - **Turn it off when you want the screen back**, for a screen that also
@@ -374,8 +388,8 @@ That's what shapes it.
 - Volume for individual devices, not just the default one.
 - Window actions on KDE Plasma.
 - Dials and the touch strip, if I ever have a Stream Deck+ to test on.
-- Custom layouts for virtual decks: keys of any size and shape, anywhere on
-  the screen, over a background image; then exporting a panel to share it.
+- Sharing a virtual deck's panel: exporting one, and importing it on another
+  screen.
 - More OBS keys (replay buffer, virtual camera, studio mode) when someone
   asks for them.
 - More Twitch keys (raids, ads, chat modes) when someone asks for them.

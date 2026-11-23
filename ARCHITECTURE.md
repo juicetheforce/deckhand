@@ -50,8 +50,10 @@ editor (Electron/React) — config producer only
   One runs per connected virtual deck's screen, started by the daemon, and
   talks to it over its own pipes, never the socket. It composes the images
   the daemon renders onto a surface on that screen, and reads the paired
-  touchscreen directly, grabbed, passing touches back. It knows nothing of
-  keys or shapes: the daemon decides which key a touch lands on.
+  touchscreen directly, grabbed, passing touches back — down and up, and,
+  for a finger the daemon has found on a slider or dial and asked it to
+  follow, its movement. It knows nothing of keys or shapes: the daemon
+  decides which key a touch lands on.
 - **The input helper** (`helper/deckhand-input.c`, about 250 lines, no
   dependencies beyond libc and the kernel headers) is a resident process that
   owns one `uinput` virtual keyboard. It receives **numeric keycodes only** on
@@ -125,9 +127,14 @@ Stream Deck.** Above one seam the daemon never asks which kind of deck it
 has: each driver — the Stream Deck library, and virtual decks — hands it
 devices with controls that have an ID, a position, a size and a shape, and a
 Stream Deck's grid is one such layout. Keys are named by control ID, never
-by index, so a moved or resized key keeps its button. A panel's controls
-live in each profile's layout, so one screen can show different layouts in
-different profiles.
+by index, so a moved or resized key keeps its button. **Every page of a
+virtual deck has its own layout** — its panel of controls — so the daemon
+lays the deck out again on a page change, **only when the new page's
+controls differ** from those shown: a new set clears the screen before every
+key is drawn, and two pages with the same grid switch as a Stream Deck's do.
+The editor draws each page from the config at that page's grid, never the
+grid the deck happens to show. The deck keeps a default size, chosen when it
+is added, for every page made without a choice.
 
 - **The screen is drawn on a Wayland layer-shell surface on the `overlay`
   layer** that never takes keyboard focus, on the chosen output; where the
@@ -163,7 +170,29 @@ different profiles.
   device can inject events into it. One rule file per user.
 - **The daemon hit-tests**, not the helper, in a module the editor shares,
   so shapes never reach C. A touch belongs to the key it started on until it
-  lifts, as a held Stream Deck key does.
+  lifts, as a held Stream Deck key does. **A control is a rectangle with a
+  corner radius, round, or a point-up hexagon**, and each shape answers three
+  questions — is a point inside it, what is its outline, what is the largest
+  rectangle inside it (`src/shapes.ts`) — and nothing else asks which shape it
+  is: a touch is tested on the real shape, the face is cut to the outline, and
+  the label and failed badge are laid out in the inner rectangle, so a new
+  shape only has to answer the same three. **Where controls overlap, the later
+  in the panel's list is on top**, for touch and on the screen alike.
+- **Every key of a virtual deck carries a thin, light outline inside its
+  shape's edge**, on every page, a grid's included, so a button reads as one on
+  a dark screen. Drawn inside, the outline changes neither where a touch lands
+  nor what an overlap covers. A Stream Deck's keys have none.
+- **What the daemon sends the helper is transparent wherever nothing is
+  drawn**: a control's face is its solid fill inside its shape and alpha 0
+  outside, never flattened onto the background. The helper puts the background
+  under every image before blending it, and the daemon sends a control whose
+  box another overlaps as every control touching that box, combined in order
+  and still clear where none is — **combined when it is sent**, from the faces
+  as they are then, so a control queued behind a busy helper never carries a
+  face that has since been replaced. So a shape's soft edge never builds up over
+  its own last one, a redrawn control never paints over the one above it, and
+  a see-through background needs only the helper to change what it puts under.
+  An opaque square key is drawn exactly as before.
 - **A screen is recognised by its EDID**: maker and product, and its text
   serial number when it has one — never the numeric serial field, which many
   screens fill with a placeholder. Identical screens are told apart by the
@@ -206,7 +235,7 @@ or keep in dotfiles.
 **Cost scales with what is on screen, not with what is in the config.** A page
 of static hotkeys costs nothing at rest: no timers, no subprocesses, no USB
 traffic. A live key (clock, now-playing, mic state) costs something only
-while it is visible. Identical images are never rewritten to USB. **A key whose face changes only on events is redrawn only then** (`redraw: 'events'` on its action): OBS, VTube Studio, Twitch and Discord keys are drawn when shown and again when their service announces a change or the key's own state does, never on the 500 ms tick's clock — before, each was redrawn every second for nothing. The tick's clock is for faces that depend on time, like a clock. "No timers
+while it is visible. Identical images are never rewritten to USB. **A key whose face changes only on events is redrawn only then** (`redraw: 'events'` on its action): OBS, VTube Studio, Twitch and Discord keys are drawn when shown and again when their service announces a change or the key's own state does, never on the 500 ms tick's clock — before, each was redrawn every second for nothing. The tick's clock is for faces that depend on time, like a clock. **A slider's or dial's level is read from the same event-fed caches** — `pactl subscribe`'s, a deck's own brightness, Discord's events — and drawn when they change, never polled; dragging one costs only while a finger moves. "No timers
 at rest" is a structural rule, not "no measurable cost", which would weaken as
 hardware gets faster. Three recurring timers are accepted exceptions:
 
@@ -382,14 +411,135 @@ cancelled when the desktop reports resumed, restarted by another deck press, and
 overridden by a lock. Virtual decks are left out: their monitor's power saving
 covers them.
 
-**A virtual deck dims in its display helper, not on the screen.** The helper draws
-everything at the deck's brightness, and 0 is pure black; a change is the level, then
-the canvas and every key again. Plasma's `org.kde.ScreenBrightness` reached every
+**A virtual deck dims in its display helper, not on the screen.** The helper keeps the
+screen drawn at full brightness and dims each frame as it hands it to the compositor,
+and 0 is pure black; **a change is the level alone** — nothing cleared, nothing sent
+again, one frame shown at the new level. A slider dragged quickly sends a few bytes a
+step, and a burst the helper reads at once is shown as the last of it. Before, a change
+cleared the screen and redrew the page: a quick drag blacked the panel out and flashed
+its background, and the helper fell about two and a half seconds behind the finger
+(measured with the real helper: about 32 ms of CPU a step against about 6 for a
+Volume slider's; now about 8–10, since a level changes every pixel and each frame shown
+dims the whole screen, 3–5 ms at 1920 × 720). Each of the helper's two buffers copies
+only what changed since it was last shown, so no extra memory, and a key's redraw on a
+dimmed deck copies the key alone. **A level is light given off, as a backlight's**: a
+screen's values are gamma-encoded, so the helper scales them by
+(level / 100)^(1 / 2.2), not by the level itself. Scaling by the level drew white at 12
+of 255 at 5, the lowest a key or slider sets, and the panel looked switched off; now
+it is 65, dim and plainly lit, as a Stream Deck's backlight is at 5. The curve is a
+101-entry table, so the helper still needs nothing but libc. Plasma's `org.kde.ScreenBrightness` reached every
 screen tried, but only a laptop's own panel really dimmed: monitors barely changed,
 and at 0 looked about half as bright (measured on three), which is too weak and too
 monitor-dependent to build on. The limit of drawing it: a panel at 0 is black pixels
 over a lit backlight, so an LCD still glows faintly. A lock doesn't darken a virtual deck: the lock screen
 and the monitor's power saving already cover its screen.
+
+**A virtual deck's page background is drawn by the helper, under everything,
+and is see-through only when asked.** Each page has its own: a colour, an
+optional image as Fill or Fit over the whole screen, and one opacity for the
+layer. The daemon draws the image at the screen's size and sends the whole
+layer once; the helper puts it under every image it places, so controls stay
+opaque and only the space around them shows the page. **A page with no
+background sends nothing new**, and the helper keeps its opaque `XRGB8888`
+buffers; below 100% it hands the compositor premultiplied `ARGB8888`, and what
+is on that screen behind the deck shows through — and cannot be touched, since
+the touchscreen stays grabbed. Brightness is black laid over the whole deck,
+so a sleeping see-through deck is black, not clear. **What it costs is the
+compositor's** (cgroup CPU over 600 s). **At rest, nothing**: on KDE Plasma with
+a GPU, KWin spent the same at 50% as opaque (16.3% and 16.2% of a core on a
+busy desktop); on a headless KWin, 0.023% and 0.024%. **With something moving
+behind the deck, it depends on how the compositor draws**: on the GPU desktop a
+30 fps video behind the panel cost KWin about the same see-through or opaque
+(22.6% and 24.2%) — it went on drawing the covered video either way — while a
+headless, software-rendered KWin skipped it behind an opaque deck and spent
+29–30% against 3–5% with a see-through one. So on a desktop drawing without a
+GPU, see-through belongs on screens where nothing moves behind the deck.
+Deckhand itself spends the same in every case, and nothing of it runs on a
+clock. Where the compositor
+has no layer-shell (GNOME) the deck is a full-screen window, which may not
+show through; the editor says so there.
+
+**A slider or dial is a touch zone that sets a level, and takes only an
+action that carries one** — Volume (any local output or input, or the default
+output or input), Brightness (any deck, 5–100, as a key's) and Discord's User
+volume (0–200 %). A button keeps every action it has, these included, as
+before. **A slider or dial is always a rectangle**: a round or hexagon one
+would cut off a dial's ring and its label, so a dial draws its round art
+inside its box. Its value is read
+from an event-fed cache and written outright (`ActionHandler.value`): a change
+made outside Deckhand moves the level shown, and nothing polls.
+
+- **The helper reports a finger's movement only when asked.** The daemon
+  hit-tests a touch on its way down, as always; on a slider or dial it asks the
+  helper to follow that contact (`M`), which then reports where it moved at
+  most once per frame of the touchscreen, until it lifts. A button's touch is
+  down and up, exactly as before, and the helper still knows nothing of
+  controls.
+- **Writes go one at a time, the newest waiting.** A slider dragged faster
+  than its service answers sends what the finger has reached when the last
+  write lands — no queue, and no timer: the next write starts when the last
+  ends. While a finger drags a volume, the cache is not re-read after each
+  write; the last write of the drag re-reads it, and `pactl subscribe`'s event
+  does once the drag pauses. **A pactl call costs about 22 ms of CPU — 8 ms in
+  `pactl` itself, 7 in pipewire-pulse, 6 in pipewire — and as long in wall
+  time** (100 calls, measured with a read-only call so no volume changed), so
+  each step that writes costs one call instead of the seven a button's press
+  spends (the change, its re-read, and the event's re-read), and a fast drag
+  writes at most about fifty times a second, bounded by pactl's own round
+  trip. Nothing of it runs at rest.
+- **The face is drawn in the daemon, its layers once and its level each
+  step.** Each layer — the built-in art or an image, in its own area, and the
+  level — is rasterised once per change of art, label or badge; each step puts
+  them together in plain JavaScript (the fill or ring up to the level, the
+  thumb moved or the knob turned) and sends the image as any key's is sent.
+  Measured against two alternatives with the real helper under a headless KWin,
+  600 steps at 60 a second, CPU per step (ms; daemon / helper / KWin): this
+  way, a slider 1.9 / 2.6 / 1.3 and a dial 3.1 / 2.2 / 1.2; **the helper
+  composing from values**, its layers sent once, 0.3 / 3.1 / 1.5 and
+  0.3 / 4.4 / 1.4; **the whole control redrawn by sharp** each step,
+  23.5 / 1.9 / 1.1. Most of a step is the helper placing the image and the
+  compositor showing it, which both of the first two pay; the second saved
+  about a millisecond a step for a new protocol and compositing in C, so the
+  helper stays a placer of images, and a slider overlapped by another control
+  is combined as any key is. At rest the helper and KWin spent nothing.
+- **Every way off a page ends a drag with the value where it is**: a lock (no
+  touch runs while the session is locked or inactive), a page change — to a
+  page with the same controls too, where the finger is still on the screen —
+  a panel change, the deck closing. What was written stays; a write not yet
+  started is dropped; the face goes back to the real value. A write that fails
+  marks the control, as a failed press does, and the rest of that drag writes
+  nothing, so one drag is one failure.
+- **A brightness slider or dial stops at 5**, as a Brightness key does. It
+  once went to 0, and a panel dimmed that way came back only when its slider
+  was found by touch on a black screen.
+- **The level is drawn by Deckhand, never an image** — a slider's fill, a
+  dial's ring — shown or switched off, in a colour of the person's choosing or
+  the action's (its own bright set, never the background swatches, which are
+  dull on purpose), so no art can take the level away: the fill lies under the
+  thumb, and **the ring is drawn over the knob**, whose area is inside it.
+  **It glows**: a blurred copy under it, in its colour, about as far as the
+  touch halo reaches. The glow is drawn once with the art, so a step pays only
+  for the pixels it adds — measured in-process over 600 steps, a slider
+  (115 × 490) 0.53 → 0.73–0.79 ms of composing a step, a dial (205 × 205)
+  1.55 → 1.66–1.75 ms, against 5.8–6.5 ms a step in all; the art's one drawing
+  takes 15–20 ms longer. Nothing of it runs at rest.
+- **The editor draws a slider or dial as the deck does, from the same code**:
+  the same art and areas (`value-controls.ts`), over the control's whole box —
+  its selection outline drawn inside the box, taking no room — and a slider's
+  travel by one rule on both (`sliderTravel`): the track's ends, the built-in
+  one's or the whole length, and a chosen thumb's length from its image's own
+  size fitted in its area, never measured from its pixels.
+- **Every other layer is Deckhand's own art until an image is chosen**, drawn
+  for the box in its action's colour: a slider's track running its length and
+  its thumb scaled by its width; a dial's base from its start to its end angle,
+  and its knob. **An image keeps its proportions where it is a thing on the
+  control** — the thumb, fitted across the slider; the knob, inside the ring;
+  the base, in the dial's square — so a round knob never becomes an oval, and
+  **fills its area where it is a surface**: the track, stretched to the art, and
+  a background image, which has no built-in art, stretched to the whole box
+  behind everything (a scale along a slider, say). Every image is held to the
+  image limits; one refused is drawn as the built-in layer, the reason logged
+  once.
 
 **Nothing may leave a key held.** A latched key or a pending release is let go
 by every way off a page: a page switch, a profile switch, a layout change, an
@@ -404,10 +554,18 @@ draws its built-in default. That default is never written to the config.
 An app key with no icon draws its app's own icon, found through the
 desktop's icon theme when the key is drawn — the daemon does that lookup
 itself, having neither GTK nor Qt — and never written to the config either.
-**Built-in icons are drawn smaller than the key** (`defaults.builtinIconSize`,
-45% unless set, 30–70: Settings › General › Icon size), so their glyphs sit
-as the editor's design draws them; an
-image file someone chose is never resized by it.
+**An icon's size is one rule for every image and every shape: at 100% the
+whole image fits the key's box, centred**; above, it zooms in and the key's
+shape cuts it; below, it shrinks. The scale is relative to the key, never to
+the image, so a built-in is never cropped at its default size. Each key may
+have its own (`iconScale`, 20–200); without one an image file is at 100 and
+a **built-in at `defaults.builtinIconSize`** (45.5 unless set, 25–100:
+Settings › General › Icon size, showing the same figure), so the glyphs sit
+as the editor's design draws them. **The old crop (`iconFit`) is converted,
+not kept alongside**: a config without `"version": 2` is drawn as it was by
+the daemon, in memory, and converted by the editor when it opens it — each
+image's crop becomes the scale that keeps its look. A number is needed
+because a config cannot tell "100%" from "the old default crop" without one.
 
 **Audio follows one rule: you pick from the devices the system reports, and
 Deckhand applies no logic to the list.** It does not categorise, rank or guess.
@@ -449,7 +607,7 @@ is here so the test is not "fixed" instead.
 | `src/recovery.ts`, anything restarting a helper or a watch | **one quick retry, then the 60-second scan**, never a loop of its own: a dependency that stays gone must not add work at rest. Held by `smoke-recovery` |
 | `src/services/audio.ts`, any audio `describe()` | key faces read a cache; spawning `pactl` from a render feeds itself |
 | `src/render.ts`, `src/builtin-icons.ts` | built-ins are resolved by name; a default is never written to `config.json`, and a chosen built-in is written as `builtin:<name>`, never as a path into the app directory |
-| `src/icon-file.ts`, anything that reads an icon path (the renderer, the editor's icon protocol, the export) | **an icon path is checked before it is read**: a regular file (a device or FIFO never finishes reading), at most 10 MB, **never in Deckhand's state directory, links followed** — an icon naming `credentials.json` was exported with its tokens inside. The editor and the export also require an image, by extension or by first bytes; the daemon leaves the type to sharp. Held by `smoke-icon-files` and `export-bundle.test.ts` |
+| `src/icon-file.ts`, anything that reads an icon path (the renderer, the editor's icon protocol, the export) | **an icon path is checked before it is read**: a regular file (a device or FIFO never finishes reading), at most 10 MB, **never in Deckhand's state directory, links followed** — an icon naming `credentials.json` was exported with its tokens inside. The editor and the export also require an image, by extension or by first bytes. **An icon someone set is also held to the image limits** (`src/image-limits.ts`: PNG, JPEG, WebP, GIF or SVG, 4096 px on the longer side) **by the daemon as well as the editor**: refused, it is drawn as the missing icon, never blank, and the log, the grid and the Icon tab say why in the same words. Held by `smoke-icon-files`, `smoke-appearance`, `check:appearance` and `export-bundle.test.ts` |
 | `src/default-icons.ts` | pure so the editor can import it; an icon not drawn yet maps to no default, never to `missing`. `BUILTIN_ICONS` = `assets/icons/`, held by `scripts/smoke-defaults.mjs` |
 | `src/deck.ts`'s `heldRelease` / `latched`, or anything that changes the page, profile, layout or connection | **nothing may leave a key held at the evdev layer** — every path off a page fires pending releases and releases latches |
 | `src/key-failures.ts`, `DeckSession.dispatch()` | a failed key clears only on a successful press, an edit, or the person's **Clear** in the editor (`failure.clear`) — never a timer or a page switch; a cleared key that fails again is marked again; marks cost nothing at rest and notify only on change |
@@ -458,8 +616,8 @@ is here so the test is not "fixed" instead.
 | `src/index.ts`'s `scan()` / `unattached` / `reevaluateUnattached` | a deck with no layout is left alone until a **reload** re-evaluates it; skipping `unattached` unconditionally strands a deck that has just been given one, until it is replugged |
 | `editor/src/renderer/model.ts`'s `emptyState()` / `connectionPill()` | the **order** is the content: "nothing is connected at all" is tested before anything per-deck, and before the layout, or one deck gets named while every deck is missing; both use the same order so the card and the pill cannot disagree |
 | `followDeck()` | it must **reconcile first, then follow the deck it settled on** — following the previous serial misses the deck's real page whenever the selection named no deck, which is every time the window opens before the daemon has reported. With several decks shown, each other deck then follows its own page, only while it shows the selection's profile — a page id can exist in two profiles. **It follows a deck into another profile only when that profile is the active one** (a key on the deck switched it): a deck the profile has no keys for still shows an older profile, and **choosing a deck never changes the profile** — App.tsx gives such a deck a blank page there instead |
-| `Selection.others`, `keyUnder()`, anything drawing several decks | **with one deck connected the editor is exactly the one-deck editor** — held by `check:one-deck`, run before every commit by `scripts/hooks/pre-commit`. Each shown deck's page is held once: the focused deck's in `page`, every other's in `others`. A key is found by deck **and** index — an index alone names a key on every grid, and a key drag would swap on the wrong deck |
-| `editor/src/renderer/canvas.ts`, `DeckCanvas.tsx` | **positions are key units at each grid's top-left**, in the editor preferences by serial, never `config.json`, so they mean the same at any zoom or window size. **A drop saves every shown deck as drawn**, not only the one moved — a deck never dragged would otherwise be placed afresh below the lowest on the next opening. Decks never overlap: a drop onto one is butted against the edge of it the pointer is nearest, not the side it came from, so a held deck follows the pointer. **Zoom changes only when the person asks**, and Fit all runs only on opening and when the shown decks change — never on a resize |
+| `Selection.others`, `keyUnder()`, `DeckPanel.tsx`, anything drawing several decks | **every deck is drawn in its frame with its header — name, size, Page ▾, and a virtual deck's Change layout… and background icon — one deck or several, so a deck's controls are in the same place whatever the number of decks, and the zoom bar is shown with one or several; what arranges decks (dragging, the lock, snapping, Show in editor) appears only with two or more** — held by `check:one-deck`, run before every commit by `scripts/hooks/pre-commit`, which also counts `[data-multideck]`, the mark on everything that exists only with several. **Any click on a deck's frame that is not a drag focuses that deck** — its header, its size, any empty part of the frame — while a control of the frame's own (a button, the Page ▾) does only its own job; a press that moved is a drag, and its click focuses nothing. Held by `check:multi-deck`. Each shown deck's page is held once: the focused deck's in `page`, every other's in `others`. A key is found by deck **and** index — an index alone names a key on every grid, and a key drag would swap on the wrong deck |
+| `editor/src/renderer/canvas.ts`, `DeckCanvas.tsx` | **positions are key units at each grid's top-left**, in the editor preferences by serial, never `config.json`, so they mean the same at any zoom or window size. **A drop saves every shown deck as drawn**, not only the one moved — a deck never dragged would otherwise be placed afresh below the lowest on the next opening. Decks never overlap: a drop onto one is butted against the edge of it the pointer is nearest, not the side it came from, so a held deck follows the pointer. **One set of zoom rules, one deck or several, in normal use and in Edit layout**: the view opens at Fit, never above 100%; **a zoom the person sets holds through window resizes** until Fit, and while at Fit a resize fits again; a change of the shown decks fits again; a deck changing size (another page's grid) fits again only while nobody has set a zoom; Edit layout fits the deck being edited on entering, and **leaving puts back the zoom from before entering**; zoomed in, the canvas scrolls to every part of a deck. Held by `check:one-deck` (a set zoom through a resize, scrolling both ways, Fit) and `check:layout` (the zoom across the mode). **A virtual deck's custom page is drawn at the height its deck's default grid takes**, so its frame does not jump from page to page, and **a virtual deck's frame is never narrower than its header**, measured as drawn |
 | `deckChoices()` / `knownDecks()` / `deckOptions()` | **a deck that is not plugged in is not listed, anywhere.** The editor's device lists derive from the first two, and Settings' Default deck list (`deckOptions()`, `editor/src/shared/settings.ts`) follows the same rule separately. The *stored* default may still name an absent deck. Accepted cost: unplugging the deck being edited moves the editor off it |
 | `editor/src/renderer/Dropdown.tsx` | **every dropdown is this, never a native `<select>`**: a native popup is the system's to draw, so it can't match the rest. Its look is Show in editor's trigger and panel. **Keys pressed in one, open or closed, never reach the grid's shortcuts**: Delete there would clear the selected keys. Held by `check:settings`, comparing their computed styles, `check:bulk` and the editor's unit tests |
 | `src/services/apps.ts`, `src/services/icon-theme.ts`, an action's `defaultIcon()` | an app's icon is resolved when drawn and **never written to `config.json`**; every answer is cached, and nothing watches the disk — the socket's `apps` command, which the editor's app list asks, is the one thing that forgets and re-reads |
@@ -477,16 +635,36 @@ is here so the test is not "fixed" instead.
 | `src/services/text-socket.ts` | offers **no WebSocket extension**: VTS's server compresses whatever a client accepts, and Node's own client misreads it. Messages arrive in 1016-byte fragments and are put back together |
 | `src/services/sounds.ts`, `src/actions/sound.ts` | **a sound's player is the daemon's child on purpose** — the one exception to the row below; **its key's face changes only when a player starts or ends**, never on a clock; a loop restarts on the exit, never under 250 ms of play; **a player Deckhand stopped is not a failure** — pw-play exits 1 on SIGTERM, paplay 0 (measured), so it is known by being stopped, not by its code; **a chosen output that is not there fails the press** — pw-play silently plays an unknown target on the default output (measured). Held by `smoke-sounds` |
 | `src/services/virtual-power.ts`, the virtual driver's `list()` | **a virtual deck turned off is left out of every scan**, so it closes as an unplugged screen does: helper quit, grab ended, keys let go, nothing at rest; its touchscreen's access kept; **kept off across restarts** in the state directory's `virtual-off.json` — an unreadable file is ignored, never a deck left dark for good. Held by `smoke-virtual-daemon` |
-| `src/render.ts`'s built-in size, `editor/src/renderer/model.ts`'s `iconScale` | **only built-ins** — an action's default, one chosen by name, the missing icon — are drawn at `builtinIconSize`; an icon file is never resized by it. The editor's grid draws the same size from the same default. Held by `smoke-defaults` and the editor's unit tests |
+| `src/icon-scale.ts`, `src/render.ts`'s icon layer, `editor/src/renderer/model.ts`'s `iconScale` | **one rule: at 100% the whole image fits the key's box, centred**, the shape cutting what is above it; relative to the key, never the image. A key's own `iconScale` wins; without one **only built-ins** — an action's default, one chosen by name, the missing icon — are drawn at `builtinIconSize`, an image file at 100. The editor's grid draws the same from the same numbers; the slider's mark is the largest scale at which the whole image is inside the shape. Held by `smoke-appearance`, `smoke-defaults`, `check:appearance` and the editor's unit tests |
+| `src/icon-fit.ts`, the config's `version` | **a config without `"version": 2` is from before the icon scale**, when a file icon with nothing set was cropped (`iconFit: cover`): the daemon draws it so, in memory, never writing it; the editor converts it when it opens, imports or adopts one — state icons put in today's shape first, so a resting icon kept in its action's old field is sized too; an edit made while an outside file's icons are being read makes that file a conflict, never lost — the crop becomes the scale that keeps the look (`coverScale`, up to 200), `contain` becomes nothing — and writes the version. Without the version, "no `iconScale`" would mean two things. Held by `smoke-appearance` and `appearance.test.ts` |
+| `src/deck.ts`'s `pressed`, `src/render.ts`'s `pressedLook` | **Touch feedback is drawn on the touch and on its lift, never on a clock**, a virtual deck's only, while `defaults.touchFeedback` is not false: the face lightened and drawn at 95%, inside its own shape. Every way a touch ends without a lift — a lock, a page or panel change — draws the control at rest. **A face rendered for a touch state that has since changed is never sent**: a quick tap's lift can finish before the press's face, and the pressed face landing after it would stay. A Stream Deck key is never drawn pressed. Held by `smoke-appearance` |
+| `src/label-fit.ts`, Settings' Label font (`editor/src/main/fonts.ts`) | **measured label widths are kept per font**, or a font change would cut labels by another face's widths; a font that is not installed falls back to the default in the style itself. **The installed fonts are asked of fontconfig only when Settings opens**, never kept, watched or polled. A font or key colour change is a config reload: each key drawn once. Held by `smoke-appearance`, `appearance.test.ts` and `check:settings` |
 | an action's `active()`, `DeckSession.liveFaces()`, `editor/src/renderer/model.ts`'s `faceIcon` | **the editor's grid draws a key with states as the deck draws it**: the daemon's status reports each shown key's state — its built-in's, and whether its active icon applies, two answers because they can differ (Input mode's built-in calls voice activity active; the key calls push-to-talk its active state) — and the grid draws by the deck's rules, only while it shows the page the deck is on. `active()` is the one definition: `describe()` draws by it. A redraw in another state tells the editor — no timer of its own. Before, every such key showed its default state in the grid whatever the deck showed. Held by `smoke-live-faces` and the editor's unit tests |
 | `src/drivers/panel-frames.ts`'s `imageFrameParts`, the virtual driver's `draw()` | a key's pixels go to the helper **without a copy**, its header and the cached render in two writes — the copies were ~8.5 MB of garbage on each output return; so a render handed to `draw()` must never be changed afterwards. Held by `smoke-virtual` and `smoke-panel` (the real helper, a frame in two writes) |
 | `src/actions/system.ts`'s `launch()`, or anything that starts a program from a deck | **nothing launched from a deck may be the daemon's child.** It goes through `launch()` (`systemd-run --user --scope`); a plain or detached spawn stays in `deckhand.service`'s cgroup, and every stop of the service — each update, a crash restart, logging out — kills it. Not `KillMode=process`: that leaves the helper, `pactl subscribe` and `udevadm monitor` behind |
 | `panel/idle.c`, `src/services/idle.ts`, `src/services/desktop-inhibit.ts` | **the compositor counts, never Deckhand**; the plain notification, so its inhibitors keep the decks lit; **and KDE's own inhibitions, which it doesn't count: while powerdevil lists one naming `idle` the helper doesn't run**, followed by the signal, which names the property as invalidated with no value, so each is followed by a read; `sleep` rows don't count; **the helper runs only while dimming is set and a Stream Deck is attached**; a helper that stops rides `recovery.ts`; one that says the protocol is absent is not retried until the settings change. **The re-dim deadline is one-shot, armed only by a press while idle**: cancelled by resumed, restarted by another press, overridden by a lock. Virtual decks are never idle-dimmed. Held by `smoke-sleep` and `smoke-panel` |
-| `src/sleep.ts`, `DeckSession.applySleep()` | **only this sets a deck below `clampBrightness`'s 5**; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
-| `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()` | what is on the screen stays until drawn again, so **a change is the level, then the canvas, then every key**; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels) and `smoke-virtual` |
+| `src/sleep.ts`, `DeckSession.applySleep()` | **only this sets a deck below `clampBrightness`'s 5** — a Brightness key, slider or dial stays 5–100; a level set while asleep is kept and woken to; **a press that only wakes a deck swallows its release too, but a key held down before the sleep is still released**, so nothing stays held; **an unreadable lock state is awake**, the opposite of a touch's. A lock wakes one deck at a press, Sleep all decks all of them. A virtual deck never sleeps on a lock. Held by `smoke-sleep` |
+| `panel/panel.c`'s `brightness`, `PanelDevice.setBrightness()`, `panel/wayland.c`'s copy | **the canvas is always drawn at full brightness and dimmed as it is shown** (`dim_out`), so **a change is the level alone**, never a clear and a redraw: a quick drag of a Brightness slider blacked the panel out and fell seconds behind when it was; **each buffer copies only what changed since it was last shown**; **a level is light given off: values are scaled by (level / 100)^(1 / 2.2)** (`LIGHT`, a table), so 5 is dim and lit, never black; **it dims the whole deck, a see-through background included, as black laid over it** — colour and alpha alike move toward opaque black, so what shows through darkens too, and at 0 the screen is opaque black, never clear; a virtual deck is at 100 unless set, never `defaults.brightness`, or every panel would darken on update. Held by `smoke-panel` (real pixels), `smoke-virtual` and `smoke-brightness-drag` (the real helper under a headless KWin: a fast drag, every frame shown checked for black, a missing key or an old level after the lift) |
 | `src/services/session-lock.ts`, `src/drivers/virtual.ts`'s touch path | **no touch from a virtual deck runs an action unless logind says the session is unlocked and active**; a state that cannot be read counts as locked; every key held when the lock comes is let go. Reading the device directly bypasses the lock screen, so this is the lock. Held by `smoke-virtual-touch`'s fake logind |
-| `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going |
-| `src/panel-presets.ts`'s `panelIn` / `defaultPanelOf`, `src/drivers/virtual.ts`'s `layoutFrom` | **a virtual deck never attaches with zero keys**: a profile's own panel, else the deck's default (`decks[key].virtual.panel`), else the first profile's, else a Medium grid for the screen. A profile made after the deck has no panel of its own and must show the default — found shipped in `v0.8.0`, where it showed nothing. Held by `virtual-panel.test.ts`, `check:virtual` and `smoke-virtual` |
+| `src/drivers/virtual.ts`, `src/hit-test.ts` | **the daemon hit-tests, never the helper**; a touch owns the control it started on until it lifts, wherever it lifts; every touch is let go on a lock, a panel change, or the touchscreen or screen going. **A touch is tested on the control's real shape, and the later of two overlapping controls in the panel's list is on top** — geometry carries that order (`z`) because keys are in reading order, which is not it. Held by `smoke-shapes` and `smoke-virtual-touch` |
+| `src/value-controls.ts`, `DeckSession`'s value path (`onValue`, `pumpWrites`, `endDrags`) | **a slider or dial takes only an action with a `value`** (Volume, Brightness, User volume), refused by the editor's drop and its main process alike; **its level is read from an event-fed cache and never polled**; **one write in flight, the newest waiting** — never a queue, never a timer; a volume drag skips the cache's re-read until its last write; **every way off a page ends a drag with the value where it is** — a lock, a page change (a page with the same controls too), a panel change, the deck closing; a failed write marks the control and stops that drag's writes. Held by `smoke-values` |
+| `panel/panel.c`'s `M`, `panel/evdev.c`'s moves, the virtual driver's `driving` | **the helper reports a finger's movement only for a contact the daemon asked it to follow**, at most once per frame, until it lifts; a follow for a contact not down is ignored, and a new contact in the same slot is not followed. Only the first finger on a slider or dial moves it. A button's touch is down and up only. Held by `smoke-panel` (the real helper) and `smoke-values` |
+| `src/value-face.ts`, `src/value-controls.ts`'s built-in art | **layers are drawn once per change of art, label or badge, and put together per value in plain JavaScript** — never a rasterisation per step (measured: ~24 ms a step with sharp against ~2–3 ms); the same value again is the same Buffer, kept per art for a few values, since two controls drawn alike share one art. **`assets/art/` is the generator's output at the design's reference sizes (46 × 130, 76 × 76)**, held equal by `smoke-values`; a built-in is drawn for its box, never stretched; **an image chosen is drawn in its area (`layerArea`): the thumb, knob and base keeping their proportions, the track and background stretched. The level is never an image** — Deckhand draws the fill under the thumb and **the ring over the knob**, so no art hides it. **A slider or dial is a rectangle**; an older round one is made one on load (`migrateValueControls`), as a fill or ring image becomes the drawn level. **A slider's travel is one rule, `sliderTravel`, on the deck and in the editor** — never measured from pixels — and the editor draws every layer over the control's whole box, as the deck does. **A stretched SVG is stretched in the editor too**: an SVG in an `<img>` keeps its own proportions inside whatever box `object-fit` gives it, so the editor's icon protocol serves a stretched layer's SVG inside an outer SVG of its own size that stretches (`stretchedSvg`) — drawn at its size first, as sharp draws it, a viewBox of other proportions keeping its own fit inside, then stretched. Held by `smoke-values`, `check:values` and `check:value-art`, which compares the editor's pixels with the deck's |
+| `src/shapes.ts`, `src/render.ts`'s `renderFace` | **each shape answers three questions — inside, outline, largest inner rectangle — and nothing else branches on the shape**: the label, a level and the failed badge go in the inner rectangle, the icon is the square at the shorter side, the fill covers the shape, **and everything outside it is alpha 0**. **A virtual deck's face has its outline (`OUTLINE_PX`) inside the shape's edge**, drawn twice as wide on the edge so the shape's cut leaves the inner half; a Stream Deck's key never has one. Without it, a square key with square corners is `renderButton`'s byte for byte; a Stream Deck's keys never take this path. Held by `smoke-shapes`, `smoke-virtual` and `smoke-panel` (real pixels) |
+| `panel/panel.c`'s `draw_image`, `src/drivers/panel-compose.ts` | **the helper puts the background under every image, and an image is clear wherever nothing is drawn**: never blend over the old pixels (a soft edge builds up over itself, a lower control redrawn paints over the upper), and never fill a gap in the daemon (the page's see-through background shows there). The background under an image is the page's, pixel for pixel — its colour, or its picture — at the deck's brightness. A control whose box another overlaps is sent as every control touching it, combined in the panel's order **at the moment it is sent, never when it is queued**: the queue holds controls, not images, or a control queued behind a busy helper carries a face since replaced over the newer one, and nothing redraws it. Held by `smoke-panel` (real pixels), `smoke-shapes` and `smoke-virtual` |
+| `src/page-background.ts`, `PanelDevice.setBackground()`, `panel/panel.c`'s ground (`'G'`) | **a page's background is the whole screen's, under every control, and controls never fade**. **Plain black and opaque — every page before backgrounds, and a new page — sends nothing but the canvas frame**, so the helper keeps its opaque `XRGB8888` buffers; below 100% they are `ARGB8888`, premultiplied, and back to `XRGB8888` once opaque again. The background is sent after every canvas frame (which resets it), before the keys; the same background again sends nothing. Its picture is drawn by the daemon at the screen's size on a page change, an edit or the screen coming back — **never on a clock**; a picture drawn for an older background is dropped. **An image is held to PNG, JPEG, WebP, GIF or SVG, 10 MB and 4096 px on its longer side** (`src/image-limits.ts`, one wording for the log and the editor): refused, the colour is shown alone and the log says why, once. Held by `smoke-panel` (real pixels, alpha and buffer formats under a headless KWin) and `smoke-virtual` |
+| `editor/src/renderer/BackgroundPanel.tsx`, `PageGround.tsx`, `DeckGrid.tsx`'s key fill | **the editor draws a page's background as the deck does**: behind the keys over the whole screen, an image the limits refuse left out, and **every control on a virtual deck opaque over it, an empty one the plain key face** — the background never shows through a button; a checker stands for what the real screen would show through. **The panel shows the saved background, never the preview**: the opacity is previewed on the page while it moves and saved when let go, and the next change made there must not carry an unsaved one. Black, Fill and 100% store nothing. A Stream Deck has no background icon and draws none. Held by `check:background` and `check:one-deck` |
+| `editor/src/renderer/App.tsx`'s Edit layout, `editor/src/main/config-document.ts`'s `setLayout` / `restorePage` | **a layout with no controls is never saved and never shown**: emptied, the page goes back as Edit layout found it and the editor alone shows it empty; Blank saves nothing until its first control; the daemon passes over a hand-written empty panel. **Done sits on the header of the deck being edited, beside the lit Edit layout, in the accent colour** — `check:layout` holds that it is seen at the window's normal size, not merely present. **Every way out of the mode is Done** — Done, the lit button, closing the window, another profile, a deck key changing page or profile — because every change is already saved; the mode ends only when its page or deck is gone, never on a save still on its way. Held by `check:layout` and `layout-edit.test.ts` |
+| `editor/src/renderer/useBulk.ts`, `editor/src/shared/bulk.ts`'s `placeOnControls` | **on a custom page a key lands only on a control that exists**: rows and columns mean nothing there, and two controls can share them. A paste goes onto the selected controls, one each, and with none selected pastes nothing; a key dragged from another deck goes onto the control dropped on; Copy to page and Copy to device, which copy to the same places, are refused **whenever either page is custom**. Held by `check:layout` and `bulk.test.ts` |
+| `editor/src/main/config-document.ts`'s `setPagePanel` / `setLayout`, `DeckPanel.tsx`'s header | **a page is a grid or custom for its whole life**: Edit layout is offered on a custom page only, Change layout… on a grid page only and only to another grid, and the main process refuses the rest — Change layout…'s edit on a custom page or to a custom panel, and Edit layout's save over a grid page that has keys. A new page started from Blank waits on disk as the deck's default grid, with no keys, until its first control. Held by `layout-edit.test.ts` and `check:layout` |
+| `editor/src/shared/layout-arrange.ts` | **the grid and snapping are separate, and Shift ignores both**; snapping, when within reach (6 screen pixels), wins over the grid; **several controls move as one**, stopped where the first meets the canvas's edge, so their places relative to each other never change; align is against the selection's own bounds, match is to the first one selected. Grid, pitch and Snap are editor preferences, never `config.json`. Held by `layout-arrange.test.ts` and `check:layout` |
+| `editor/src/shared/templates.ts`, `src/config.ts`'s `validateTemplates` | **a template is a layout and nothing more** — each control's place, size, shape and Lock proportions, at the size of the screen it was saved on; never an action, art or label. Names are unique ignoring case; a name in use is replaced only when asked. **A page from a template is a copy**, not linked, its own canvas kept, scaled to fit another screen, centred. **The editor draws it as the deck does, in the grid and in Edit layout alike** (`layoutScale`): the screen fitted to the frame, then the layout inside the screen — never the layout straight into a frame its header widened. Kept in `config.json` so a backup and an export carry them; the daemon validates them and never reads them otherwise. Held by `templates.test.ts` and `check:layout` |
+| `editor/src/shared/layout-edit.ts`'s `resizeBox` / `typedSize` | **Lock proportions holds at a limit**: both sides are scaled by one factor to fit the canvas and the smallest size, never clamped one at a time — a box distorted once becomes the ratio every later edit keeps. Held by `layout-edit.test.ts` |
+| `editor/src/renderer/DeckGrid.tsx`'s `placeOf`, `LayoutEditor.tsx` | **a virtual deck's page is drawn where its panel places each key, at its shape, on every page, preset or custom**; a Stream Deck keeps its grid and gets no Edit layout. **Only a custom page (`preset: "free"`) is edited**, and outside the mode nothing changes a layout. Held by `check:layout` and `check:one-deck` |
+| `src/panel-presets.ts`'s `pagePanelOf` / `defaultPanelOf` / `migratePagePanels`, `src/drivers/virtual.ts`'s `layoutFrom` | **a virtual deck never attaches with zero keys**: the page's own panel (one with no controls passed over, as if absent), else (a config not yet migrated) its layout's, else the deck's default (`decks[key].virtual.panel`), else a Medium grid for the screen. **Every page made without a choice gets the deck's default**, copied from no other page or profile — a profile made after the deck showed nothing in `v0.8.0`. **The migration keeps every page's grid and keys**: each page takes the panel its profile showed, and a deck without a default is given the one it fell back to; the daemon reads it in memory, the editor saves it once. Held by `virtual-panel.test.ts`, `config-store.test.ts`, `check:virtual` and `smoke-virtual` |
+| `src/deck.ts`'s `relayoutFor` / `goToPage` / `goBack` / `reconfigure` | **a page change re-lays out a virtual deck only when the page's controls differ**: a new set is a canvas frame, which clears the screen, then every key; the same set draws only the keys that changed, as before. What was held is let go first, as on any way off a page. Held by `smoke-virtual` and `check:virtual` (the helper's frames) |
+| `editor/src/renderer/model.ts`'s `pageGeometry` | **the editor draws a virtual deck's page at that page's grid, from the config**, never the deck's live geometry, which is whatever page the deck shows — Copy to device, a link's key number and the canvas all name pages not shown. A Stream Deck's keys are the daemon's. Held by `virtual-panel.test.ts` |
+| `editor/src/renderer/Toolbar.tsx`'s `PageTab` / `AddPage`, `DeckPanel.tsx`'s header | **a Stream Deck's page menu, header and New page are as they were**: Change layout… — in the page tab's menu and as a button in the deck's header — and the grid picker are a virtual deck's only. Held by `check:one-deck` and `check:virtual` |
 | `src/screens.ts` | **a screen's key never contains the EDID's numeric serial**: the Xeneon Edge and two identical HP monitors all report the same placeholder there; only the text serial, cleaned of unprintable bytes (one carries a NUL), tells screens apart |
 | `panel/wayland.c`, `src/drivers/virtual.ts`'s helper exit | **losing the output is not losing the screen**: the helper waits for its output to be announced again (no timer) and the daemon draws everything on its next `ready`; only the kernel's connector state ends a virtual deck. **A helper that stops unasked closes its deck's session** — listed again with its screen still connected, the session would stay open around a helper that is gone, showing nothing and reported connected. Held by `smoke-panel` (a headless KWin's output disabled and enabled) and `smoke-virtual` |
 | `panel/evdev.c` | **the paired touchscreen is grabbed, and a failed grab is an error**, never a silent read the desktop also sees; a path that is not an input device is refused unless `--touch-test-range` is given, which only tests pass |

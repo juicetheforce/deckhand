@@ -187,7 +187,14 @@ first key. Pressing it opens the editor.
 Open the editor from your desktop's application menu (**Deckhand**) or with
 `deckhand-editor`. Selecting a profile or page in the editor switches the
 decks to it; every change is saved as you make it and shows on the deck at
-once. Closing the editor's window leaves it in the tray (a setting, on by
+once. Each deck is drawn in a frame, its top bar showing its name, its size
+and a **Page** menu; a deck shown alone sits in the middle, fitted to the
+window and never larger than full size. The zoom bar, at the canvas's foot, is
+there with one deck or several, and in Edit layout: −, +, **Fit** (or **Fit
+all**) and **Reset** (100%). A zoom you set stays as the window changes size,
+until Fit; at Fit, the view fits the window again as it changes. Leaving Edit
+layout goes back to the zoom from before it. Zoomed in, the canvas scrolls to
+every part of a deck. Closing the editor's window leaves it in the tray (a setting, on by
 default); quit it from the tray menu. Closing it changes nothing on the
 decks.
 
@@ -198,12 +205,12 @@ Hidden decks keep working; they just aren't drawn. Shown decks sit on a
 canvas: drag one by its top bar to match your desk. It snaps to the other
 decks' edges and key columns and rows, and a deck dropped onto another is
 placed against the edge nearest the pointer. The padlock in a deck's top bar
-fixes it in place. The zoom bar has Fit all, which the editor opens at, and
-Reset (100%). Which decks are shown, where they are and which are locked are
+fixes it in place. Which decks are shown, where they are and which are locked are
 remembered, by serial number, in
 `~/.local/state/deckhand/editor/preferences.json`, not in the config. Click a
-key on any deck to edit it; the page tabs are for that deck, and every other
-deck has its own Page menu. Drag a key onto another key of the same deck to
+deck to edit it — a key, its top bar, or any empty part of its frame; a drag
+of its top bar moves it instead. The page tabs are for that deck, and every deck,
+that one included, has its own Page menu in its top bar. Drag a key onto another key of the same deck to
 move it (the two swap), or onto another deck to copy it there, replacing
 whatever that key held. A copied Go to page key whose page isn't on the other
 deck keeps its icon and label and loses the link, and the editor says so.
@@ -213,20 +220,137 @@ a virtual deck** (offered only while a touchscreen is connected): choose
 the screen — each listed with its size and resolution, the laptop's own
 marked built-in — enter your password when asked, tap the screen when it
 shows "Tap this screen" (within 30 seconds; with no touch it says so, and
-you can choose another screen), and choose a key size. **Only a touchscreen
+you can choose another screen), and choose a grid size. **Only a touchscreen
 you pair is readable by Deckhand, or by any program you run**, and only from
 the moment you pair it ([SECURITY.md](SECURITY.md#device-access)): the
 password lets a small root helper grant access to that touchscreen alone,
 and to your user alone — not to whoever else logs in on the computer. Small, Medium and Large aim at keys
 about 23, 30 and 45 mm apart, from the screen's own reported size, or from
-its pixels when that size is implausible; **Custom** sets the rows and
-columns, up to 12 × 24, and says when the keys get very small. **That size
-is the deck's default**: every profile shows the deck at it, profiles you
-create later included, unless you give a profile a size of its own. Under
-each virtual deck, Settings lists its **Default size** and its size in every
-profile, each with **Change…**; changing the default changes every profile
-without a size of its own. A smaller size names the keys that no longer fit,
-and drops them when you confirm. **Tap again** pairs the
+its pixels when that size is implausible; **Grid Size** sets the rows and
+columns, up to 12 × 24, and says when the keys get very small. **Every page
+of a virtual deck has its own layout**, and the deck switches to it with the
+page. **A page is a grid or a custom layout for its whole life**: to change
+which, delete the page and make a new one. **The size chosen at Add is the
+deck's default**: its first page has it, and so does every page made for it
+without asking — a profile's first page for the deck included. **New page**
+on a virtual deck offers the grids, **Blank** (an empty custom layout, opened
+straight in Edit layout) and your saved **templates**, whatever you last
+picked on that deck already chosen. **Change layout…**, on a grid page only —
+a button in the deck's top bar beside its Page menu, or in a page tab's
+right-click menu — gives that page another grid: keys keep their row and
+column, and any with no place in the new grid are named before anything
+changes, and removed only when you confirm. Only that page changes.
+
+**Custom layouts.** **Edit layout**, in a virtual deck's top bar on a custom
+page, opens it for laying out by hand. While it is open the button stays lit,
+with **Discard changes** and **Done** beside it, a bar names the deck, profile
+and page in place of the page tabs, only that deck is shown, and the action
+library becomes **Controls**: drag a **Button** onto the panel, or click it to add one
+in the middle, about 30 mm across on any screen. Drag a control to move it, or
+one of its eight handles to resize it, or type its X, Y, width and height, in
+the screen's pixels; nothing leaves the panel. Each control is a
+**rectangle**, with corners from square to a full pill, **round** or a
+**hexagon**, point up; round and hexagon stretch with their box, and **Lock
+proportions** keeps a box's shape. A control under about 15 mm says it is very
+small. Controls may overlap: the later is on top, a touch goes to the control
+on top on its real shape, a control with something on top of it is marked,
+and **Bring to front** and **Send to back** change the order. **Duplicate**
+(Ctrl+D) adds a copy with its key, one grid step on — with several selected, a copy of each, stacked as the originals are; **Delete** names the
+keys that go with it, and deletes empty controls without asking. **Grid** and
+**Snap**, at the foot of the canvas, are separate switches: the grid's lines
+are drawn at the pitch you choose (10 to 120 pixels, or any other), and moving
+and resizing land on them; snapping catches the other controls' edges and
+centres and the panel's, showing a dashed guide. Hold **Shift** while
+dragging to ignore both. The arrow keys move the selection a pixel, or one
+grid step with the grid on. A **marquee** dragged over empty canvas selects
+every control it touches; **Ctrl-click** adds or removes one, Ctrl+A selects
+all. Several selected move together and can be **aligned** (six ways, against
+their own bounds), **distributed** across or down, and **matched** in width or
+height to the first one selected. Every change is saved as it is made, so the
+touchscreen shows the layout as it is built. **Done**, or the lit Edit layout,
+leaves; so do closing the window, changing profile and a deck key that changes
+page or profile.
+**Discard changes** puts the layout back as it was when Edit layout was
+opened, deleted controls with their keys. Outside Edit layout a layout cannot
+be changed, only filled with actions, icons and labels. On a custom layout a
+key lands only on a control: **paste** puts the copied keys on the selected
+controls, one each, and pastes nothing with none selected; a key **dragged**
+from another deck goes on the control it is dropped on, and nowhere if there
+is none; **Copy to page** and **Copy to device**, which copy to the same
+places, are refused whenever either page is a custom layout. Every button on a
+virtual deck is drawn with a thin, light outline inside its edge. A layout with
+no controls is never saved, so a new Blank page left empty keeps the deck's
+default grid. **Save as template**, in Edit layout's bar, keeps the layout —
+each control's place, size and shape, nothing it shows — under a name; a name
+already in use offers to replace that template, and Discard changes does not
+undo it. Templates are offered in New page on every touchscreen, newest first,
+and are renamed or deleted from there (… beside each); a page made from one is
+not linked to it. A template saved on a screen of another size keeps its own
+size, shown scaled to fit and centred, as Edit layout's "Made for" chip says.
+Templates are kept in `config.json` (`templates`), so a backup and an export
+carry them. A virtual deck's top bar shows the
+grid's columns and rows on a grid page, and the screen's resolution on a custom
+one.
+
+**Sliders and dials.** Controls also has a **Slider**, added at about 14 × 60
+mm (its long side never more than three-quarters of the panel's shorter side),
+and a **Dial**, about 25 mm across. Both are rectangles — a dial draws its
+round art inside its box — with no shape to choose, only their **Corners**.
+A slider is **vertical** (lowest
+at the bottom) or **horizontal** (lowest at the left) — turning it turns its
+box — and its touch is **Drag only**, the default, where a tap changes nothing
+and the level moves by how far your finger moves, or **Jump to touch**, where
+the level goes to your finger at once and then follows it. A dial turns with
+your finger round its centre, following its angle, not its distance; a tap
+changes nothing. Both are set in Edit layout, and a template keeps them. They
+take only an action that sets a level: **Volume** — Default output or Default
+input (whichever it is) or any output or input — **Brightness** — this deck or
+any connected deck, from 5 to 100, as a Brightness key's — and Discord's **User
+volume**, 0–200 %. With one selected, the library dims
+every other action, and dragging one over it says **Needs an action with a
+value** and drops nothing; a slider's key moves onto another slider or dial,
+and never onto a button, nor a button's onto them. The level shown is the
+real one, kept up to date by the same events as the keys: a volume changed in
+the desktop's own volume control moves the slider too, and nothing is polled.
+Each is built from **layers** — a slider from a background, a track, a fill
+and a thumb; a dial from a background, a base, a knob and a level ring — with
+a chip for each on the Icon tab: every one Deckhand's own art until an image
+is chosen, except the fill and the level ring, which Deckhand always draws, in
+a colour of your choosing, with a soft glow. Which layer goes where, how each
+is sized, and what makes good art for it: [Sliders and dials: their
+layers](#sliders-and-dials-their-layers). Both can have a label, under the
+track or the dial, and a background colour, none unless set. **Clear slider** (or dial) empties it. While your
+finger is on one, its thumb or knob is drawn brighter, unless Touch feedback
+is off. A lock, a page change or any other way off the page ends a drag with
+the value where it is. **A page's background.** The picture icon in a virtual deck's top bar, on any
+page, opens the background of the page it shows, named in the panel: a
+**colour** (a swatch or its hex), an optional **image** — chosen from the same
+browser as icons, a PNG, JPEG, WebP, GIF or SVG of at most 10 MB and 4096 px
+on its longer side; one that isn't is dimmed there with the reason — shown as
+**Fill** (covering the screen, cropped) or **Fit** (all of it, the colour
+around it), and one **opacity** for the whole background, colour and image
+together, from 100% down to fully clear. Below 100%, whatever is on that screen
+behind the deck shows through, and can't be touched: a touch there does
+nothing. The buttons never fade, and the background never shows through one.
+The background covers the whole screen, also when a layout is shown scaled on
+a screen of another size. A new page starts black; Change layout… keeps a
+page's background. Brightness and Sleep all decks dim the background with
+everything else, so a sleeping see-through deck is black, not clear. The
+editor draws it behind the keys, with a checker where the real screen would
+show through, and in Edit layout behind the controls, where its icon is
+dimmed. Esc, or a click outside it, closes the panel. **What see-through costs** is the desktop's,
+not Deckhand's: at rest it costs nothing (measured on KDE Plasma with a GPU,
+KWin's CPU the same at 50% as opaque, 16.3% and 16.2% of a core on a busy
+desktop). Whatever moves behind the panel is redrawn by the desktop: there, a
+video playing behind it cost KWin about 6–8% of a core whether the deck was
+see-through or opaque (22.6% and 24.2%). A desktop that draws without a GPU is
+different — there see-through made a video behind it about ten times dearer
+for the compositor than an opaque deck — so on such a machine, keep
+see-through backgrounds to screens where nothing moves behind the deck.
+Deckhand's own share is the same either way. See-through needs the
+compositor's layer-shell, as on KDE Plasma; where the deck is a full-screen
+window instead, as on GNOME, the panel says it may not show through.
+**Tap again** pairs the
 screen with its touchscreen again, needed when a touchscreen without a
 serial number moves to another USB port. **Remove** stops using the screen
 as a deck and takes away its touchscreen's access (your password again), and
@@ -244,10 +368,38 @@ deck, in the editor, or from a script: `deckhand profile <name>`.
 **Icons** are image files wherever you keep them (PNG, JPEG, WebP, GIF, SVG).
 Nothing is copied or imported: the config holds the path, and editing the
 file updates the key. A key with an action and no icon draws that action's
-built-in icon. An icon file must be a regular file of at most 10 MB, and
-nothing in `~/.local/state/deckhand/` is ever read as one — that is where
-the OBS password and the Twitch link are kept, so they can't reach an
-export.
+built-in icon. An icon file must be a regular file, a PNG, JPEG, WebP, GIF or
+SVG of at most 10 MB and 4096 px on its longer side, and nothing in
+`~/.local/state/deckhand/` is ever read as one — that is where the OBS
+password and the Twitch link are kept, so they can't reach an export. An icon
+outside those limits is dimmed in the editor's icon picker with the reason and
+can't be chosen; one already in the config is drawn as the "missing" icon, on
+the deck and in the editor's grid, and the editor's Icon tab and the log say
+why.
+
+**Icon scale.** Every key, on every deck, has its own scale in the Icon tab,
+from 20 to 200% in steps of 5. At 100% the whole image fits inside the key,
+centred — a square image on a wide button is as tall as the button, with
+space either side; above 100% it zooms in and is cut to the key's shape;
+below, it shrinks. The scale is relative to the key, never to the image. A
+green mark on the slider shows where the whole image becomes visible: 100 on
+a square key, lower on a round or hexagonal control, which can cut the
+corners of an image that fits its box. A built-in icon follows **Settings ›
+General › Icon size** until its key's slider is moved; **Clear icon** returns
+it to following.
+
+**Appearance** (Settings › General): **Icon size**, the size of built-in
+icons on every key that doesn't set its own; **Touch feedback**, on unless
+turned off, draws a touched button on a virtual deck pressed — a lighter face
+at 95% of its size, inside its own shape — until the finger lifts (Stream
+Decks are never affected); **Label font**, one font for every label on every
+deck, from the fonts installed on the machine, each listed in its own face —
+a font that is no longer installed keeps its name there, says "Not installed.
+Using the default." and labels use the default until it is back; and **Key
+colour**, the default colour of every button on every deck. A key's own
+colour is the Key tab's **Background**: Default (following Key colour), a
+swatch, or a colour typed as hex. Every button has a solid colour, with its
+icon drawn on top.
 
 **Your configuration** is `~/.config/deckhand/config.json`. The editor writes
 it, and it is plain JSON you can edit by hand ([Configuration](#configuration)).
@@ -266,6 +418,67 @@ its tray menu, find the new serial with `deckhand decks`, and in
 `~/.config/deckhand/config.json` replace the old serial with the new one
 everywhere it appears (under `decks` and in each profile's `layouts`). Save;
 the deck picks it up at once.
+
+## Sliders and dials: their layers
+
+A slider or dial on a virtual deck is a stack of layers, drawn from the back
+to the front. Each is picked on the Icon tab's chip of the same name, from the
+same browser as icons — a PNG, JPEG, WebP, GIF or SVG of at most 10 MB and
+4096 px on its longer side — or left as Deckhand's own art, drawn in the
+action's colour. **Use built-in** goes back to that art.
+
+| Slider, back to front | Dial, back to front | What it is | How it is sized |
+| --- | --- | --- | --- |
+| Background colour | Background colour | The Key tab's **Background**: a colour, or **None** (the default), where the page shows through | The whole control |
+| Background | Background | An image behind everything: a scale, a panel texture. None until one is chosen | **Stretched** to the whole control, the label's band included |
+| Track | Base | What stays still: the slot the thumb runs in; the dial's face or scale. A dial's Base can be **None** | Track: **stretched** to the control above the label. Base: **keeps its proportions**, fitted in the square of the dial's shorter side, centred |
+| Fill | — | **Drawn by Deckhand, never an image**: a bar along the middle of the slider, shown from the lowest end up to the level, with a soft glow | The slider's length; its width is the built-in track's |
+| Thumb | Knob | What moves: the thumb slides along the slider; the knob turns about the dial's centre | Thumb: **keeps its proportions**, fitted in an area as wide as the slider and as long as it is wide (never more than a third of its length). Knob: **keeps its proportions**, fitted in the square inside the level ring (about four-fifths of the dial's shorter side), centred |
+| — | Level ring | **Drawn by Deckhand, never an image**: an arc from the knob's start angle round to the level, with a soft glow, drawn over the knob so no knob can hide it | Just inside the dial's square |
+| Label | Label | The key's label, in its own band at the foot of the control | As many lines as it has |
+
+The fill's and the ring's chip has **Show** and a colour: the action's own
+unless one is chosen, from a set of bright colours made to stand out, or typed
+as hex. The control's **Corners** (Edit layout) round every layer alike. While a
+finger is on it, the thumb or knob is drawn brighter, unless Touch feedback is
+off.
+
+**How the level lines up.** The thumb's centre is the level. It runs from half
+the thumb's length above the track's lowest end to half its length below its
+highest end: with Deckhand's track a few pixels in from each end of the
+control, with an image as the track the whole length. A scale on a background
+image lines up with the levels if its marks span that same distance.
+
+**What makes good art:**
+
+- **A transparent background on every layer but the Background.** Each layer is
+  drawn over the ones behind it; anything opaque around a thumb or knob covers
+  the track or base. A PNG with transparency, or an SVG, works best; an SVG
+  stays sharp at any size.
+- **Knobs drawn straight on, from directly above, with the pointer straight
+  up.** The knob turns about the centre of its image, and Deckhand points it at
+  the level by turning it from straight up. Keep everything inside a circle
+  centred in the image: corners sweep outside it as it turns. A pointer drawn
+  elsewhere can be lined up with **Start** and **End** (Icon tab, Knob), the
+  angles it turns between, degrees from straight up, clockwise — −135° and
+  135° unless set.
+- **A base the same shape as the knob's world**: square, centred, its scale
+  marks between the same start and end angles as the knob. It is not
+  stretched, so a round base stays round.
+- **Tracks that stretch well.** A track is stretched to the slider in both
+  directions, so draw it for the slider's own proportions, or keep it simple —
+  a plain or rounded bar, a gradient along its length — so stretching does not
+  show. Keep detail away from its ends, which stretch the most visibly on a
+  long slider. The fill is drawn along the middle, so a slot down the centre
+  suits it.
+- **A thumb drawn the way it lies**: wider than tall on a vertical slider,
+  taller than wide on a horizontal one — an image is never turned, so a
+  horizontal slider wants its own thumb. Its middle is where the level reads.
+- **A background drawn at the control's proportions**, since it is stretched:
+  for a scale, mark it over the thumb's run (above), and leave the middle clear
+  if the fill should stand out.
+- **An SVG track or background is stretched like any other image**, whatever
+  its own `preserveAspectRatio` says, in the editor as on the deck.
 
 ## The deckhand command
 
@@ -315,8 +528,9 @@ scripts. `config.example.json` shows a complete file — its serials and audio
 
 ```jsonc
 {
-  "defaults": { /* background, labelColor, labelSize, labelPosition,
-                   iconFit, brightness, refreshMs, builtinIconSize, sleep */ },
+  "version": 2,                                // the format: see "Icon scale" below
+  "defaults": { /* background, labelColor, labelSize, labelPosition, labelFont,
+                   builtinIconSize, touchFeedback, brightness, refreshMs, sleep */ },
 
   "decks": {                                   // per deck, optional for a Stream Deck
     "<serial>": { "name": "XL", "brightness": 70 },
@@ -335,10 +549,10 @@ scripts. `config.example.json` shows a complete file — its serials and audio
       "layouts": {                             // what each deck shows in this profile
         "<serial or screen key>": {
           "startPage": "Combat",               // page ID or name, optional
-          "panel": { /* a virtual deck only: its keys, below */ },
           "pages": {
             "<page ID>": {
               "name": "Combat",                // optional
+              "panel": { /* a virtual deck only: this page's keys, below */ },
               "buttons": { "0": { /* button */ } }
             }
           }
@@ -363,7 +577,7 @@ its layout's start page.
 
 **Buttons** are keyed by control ID. On a Stream Deck that is the key's
 index as a string: 0 is top-left, counting across rows. On a virtual deck it
-is the ID of one of its panel's controls (below). A button takes `icon`, `iconFit` (`cover` or `contain`), `label`,
+is the ID of one of its panel's controls (below). A button takes `icon`, `iconScale` (20–200), `label`,
 `labelColor`, `labelSize`, `labelPosition`, `background`, `action`,
 `onRelease` and `refreshMs`. `\n` in a label starts a new line (Enter, in
 the editor's label field); blank lines are dropped. A line
@@ -378,43 +592,102 @@ screen's EDID, plus its text serial number when it has one (`GRA-6e4e`,
 `virtual.output` is the connector it was set up on, which tells identical
 screens apart; `virtual.touch` is its touchscreen, by USB vendor and product
 and either its USB `serial` or, without one, its port (`path`, udev's
-`ID_PATH`). The editor writes both when you tap the screen. `virtual.panel`
-is the deck's default panel, the size chosen when it was added; a profile's
-layout for the deck may carry a `panel` of its own, which that profile uses
-instead. A panel:
+`ID_PATH`). The editor writes both when you tap the screen. Each page of a
+virtual deck has a `panel`: its keys. `virtual.panel` is the deck's default
+panel, the size chosen when it was added, given to every page made for it
+without a choice. A panel:
 
 ```jsonc
 "panel": {
   "size": { "width": 1920, "height": 720 },  // the canvas, in the screen's pixels
-  "preset": "medium",                        // what made it; information only
-  "controls": [                              // each key, in pixels of the canvas
-    { "id": "k1", "x": 42, "y": 42, "w": 211, "h": 211, "shape": "square" }
+  "preset": "medium",                        // small, medium, large, custom (Grid Size), or free (a custom layout)
+  "controls": [                              // each key, in pixels of the canvas; the later is on top
+    { "id": "k1", "x": 42, "y": 42, "w": 211, "h": 211 },
+    { "id": "c1", "x": 300, "y": 42, "w": 300, "h": 120, "shape": "rectangle", "radius": 60 },
+    { "id": "c2", "x": 700, "y": 42, "w": 211, "h": 211, "shape": "round", "keepRatio": true }
   ]
 }
 ```
 
 A control's `id` is up to 32 letters, digits, `-` and `_`, unique in the
 panel and never derived from its position, so moving a key keeps its
-button. Every control must lie on the canvas, and `square` is the only shape
-for now. On a screen of another size the canvas is scaled to fit, centred.
-A layout with no `panel` uses the deck's default; with no default either (a
-config written before `v0.8.1`), the first profile's panel; with none at all,
-a Medium grid for the screen, so a virtual deck never shows no keys.
+button. Every control must lie on the canvas. `shape` is `rectangle` (the
+default; `square`, which older configs carry, is the same), `round` or
+`hexagon`; `radius` rounds a rectangle's corners, up to half its shorter side;
+`keepRatio` is Edit layout's Lock proportions. `kind` is `slider` or `dial`
+(absent: a button); a slider's `direction` is `vertical` (the default) or
+`horizontal`, and its `touch` `drag` (the default) or `jump`. A slider's or
+dial's key may carry `layers` — `background`, `track` and `thumb`, or
+`background`, `base` and `knob`, each an image path or `builtin:<name>`,
+absent for Deckhand's own art (a background: none), and `null` for none (`base`
+only) — its `level`, `{ "show": false }` to switch the fill or ring off and
+`"color": "#rrggbb"` for its colour, and a dial's `angles`,
+`{ "start": -135, "end": 135 }`, degrees from straight up. A slider or dial is
+always a rectangle: an older config's round one is drawn as one, and its
+`fill` or `ring` image as the drawn level. A key's background fills its
+whole shape and its icon is the square at the shorter side, centred; its label
+and failed mark sit in the largest rectangle inside the shape; nothing is drawn
+outside it. Where controls overlap, the later in `controls` is on top, on the
+screen and for touch. **Only a page whose `preset` is `free` is edited in Edit
+layout**; a page's `preset` never changes between a grid and `free`.
+A virtual deck's page can have a `background`:
+
+```jsonc
+"background": {
+  "color": "#102030",           // black unless set
+  "image": "~/Pictures/dusk.png", // optional, a path as an icon's; never copied
+  "fit": "fill",                // fill (the default: covers the screen, cropped) or fit
+  "opacity": 60                 // 0–100, of the whole background; 100 unless set
+}
+```
+
+With none — black, opaque — the screen is drawn as it always was. An image
+beyond the limits (PNG, JPEG, WebP, GIF or SVG, 10 MB, 4096 px on its longer
+side) is left out, the colour shown alone, and the log says why. An export
+carries a background's image as it carries icons. On a screen of another size the canvas
+is scaled to fit, centred. A page with no `panel`, or a `panel` with no
+controls, uses the deck's default; with none at all, a Medium grid for the
+screen, so a virtual deck never shows no keys. **Configs from
+before every page had its own** — a `panel` on a profile's layout, shared by
+its pages — are read as they were: each page shows the layout's panel, else
+the deck's default (else, before `v0.8.1`'s defaults, the first profile's).
+The daemon reads them that way without writing anything; the editor moves
+each panel onto its pages, and saves, when it opens the file.
 
 **`icon`** is left out for the action's built-in icon (a key with no action
 stays blank), `null` for no icon, a path to an image file, or
 `"builtin:<name>"` for one of the icons in `assets/icons/`. An icon that
 can't be drawn shows a dashed "missing" icon.
 
+**`iconScale`** is the key's icon scale in percent, 20–200 (Icon scale,
+above): at 100 the whole image fits the key's box, centred. Without one, an
+image file is drawn at 100 and a built-in at `defaults.builtinIconSize`.
+
 **Built-in icons are drawn smaller than the key**, centred, at
-`defaults.builtinIconSize` percent of it: 45.5 unless set, from 28 to 70 —
-what **Settings › General › Icon size** sets. The slider shows it relative
-to the largest size, 70% of the key as 100%: from 40 to 100% in steps of 5,
-65% by default. It applies to every
-built-in — an action's own, one chosen by name, the "missing" icon — and
-never to an image file you chose, which fills the key as `iconFit` says. The
-decks and the editor redraw when the slider is let go, or when `config.json`
-is saved.
+`defaults.builtinIconSize` percent of it, on the same rule: 45.5 unless set,
+from 25 to 100 — what **Settings › General › Icon size** sets, showing the
+same figure (45.5 as 46%); at 100 a built-in fills the key, and a label
+over it stays as readable as over a smaller one, drawn over the icon with its
+dark outline. It applies to every built-in — an action's own,
+one chosen by name, the "missing" icon — on a key without an `iconScale` of
+its own, and never to an image file. The decks and the editor redraw when the
+slider is let go, or when `config.json` is saved.
+
+**`defaults.labelFont`** names an installed font family for every label
+(Deckhand's own, `sans-serif`, unless set); a family that isn't installed
+falls back to it. **`defaults.touchFeedback: false`** turns Touch feedback
+off. **`defaults.background`** is Key colour, every button's colour unless it
+sets its own `background` (`#101014` unless set). A font or colour change
+redraws each key once.
+
+**`"version": 2`** marks a config written since icons had a scale. A config
+without it is from before, when an image file was cropped to fill the key
+(`iconFit: "cover"`, the default) or fitted whole (`"contain"`). The daemon
+draws such a config as it was, without writing anything; the editor converts
+it when it opens the file, and saves: where the crop applied to an image that
+isn't square, the key gets the `iconScale` that keeps its look (up to 200),
+`contain` becomes 100 — written as nothing — and `iconFit` is dropped.
+Now playing's album art is always drawn as the crop was.
 
 ## Actions
 
@@ -430,7 +703,7 @@ is saved.
 | `multi` | `steps: [...]`, each optionally with `delayMs` — a pause after that step |
 | `page` | `to: "<page ID or name>"` or `back: true`. Pages on the same deck and profile |
 | `profile` | `to: "<profile ID or name>"` — switches every deck |
-| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker |
+| `brightness` | `value` or `delta`; `deck`: a deck's key under `decks`, this deck if left out; `showLevel: true` shows the level, at the top of the key. A Stream Deck's backlight, or a virtual deck's keys drawn darker, 5–100. On a slider or dial, `deck` alone: 5–100 |
 | `sleep.all` | `mode`: `dim` (`level`, 1–100, 20 unless set) or `off` — every deck, virtual ones too, until a press on any deck brings them all back. Dimmed, that press also runs its key; off, it only wakes them. Draws `decks-sleep`, and `decks-asleep` while they are |
 | `clock` | Shows the time |
 | `noop` | Deliberately blank |
@@ -440,7 +713,7 @@ is saved.
 | `audio.source` | `node` (from `deckhand sources`), `label` — sets the default input and moves recording streams to it. Highlights when active |
 | `audio.cycleSource` | `devices: [{ node, label }, …]` — steps through inputs from one key |
 | `audio.micMute` | Toggles the default input's mute; `iconActive` (muted) |
-| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key |
+| `audio.volume` | `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key. On a slider or dial: `node` and `label` (from `deckhand sinks` or `deckhand sources`), with `input: true` for an input — the device's volume, 0–100 %; no `node`, the default output, or with `input: true` the default input |
 | `audio.mute` | Toggles output mute; `iconActive` (muted) |
 | `sound.play` | `file` (WAV, MP3, Ogg or FLAC; `~/` allowed); optional `node` (from `deckhand sinks`) and `label` — none plays on the default output; `volume` 0–100 (default 100); `mode`: `playStop` (default), `playRestart`, `playOverlap`, `loopStop`, `hold`. Shows when it is playing or looping. `iconActive` (playing) |
 | `sound.stopAll` | Stops every sound Deckhand is playing |
@@ -464,7 +737,7 @@ is saved.
 | `discord.inputMode` | Switches Discord between push-to-talk and voice activity. Solid on voice activity. `iconActive` (push-to-talk) |
 | `discord.join` | `guild`, `channel` (Discord's IDs, with `guildName` and `channelName` to show) — joins that voice channel |
 | `discord.leave` | Leaves the voice channel you are in |
-| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 % |
+| `discord.userVolume` | `user` (Discord's ID, with `userName` to show), `delta: 5` (or `-5`); `showLevel: true` shows the level, at the top of the key — the volume you hear one person at, 0–200 %. On a slider or dial, `user` alone: the level outright |
 
 **Sleep.** Dimming after idle is off until you set it: **Settings › General ›
 Sleep** has **Dim after**, **Dim to** and **Sleep after**, global, for Stream Decks
@@ -1120,7 +1393,9 @@ smoke` at the root drives fake decks; `scripts/smoke-socket.mjs` (part of it)
 drives the control socket over a real socket, with
 `scripts/test/fake-input-helper.mjs` (the helper's protocol and timing, no
 uinput) and `scripts/test/fake-pactl.mjs` on `PATH` (with `FAKE_PACTL_STATE` it
-remembers presses, mutes and absent devices). `scripts/test/fake-mpris-player.mjs`
+remembers presses, mutes, volumes and absent devices, and its `subscribe`
+announces a change whenever that file changes, as the desktop's own volume
+control would). `scripts/test/fake-mpris-player.mjs`
 puts a fake player on a private bus (`scripts/smoke-mpris.mjs` re-runs itself
 under `dbus-run-session`). `scripts/test/fake-gio.mjs`,
 `fake-gsettings.mjs` and `fake-systemd-run.mjs` stand in for the programs an
@@ -1131,14 +1406,27 @@ can plug and unplug while the daemon runs. For virtual decks,
 (`DECKHAND_PANEL_BIN`), `fake-sysfs.mjs` builds a scratch `/sys/class/drm`,
 `/sys/class/input` and udev database of screens and touchscreens, and
 `fake-logind.mjs` puts a session that can be locked on a private bus
-standing in for the system bus. `scripts/test/fake-sound-player.sh`
+standing in for the system bus. The fake panel logs a follow frame (`M`) by
+its contact, and a test says the moves itself, as it says the touches; with
+`FAKE_PANEL_RGBA_MAX` it logs larger images whole. The fake panel logs a background frame by its
+colour, opacity, size and a few pixels, and with `FAKE_PANEL_SURFACE_FILE`
+reports the surface that file names when it says it is ready (a full-screen
+window, as on GNOME). `scripts/test/fake-sound-player.sh`
 stands in for `pw-play` and `paplay` (`scripts/smoke-sounds.mjs`): it plays
 nothing, for as many milliseconds as the file's text says, and exits on
 SIGTERM as each real one does. `scripts/smoke-panel.mjs` runs the real
 helper, `panel/deckhand-panel`, under a headless KWin (`kwin_wayland
 --virtual`) on a sealed bus, feeds it recorded touches, and compares what it
 drew pixel by pixel; without `kwin_wayland` or a built helper it says
-"skipped" and passes, so read its output. `scripts/test/fake-discord.mjs`
+"skipped" and passes, so read its output. `scripts/smoke-brightness-drag.mjs`
+runs the real daemon session and virtual driver against the real helper
+under a headless KWin, through `scripts/test/panel-shim.mjs` (it stands in
+for the touchscreen and says a test's touches); the helper's `--present-log`
+logs every frame it shows, so a fast drag of a Brightness slider is checked
+frame by frame for black, a missing key, or an old level after the finger
+lifts, and its CPU per step measured against a Volume slider's. It skips as
+`smoke-panel` does. `scripts/test/fake-udevadm.mjs` is a `udevadm monitor`
+that says nothing (Traps in the checks, below). `scripts/test/fake-discord.mjs`
 is the Discord app's local socket and Discord's token endpoint
 (`DECKHAND_DISCORD_API_URL`), behaving as real Discord was measured to;
 `scripts/smoke-discord.mjs` and `check:discord` point `XDG_RUNTIME_DIR` at a
@@ -1148,18 +1436,27 @@ The checks:
 
 - Root: `npm run smoke`, which includes `smoke-first-run.mjs`: the daemon
   started with no config and two decks, and the starter key it writes.
+  Its `smoke-appearance.mjs` drives a session on a device of its own with
+  the fake input helper set before anything is imported: a key there sends
+  its hotkey, and the real helper would type it into the desktop.
+  `smoke-values.mjs` does the same for sliders and dials, with the fake pactl
+  and a fake logind: no test sends a volume or brightness change to the
+  machine's own devices.
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:value-art`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.
 - **`check:one-deck` runs before every commit touching `editor/` or `src/`**,
   through `scripts/hooks/pre-commit`, once a clone has run `git config
-  core.hooksPath scripts/hooks`. With one deck connected the editor must be
-  exactly the one-deck editor — one grid, the plain Device dropdown, no
-  multi-deck element — and most people have one deck. It checks the working
+  core.hooksPath scripts/hooks`. With one deck connected the editor must
+  show that deck in its frame, with its top bar and Page menu, centred and
+  fitted, the zoom bar (a zoom set holding through a resize, scrolling, Fit),
+  the plain Device dropdown, and nothing for arranging decks — no padlock,
+  dragging or Show in editor, and for a Stream Deck no background — and most
+  people have one deck. It checks the working
   tree, so stage everything a change needs.
 - The installer, each with `bash`: `scripts/test/desktop-entry.test.sh` (the
   desktop entry and icon, against a scratch HOME), `preflight.test.sh`
@@ -1203,6 +1500,20 @@ window.
 
 Each has been hit more than once.
 
+- **A test must never hear this machine's own devices.** The hotplug watch
+  runs `udevadm monitor`; on a real one, a laptop's GPU sends `drm` change
+  events every few seconds at rest, and a USB device plugged or unplugged
+  during a run is an event too — each asked a scan, and failed a check about
+  scans by timing alone. `DECKHAND_UDEVADM` names the command, and
+  `scripts/test/control-harness.mjs` and `scripts/test/fake-sysfs.mjs` set it
+  to `scripts/test/fake-udevadm.mjs`, a monitor that says nothing; a test that
+  imports neither and starts the watch sets it itself (`smoke-virtual` does,
+  and checks it). `smoke-recovery` alone puts its own `udevadm` on `PATH`, to
+  test the monitor's restarts.
+- **A slider's key needs its release a moment later.** The settings slider
+  saves on key-up, from what the key-down moved it to; both sent in one go,
+  the key-up comes before React has drawn the move, and nothing is saved.
+  Send them apart, as a hand does (`check:background`'s `pressKey`).
 - **Judge a run by its exit code, never by the tail of its output.** Editor
   `npm test` runs several files; the last one printing "all checks passed" can
   hide failures in an earlier one. And **run `tsc` first**: it emits output
@@ -1241,7 +1552,15 @@ Each has been hit more than once.
   one taken and let go (`freePort`) for "nothing listening".
 - **`inPage` sends a page script as one line**, so a `//` comment in it
   swallows everything after it; the script then "failed to execute" with no
-  message. Use `/* */`, or keep comments outside the string.
+  message. Use `/* */`, or keep comments outside the string. An exception
+  thrown by a script that runs is reported with its own message (`no
+  <selector>` from a click on nothing); Electron's `executeJavaScript` alone
+  gives every one as "Script failed to execute", so the check mode catches it
+  in the page first.
+- **`until` returns `false` when it times out; it does not throw.** A step
+  whose wait timed out goes on, and the run stops at a later step, on its
+  consequence. Record what each wait returns, and read the record ("recorded
+  so far") from the first `false`, not the step named.
 - **`elementFromPoint` finds nothing off-screen.** A pointer drag from a
   library row below the fold of its pane never starts, so "the drop placed
   nothing" passes whether or not the code blocked it. Scroll the row into
