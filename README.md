@@ -105,7 +105,7 @@ With one deck, the editor is just that deck:
 
 ![The editor with one Stream Deck XL, a key selected](assets/screenshots/one-deck.png)
 
-![Two decks side by side in the editor](assets/screenshots/multi-deck.png)
+![Two Stream Decks and a touchscreen shown together in the editor](assets/screenshots/multi-deck.png)
 
 ## Virtual decks
 
