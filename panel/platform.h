@@ -39,14 +39,15 @@ int platform_dispatch(int *resized, int *lost);
 /* Flush outgoing requests; call before poll(). */
 void platform_prepare(void);
 
-/* The pixel buffer to draw into, 0xAARRGGBB, width × height, stride in
- * pixels. Valid until the next resize. Shown as XRGB8888 — alpha ignored,
- * opaque — unless platform_translucent(1), then as premultiplied ARGB8888. */
+/* The pixel buffer to draw into, 0xAARRGGBB premultiplied, width × height,
+ * stride in pixels. Valid until the next resize. Shown as ARGB8888, always:
+ * its alpha is 255 wherever the background is opaque. Zeroes (clear) when made:
+ * fill it before it is first shown. */
 uint32_t *platform_canvas(int *width, int *height, int *stride);
 
-/* Whether the canvas's alpha is shown (a see-through background) or ignored
- * (opaque, the buffer as it always was). Changing it changes the format of
- * the buffers handed to the compositor, and marks everything changed. */
+/* Whether the background lets what is behind the screen through (1) or not
+ * (0): the surface is declared opaque only while it does not. The buffers'
+ * format never changes (wayland.c). Marks everything changed. */
 void platform_translucent(int on);
 
 /* Mark a rectangle as changed. Shown by the next platform_present(). */

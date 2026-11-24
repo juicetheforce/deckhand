@@ -119,7 +119,7 @@ static unsigned canvas_w, canvas_h;
  * The background ('K' sets an opaque colour, 'G' a page's): one premultiplied
  * ARGB pixel, or a picture of it at ground_w × ground_h (also premultiplied),
  * stretched to the screen if the screen has since changed size. Below opaque,
- * the buffers are shown with their alpha (platform_translucent).
+ * the surface is no longer declared opaque (platform_translucent).
  */
 static uint32_t ground = 0xff000000;
 static uint32_t *ground_px;
@@ -574,8 +574,8 @@ static int read_input(void) {
 }
 
 /* The screen as shown — the canvas at the deck's brightness — as a binary PPM (premultiplied colour), and
- * its alpha beside it as FILE.alpha, a binary PGM: 255 everywhere while the
- * background is opaque. */
+ * its alpha beside it as FILE.alpha, a binary PGM: the alpha the compositor is
+ * given, which is 255 everywhere while the background is opaque. */
 static void write_dump(const char *path) {
   int w, h, stride;
   uint32_t *px = platform_canvas(&w, &h, &stride);
@@ -600,7 +600,7 @@ static void write_dump(const char *path) {
     for (int x = 0; x < w; x++) {
       uint32_t p;
       dim_out(&p, &px[y * stride + x], 1);
-      fputc(ground_see_through() ? (int)(p >> 24) : 255, f);
+      fputc((int)(p >> 24), f);
     }
   fclose(f);
 }
