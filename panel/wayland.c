@@ -15,10 +15,16 @@
  * Buffers: two shared-memory buffers the size of the surface in pixels. The
  * canvas is drawn in memory of its own; presenting copies it into a buffer the
  * compositor has let go of, and commits only when the last frame was shown.
- * They are XRGB8888, opaque, unless the page's background is see-through
- * (platform_translucent): then ARGB8888, premultiplied, as Wayland's alpha
- * formats are — and back to XRGB8888 once it is opaque again, so a fully
- * opaque background costs the compositor exactly what it always did.
+ * They are always ARGB8888, premultiplied, as Wayland's alpha formats are, and
+ * a surface's buffers never change format: KWin 6.7 and earlier, drawing with
+ * desktop OpenGL, give a surface's texture the format of its first buffer and
+ * upload every later one into it, so a surface that began XRGB8888 stayed
+ * opaque when its buffers turned ARGB8888 — a see-through page showed black.
+ * While the page's background is opaque the whole surface is declared opaque
+ * (its opaque region), so the compositor need not draw what is behind it, as
+ * with an opaque format; while it is see-through (platform_translucent), no
+ * part is. Measured on KDE Plasma with a GPU, an opaque panel declared so
+ * costs the compositor the same as one with opaque buffers.
  *
  * The output can go away while its screen is still plugged in: KWin removes
  * a screen's output when it wakes from power saving, and adds it back a
@@ -247,8 +253,23 @@ static void free_buffers(void) {
   canvas = NULL;
 }
 
-/* Whether the buffers carry alpha (ARGB8888) or not (XRGB8888). */
+/* Whether the page's background lets what is behind the screen through: then
+ * no part of the surface is declared opaque. */
 static int translucent;
+
+/* The surface's opaque region, as the background is: all of it, or none.
+ * Double-buffered: it takes effect with the next commit. */
+static void set_opaque_region(void) {
+  if (!surface) return;
+  if (translucent || logical_w <= 0 || logical_h <= 0) {
+    wl_surface_set_opaque_region(surface, NULL);
+    return;
+  }
+  struct wl_region *region = wl_compositor_create_region(compositor);
+  wl_region_add(region, 0, 0, logical_w, logical_h);
+  wl_surface_set_opaque_region(surface, region);
+  wl_region_destroy(region);
+}
 
 /* The two buffers handed to the compositor, for the canvas as it is. */
 static int make_shm_buffers(int w, int h, char *err, size_t errlen) {
@@ -264,7 +285,7 @@ static int make_shm_buffers(int w, int h, char *err, size_t errlen) {
     void *px = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (px == MAP_FAILED) { close(fd); snprintf(err, errlen, "cannot map a buffer"); return 4; }
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)size);
-    buffers[i].wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride, translucent ? WL_SHM_FORMAT_ARGB8888 : WL_SHM_FORMAT_XRGB8888);
+    buffers[i].wl = wl_shm_pool_create_buffer(pool, 0, w, h, (int32_t)stride, WL_SHM_FORMAT_ARGB8888);
     wl_buffer_add_listener(buffers[i].wl, &buffer_listener, &buffers[i]);
     wl_shm_pool_destroy(pool);
     close(fd);
@@ -280,6 +301,8 @@ static int make_shm_buffers(int w, int h, char *err, size_t errlen) {
 
 static int make_buffers(int w, int h, char *err, size_t errlen) {
   free_buffers();
+  /* Zeroes would be clear in an ARGB8888 buffer; panel.c fills the background
+   * after every open and resize, before anything is shown. */
   canvas = calloc((size_t)w * h, 4);
   if (!canvas) { snprintf(err, errlen, "out of memory"); return 5; }
   canvas_w = w;
@@ -294,6 +317,7 @@ static int fit_surface(struct panel_output *info, char *err, size_t errlen) {
   info->width = logical_w * scale;
   info->height = logical_h * scale;
   if (compositor_version >= 3) wl_surface_set_buffer_scale(surface, scale);
+  set_opaque_region();
   return make_buffers(info->width, info->height, err, errlen);
 }
 
@@ -435,11 +459,9 @@ void platform_translucent(int on) {
   on = on ? 1 : 0;
   if (on == translucent) return;
   translucent = on;
-  /* No buffers yet (no surface, or its output gone): made in this format when it is back. */
-  if (!buffers[0].wl || !canvas) return;
-  char err[128];
-  if (make_shm_buffers(canvas_w, canvas_h, err, sizeof err)) return;
-  platform_damage(0, 0, canvas_w, canvas_h);
+  /* No surface (its output gone): set when it is back (fit_surface). */
+  set_opaque_region();
+  if (canvas) platform_damage(0, 0, canvas_w, canvas_h);
 }
 
 void platform_damage(int x, int y, int w, int h) {

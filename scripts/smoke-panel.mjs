@@ -340,7 +340,11 @@ try {
   console.log("a page's background: a colour, a picture, an opacity, over the whole screen");
   {
     const shots = path.join(TMP, 'ground.ppm');
-    /** Run a helper with the protocol traced, send frames, and read back its pixels, alpha, and the formats of the buffers it gave KWin. */
+    /**
+     * Run a helper with the protocol traced, send frames, and read back its pixels, the alpha KWin is given, the
+     * formats of the buffers it gave KWin, and each opaque region it set, in order: 'all' (the whole 1920 × 720
+     * surface), 'none' (nil), or the region's rectangle when it is anything else.
+     */
     const run = async (send, waitDrawn) => {
       const proc = spawn(HELPER, ['--output', 'Virtual-1', '--dump', shots], { env: { ...helperEnv, WAYLAND_DEBUG: 'client' }, stdio: ['pipe', 'pipe', 'pipe'] });
       const events = [];
@@ -360,25 +364,40 @@ try {
       const aoff = alpha.subarray(0, 20).toString('latin1').match(/^P5\n(\d+) (\d+)\n255\n/)[0].length;
       // wl_shm_pool.create_buffer(new id, offset, width, height, stride, format): 0 ARGB8888, 1 XRGB8888.
       const formats = [...trace.matchAll(/wl_shm_pool#\d+\.create_buffer\(new id wl_buffer#\d+, \d+, \d+, \d+, \d+, (\d+)\)/g)].map((m) => Number(m[1]));
+      const added = new Map([...trace.matchAll(/ wl_region#(\d+)\.add\((-?\d+), (-?\d+), (-?\d+), (-?\d+)\)/g)].map((m) => [m[1], m.slice(2, 6).join(',')]));
+      const opaque = [...trace.matchAll(/ wl_surface#\d+\.set_opaque_region\((?:wl_region#(\d+)|nil)\)/g)].map((m) =>
+        m[1] === undefined ? 'none' : added.get(m[1]) === '0,0,1920,720' ? 'all' : `region ${added.get(m[1])}`,
+      );
+      // Whether the surface was declared opaque before its first buffer was attached (so its first frame is).
+      const firstAttach = trace.search(/ wl_surface#\d+\.attach\(wl_buffer#/);
+      const firstOpaque = trace.search(/ wl_surface#\d+\.set_opaque_region\(wl_region#/);
       return {
         code,
         formats,
+        opaque,
+        opaqueFirst: firstOpaque !== -1 && firstAttach !== -1 && firstOpaque < firstAttach,
         px: (x, y) => [...ppm.subarray(off + (y * 1920 + x) * 3, off + (y * 1920 + x) * 3 + 3), alpha[aoff + y * 1920 + x]],
       };
     };
     const key = (x) => imageFrame(x, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([200, 100, 50, 255])));
     const halfKey = (x) => imageFrame(x, 10, 4, 4, Buffer.alloc(4 * 4 * 4).fill(Buffer.from([0, 0, 0, 128])));
 
-    // Fully opaque: today's buffer, XRGB8888 only; a colour at 255 changes nothing but the colour.
-    let g = await run((w) => {
+    // A helper given nothing to draw: opaque black, alpha 255 — never a clear canvas showing what is behind.
+    let g = await run(() => undefined, 0);
+    check('a new panel, nothing drawn yet: opaque black (0,0,0,255)', g.code === 0 && JSON.stringify(g.px(5, 5)) === '[0,0,0,255]' && JSON.stringify(g.px(1900, 700)) === '[0,0,0,255]', JSON.stringify([g.px(5, 5), g.px(1900, 700)]));
+
+    // Fully opaque: ARGB8888 buffers, alpha 255, the whole surface declared opaque. Always ARGB8888, because
+    // KWin 6.7 and earlier (desktop OpenGL) keep a surface's texture in its first buffer's format.
+    g = await run((w) => {
       w.write(canvasFrame(960, 360));
       w.write(groundFrame([20, 40, 60], 255));
       w.write(key(10));
     }, 1);
     check('a background at 100%: its colour everywhere, opaque', g.code === 0 && JSON.stringify(g.px(5, 5)) === '[20,40,60,255]' && JSON.stringify(g.px(1900, 700)) === '[20,40,60,255]', JSON.stringify([g.px(5, 5), g.px(1900, 700)]));
-    check('…and the buffers KWin is given are XRGB8888 only, as before', g.formats.length >= 2 && g.formats.every((f) => f === 1), JSON.stringify(g.formats));
+    check('…and the buffers KWin is given are ARGB8888 only', g.formats.length >= 2 && g.formats.every((f) => f === 0), JSON.stringify(g.formats));
+    check('…and the whole surface is declared opaque, before its first buffer', g.opaque.length >= 1 && g.opaque.every((o) => o === 'all') && g.opaqueFirst, JSON.stringify({ opaque: g.opaque, first: g.opaqueFirst }));
 
-    // 50%: see-through everywhere but the keys; the buffers become ARGB8888.
+    // 50%: see-through everywhere but the keys; no part of the surface declared opaque.
     g = await run((w) => {
       w.write(canvasFrame(960, 360));
       w.write(groundFrame([200, 100, 0], 128));
@@ -389,7 +408,8 @@ try {
     check('an opaque key on it stays fully opaque', JSON.stringify(g.px(24, 24)) === '[200,100,50,255]', JSON.stringify(g.px(24, 24)));
     const half = g.px(64, 24);
     check(`a half-transparent key over it: alpha ${half[3]} ≈ 191, colour ≈ 50,25,0`, Math.abs(half[3] - 191) <= 1 && Math.abs(half[0] - 50) <= 1 && Math.abs(half[1] - 25) <= 1 && half[2] === 0, JSON.stringify(half));
-    check('…and the buffers are made ARGB8888', g.formats.includes(0), JSON.stringify(g.formats));
+    check('…the buffers still ARGB8888 only, never made again in another format', g.formats.length === 2 && g.formats.every((f) => f === 0), JSON.stringify(g.formats));
+    check('…and the surface no longer declared opaque', g.opaque.at(-1) === 'none' && g.opaque.slice(0, -1).every((o) => o === 'all'), JSON.stringify(g.opaque));
 
     // A picture, the screen's size, is the background under every key.
     const pic = Buffer.alloc(1920 * 720 * 4);
@@ -427,14 +447,16 @@ try {
     }, 1);
     check('asleep (0) on a fully clear background: opaque black, not clear', JSON.stringify(g.px(5, 5)) === '[0,0,0,255]' && JSON.stringify(g.px(24, 24)) === '[0,0,0,255]', JSON.stringify([g.px(5, 5), g.px(24, 24)]));
 
-    // A canvas frame after a see-through background: opaque again, and the buffers back to XRGB8888.
+    // A canvas frame after a see-through background: opaque again, declared opaque again, the buffers unchanged.
     g = await run((w) => {
       w.write(canvasFrame(960, 360));
       w.write(groundFrame([200, 100, 0], 64));
       w.write(canvasFrame(960, 360, [1, 2, 3]));
       w.write(key(10));
     }, 1);
-    check('a canvas frame after it: its colour, opaque, the buffers XRGB8888 again', JSON.stringify(g.px(5, 5)) === '[1,2,3,255]' && g.formats.at(-1) === 1, JSON.stringify({ px: g.px(5, 5), formats: g.formats }));
+    check('a canvas frame after it: its colour, opaque (alpha 255)', JSON.stringify(g.px(5, 5)) === '[1,2,3,255]', JSON.stringify(g.px(5, 5)));
+    check('…declared opaque again, after being see-through', JSON.stringify(g.opaque.slice(-2)) === '["none","all"]', JSON.stringify(g.opaque));
+    check('…and the same two ARGB8888 buffers throughout', g.formats.length === 2 && g.formats.every((f) => f === 0), JSON.stringify(g.formats));
 
     // A frame whose picture does not match its size is refused.
     const bad = helper(['--output', 'Virtual-1']);
