@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan updates Nobara to v0.13.0 and checks the Stream Decks and the Xeneon after the config conversion. Then v0.14.0, sharing a page, which needs Claude Design boards before it is built; the last feature release before the Windows work."
+next = "Ryan checks v0.13.1 on Nobara: see-through backgrounds on the Xeneon (KWin 6.7.5), with see-through-check.py as a baseline first. Then v0.14.0, sharing a page: Claude Design boards before building."
 category = "Gaming"
 paused = false
 focus = true
@@ -56,4 +56,6 @@ MIDI controller recorded as a future direction (2026-11-22): Mackie Control firs
 Round 5 merged 2026-11-23 (PR #12, aebcfc9), not released: sliders and dials confirmed on the 10.3" panel; a virtual deck's brightness is now dimmed by the helper as it shows (a fast drag no longer blacks out or lags); tests no longer hear real USB events.
 v0.13.0 published 2026-11-23: editor v2 (rounds 1-5: a layout per page, custom layouts with shapes, Edit layout, templates, backgrounds, sliders and dials, appearance for every deck). Release hold lifted; the level meter deferred. Ship test 86/86 after a fix to the test itself (PR #13, Codex: no findings). 1.0 may come with a working Windows release.
 v0.14.0 decided 2026-11-23: sharing one virtual-deck page as a file (everything visual, action types but no targets), from a share icon on the deck's header; separate from backups; Claude Design boards first.
+v0.13.0 confirmed on Nobara (2026-11-24): decks and the Xeneon as before after the config conversion, apart from see-through backgrounds, which showed solid on KWin 6.7 (it keeps a surface's texture in its first buffer's format).
+v0.13.1 published 2026-11-24: the panel's buffers always ARGB, declared opaque while the background is; the "opaque panel keeps opaque buffers" rule retired (measured: same KWin cost). Ship test 86/86; Codex no findings.
 """
