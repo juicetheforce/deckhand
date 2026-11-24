@@ -1,7 +1,7 @@
 name = "Deckhand"
 summary = "Stream Deck daemon and editor for Linux: hotkeys, apps, audio switching, media keys, pages and profiles across several decks."
 stage = "live"
-next = "Ryan checks v0.13.1 on Nobara: see-through backgrounds on the Xeneon (KWin 6.7.5), with see-through-check.py as a baseline first. Then v0.14.0, sharing a page: Claude Design boards before building."
+next = "v0.14.0, sharing a page: Claude Design boards before building. The last feature release before the Windows work."
 category = "Gaming"
 paused = false
 focus = true
@@ -58,4 +58,5 @@ v0.13.0 published 2026-11-23: editor v2 (rounds 1-5: a layout per page, custom l
 v0.14.0 decided 2026-11-23: sharing one virtual-deck page as a file (everything visual, action types but no targets), from a share icon on the deck's header; separate from backups; Claude Design boards first.
 v0.13.0 confirmed on Nobara (2026-11-24): decks and the Xeneon as before after the config conversion, apart from see-through backgrounds, which showed solid on KWin 6.7 (it keeps a surface's texture in its first buffer's format).
 v0.13.1 published 2026-11-24: the panel's buffers always ARGB, declared opaque while the background is; the "opaque panel keeps opaque buffers" rule retired (measured: same KWin cost). Ship test 86/86; Codex no findings.
+v0.13.1 checked on Nobara (2026-11-24), every step, but Nobara had just moved to KWin 6.8.3, so the KWin 6.7 fix itself is inferred, not seen.
 """
