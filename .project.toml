@@ -59,4 +59,5 @@ v0.14.0 decided 2026-11-23: sharing one virtual-deck page as a file (everything 
 v0.13.0 confirmed on Nobara (2026-11-24): decks and the Xeneon as before after the config conversion, apart from see-through backgrounds, which showed solid on KWin 6.7 (it keeps a surface's texture in its first buffer's format).
 v0.13.1 published 2026-11-24: the panel's buffers always ARGB, declared opaque while the background is; the "opaque panel keeps opaque buffers" rule retired (measured: same KWin cost). Ship test 86/86; Codex no findings.
 v0.13.1 checked on Nobara (2026-11-24), every step, but Nobara had just moved to KWin 6.8.3, so the KWin 6.7 fix itself is inferred, not seen.
+v0.13.2 published 2026-11-26: a virtual deck restored from another computer says it needs pairing here, and Tap again repairs it in place on the screen it is on; Settings follows touch as it changes; releases checked on Fedora 45 too; the brightness drag check allows 3x a volume drag. Ship test 88/88; Codex no findings; the maintainer's test list passed.
 """
