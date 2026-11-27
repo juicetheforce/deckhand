@@ -10,7 +10,7 @@ import { findScreen, listScreens, type Screen } from '../screens.js';
 import * as sessionLock from '../services/session-lock.js';
 import * as power from '../services/virtual-power.js';
 import { watchScreensAndTouch } from '../services/hotplug.js';
-import { findTouch, listInputNodes, readable, touchIdentity, type InputNode } from '../touchscreens.js';
+import { findTouch, listInputNodes, pairedElsewhere, readable, touchIdentity, type InputNode } from '../touchscreens.js';
 import type { PairReply } from '../control/protocol.js';
 import { defaultPanelOf, makePanel, pagePanelOf, showable } from '../panel-presets.js';
 import type { Config, LayoutDef, PageBackgroundDef, PanelDef, TouchDeviceDef } from '../types.js';
@@ -53,7 +53,7 @@ const TAP_AGAIN = 'Tap again in Settings › Decks pairs it again, which restore
 const TOUCH_UNAVAILABLE: Record<string, string> = {
   failed: `its touchscreen could not be opened. ${TAP_AGAIN}`,
   missing: 'its touchscreen is not connected',
-  'not-paired': 'it is not paired with a touchscreen: Tap again in Settings › Decks',
+  'not-paired': 'it needs pairing with its touchscreen on this computer: Tap again in Settings › Decks',
 };
 
 /** How long a pairing waits for the tap (DECKHAND_PAIR_MS for tests). */
@@ -101,6 +101,8 @@ class PanelDevice implements DeckDevice {
   private redrawListeners: Array<() => void> = [];
   private inputListeners: Array<(event: ControlInput) => void> = [];
   private letGoListeners: Array<(reason: string) => void> = [];
+  /** Told whenever touchState() may answer differently: the touchscreen opened, gone, failed, paired elsewhere; the session locked or unlocked. */
+  private touchListeners: Array<() => void> = [];
   private exited = false;
   /** The helper's output went away with the screen still plugged in (a wake, on KWin); "ready" says it is back. */
   private outputLost = false;
@@ -118,6 +120,10 @@ class PanelDevice implements DeckDevice {
   /** The touch devices last sent to the helper, as one string, so an unchanged scan sends nothing. */
   private touchSent = '';
   private touchscreen = '';
+  /** The pairing whose touchscreen was last found (JSON), so one that goes away is "not connected", not "needs pairing". */
+  private touchFoundFor: string | null = null;
+  /** "Needs pairing on this computer" said for this pairing (JSON): once, not on every scan. */
+  private elsewhereSaid: string | null = null;
   private touch: Exclude<TouchState, 'locked' | 'inactive' | 'unknown'> = 'not-paired';
   private stopLock: () => void;
   private refusedLogged = false;
@@ -166,6 +172,7 @@ class PanelDevice implements DeckDevice {
     });
     sessionLock.acquire();
     this.stopLock = sessionLock.onLockChange((state) => {
+      this.touchChanged();
       if (state === 'open') {
         this.refusedLogged = false;
         // "Touches work" only when they do: the touchscreen open, not just the session.
@@ -209,13 +216,13 @@ class PanelDevice implements DeckDevice {
         break;
       case 'touch-open':
         if (event.device === this.touchscreen) {
-          this.touch = 'ready';
+          this.setTouch('ready');
           console.log(`[virtual] ${this.id}: reading touches from ${this.touchscreen}${sessionLock.lockState() === 'open' ? '; touches work' : ''}`);
         }
         break;
       case 'touch-failed':
         if (event.device === this.touchscreen) {
-          this.touch = 'failed';
+          this.setTouch('failed');
           console.error(`[virtual] ${this.id}: touch is not available: ${String(event.message)}. ${TAP_AGAIN}`);
         } else {
           console.error(`[virtual] ${this.id}: ${String(event.message)}`);
@@ -224,7 +231,7 @@ class PanelDevice implements DeckDevice {
       case 'touch-gone':
         if (event.device === this.touchscreen) {
           console.log(`[virtual] ${this.id}: its touchscreen went away; the panel stays, without touch`);
-          this.touch = 'missing';
+          this.setTouch('missing');
           // Sent again when a scan finds it back.
           this.touchSent = '';
         }
@@ -330,20 +337,35 @@ class PanelDevice implements DeckDevice {
    * opening, and on each scan, so a touchscreen plugged back in is read
    * again. Sends nothing when nothing changed.
    */
-  syncTouch(touch: TouchDeviceDef | undefined, nodes: () => InputNode[]): void {
+  syncTouch(touch: TouchDeviceDef | undefined, nodes: () => InputNode[], claimed: () => ReadonlySet<string> = () => new Set()): void {
     if (this.exited) return;
     if (!touch) {
-      this.touch = 'not-paired';
+      this.setTouch('not-paired');
       this.sendTouch('', []);
       return;
     }
     const found = findTouch(nodes(), touch);
+    const pairing = JSON.stringify(touch);
     if (!found) {
-      if (this.touch !== 'missing') console.log(`[virtual] ${this.id}: its touchscreen is not connected; the panel shows, without touch`);
-      this.touch = 'missing';
+      // A pairing not found since the config gave it, with a touchscreen of
+      // its model connected and no other deck's: it is for another port or
+      // another computer (a config restored from one) — Tap again pairs it
+      // here. One found earlier that has gone is unplugged, whatever else is
+      // connected. Never read without the tap: Deckhand reads only the
+      // touchscreen tapped.
+      if (this.touchFoundFor !== pairing && pairedElsewhere(nodes(), touch, claimed())) {
+        if (this.elsewhereSaid !== pairing) console.log(`[virtual] ${this.id}: its pairing names a touchscreen on another USB port or another computer; the panel shows, without touch, until Tap again in Settings › Decks pairs it on this computer`);
+        this.elsewhereSaid = pairing;
+        this.setTouch('not-paired');
+      } else {
+        if (this.touch !== 'missing') console.log(`[virtual] ${this.id}: its touchscreen is not connected; the panel shows, without touch`);
+        this.setTouch('missing');
+      }
       this.sendTouch('', []);
       return;
     }
+    this.touchFoundFor = pairing;
+    this.elsewhereSaid = null;
     // A sibling this process may not open is expected — access is given to the
     // paired touchscreen alone — so it is not sent to fail, and said once, not
     // as an error on every attach.
@@ -363,7 +385,7 @@ class PanelDevice implements DeckDevice {
     const before = this.touchSent;
     this.sendTouch(found.touchscreen.devnode, entries);
     // Until the helper says it opened it.
-    if (this.touchSent !== before) this.touch = 'opening';
+    if (this.touchSent !== before) this.setTouch('opening');
   }
 
   private sendTouch(touchscreen: string, entries: Array<['t' | 's', string]>): void {
@@ -394,6 +416,21 @@ class PanelDevice implements DeckDevice {
 
   onLetGo(listener: (reason: string) => void): void {
     this.letGoListeners.push(listener);
+  }
+
+  onTouchState(listener: () => void): void {
+    this.touchListeners.push(listener);
+  }
+
+  /** Every change of touch goes through here, so whoever shows it (the editor, `deckhand status`) is told. */
+  private setTouch(state: Exclude<TouchState, 'locked' | 'inactive' | 'unknown'>): void {
+    if (this.touch === state) return;
+    this.touch = state;
+    this.touchChanged();
+  }
+
+  private touchChanged(): void {
+    for (const listener of this.touchListeners) listener();
   }
 
   /**
@@ -546,6 +583,11 @@ class PanelDevice implements DeckDevice {
     return this.ready.surface === 'fullscreen-window' ? 'fullscreen-window' : 'layer-shell';
   }
 
+  /** The connector it is shown on now: found by its screen's EDID, so not always its config's `output`. */
+  output(): string {
+    return this.connector;
+  }
+
   /** The screen as the helper last reported it. */
   screen(): Ready {
     return this.ready;
@@ -675,6 +717,16 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
       // Read once per scan, and only if an open deck needs it.
       let nodes: InputNode[] | null = null;
       const inputNodes = () => (nodes ??= listInputNodes());
+      // The touchscreens the virtual decks' pairings name, by device node, so
+      // a deck whose own is gone is not told to pair with another deck's.
+      let claimedNodes: Set<string> | null = null;
+      const claimed = () =>
+        (claimedNodes ??= new Set(
+          Object.values(config()?.decks ?? {}).flatMap((d) => {
+            const found = d.virtual?.touch ? findTouch(inputNodes(), d.virtual.touch) : null;
+            return found ? [found.touchscreen.devnode] : [];
+          }),
+        ));
       for (const [id, deck] of Object.entries(config()?.decks ?? {})) {
         if (!deck.virtual) continue;
         // Turned off (services/virtual-power.ts): left out, so its session
@@ -692,7 +744,7 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
         if (!screen || pairing.has(screen.connector)) continue;
         const running = open.get(id);
         if (running) {
-          running.syncTouch(deck.virtual.touch, inputNodes);
+          running.syncTouch(deck.virtual.touch, inputNodes, claimed);
           found.push({ id, open: async () => null });
           continue;
         }
@@ -723,7 +775,7 @@ export function createVirtualDriver(config: () => Config | null): VirtualDriver 
               rescan?.(`virtual deck ${id}'s panel stopped (${code})`);
             });
             open.set(id, device);
-            device.syncTouch(touch, inputNodes);
+            device.syncTouch(touch, inputNodes, claimed);
             return device;
           },
         });

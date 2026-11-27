@@ -501,7 +501,7 @@ export interface VirtualDeckRow {
   key: string;
   /** Its name, or the screen's when it has none. */
   label: string;
-  /** The connector it was set up on. */
+  /** The connector it is shown on now, or, while it is not shown, the one it was set up on: where Tap again pairs it. */
   output: string;
   connected: boolean;
   /** Turned off (a Virtual deck on/off key, or here): not connected, on purpose, until turned on. */

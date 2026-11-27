@@ -15,7 +15,7 @@ import { socketPath } from './control/server.js';
 /** A virtual deck's touch state (control/protocol.ts TouchState), as `status` says it. */
 const TOUCH_WORDS: Record<string, string> = {
   ready: 'ready',
-  'not-paired': 'not paired with a touchscreen',
+  'not-paired': 'needs pairing with its touchscreen on this computer (Tap again in Settings › Decks)',
   missing: 'its touchscreen is not connected',
   opening: 'opening its touchscreen',
   failed: 'touch is not available: its touchscreen could not be opened (Tap again in Settings › Decks restores access; the journal says why)',

@@ -183,7 +183,10 @@ function virtualDecksView(): VirtualDecksView {
     return [{
       key,
       label: deck.name ?? geometry?.productName ?? key,
-      output: deck.virtual.output,
+      // Where it is shown now, which Tap again pairs on: its config's output is
+      // where it was set up, another connector after a restore from another
+      // computer, say. Where it was, while it is not shown.
+      output: status?.output ?? deck.virtual.output,
       connected: status?.connected === true,
       off: status?.off === true,
       touch: status?.touch ?? null,

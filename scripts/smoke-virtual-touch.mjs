@@ -63,7 +63,7 @@ Object.assign(process.env, {
 });
 
 const { parseEdid, screenKey, listScreens, findScreen } = await import(path.join(REPO, 'dist/screens.js'));
-const { listInputNodes, touchIdentity, findTouch } = await import(path.join(REPO, 'dist/touchscreens.js'));
+const { listInputNodes, touchIdentity, findTouch, pairedElsewhere } = await import(path.join(REPO, 'dist/touchscreens.js'));
 const { controlAt } = await import(path.join(REPO, 'dist/hit-test.js'));
 const { createVirtualDriver } = await import(path.join(REPO, 'dist/drivers/virtual.js'));
 const { validateConfig } = await import(path.join(REPO, 'dist/config.js'));
@@ -161,6 +161,15 @@ check('the I²C one\'s sibling is its HID device\'s other node; the keyboard is 
 check('a serial finds it on any port', findTouch(nodes, { vendor: '27c0', product: '0859', serial: '9LQ0172005164', path: 'somewhere-else' })?.touchscreen.node === 'event256');
 check('no serial and another port: not found — it needs a tap again', findTouch(nodes, { vendor: '222a', product: '0001', path: 'pci-0000:00:14.0-usb-0:9:1.0' }) === null);
 check('another serial: not found', findTouch(nodes, { vendor: '27c0', product: '0859', serial: 'OTHER' }) === null);
+// A pairing that names no connected touchscreen: one to pair again when one of its model is here and nobody else's.
+const elsewhere = { vendor: '222a', product: '0001', path: 'pci-0000:00:14.0-usb-0:9:1.0' };
+const devnode = (n) => byNode(n).devnode;
+check('another port, its model here and unclaimed: paired elsewhere', pairedElsewhere(nodes, elsewhere, new Set()) === true);
+check('…one of the two of its model claimed by another deck: still the other', pairedElsewhere(nodes, elsewhere, new Set([devnode('event15')])) === true);
+check('…both claimed by other decks: not elsewhere — its own is gone', pairedElsewhere(nodes, elsewhere, new Set([devnode('event15'), devnode('event20')])) === false);
+check('another serial, its model here: paired elsewhere (another unit)', pairedElsewhere(nodes, { vendor: '27c0', product: '0859', serial: 'OTHER' }, new Set()) === true);
+check('a model not connected at all: not elsewhere — unplugged', pairedElsewhere(nodes, { vendor: '1111', product: '2222' }, new Set()) === false);
+check('vendor and product in capitals, as a hand-written config may have them: the same model', pairedElsewhere(nodes, { vendor: '222A', product: '0001', path: 'x' }, new Set()) === true);
 await fs.rename(UDEV, `${UDEV}.away`);
 check('no udev database: the kernel\'s "direct" property says which are touchscreens', listInputNodes().filter((n) => n.touchscreen).map((n) => n.node).join() === 'event7,event15,event20,event256');
 await fs.rename(`${UDEV}.away`, UDEV);
@@ -425,6 +434,31 @@ await settle('states', async () => {
   config = validateConfig({ decks: { 'GRA-6e4e': { virtual: { output: 'DP-4' } } }, profiles: config.profiles });
   await startDeck();
   check('no touchscreen in the config: not paired, nothing sent to read', device.touchState() === 'not-paired' && (await until(async () => (await frames()).filter((f) => f.type === 'T').at(-1)?.mode === 0)));
+  await session.close();
+
+  // A pairing from another computer, or a cable moved: its port has no
+  // touchscreen, but one of its model is here. Needs pairing here, never
+  // "not connected" — and nothing read until Tap again pairs it.
+  const otherPort = { vendor: '222a', product: '0001', path: 'pci-0000:00:14.0-usb-0:9:1.0' };
+  const saidBeforeElsewhere = said.length;
+  config = validateConfig({ decks: { 'GRA-6e4e': { virtual: { output: 'DP-4', touch: otherPort } } }, profiles: config.profiles });
+  await startDeck();
+  check('paired on another port or computer, its model here: needs pairing, nothing sent to read', device.touchState() === 'not-paired' && (await until(async () => (await frames()).filter((f) => f.type === 'T').at(-1)?.mode === 0)), device.touchState());
+  check('…said as needing a pairing on this computer, with Tap again', said.slice(saidBeforeElsewhere).some((l) => /GRA-6e4e: its pairing names a touchscreen on another USB port or another computer; .*Tap again/.test(l)), JSON.stringify(said.slice(saidBeforeElsewhere)));
+  let touchTold = 0;
+  device.onTouchState(() => touchTold++);
+  // Both touchscreens of its model are other decks' (screens not connected): its own is gone.
+  config = validateConfig({
+    decks: {
+      'GRA-6e4e': { virtual: { output: 'DP-4', touch: otherPort } },
+      'GRA-6e4e-A': { virtual: { output: 'DP-5', touch: touchIdentity(byNode('event15')) } },
+      'GRA-6e4e-B': { virtual: { output: 'DP-8', touch: touchIdentity(byNode('event20')) } },
+    },
+    profiles: config.profiles,
+  });
+  await driver.list();
+  check('…both of its model other decks\' pairings: not connected, never told to take another deck\'s', device.touchState() === 'missing', device.touchState());
+  check('…and the change told to whoever shows it, once', touchTold === 1, String(touchTold));
   await session.close();
   config = validateConfig({ decks: { 'GRA-6e4e': { virtual: { output: 'DP-4', touch: ILITEK } } }, profiles: config.profiles });
   const saidBefore = said.length;

@@ -18,7 +18,7 @@ import { Banner, Divider, Group, InfoTip, Row, StatusDot } from './settings-ui.j
 /** How a deck's touch is, in words, as `deckhand status` says it. */
 const TOUCH_WORDS: Record<TouchState, string> = {
   ready: 'touch works',
-  'not-paired': 'not paired with a touchscreen: Tap again',
+  'not-paired': 'needs pairing with its touchscreen on this computer: Tap again',
   missing: 'its touchscreen is not connected',
   opening: 'opening its touchscreen',
   failed: 'touch is not available: Tap again restores access',
