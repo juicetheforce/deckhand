@@ -365,7 +365,11 @@ try {
   console.log(`    in all per move: brightness ${per(brightCost, steps).toFixed(2)} ms, volume ${per(volCost, vsteps).toFixed(2)} ms`);
   // A level changes every pixel, so each frame shown re-dims the whole screen (3–5 ms at 1920 × 720): a brightness move
   // costs more than a volume move's redraw of one slider. A full redraw per move (before the fix) cost about five times as much.
-  check('a brightness drag costs at most twice a volume drag per move — never a redraw of the page per move', per(brightCost, steps) <= per(volCost, vsteps) * 2, `brightness ${per(brightCost, steps).toFixed(2)} ms, volume ${per(volCost, vsteps).toFixed(2)} ms`);
+  // At most three times, not two: the ratio depends on the processor as well as the code. A volume move is mostly the daemon's
+  // JavaScript, a brightness move mostly pixels in the helper and the compositor, and a faster processor shortens the first
+  // more than the second; on one with fast and slow cores, where each process lands moves it again. Measured there with the
+  // same code: 1.9–2.7 times, against about 1.3–2.0 on the machine the check was written on.
+  check('a brightness drag costs at most three times a volume drag per move — never a redraw of the page per move', per(brightCost, steps) <= per(volCost, vsteps) * 3, `brightness ${per(brightCost, steps).toFixed(2)} ms, volume ${per(volCost, vsteps).toFixed(2)} ms`);
 
   // ---- AT REST ----
   const rest0 = cpuNow();
