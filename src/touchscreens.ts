@@ -140,6 +140,18 @@ export function touchIdentity(node: InputNode): TouchDeviceDef {
   return { vendor: node.vendor, product: node.product, ...(node.idPath ? { path: node.idPath } : {}) };
 }
 
+/**
+ * Whether a pairing that names no connected touchscreen is one to pair again
+ * rather than one unplugged: a touchscreen of the same model is connected, and
+ * no other virtual deck's pairing names it (`claimed`, its device nodes). A
+ * pairing without a serial names its USB port, so the same touchscreen on
+ * another port — its cable moved, or the config restored from another
+ * computer — is not the one named; one with a serial names that unit.
+ */
+export function pairedElsewhere(nodes: InputNode[], touch: TouchDeviceDef, claimed: ReadonlySet<string>): boolean {
+  return nodes.some((n) => n.touchscreen && n.vendor === touch.vendor.toLowerCase() && n.product === touch.product.toLowerCase() && !claimed.has(n.devnode));
+}
+
 /** The touchscreen a pairing names, and its siblings; null when it is not connected. */
 export function findTouch(nodes: InputNode[], touch: TouchDeviceDef): { touchscreen: InputNode; siblings: InputNode[] } | null {
   const touchscreen = nodes.find(

@@ -84,8 +84,8 @@ The installer checks all of these.
 
 - An x86_64 machine with glibc 2.28 or newer: any current Fedora, Ubuntu,
   Debian, Arch or RHEL-family distribution. Each release is checked to load on
-  AlmaLinux 8, Debian 11 and 12, Ubuntu 22.04 to 26.04, Fedora 44 and Arch
-  before it is published.
+  AlmaLinux 8, Debian 11 and 12, Ubuntu 22.04 to 26.04, Fedora 44 and 45, and
+  Arch before it is published.
 - libusb 1.0, which the Stream Deck library links against (`libusb1` on
   Fedora, `libusb-1.0-0` on Debian and Ubuntu).
 - For virtual decks only: libwayland-client (`libwayland-client` on Fedora,
@@ -355,8 +355,11 @@ compositor's layer-shell, as on KDE Plasma; where the deck is a full-screen
 window instead, as on GNOME, the panel says it may not show through. Virtual
 decks have not been tried on GNOME at all.
 **Tap again** pairs the
-screen with its touchscreen again, needed when a touchscreen without a
-serial number moves to another USB port. **Remove** stops using the screen
+screen with its touchscreen again, on the screen the deck is shown on now,
+and keeps everything else: needed when a touchscreen without a serial number
+moves to another USB port, and after importing a configuration made on
+another computer, where the deck says it **needs pairing with its
+touchscreen on this computer**. **Remove** stops using the screen
 as a deck and takes away its touchscreen's access (your password again), and
 keeps its layouts, which come back if you set the same screen up again.
 **Tap again** asks for the password too. While the session is locked, or another user's is active, touches
@@ -413,7 +416,10 @@ symbolic link** (into a dotfiles repository, say): the daemon doesn't see
 changes made through a link, and the editor won't open one. Every accepted change keeps the
 one it replaced in `~/.local/state/deckhand/backups/` — the newest 20, at most
 one every five minutes. The editor's **Settings › Backups** exports the whole
-configuration, icons included, and imports it on another machine.
+configuration, icons included, and imports it on another machine. Every
+layout comes across; a virtual deck's pairing with its touchscreen belongs to
+the computer it was made on, so there the deck shows, says it needs pairing on
+this computer, and **Tap again** in Settings › Decks pairs it.
 
 **Replacing a deck.** Layouts are keyed by the deck's serial number, so a new
 deck — even the same model — starts blank, and the old deck's layouts stay in
@@ -1251,7 +1257,7 @@ answered with the code `busy`.
 
 | cmd | args | does |
 | --- | --- | --- |
-| `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`); `off: true` on a virtual deck turned off; `previewingSound`, the clip `sound.preview` is playing |
+| `status` | | active profile, every deck, the config's last reload, backups; a virtual deck's `touch`: `ready`, or why not (`not-paired`, `missing`, `opening`, `failed`, `locked`, `inactive`, `unknown`), and the connector it is shown on (`output`); `off: true` on a virtual deck turned off; `previewingSound`, the clip `sound.preview` is playing |
 | `decks` | | connected decks: serial, model, geometry (each key's ID, place and size: grid cells on a Stream Deck, pixels of the canvas on a virtual deck), unsupported controls |
 | `screens` | | connected screens, each with its key, EDID details, native resolution, whether it is built in (`eDP`, `LVDS`, `DSI`) and the virtual deck on it if any; and the touchscreens |
 | `virtual.pair` | `output` (a connector) | shows "Tap this screen" on that screen and waits up to 30 s for a tap — the touchscreens must already be readable, which the editor arranges; replies with the screen's key, the touchscreen tapped and the screen's size. Writes nothing. Cancelled if this connection closes |
@@ -1335,8 +1341,10 @@ is marked and says which model it needs; load that model in VTube Studio.
 
 **A virtual deck ignores touches.** `deckhand status` says why under the
 deck. `locked` or `inactive`: unlock the session, or switch back to it.
-`missing`: its touchscreen isn't connected, or was paired by USB port and
-has moved — **Tap again** in Settings › Decks. `failed`: Deckhand could not
+`missing`: its touchscreen isn't connected. `not-paired`: it needs pairing
+with its touchscreen on this computer — its pairing names one on another USB
+port or another computer, from an imported configuration, say — **Tap again**
+in Settings › Decks. `failed`: Deckhand could not
 open it; the journal says why, usually access: **Tap again** writes its
 touchscreen's rule afresh. The install line reports, per touchscreen,
 whether it is readable; only paired ones should be. `unknown`: Deckhand can't read whether the
@@ -1450,7 +1458,7 @@ The checks:
 - `editor/`: `npm test`, and `npm run check:shared`, `check:bridge`,
   `check:live`, `check:hotkey`, `check:icons`, `check:panes`,
   `check:structure`, `check:navigate`, `check:bulk`, `check:forms`,
-  `check:tray`, `check:settings`, `check:virtual`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:value-art`, `check:titlebar`, `check:failures`,
+  `check:tray`, `check:settings`, `check:virtual`, `check:repair`, `check:layout`, `check:background`, `check:appearance`, `check:values`, `check:value-art`, `check:titlebar`, `check:failures`,
   `check:backup`, `check:empty`, `check:one-deck`, `check:multi-deck`,
   `check:obs`, `check:vts`, `check:twitch`, `check:discord` — real
   Electron against a test harness for the control socket.

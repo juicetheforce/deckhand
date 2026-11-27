@@ -27,6 +27,7 @@
     "check:tray": "npm run build && node scripts/check-tray.mjs",
     "check:settings": "npm run build && node scripts/check-settings.mjs",
     "check:virtual": "npm run build && node scripts/check-virtual.mjs",
+    "check:repair": "npm run build && node scripts/check-repair.mjs",
     "check:layout": "npm run build && node scripts/check-layout.mjs",
     "check:background": "npm run build && node scripts/check-background.mjs",
     "check:values": "npm run build && node scripts/check-values.mjs",

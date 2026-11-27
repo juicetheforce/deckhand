@@ -76,6 +76,13 @@ export interface DeckStatus {
    * show what is behind it (untested).
    */
   surface?: 'layer-shell' | 'fullscreen-window';
+  /**
+   * The connector a virtual deck is shown on now. Its config's `output` is
+   * where it was set up: another connector after a screen moves, or after a
+   * config is restored from another computer — the screen is found by its
+   * EDID, wherever it is. Pairing it again (Tap again) goes here.
+   */
+  output?: string;
   /** A virtual deck turned off (the virtual.power action, or `virtual.power`): not connected, on purpose. Absent when on. */
   off?: true;
 }
@@ -92,8 +99,11 @@ export interface LiveFace {
 }
 
 /**
- * A virtual deck's touch: `ready`; `not-paired` (no touchscreen in its
- * config); `missing` (its touchscreen is not connected); `opening` (being
+ * A virtual deck's touch: `ready`; `not-paired` (it needs pairing on this
+ * computer: no touchscreen in its config, or the one its config names is not
+ * here while another of that model is — its USB cable moved to another port,
+ * or the config came from another computer); `missing` (its touchscreen is
+ * not connected); `opening` (being
  * opened); `failed` (it could not be opened or grabbed); `locked`,
  * `inactive` or `unknown` (the session is locked, not the active one, or its
  * state cannot be read — touches are refused, services/session-lock.ts).

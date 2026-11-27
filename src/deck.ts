@@ -206,6 +206,8 @@ export class DeckSession implements DeckHandle {
     });
     this.device.onRedraw?.(() => void this.repaint());
     this.device.onLetGo?.((reason) => void this.letGo(reason));
+    // A virtual deck's touch opening, going or needing a pairing is state the editor shows.
+    this.device.onTouchState?.(() => this.onStateChange());
     this.device.onError((err: unknown) => {
       console.error(`[${this.label()}] device error: ${String(err)}`);
     });
@@ -754,6 +756,11 @@ export class DeckSession implements DeckHandle {
   /** How a virtual deck's screen is shown (DeckDevice.surfaceKind); undefined for a Stream Deck. */
   surfaceKind(): 'layer-shell' | 'fullscreen-window' | undefined {
     return this.device.surfaceKind?.();
+  }
+
+  /** The connector a virtual deck is shown on now (DeckDevice.output); undefined for a Stream Deck. */
+  outputName(): string | undefined {
+    return this.device.output?.();
   }
 
   /** Whether a virtual deck's touches work now (DeckDevice.touchState); undefined for a Stream Deck. */

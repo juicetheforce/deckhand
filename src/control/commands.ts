@@ -154,6 +154,8 @@ export function stateSnapshot(deps: ControlDeps): StateSnapshot {
       if (touch !== undefined) entry.touch = touch;
       const surface = session.surfaceKind();
       if (surface !== undefined) entry.surface = surface;
+      const output = session.outputName();
+      if (output !== undefined) entry.output = output;
     }
     return entry;
   });

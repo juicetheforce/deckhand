@@ -80,6 +80,7 @@ docker.io/library/ubuntu:22.04 apt-get update && apt-get install -y libusb-1.0-0
 docker.io/library/ubuntu:24.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
 docker.io/library/ubuntu:26.04 apt-get update && apt-get install -y libusb-1.0-0 libudev1 libwayland-client0
 registry.fedoraproject.org/fedora:44 dnf -y install libusb1 systemd-libs libwayland-client
+registry.fedoraproject.org/fedora:45 dnf -y install libusb1 systemd-libs libwayland-client
 docker.io/library/archlinux:latest pacman -Syu --noconfirm libusb systemd-libs wayland
 IMAGES
 

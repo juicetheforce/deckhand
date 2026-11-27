@@ -133,7 +133,8 @@ touch panel.
   and its touchscreen by its serial number. Two identical screens are told
   apart by their ports. A touchscreen with no serial number is remembered by
   its USB port, so if you move its USB cable, tap it again (**Tap again** in
-  Settings).
+  Settings). The same after importing a configuration made on another
+  computer: the layouts come across, and the deck asks to be paired here.
 - **Each page can have its own grid.** New pages start at the size you chose
   for the screen, or at the grid you pick, and **Change layout…**, in the
   deck's top bar, gives one page a different grid.
@@ -381,9 +382,9 @@ for an AppArmor profile the editor needs. Then open **Deckhand** from your appli
 To update, run the same line again; an **Update** pill appears in the editor
 when a newer release is out, with the line to copy. To remove it: `deckhand-uninstall`.
 
-I use it every day on Fedora 44 (KDE Plasma), and it has run on Ubuntu 26.04
-(GNOME). Each release is checked to load on AlmaLinux 8, Debian 11 and 12,
-Ubuntu 22.04 to 26.04, Fedora 44 and Arch before it is published. To build it
+I use it every day on Fedora 44 and 45 (KDE Plasma), and it has run on Ubuntu
+26.04 (GNOME). Each release is checked to load on AlmaLinux 8, Debian 11 and
+12, Ubuntu 22.04 to 26.04, Fedora 44 and 45, and Arch before it is published. To build it
 from source instead, see [the developer install](REFERENCE.md#developer-install).
 
 ## What it doesn't do, and why
